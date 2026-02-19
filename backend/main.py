@@ -26,13 +26,27 @@ async def lifespan(app: FastAPI):
     max_retries = 5
     for i in range(max_retries):
         try:
+            # Check connection
             async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+                # Instead of create_all, we could run migrations here or just check connection
+                # For now, let's just ensure we can connect.
+                # Migrations should be run separately or we can integrate them here.
+                # await conn.run_sync(Base.metadata.create_all) # Disabled in favor of Alembic
+                pass
+            
+            # Run Alembic migrations
+            print("Running database migrations...")
+            import subprocess
+            # Run alembic upgrade head
+            # We use subprocess to avoid messing with async loop and alembic context issues
+            subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
+            print("Database migrations completed.")
+            
             break
         except Exception as e:
             if i == max_retries - 1:
-                print(f"Failed to connect to database after {max_retries} attempts: {e}")
-            print(f"Database connection failed, retrying in 2 seconds... ({i+1}/{max_retries})")
+                print(f"Failed to connect to database or run migrations after {max_retries} attempts: {e}")
+            print(f"Database connection/migration failed, retrying in 2 seconds... ({i+1}/{max_retries})")
             import asyncio
             await asyncio.sleep(2)
             

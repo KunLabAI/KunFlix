@@ -80,7 +80,25 @@ cp .env.example .env
 # 启动后端服务
 python main.py
 # 服务将运行在 http://localhost:8000
+# 注意：启动时会自动检查并应用数据库迁移。
 ```
+
+### 数据库迁移
+
+本项目使用 Alembic 管理数据库版本。当你修改了 `models.py` 中的模型定义后，请使用以下命令生成迁移脚本：
+
+```bash
+# 生成迁移脚本
+python manage_db.py migrate "描述变更内容"
+
+# 应用迁移 (通常在启动服务时自动执行，也可手动运行)
+python manage_db.py upgrade
+
+# 回滚迁移
+python manage_db.py downgrade
+```
+
+详细说明请参考 [Wiki: 数据库迁移指南](docs/wiki/Database-Migration.md)。
 
 ### 2. 游戏前端设置
 

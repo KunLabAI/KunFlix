@@ -32,6 +32,7 @@
 
 *   **[系统架构 (Architecture)](Architecture)**: 了解系统的整体技术架构与数据流向。
 *   **[后端开发指南 (Backend Guide)](Backend-Guide)**: Python后端、AgentScope智能体编排、数据库设计与API说明。
+*   **[数据库迁移指南 (Database Migration)](Database-Migration)**: 如何使用 Alembic 管理数据库版本。
 *   **[前端开发指南 (Frontend Guide)](Frontend-Guide)**: Next.js架构、Pixi.js渲染与WebSocket通信。
 *   **[部署与环境配置 (Deployment)](Deployment)**: 如何在本地（Windows）环境搭建开发环境。
 *   **[需求追踪 (Requirements Traceability)](Requirements-Traceability)**: 原始需求与当前实现的对应关系及完成度。
