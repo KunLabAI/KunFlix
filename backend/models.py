@@ -63,6 +63,8 @@ class LLMProvider(Base):
     
     models = Column(JSON, default=[]) # List of model names e.g. ["gpt-4", "gpt-3.5"]
     
+    tags = Column(JSON, default=[]) # e.g. ["llm", "audio", "image"]
+
     is_active = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)
     

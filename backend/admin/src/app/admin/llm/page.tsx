@@ -11,6 +11,7 @@ interface LLMProvider {
   name: string;
   provider_type: string;
   models: string[];
+  tags?: string[];
   is_active: boolean;
   is_default: boolean;
   base_url?: string;
@@ -127,10 +128,22 @@ export default function LLMPage() {
       key: 'name',
     },
     {
-      title: '类型',
+      title: '平台名称',
       dataIndex: 'provider_type',
       key: 'provider_type',
       render: (text: string) => <Tag color="blue">{text}</Tag>,
+    },
+    {
+      title: '标签',
+      dataIndex: 'tags',
+      key: 'tags',
+      render: (tags: string[]) => (
+        <>
+          {tags && tags.map(tag => (
+            <Tag key={tag} color="cyan">{tag}</Tag>
+          ))}
+        </>
+      ),
     },
     {
       title: '模型',
@@ -196,13 +209,22 @@ export default function LLMPage() {
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="provider_type" label="类型" rules={[{ required: true, message: '请选择类型' }]}>
+          <Form.Item name="provider_type" label="平台名称" rules={[{ required: true, message: '请选择平台' }]}>
             <Select>
               <Select.Option value="openai">OpenAI</Select.Option>
               <Select.Option value="azure">Azure</Select.Option>
               <Select.Option value="dashscope">Dashscope</Select.Option>
               <Select.Option value="anthropic">Anthropic</Select.Option>
               <Select.Option value="gemini">Gemini</Select.Option>
+            </Select>
+          </Form.Item>
+          
+          <Form.Item name="tags" label="标签">
+            <Select mode="tags" placeholder="例如: llm, audio, image">
+              <Select.Option value="llm">LLM</Select.Option>
+              <Select.Option value="audio">Audio</Select.Option>
+              <Select.Option value="image">Image</Select.Option>
+              <Select.Option value="video">Video</Select.Option>
             </Select>
           </Form.Item>
           

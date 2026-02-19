@@ -7,6 +7,7 @@ class LLMProviderBase(BaseModel):
     api_key: str
     base_url: Optional[str] = None
     models: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
     is_active: bool = True
     is_default: bool = False
     config_json: Dict[str, Any] = {}
@@ -20,6 +21,7 @@ class LLMProviderUpdate(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     models: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
     config_json: Optional[Dict[str, Any]] = None
