@@ -3,6 +3,7 @@ from models import Player, StoryChapter
 from agents import narrative_engine
 from agentscope.message import Msg
 import json
+import asyncio
 
 class GameService:
     def __init__(self, db: AsyncSession):
@@ -20,9 +21,11 @@ class GameService:
         # This would call a specific agent for world-building
         world_prompt = "Create a unique, immersive worldview. Define the core conflict, magic/tech system, and 3 key factions."
         world_msg = narrative_engine.director(Msg(name="System", content=world_prompt))
+        if asyncio.iscoroutine(world_msg):
+            world_msg = await world_msg
         
         # 2. Generate Intro (Chapter 1 & 2)
-        intro_chapter = narrative_engine.generate_chapter(
+        intro_chapter = await narrative_engine.generate_chapter(
             player_context={"id": player_id, "world_setting": world_msg.content},
             previous_summary="Beginning of the adventure."
         )
@@ -39,7 +42,7 @@ class GameService:
         self.db.add(chapter1)
         
         # Pre-generate Chapter 2 (Background Task usually, but here synchronous for simplicity of demo)
-        chapter2_outline = narrative_engine.generate_chapter(
+        chapter2_outline = await narrative_engine.generate_chapter(
             player_context={"id": player_id},
             previous_summary=intro_chapter["outline"]
         )

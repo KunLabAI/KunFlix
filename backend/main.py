@@ -1,20 +1,96 @@
+import sys
+import asyncio
+
+# Fix for asyncpg on Windows
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI, WebSocket, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+import os
+from contextlib import asynccontextmanager
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from services import GameService
 from models import Player, StoryChapter
+from routers import llm_config, admin as admin_router
 import uvicorn
+from agents import narrative_engine
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Infinite Narrative Game")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 数据库连接重试逻辑
+    max_retries = 5
+    for i in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            break
+        except Exception as e:
+            if i == max_retries - 1:
+                print(f"Failed to connect to database after {max_retries} attempts: {e}")
+            print(f"Database connection failed, retrying in 2 seconds... ({i+1}/{max_retries})")
+            import asyncio
+            await asyncio.sleep(2)
+            
+    # Try to initialize narrative engine from DB
+    try:
+        await narrative_engine.load_config_from_db()
+    except Exception as e:
+        print(f"Failed to load LLM config on startup: {e}")
+    
+    yield
 
-@app.on_event("startup")
-async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+app = FastAPI(title="Infinite Narrative Game", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register Routers
+app.include_router(llm_config.router)
+app.include_router(admin_router.router)
+
+# Mount Admin Static Files
+# base_dir = os.path.dirname(os.path.abspath(__file__))
+# admin_dir = os.path.join(base_dir, "admin")
+# app.mount("/admin", StaticFiles(directory=admin_dir, html=True), name="admin")
+
+# @app.on_event("startup")
+# async def startup():
+#     # 数据库连接重试逻辑
+#     max_retries = 5
+#     for i in range(max_retries):
+#         try:
+#             async with engine.begin() as conn:
+#                 await conn.run_sync(Base.metadata.create_all)
+#             break
+#         except Exception as e:
+#             if i == max_retries - 1:
+#                 print(f"Failed to connect to database after {max_retries} attempts: {e}")
+#             print(f"Database connection failed, retrying in 2 seconds... ({i+1}/{max_retries})")
+#             import asyncio
+#             await asyncio.sleep(2)
+#             
+#     # Try to initialize narrative engine from DB
+#     try:
+#         await narrative_engine.load_config_from_db()
+#     except Exception as e:
+#         print(f"Failed to load LLM config on startup: {e}")
+
+
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the Infinite Narrative Game API"}
+
 
 from pydantic import BaseModel
 

@@ -50,3 +50,23 @@ class Asset(Base):
     # Cache management
     last_accessed = Column(DateTime(timezone=True), server_default=func.now())
     file_path = Column(String)
+
+class LLMProvider(Base):
+    __tablename__ = "llm_providers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) # e.g. "OpenAI", "DashScope"
+    provider_type = Column(String) # e.g. "openai_chat", "dashscope_chat", "post_api_chat"
+    
+    api_key = Column(String) # Encrypted ideally, but plain for now
+    base_url = Column(String, nullable=True) # e.g. "https://api.openai.com/v1"
+    
+    models = Column(JSON, default=[]) # List of model names e.g. ["gpt-4", "gpt-3.5"]
+    
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    
+    config_json = Column(JSON, default={}) # Extra config for AgentScope
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

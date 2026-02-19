@@ -76,3 +76,9 @@ cover/
 
 # Docker
 .dockerignore
+
+# backend admin
+.next/
+
+# DB
+*.db

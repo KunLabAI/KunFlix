@@ -1,6 +1,0 @@
-@echo off
-cd frontend
-echo Installing dependencies...
-npm install
-echo Starting Frontend...
-npm run dev

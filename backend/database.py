@@ -1,8 +1,17 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config import settings
+import asyncio
 
-engine = create_async_engine(settings.DATABASE_URL, echo=True)
+# Create Async Engine
+# echo=True means it will log all SQL statements (good for debugging)
+engine = create_async_engine(
+    settings.DATABASE_URL, 
+    echo=True,
+    pool_pre_ping=True,  # 自动重连
+    pool_size=10,        # 连接池大小
+    max_overflow=20      # 最大溢出连接数
+)
 
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,

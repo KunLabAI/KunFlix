@@ -6,7 +6,9 @@ class Settings(BaseSettings):
     
     # Database
     # Default to local postgres user/pass. Override with .env
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/infinite_game_db"
+    # Fallback to SQLite if not configured (better for local dev)
+    DATABASE_URL: str = "sqlite+aiosqlite:///./infinite_game.db"
+    # DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/infinite_game_db"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

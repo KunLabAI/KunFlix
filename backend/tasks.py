@@ -34,7 +34,7 @@ async def pre_generate_next_chapter(player_id: int, current_chapter_num: int):
             
         # Generate Content
         # Using AgentScope
-        new_chapter_data = narrative_engine.generate_chapter(
+        new_chapter_data = await narrative_engine.generate_chapter(
             player_context={"id": player_id},
             previous_summary=prev_chapter.content[:500] # Truncated for demo
         )
