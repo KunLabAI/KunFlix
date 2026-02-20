@@ -11,6 +11,8 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 ADMIN_DIR = os.path.join(BACKEND_DIR, "admin")
 
 # 颜色代码（跨平台可能需要 colorama，这里为了简单只做基本处理或不加）
+PROCESSES = []
+
 def log(message, prefix="[SYSTEM]"):
     print(f"{prefix} {message}")
 
@@ -60,6 +62,7 @@ def setup_frontend():
 
 def run_process(command, cwd, prefix):
     """运行一个子进程并实时打印输出"""
+    process = None
     try:
         process = subprocess.Popen(
             command,
@@ -72,6 +75,7 @@ def run_process(command, cwd, prefix):
             encoding='utf-8',
             errors='replace'
         )
+        PROCESSES.append(process)
         
         # 实时读取输出
         for line in process.stdout:
@@ -80,6 +84,9 @@ def run_process(command, cwd, prefix):
         process.wait()
     except Exception as e:
         log(f"Error running process: {e}", prefix)
+    finally:
+        if process and process in PROCESSES:
+            PROCESSES.remove(process)
 
 def main():
     log("Starting development environment setup...")
@@ -128,6 +135,14 @@ def main():
             time.sleep(1)
     except KeyboardInterrupt:
         log("Stopping servers...", "[SYSTEM]")
+        for p in list(PROCESSES):
+            try:
+                if sys.platform == "win32":
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    p.terminate()
+            except Exception:
+                pass
         sys.exit(0)
 
 if __name__ == "__main__":

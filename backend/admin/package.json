@@ -10,22 +10,36 @@
   },
   "dependencies": {
     "@ant-design/nextjs-registry": "^1.3.0",
+    "@monaco-editor/react": "^4.7.0",
     "antd": "^6.3.0",
     "axios": "^1.13.5",
     "lucide-react": "^0.574.0",
     "next": "^16.1.6",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1",
     "swr": "^2.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
+    "@tailwindcss/postcss": "^4.2.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
     "@types/node": "^25.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "eslint": "^8.57.1",
+    "@vitejs/plugin-react": "^5.0.2",
+    "autoprefixer": "^10.4.24",
+    "eslint": "^9.0.0",
     "eslint-config-next": "^16.1.6",
-    "typescript": "^5.9.3"
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   }
 }

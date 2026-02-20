@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from services import GameService
 from models import Player, StoryChapter
-from routers import llm_config, admin as admin_router
+from routers import llm_config, admin as admin_router, agents, chats
 import uvicorn
 from agents import narrative_engine
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +71,8 @@ app.add_middleware(
 # Register Routers
 app.include_router(llm_config.router)
 app.include_router(admin_router.router)
+app.include_router(agents.router)
+app.include_router(chats.router)
 
 # Mount Admin Static Files
 # base_dir = os.path.dirname(os.path.abspath(__file__))

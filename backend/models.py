@@ -72,3 +72,46 @@ class LLMProvider(Base):
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, default="New Chat")
+    agent_id = Column(Integer, ForeignKey("agents.id"))
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), index=True)
+    role = Column(String) # user, assistant, system
+    content = Column(Text)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Agent(Base):
+    __tablename__ = "agents"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, index=True)
+    description = Column(String(500))
+    
+    # Provider Association
+    provider_id = Column(Integer, ForeignKey("llm_providers.id"))
+    model = Column(String) # The specific model name under the provider
+    
+    # Parameters
+    temperature = Column(Float, default=0.7)
+    context_window = Column(Integer, default=4096)
+    system_prompt = Column(Text)
+    
+    # Advanced Config
+    tools = Column(JSON, default=[]) # List of enabled tools
+    thinking_mode = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

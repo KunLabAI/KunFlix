@@ -191,7 +191,7 @@ export default function LLMPage() {
     <div>
       {contextHolder}
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <h2>LLM 供应商</h2>
+        <h2>AI 供应商</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
           添加供应商
         </Button>

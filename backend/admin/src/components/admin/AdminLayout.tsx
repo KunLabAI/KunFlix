@@ -9,6 +9,7 @@ import {
   RobotOutlined,
   MenuUnfoldOutlined,
   MenuFoldOutlined,
+  RocketOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import Link from 'next/link';
@@ -36,6 +37,7 @@ function getItem(
 const items: MenuItem[] = [
   getItem(<Link href="/admin">仪表盘</Link>, '/admin', <PieChartOutlined />),
   getItem(<Link href="/admin/llm">AI 供应商</Link>, '/admin/llm', <RobotOutlined />),
+  getItem(<Link href="/admin/agents">智能体管理</Link>, '/admin/agents', <RocketOutlined />),
   getItem(<Link href="/admin/players">玩家管理</Link>, '/admin/players', <TeamOutlined />),
   getItem(<Link href="/admin/stories">故事管理</Link>, '/admin/stories', <BookOutlined />),
 ];
@@ -76,6 +78,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       
       if (title === 'admin') displayTitle = '后台管理';
       else if (title === 'llm') displayTitle = 'AI 供应商';
+      else if (title === 'agents') displayTitle = '智能体管理';
       else if (title === 'players') displayTitle = '玩家管理';
       else if (title === 'stories') displayTitle = '故事管理';
       
@@ -117,8 +120,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
              </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: '0 16px' }}>
-          <Breadcrumb style={{ margin: '16px 0' }} items={getBreadcrumbItems()} />
+        <Content style={{ margin: '16px 16px' }}>
           <div
             style={{
               padding: 24,
