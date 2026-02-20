@@ -6,8 +6,14 @@ export const AVAILABLE_TOOLS = [
 ];
 
 export const DEFAULT_AGENT_VALUES = {
+  name: '',
+  description: '',
+  provider_id: 0,
+  model: '',
+  system_prompt: '',
   temperature: 0.7,
   context_window: 4096,
   thinking_mode: false,
   tools_enabled: false,
+  tools: [],
 };

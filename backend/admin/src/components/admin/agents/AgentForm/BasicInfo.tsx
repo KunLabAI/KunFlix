@@ -1,23 +1,36 @@
 import React, { useMemo } from 'react';
-import { Form, Input, Select, Row, Col, Typography } from 'antd';
+import { useFormContext } from 'react-hook-form';
+import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from '@/components/ui/textarea';
 import { LLMProvider } from '@/types';
 import { parseProviderModels } from '@/lib/api-utils';
 
-const { Text } = Typography;
-
 interface BasicInfoProps {
   providers: LLMProvider[];
-  selectedProviderId: number | null;
-  onProviderChange: (value: number) => void;
   loading?: boolean;
 }
 
 const BasicInfo: React.FC<BasicInfoProps> = ({ 
   providers, 
-  selectedProviderId, 
-  onProviderChange, 
   loading 
 }) => {
+  const { control, watch, setValue } = useFormContext();
+  const selectedProviderId = watch('provider_id');
+
   const availableModels = useMemo(() => {
     if (!selectedProviderId || !providers) return [];
     const provider = providers.find(p => p.id === selectedProviderId);
@@ -26,77 +39,104 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
 
   return (
     <div className="space-y-4">
-      <Form.Item 
-        name="name" 
-        label={<span className="text-gray-700 font-medium">名称</span>}
-        rules={[
-          { required: true, message: '请输入智能体名称' },
-          { max: 50, message: '最大长度50字符' }
-        ]}
-      >
-        <Input 
-          placeholder="给智能体起个名字，例如: 故事导演" 
-          disabled={loading} 
-          className="h-10 rounded-lg border-gray-200 hover:border-gray-300 focus:border-black focus:shadow-none"
-        />
-      </Form.Item>
+      <FormField
+        control={control}
+        name="name"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>名称</FormLabel>
+            <FormControl>
+              <Input placeholder="给智能体起个名字，例如: 故事导演" disabled={loading} {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-      <Form.Item 
-        name="description" 
-        label={<span className="text-gray-700 font-medium">描述</span>}
-        rules={[
-          { required: true, message: '请输入描述' },
-          { max: 500, message: '最大长度500字符' }
-        ]}
-      >
-        <Input.TextArea 
-          rows={3} 
-          placeholder="简要描述智能体的职责和功能..." 
-          disabled={loading}
-          className="rounded-lg border-gray-200 hover:border-gray-300 focus:border-black focus:shadow-none resize-none"
-        />
-      </Form.Item>
+      <FormField
+        control={control}
+        name="description"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>描述</FormLabel>
+            <FormControl>
+              <Textarea 
+                placeholder="简要描述智能体的职责和功能..." 
+                disabled={loading} 
+                className="resize-none" 
+                rows={3}
+                {...field} 
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-      <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-        <Text className="text-xs text-gray-400 font-medium uppercase tracking-wider mb-3 block">模型配置</Text>
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item 
-              name="provider_id" 
-              label={<span className="text-gray-600 text-xs">供应商</span>}
-              rules={[{ required: true, message: '请选择供应商' }]}
-              className="mb-0"
-            >
-              <Select 
-                placeholder="选择供应商" 
-                onChange={onProviderChange}
-                options={providers.map(p => ({ label: p.name, value: p.id }))}
-                loading={loading}
-                disabled={loading}
-                className="h-9"
-                variant="borderless"
-                style={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}
-              />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-             <Form.Item 
-              name="model" 
-              label={<span className="text-gray-600 text-xs">模型</span>}
-              rules={[{ required: true, message: '请选择模型' }]}
-              className="mb-0"
-            >
-              <Select 
-                placeholder={selectedProviderId ? "选择模型" : "先选择供应商"}
-                options={availableModels.map(m => ({ label: m, value: m }))}
-                disabled={!selectedProviderId || loading}
-                className="h-9"
-                variant="borderless"
-                style={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}
-              />
-            </Form.Item>
-          </Col>
-        </Row>
+      <div className="p-4 bg-muted/50 rounded-xl border">
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">模型配置</div>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={control}
+            name="provider_id"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">供应商</FormLabel>
+                <Select 
+                  onValueChange={(value) => {
+                    field.onChange(Number(value));
+                    setValue('model', ''); // Reset model when provider changes
+                  }} 
+                  value={field.value?.toString()} 
+                  disabled={loading}
+                >
+                  <FormControl>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="选择供应商" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id.toString()}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={control}
+            name="model"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs">模型</FormLabel>
+                <Select 
+                  onValueChange={field.onChange} 
+                  value={field.value} 
+                  disabled={!selectedProviderId || loading}
+                >
+                  <FormControl>
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder={selectedProviderId ? "选择模型" : "先选择供应商"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
       </div>
     </div>
   );

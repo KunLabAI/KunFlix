@@ -1,21 +1,56 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Button, Space, Input, Tag, Popconfirm, message, Tooltip, Card, Typography, Row, Col } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, AppstoreOutlined, BarsOutlined, RobotOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useAgents, useDeleteAgent } from '@/hooks/useAgents';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
 import { Agent } from '@/types';
-
-const { Title, Text } = Typography;
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useToast } from '@/components/ui/use-toast';
+import { Plus, Pencil, Trash2, Search, LayoutGrid, List, Bot, Cpu, Zap } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function AgentsPage() {
   const router = useRouter();
   const [searchText, setSearchText] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  const [messageApi, contextHolder] = message.useMessage();
+  const { toast } = useToast();
   
   const { agents, isLoading, mutate } = useAgents(searchText, pagination.current, pagination.pageSize);
   const { providers } = useLLMProviders();
@@ -24,272 +59,256 @@ export default function AgentsPage() {
   const handleDelete = async (id: number) => {
     try {
       await deleteAgent(id);
-      messageApi.success('智能体删除成功');
+      toast({
+        title: "智能体删除成功",
+      });
       mutate();
     } catch (err: any) {
-      messageApi.error(err.response?.data?.detail || '删除失败');
+      toast({
+        variant: "destructive",
+        title: "删除失败",
+        description: err.response?.data?.detail || '未知错误',
+      });
     }
   };
 
-  const columns = [
-    {
-      title: '名称',
-      dataIndex: 'name',
-      key: 'name',
-      render: (text: string, record: Agent) => (
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 transition-transform hover:scale-110">
-            <RobotOutlined className="text-xl" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-semibold text-gray-900">{text}</span>
-            <span className="text-xs text-gray-500 line-clamp-1 max-w-[200px]">{record.description}</span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: '模型配置',
-      key: 'model',
-      render: (_: any, record: Agent) => {
-        const provider = providers?.find((p) => p.id === record.provider_id);
-        return (
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">供应商</span>
-              <Tag variant="filled" className="bg-gray-100 text-gray-600 m-0">{provider?.name || 'Unknown'}</Tag>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">模型</span>
-              <span className="text-sm text-gray-700 font-medium">{record.model}</span>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      title: '参数',
-      key: 'params',
-      render: (_: any, record: Agent) => (
-        <Space size="small" orientation="vertical" className="w-full">
-           <div className="flex justify-between text-xs w-32">
-             <span className="text-gray-400">温度</span>
-             <span className="font-mono text-gray-600">{record.temperature}</span>
-           </div>
-           <div className="flex justify-between text-xs w-32">
-             <span className="text-gray-400">上下文</span>
-             <span className="font-mono text-gray-600">{record.context_window / 1024}k</span>
-           </div>
-        </Space>
-      ),
-    },
-    {
-      title: '能力',
-      dataIndex: 'tools',
-      key: 'tools',
-      render: (tools: string[]) => (
-        <div className="flex flex-wrap gap-1 max-w-[200px]">
-          {tools && tools.length > 0 ? (
-             tools.map(t => (
-              <Tag key={t} variant="filled" color="blue" className="text-xs m-0">
-                 {t}
-               </Tag>
-             ))
-          ) : (
-             <span className="text-gray-400 text-xs">无工具</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) => <span className="text-gray-400 text-sm">{new Date(date).toLocaleDateString()}</span>,
-      sorter: (a: Agent, b: Agent) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime(),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      render: (_: any, record: Agent) => (
-        <Space size="small" onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="编辑">
-            <Button type="text" shape="circle" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); router.push(`/admin/agents/${record.id}`); }} />
-          </Tooltip>
-          <Popconfirm 
-            title="确认删除" 
-            description="确定要删除这个智能体吗？此操作不可恢复。"
-            onConfirm={(e) => { e?.stopPropagation(); record.id && handleDelete(record.id); }}
-            onCancel={(e) => e?.stopPropagation()}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title="删除">
-              <Button type="text" danger shape="circle" icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
   const renderGridView = () => (
-    <Row gutter={[24, 24]}>
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       {agents?.map((agent) => {
         const provider = providers?.find((p) => p.id === agent.provider_id);
         return (
-          <Col xs={24} sm={12} lg={8} xl={6} key={agent.id}>
-            <div 
-              className="group relative bg-white rounded-2xl border border-gray-100 hover:border-blue-500 hover:shadow-lg transition-all duration-300 p-6 h-full flex flex-col cursor-pointer transform hover:-translate-y-1"
-              onClick={() => router.push(`/admin/agents/${agent.id}`)}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl transition-transform group-hover:scale-110">
-                  <RobotOutlined />
-                </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute top-4 right-4 bg-white shadow-sm rounded-full p-1 border border-gray-100" onClick={e => e.stopPropagation()}>
-                   <Popconfirm 
-                      title="确认删除" 
-                      onConfirm={(e) => { e?.stopPropagation(); agent.id && handleDelete(agent.id); }}
-                      onCancel={(e) => e?.stopPropagation()}
-                      okText="删除"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Button type="text" danger size="small" shape="circle" icon={<DeleteOutlined />} />
-                    </Popconfirm>
+          <Card 
+            key={agent.id} 
+            className="group relative cursor-pointer transition-all hover:border-primary hover:shadow-lg"
+            onClick={() => router.push(`/admin/agents/${agent.id}`)}
+          >
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform group-hover:scale-110">
+                  <Bot className="h-6 w-6" />
                 </div>
               </div>
-              
-              <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-1 group-hover:text-blue-600 transition-colors">{agent.name}</h3>
-              <p className="text-sm text-gray-500 mb-4 line-clamp-2 h-10">{agent.description || '暂无描述'}</p>
-              
-              <div className="mt-auto space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-gray-400 bg-gray-50 px-2 py-1 rounded-md">{provider?.name || 'Unknown'}</span>
-                  <span className="text-gray-600 font-medium">{agent.model}</span>
-                </div>
-                
-                <div className="flex gap-2 border-t border-gray-50 pt-3">
-                  {agent.tools && agent.tools.length > 0 ? (
-                    agent.tools.slice(0, 3).map(t => (
-                      <span key={t} className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">
-                        {t}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-gray-300">无工具</span>
-                  )}
-                  {agent.tools && agent.tools.length > 3 && (
-                    <span className="text-[10px] text-gray-400">+{agent.tools.length - 3}</span>
-                  )}
-                </div>
+              <div onClick={e => e.stopPropagation()}>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        此操作不可撤销。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>取消</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => agent.id && handleDelete(agent.id)}>确认删除</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
-            </div>
-          </Col>
+            </CardHeader>
+            <CardContent>
+              <CardTitle className="mb-1 text-lg group-hover:text-primary transition-colors">{agent.name}</CardTitle>
+              <CardDescription className="line-clamp-2 h-10 text-xs">
+                {agent.description || '暂无描述'}
+              </CardDescription>
+            </CardContent>
+            <CardFooter className="flex flex-col items-start gap-3 border-t bg-muted/20 p-4">
+              <div className="flex w-full items-center justify-between text-xs">
+                <Badge variant="secondary" className="font-normal">{provider?.name || 'Unknown'}</Badge>
+                <span className="font-medium text-muted-foreground">{agent.model}</span>
+              </div>
+              <div className="flex w-full flex-wrap gap-1">
+                {agent.tools && agent.tools.length > 0 ? (
+                  agent.tools.slice(0, 3).map(t => (
+                    <Badge key={t} variant="outline" className="text-[10px] bg-blue-50/50 text-blue-600 border-blue-100">
+                      {t}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">无工具</span>
+                )}
+                {agent.tools && agent.tools.length > 3 && (
+                  <span className="text-[10px] text-muted-foreground">+{agent.tools.length - 3}</span>
+                )}
+              </div>
+            </CardFooter>
+          </Card>
         );
       })}
-    </Row>
+    </div>
   );
 
   return (
-    <div className="min-h-screen bg-white animate-fade-in">
-      {contextHolder}
-      
-      {/* Header Section */}
-      <div className="mb-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <Title level={2} className="!mb-1 !font-bold text-gray-900 tracking-tight">智能体管理</Title>
-            <Text className="text-gray-500">创建、配置和管理您的 AI 智能体</Text>
-          </div>
-          
-          <div className="flex items-center gap-4">
-             <div className="bg-gray-50 p-1 rounded-lg border border-gray-100 hidden md:flex">
-               <Button 
-                 type={viewMode === 'list' ? 'text' : 'text'} 
-                 className={`${viewMode === 'list' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'} transition-all`}
-                 icon={<BarsOutlined />} 
-                 onClick={() => setViewMode('list')}
-               />
-               <Button 
-                 type={viewMode === 'grid' ? 'text' : 'text'} 
-                 className={`${viewMode === 'grid' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'} transition-all`}
-                 icon={<AppstoreOutlined />} 
-                 onClick={() => setViewMode('grid')}
-               />
-             </div>
-             
-             <Button 
-               type="primary" 
-               size="large" 
-               icon={<PlusOutlined />} 
-               onClick={() => router.push('/admin/agents/new')}
-               className="bg-black hover:!bg-gray-800 border-none shadow-none rounded-xl px-6 h-12 font-medium transition-transform active:scale-95"
-             >
-               创建智能体
-             </Button>
-          </div>
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">智能体管理</h2>
+          <p className="text-muted-foreground">创建、配置和管理您的 AI 智能体</p>
         </div>
-
-        {/* Filter Section */}
-        <div className="mt-4">
-          <Input 
-            placeholder="搜索智能体名称、描述或模型..." 
-            prefix={<SearchOutlined className="text-gray-400 text-lg mr-2" />} 
-            onChange={(e) => setSearchText(e.target.value)}
-            className="max-w-md h-12 bg-gray-50 border-gray-100 hover:bg-white focus:bg-white transition-all rounded-xl text-base"
-            allowClear
-          />
+        
+        <div className="flex items-center gap-2">
+           <div className="hidden md:flex items-center rounded-lg border bg-background p-1 shadow-sm">
+             <Button 
+               variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
+               size="sm"
+               onClick={() => setViewMode('list')}
+               className="h-8 w-8 p-0"
+             >
+               <List className="h-4 w-4" />
+             </Button>
+             <Button 
+               variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
+               size="sm"
+               onClick={() => setViewMode('grid')}
+               className="h-8 w-8 p-0"
+             >
+               <LayoutGrid className="h-4 w-4" />
+             </Button>
+           </div>
+           
+           <Button onClick={() => router.push('/admin/agents/new')}>
+             <Plus className="mr-2 h-4 w-4" /> 创建智能体
+           </Button>
         </div>
       </div>
 
-      {/* Content Section */}
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input 
+          placeholder="搜索智能体名称、描述或模型..." 
+          className="pl-9 max-w-md"
+          onChange={(e) => setSearchText(e.target.value)}
+        />
+      </div>
+
       <div className="min-h-[400px]">
         {viewMode === 'list' ? (
-          <Table 
-            columns={columns} 
-            dataSource={agents} 
-            rowKey="id" 
-            loading={isLoading}
-            pagination={{
-              ...pagination,
-              total: agents?.length, 
-              onChange: (page, pageSize) => setPagination({ current: page, pageSize }),
-              className: "mt-8",
-              showSizeChanger: false
-            }}
-            className="custom-table"
-            rowClassName="hover:bg-gray-50 transition-colors cursor-pointer"
-            onRow={(record) => ({
-              onClick: () => router.push(`/admin/agents/${record.id}`),
-            })}
-          />
+          <div className="rounded-md border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>名称</TableHead>
+                  <TableHead>模型配置</TableHead>
+                  <TableHead>参数</TableHead>
+                  <TableHead>能力</TableHead>
+                  <TableHead>创建时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center">
+                      加载中...
+                    </TableCell>
+                  </TableRow>
+                ) : agents?.map((agent: Agent) => {
+                   const provider = providers?.find((p) => p.id === agent.provider_id);
+                   return (
+                    <TableRow 
+                      key={agent.id} 
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => router.push(`/admin/agents/${agent.id}`)}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <Bot className="h-5 w-5" />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{agent.name}</span>
+                            <span className="text-xs text-muted-foreground line-clamp-1 max-w-[200px]">{agent.description}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">供应商</span>
+                            <Badge variant="outline" className="font-normal">{provider?.name || 'Unknown'}</Badge>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">模型</span>
+                            <span className="text-sm font-medium">{agent.model}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                           <div className="flex justify-between text-xs w-32">
+                             <span className="text-muted-foreground">温度</span>
+                             <span className="font-mono">{agent.temperature}</span>
+                           </div>
+                           <div className="flex justify-between text-xs w-32">
+                             <span className="text-muted-foreground">上下文</span>
+                             <span className="font-mono">{agent.context_window / 1024}k</span>
+                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {agent.tools && agent.tools.length > 0 ? (
+                             agent.tools.map(t => (
+                              <Badge key={t} variant="secondary" className="text-xs">
+                                 {t}
+                               </Badge>
+                             ))
+                          ) : (
+                             <span className="text-muted-foreground text-xs">无工具</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-muted-foreground text-sm">{new Date(agent.created_at || '').toLocaleDateString()}</span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" onClick={() => router.push(`/admin/agents/${agent.id}`)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>编辑</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  此操作不可撤销。
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>取消</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => agent.id && handleDelete(agent.id)}>确认删除</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                   );
+                })}
+              </TableBody>
+            </Table>
+          </div>
         ) : (
           renderGridView()
         )}
       </div>
-
-      <style jsx global>{`
-        .custom-table .ant-table {
-          background: transparent;
-        }
-        .custom-table .ant-table-thead > tr > th {
-          background: transparent;
-          border-bottom: 1px solid #f0f0f0;
-          color: #6b7280;
-          font-weight: 500;
-          font-size: 0.875rem;
-        }
-        .custom-table .ant-table-tbody > tr > td {
-          border-bottom: 1px solid #f9fafb;
-          padding: 16px 16px;
-        }
-        .custom-table .ant-table-tbody > tr:hover > td {
-          background: #f9fafb !important;
-        }
-      `}</style>
     </div>
   );
 }

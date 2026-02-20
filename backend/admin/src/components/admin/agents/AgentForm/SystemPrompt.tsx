@@ -1,23 +1,37 @@
 import React from 'react';
-import { Form, Input } from 'antd';
+import { useFormContext } from 'react-hook-form';
+import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Textarea } from '@/components/ui/textarea';
 
-const SystemPrompt: React.FC<{ disabled?: boolean }> = ({ disabled }) => (
-  <Form.Item 
-    name="system_prompt" 
-    rules={[{ required: true, message: '请输入系统提示词' }]}
-    className="mb-0"
-    label={<span className="text-gray-700 font-medium">系统提示词 (System Prompt)</span>}
-  >
-    <Input.TextArea 
-      rows={12} 
-      showCount 
-      maxLength={5000} 
-      className="font-mono text-sm leading-relaxed resize-y border-gray-200 hover:border-gray-300 focus:border-black focus:shadow-none bg-gray-50/50 p-4 rounded-xl"
-      placeholder="你是一个专业的助手..."
-      disabled={disabled}
-      style={{ minHeight: '300px' }}
+const SystemPrompt: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
+  const { control } = useFormContext();
+
+  return (
+    <FormField
+      control={control}
+      name="system_prompt"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>系统提示词 (System Prompt)</FormLabel>
+          <FormControl>
+            <Textarea 
+              placeholder="你是一个专业的助手..." 
+              disabled={disabled} 
+              className="font-mono text-sm min-h-[300px] resize-y" 
+              {...field} 
+            />
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
     />
-  </Form.Item>
-);
+  );
+};
 
 export default SystemPrompt;

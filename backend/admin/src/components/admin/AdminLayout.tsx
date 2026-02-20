@@ -1,142 +1,154 @@
 'use client';
+
 import React, { useState } from 'react';
-import { Layout, Menu, Breadcrumb, theme, Avatar, Dropdown, Button } from 'antd';
-import {
-  PieChartOutlined,
-  TeamOutlined,
-  UserOutlined,
-  BookOutlined,
-  RobotOutlined,
-  MenuUnfoldOutlined,
-  MenuFoldOutlined,
-  RocketOutlined,
-} from '@ant-design/icons';
-import type { MenuProps } from 'antd';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-
-const { Header, Content, Footer, Sider } = Layout;
-
-type MenuItem = Required<MenuProps>['items'][number];
-
-function getItem(
-  label: React.ReactNode,
-  key: React.Key,
-  icon?: React.ReactNode,
-  children?: MenuItem[],
-): MenuItem {
-  return {
-    key,
-    icon,
-    children,
-    label,
-  } as MenuItem;
-}
-
-const items: MenuItem[] = [
-  getItem(<Link href="/admin">仪表盘</Link>, '/admin', <PieChartOutlined />),
-  getItem(<Link href="/admin/llm">AI 供应商</Link>, '/admin/llm', <RobotOutlined />),
-  getItem(<Link href="/admin/agents">智能体管理</Link>, '/admin/agents', <RocketOutlined />),
-  getItem(<Link href="/admin/players">玩家管理</Link>, '/admin/players', <TeamOutlined />),
-  getItem(<Link href="/admin/stories">故事管理</Link>, '/admin/stories', <BookOutlined />),
-];
+import { Sidebar } from './Sidebar';
+import { Header } from './Header';
+import { Toaster } from '@/components/ui/toaster';
+import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard,
+  Bot,
+  Zap,
+  Users,
+  BookOpen,
+  Menu,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  User
+} from 'lucide-react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const {
-    token: { colorBgContainer, borderRadiusLG },
-  } = theme.useToken();
   const pathname = usePathname();
-  const router = useRouter();
   const { logout } = useAuth();
 
-  const handleMenuClick: MenuProps['onClick'] = (e) => {
-    // router.push(e.key); // Link component handles this
-  };
-
+  // If login page, don't show layout
   if (pathname === '/admin/login') {
-    return <>{children}</>;
+    return <>{children}<Toaster /></>;
   }
 
-  const userMenu: MenuProps['items'] = [
+  const items = [
     {
-      key: 'logout',
-      label: '退出登录',
-      onClick: () => {
-        logout();
-      }
-    }
+      title: '仪表盘',
+      href: '/admin',
+      icon: LayoutDashboard,
+    },
+    {
+      title: 'AI 供应商',
+      href: '/admin/llm',
+      icon: Bot,
+    },
+    {
+      title: '智能体管理',
+      href: '/admin/agents',
+      icon: Zap,
+    },
+    {
+      title: '玩家管理',
+      href: '/admin/players',
+      icon: Users,
+    },
+    {
+      title: '故事管理',
+      href: '/admin/stories',
+      icon: BookOpen,
+    },
   ];
 
-  const getBreadcrumbItems = () => {
-    const pathSnippets = pathname.split('/').filter((i) => i);
-    const breadcrumbItems = pathSnippets.map((_, index) => {
-      const url = `/${pathSnippets.slice(0, index + 1).join('/')}`;
-      const title = pathSnippets[index];
-      let displayTitle = title;
-      
-      if (title === 'admin') displayTitle = '后台管理';
-      else if (title === 'llm') displayTitle = 'AI 供应商';
-      else if (title === 'agents') displayTitle = '智能体管理';
-      else if (title === 'players') displayTitle = '玩家管理';
-      else if (title === 'stories') displayTitle = '故事管理';
-      
-      return { title: displayTitle };
-    });
-    return breadcrumbItems;
-  };
-
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider collapsible collapsed={collapsed} onCollapse={(value) => setCollapsed(value)}>
-        <div className="demo-logo-vertical" style={{ height: 32, margin: 16, background: 'rgba(255, 255, 255, 0.2)', borderRadius: 6 }} />
-        <Menu 
-          theme="dark" 
-          defaultSelectedKeys={[pathname]} 
-          mode="inline" 
-          items={items} 
-          selectedKeys={[pathname]}
-        />
-      </Sider>
-      <Layout>
-        <Header style={{ padding: 0, background: colorBgContainer, display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 24 }}>
-           <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+    <div className="flex min-h-screen w-full bg-muted/40">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-10 hidden flex-col border-r bg-background sm:flex transition-all duration-300",
+          collapsed ? "w-14" : "w-64"
+        )}
+      >
+        <div className={cn("flex h-14 items-center border-b px-4 lg:h-[60px]", collapsed ? "justify-center" : "gap-2")}>
+          <div className="flex items-center gap-2 font-semibold">
+            <span className={cn("text-lg transition-all", collapsed && "hidden")}>Infinite Game</span>
+            {collapsed && <span className="text-lg">IG</span>}
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto py-2">
+          <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
+            {items.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                    isActive ? "bg-muted text-primary" : "text-muted-foreground",
+                    collapsed && "justify-center px-2"
+                  )}
+                  title={collapsed ? item.title : undefined}
+                >
+                  <item.icon className="h-4 w-4" />
+                  {!collapsed && item.title}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+        <div className="mt-auto p-4">
+           {/* Footer content if needed */}
+        </div>
+      </aside>
+
+      <div className={cn("flex flex-col sm:pl-64 transition-all duration-300 w-full", collapsed && "sm:pl-14")}>
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+          <Button
+            variant="outline"
+            size="icon"
+            className="hidden sm:flex"
             onClick={() => setCollapsed(!collapsed)}
-            style={{
-              fontSize: '16px',
-              width: 64,
-              height: 64,
-            }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-             <Dropdown menu={{ items: userMenu }}>
-                <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Avatar icon={<UserOutlined />} />
-                  <span>管理员</span>
-                </div>
-             </Dropdown>
-          </div>
-        </Header>
-        <Content style={{ margin: '16px 16px' }}>
-          <div
-            style={{
-              padding: 24,
-              minHeight: 360,
-              background: colorBgContainer,
-              borderRadius: borderRadiusLG,
-            }}
           >
-            {children}
+            {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            <span className="sr-only">Toggle Menu</span>
+          </Button>
+          
+          {/* Mobile Menu Trigger could be added here for mobile view */}
+
+          <div className="ml-auto flex items-center gap-4">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="icon" className="rounded-full">
+                  <User className="h-5 w-5" />
+                  <span className="sr-only">Toggle user menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>我的账户</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>退出登录</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        </Content>
-        <Footer style={{ textAlign: 'center' }}>
-          Infinite Game Admin ©{new Date().getFullYear()} 由 Ant Design 驱动
-        </Footer>
-      </Layout>
-    </Layout>
+        </header>
+        <main className="flex-1 p-4 sm:px-6 sm:py-0 md:gap-8 lg:py-4">
+          {children}
+        </main>
+      </div>
+      <Toaster />
+    </div>
   );
 };
 

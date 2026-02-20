@@ -1,91 +1,129 @@
 import React from 'react';
-import { Form, Row, Col, Radio, InputNumber, Slider, Typography, Space } from 'antd';
+import { useFormContext } from 'react-hook-form';
+import {
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
-const { Text } = Typography;
+// I'll assume RadioGroup is available or use native input type="radio" styled, or shadcn RadioGroup.
+// I'll implement a simple button group for thinking mode or use ToggleGroup if available.
+// For now I'll use a simple flex container with buttons or just a Switch for boolean.
+// The original used Radio.Group with buttons.
 
-const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => (
-  <div className="space-y-6">
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-       <div className="flex justify-between items-center mb-4">
-         <span className="text-sm font-medium text-gray-700">思考模式</span>
-         <Form.Item name="thinking_mode" noStyle>
-           <Radio.Group disabled={disabled} size="small" buttonStyle="solid">
-             <Radio.Button value={true}>开启</Radio.Button>
-             <Radio.Button value={false}>关闭</Radio.Button>
-           </Radio.Group>
-         </Form.Item>
-       </div>
-       <Text type="secondary" className="text-xs">开启后，模型会在回答前进行思考过程（Chain of Thought）。</Text>
-    </div>
+const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
+  const { control, watch } = useFormContext();
+  const temperature = watch('temperature');
 
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-       <div className="mb-4">
-         <div className="flex justify-between items-center mb-1">
-           <span className="text-sm font-medium text-gray-700">上下文窗口</span>
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+         <div className="flex justify-between items-center mb-4">
+           <Label className="text-sm font-medium">思考模式</Label>
+           <FormField
+              control={control}
+              name="thinking_mode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        disabled={disabled}
+                      />
+                      <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
          </div>
-         <Form.Item 
-            name="context_window" 
-            rules={[
-              { type: 'number', min: 4096, max: 256000, message: '范围 4096 - 256000' }
-            ]}
-            noStyle
-          >
-            <Space.Compact className="w-full">
-              <InputNumber 
-                className="w-full rounded-lg border-gray-200" 
-                disabled={disabled} 
-              />
-              <span className="inline-flex items-center px-3 text-xs text-gray-500 bg-gray-50 border border-l-0 border-gray-200 rounded-r-lg">
-                Tokens
-              </span>
-            </Space.Compact>
-          </Form.Item>
-       </div>
-    </div>
+         <p className="text-xs text-muted-foreground">开启后，模型会在回答前进行思考过程（Chain of Thought）。</p>
+      </div>
 
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-sm font-medium text-gray-700">温度 (Temperature)</span>
-        <Form.Item name="temperature" noStyle>
-            <span className="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600">
-               {/* This is tricky to show dynamic value without useWatch, let's just leave it */}
-               Creative vs Precise
-            </span>
-        </Form.Item>
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+         <div className="mb-4">
+           <div className="flex justify-between items-center mb-2">
+             <Label className="text-sm font-medium">上下文窗口</Label>
+           </div>
+           <FormField
+              control={control}
+              name="context_window"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        type="number" 
+                        {...field} 
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        disabled={disabled}
+                        className="font-mono"
+                      />
+                      <span className="text-xs text-muted-foreground">Tokens</span>
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+         </div>
       </div>
-      
-      <Row gutter={16} align="middle">
-        <Col span={18}>
-          <Form.Item name="temperature" noStyle>
-            <Slider 
-              min={0} 
-              max={1} 
-              step={0.1} 
-              disabled={disabled} 
-              tooltip={{ formatter: (value) => `${value}` }}
-              trackStyle={{ backgroundColor: '#000' }}
-              handleStyle={{ borderColor: '#000', boxShadow: 'none' }}
-            />
-          </Form.Item>
-        </Col>
-        <Col span={6}>
-          <Form.Item name="temperature" noStyle>
-            <InputNumber 
-              min={0} 
-              max={1} 
-              step={0.1} 
-              className="w-full rounded-lg border-gray-200" 
-              disabled={disabled} 
-            />
-          </Form.Item>
-        </Col>
-      </Row>
-      <div className="flex justify-between text-xs text-gray-400 mt-2">
-        <span>0 (精确)</span>
-        <span>1 (创造性)</span>
+
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+        <div className="flex justify-between items-center mb-4">
+          <Label className="text-sm font-medium">温度 (Temperature)</Label>
+          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
+             {temperature}
+          </span>
+        </div>
+        
+        <FormField
+          control={control}
+          name="temperature"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <div className="flex items-center gap-4">
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={[field.value]}
+                    onValueChange={(vals) => field.onChange(vals[0])}
+                    disabled={disabled}
+                    className="flex-1"
+                  />
+                  <Input 
+                    type="number" 
+                    value={field.value}
+                    onChange={e => field.onChange(Number(e.target.value))}
+                    step={0.1}
+                    min={0}
+                    max={1}
+                    className="w-16 font-mono"
+                    disabled={disabled}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+          <span>0 (精确)</span>
+          <span>1 (创造性)</span>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default Parameters;
