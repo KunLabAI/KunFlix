@@ -27,7 +27,7 @@ class LLMProviderUpdate(BaseModel):
     config_json: Optional[Dict[str, Any]] = None
 
 class LLMProviderResponse(LLMProviderBase):
-    id: int
+    id: str
     created_at: Any
     updated_at: Any
 
@@ -43,7 +43,7 @@ class TestConnectionRequest(BaseModel):
 class AgentBase(BaseModel):
     name: str = Field(..., max_length=50)
     description: str = Field(..., max_length=500)
-    provider_id: int
+    provider_id: str
     model: str
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
     context_window: int = Field(default=4096, ge=4096, le=256000)
@@ -57,7 +57,7 @@ class AgentCreate(AgentBase):
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=50)
     description: Optional[str] = Field(None, max_length=500)
-    provider_id: Optional[int] = None
+    provider_id: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     context_window: Optional[int] = Field(None, ge=4096, le=256000)
@@ -66,7 +66,7 @@ class AgentUpdate(BaseModel):
     thinking_mode: Optional[bool] = None
 
 class AgentResponse(AgentBase):
-    id: int
+    id: str
     created_at: Any
     updated_at: Optional[Any] = None
 
@@ -74,7 +74,7 @@ class AgentResponse(AgentBase):
 
 class ChatSessionBase(BaseModel):
     title: str = "New Chat"
-    agent_id: int
+    agent_id: str
 
 class ChatSessionCreate(ChatSessionBase):
     pass

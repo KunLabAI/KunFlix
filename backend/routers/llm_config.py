@@ -148,7 +148,7 @@ async def read_llm_providers(
 
 @router.get("/{provider_id}", response_model=LLMProviderResponse)
 async def read_llm_provider(
-    provider_id: int, 
+    provider_id: str, 
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
@@ -159,7 +159,7 @@ async def read_llm_provider(
 
 @router.put("/{provider_id}", response_model=LLMProviderResponse)
 async def update_llm_provider(
-    provider_id: int, 
+    provider_id: str, 
     provider_update: LLMProviderUpdate, 
     db: AsyncSession = Depends(get_db)
 ):
@@ -189,7 +189,7 @@ async def update_llm_provider(
 
 @router.delete("/{provider_id}")
 async def delete_llm_provider(
-    provider_id: int, 
+    provider_id: str, 
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))

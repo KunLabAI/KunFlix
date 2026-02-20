@@ -43,7 +43,7 @@ export default function AgentForm({
     defaultValues: {
       name: '',
       description: '',
-      provider_id: 0,
+      provider_id: '',
       model: '',
       system_prompt: '',
       temperature: 0.7,
@@ -69,13 +69,13 @@ export default function AgentForm({
         ...initialValues,
         tools_enabled: hasTools,
         // Ensure numbers are numbers
-        provider_id: Number(initialValues.provider_id),
+        provider_id: initialValues.provider_id,
       } as unknown as AgentFormValues);
     } else {
       form.reset({
         name: '',
         description: '',
-        provider_id: 0,
+        provider_id: '',
         model: '',
         system_prompt: '',
         temperature: 0.7,

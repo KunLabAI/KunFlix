@@ -35,7 +35,7 @@ async def create_session(session: ChatSessionCreate, db: AsyncSession = Depends(
 
 @router.get("/", response_model=List[ChatSessionResponse])
 async def list_sessions(
-    agent_id: Optional[int] = None,
+    agent_id: Optional[str] = None,
     skip: int = 0, 
     limit: int = 50, 
     db: AsyncSession = Depends(get_db)

@@ -1,11 +1,15 @@
+import uuid
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean
 from sqlalchemy.sql import func
 from database import Base
 
+def generate_uuid():
+    return str(uuid.uuid4())
+
 class Player(Base):
     __tablename__ = "players"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     username = Column(String, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -21,7 +25,7 @@ class StoryChapter(Base):
     __tablename__ = "story_chapters"
     
     id = Column(Integer, primary_key=True, index=True)
-    player_id = Column(Integer, ForeignKey("players.id"))
+    player_id = Column(String(36), ForeignKey("players.id"))
     chapter_number = Column(Integer)
     title = Column(String)
     content = Column(Text) # The main text content
@@ -54,7 +58,7 @@ class Asset(Base):
 class LLMProvider(Base):
     __tablename__ = "llm_providers"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     name = Column(String, unique=True, index=True) # e.g. "OpenAI", "DashScope"
     provider_type = Column(String) # e.g. "openai_chat", "dashscope_chat", "post_api_chat"
     
@@ -78,7 +82,7 @@ class ChatSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, default="New Chat")
-    agent_id = Column(Integer, ForeignKey("agents.id"))
+    agent_id = Column(String(36), ForeignKey("agents.id"))
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -96,12 +100,12 @@ class ChatMessage(Base):
 class Agent(Base):
     __tablename__ = "agents"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     name = Column(String(50), unique=True, index=True)
     description = Column(String(500))
     
     # Provider Association
-    provider_id = Column(Integer, ForeignKey("llm_providers.id"))
+    provider_id = Column(String(36), ForeignKey("llm_providers.id"))
     model = Column(String) # The specific model name under the provider
     
     # Parameters

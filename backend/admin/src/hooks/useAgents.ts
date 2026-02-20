@@ -30,7 +30,7 @@ export function useAgent(id: string) {
 }
 
 export function useDeleteAgent() {
-  const deleteAgent = async (id: number) => {
+  const deleteAgent = async (id: string) => {
     await api.delete(`/agents/${id}`);
   };
   return { deleteAgent };
@@ -44,7 +44,7 @@ export function useCreateAgent() {
 }
 
 export function useUpdateAgent() {
-    const updateAgent = async (id: number, values: Partial<Agent>) => {
+    const updateAgent = async (id: string, values: Partial<Agent>) => {
         return await api.put(`/agents/${id}`, values);
     }
     return { updateAgent };

@@ -84,10 +84,10 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 <FormLabel className="text-xs">供应商</FormLabel>
                 <Select 
                   onValueChange={(value) => {
-                    field.onChange(Number(value));
+                    field.onChange(value);
                     setValue('model', ''); // Reset model when provider changes
                   }} 
-                  value={field.value?.toString()} 
+                  value={field.value} 
                   disabled={loading}
                 >
                   <FormControl>
@@ -97,7 +97,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                   </FormControl>
                   <SelectContent>
                     {providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id.toString()}>
+                      <SelectItem key={p.id} value={p.id}>
                         {p.name}
                       </SelectItem>
                     ))}

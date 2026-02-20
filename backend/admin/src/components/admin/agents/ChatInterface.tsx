@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
 interface ChatInterfaceProps {
-  agentId: number;
+  agentId: string;
 }
 
 interface ChatSession {

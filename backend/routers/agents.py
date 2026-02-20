@@ -71,7 +71,7 @@ async def list_agents(
     return result.scalars().all()
 
 @router.get("/{agent_id}", response_model=AgentResponse)
-async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
+async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -79,7 +79,7 @@ async def get_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
     return agent
 
 @router.put("/{agent_id}", response_model=AgentResponse)
-async def update_agent(agent_id: int, agent_update: AgentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_agent(agent_id: str, agent_update: AgentUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -126,7 +126,7 @@ async def update_agent(agent_id: int, agent_update: AgentUpdate, db: AsyncSessio
     return agent
 
 @router.delete("/{agent_id}")
-async def delete_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:

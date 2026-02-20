@@ -81,7 +81,7 @@ const formSchema = z.object({
 });
 
 type LLMProvider = {
-  id: number;
+  id: string;
   name: string;
   provider_type: string;
   models: string[];
@@ -150,7 +150,7 @@ export default function LLMPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await api.delete(`/admin/llm-providers/${id}`);
       toast({

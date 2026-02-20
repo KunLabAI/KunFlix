@@ -3,7 +3,7 @@ import * as z from 'zod';
 export const agentFormSchema = z.object({
   name: z.string().min(1, "请输入智能体名称").max(50, "最大长度50字符"),
   description: z.string().min(1, "请输入描述").max(500, "最大长度500字符"),
-  provider_id: z.coerce.number().min(1, "请选择供应商"),
+  provider_id: z.string().min(1, "请选择供应商"),
   model: z.string().min(1, "请选择模型"),
   system_prompt: z.string().min(1, "请输入系统提示词").max(5000, "最大长度5000字符"),
   temperature: z.number().min(0).max(1),

@@ -57,7 +57,7 @@ async def get_players(
     ]
 
 @router.delete("/players/{player_id}")
-async def delete_player(player_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_player(player_id: str, db: AsyncSession = Depends(get_db)):
     """
     Delete a player and their stories.
     """
@@ -84,7 +84,7 @@ async def delete_player(player_id: int, db: AsyncSession = Depends(get_db)):
 async def get_stories(
     skip: int = 0, 
     limit: int = 50, 
-    player_id: int = None,
+    player_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
     """

@@ -32,7 +32,7 @@ export default function PlayersPage() {
   const { data: players, error, isLoading } = useSWR('/admin/players', fetcher);
   const { toast } = useToast();
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await api.delete(`/admin/players/${id}`);
       toast({

@@ -39,7 +39,7 @@ export default function AgentDetailPage() {
         toast({ title: '创建成功' });
         router.replace(`/admin/agents/${res.data.id}`);
       } else {
-        await updateAgent(Number(id), values);
+        await updateAgent(id, values);
         toast({ title: '更新成功' });
         mutate();
       }
@@ -180,7 +180,7 @@ export default function AgentDetailPage() {
                     </span>
                   </div>
                   <div className="flex-1 overflow-hidden">
-                    <ChatInterface agentId={Number(id)} />
+                    <ChatInterface agentId={id} />
                   </div>
                 </div>
               </div>

@@ -16,7 +16,7 @@ class GameService:
         await self.db.refresh(player)
         return player
 
-    async def init_world(self, player_id: int):
+    async def init_world(self, player_id: str):
         # 1. Generate Worldview (Using AgentScope via NarrativeEngine)
         # This would call a specific agent for world-building
         world_prompt = "Create a unique, immersive worldview. Define the core conflict, magic/tech system, and 3 key factions."
@@ -58,7 +58,7 @@ class GameService:
         await self.db.commit()
         return {"world": world_msg.content, "chapter1": chapter1, "chapter2": chapter2}
 
-    async def process_player_choice(self, player_id: int, choice_text: str):
+    async def process_player_choice(self, player_id: str, choice_text: str):
         # 1. Update Player State
         # 2. Check Deviation (Consistency Check)
         # 3. Trigger Next Chapter Generation

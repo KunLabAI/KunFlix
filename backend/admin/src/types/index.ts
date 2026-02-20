@@ -1,8 +1,8 @@
 export interface Agent {
-  id?: number;
+  id?: string;
   name: string;
   description: string;
-  provider_id: number;
+  provider_id: string;
   model: string;
   temperature: number;
   context_window: number;
@@ -14,7 +14,7 @@ export interface Agent {
 }
 
 export interface LLMProvider {
-  id: number;
+  id: string;
   name: string;
   models: string[] | string;
   is_active: boolean;

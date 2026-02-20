@@ -56,7 +56,7 @@ export default function AgentsPage() {
   const { providers } = useLLMProviders();
   const { deleteAgent } = useDeleteAgent();
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await deleteAgent(id);
       toast({
