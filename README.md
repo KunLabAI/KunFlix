@@ -128,12 +128,7 @@ npm run dev
 
 ## 文档
 
-详细的开发文档请参考 [Wiki](docs/wiki/Home.md)：
-
-- [系统架构 (Architecture)](docs/wiki/Architecture.md)
-- [后端开发指南 (Backend Guide)](docs/wiki/Backend-Guide.md)
-- [前端开发指南 (Frontend Guide)](docs/wiki/Frontend-Guide.md)
-- [部署指南 (Deployment)](docs/wiki/Deployment.md)
+详细的开发文档请参考 [Wiki](.qoder/repowiki/zh/content/快速开始.md)：
 
 ## 贡献
 
