@@ -53,13 +53,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-950">
+    <div className="flex min-h-screen items-center justify-center bg-background transition-colors duration-300">
       <Card
-        style={{ width: 400, background: "#111827", border: "1px solid #1f2937" }}
+        className="w-[400px] border-border shadow-lg"
+        bordered={false}
       >
         <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <div style={{ textAlign: "center" }}>
-            <Title level={3} style={{ color: "#fff", margin: 0 }}>
+            <Title level={3} style={{ margin: 0 }}>
               Infinite Narrative Game
             </Title>
             <Text type="secondary">
