@@ -3,8 +3,9 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from database import get_db
-from models import Agent, LLMProvider
+from models import Agent, LLMProvider, User
 from schemas import AgentCreate, AgentUpdate, AgentResponse
+from auth import get_current_active_user, require_admin
 
 router = APIRouter(
     prefix="/api/agents",
@@ -13,7 +14,7 @@ router = APIRouter(
 )
 
 @router.post("/", response_model=AgentResponse)
-async def create_agent(agent: AgentCreate, db: AsyncSession = Depends(get_db)):
+async def create_agent(agent: AgentCreate, _admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     # 1. Check if name exists
     existing_agent = await db.execute(select(Agent).filter(Agent.name == agent.name))
     if existing_agent.scalars().first():
@@ -59,6 +60,7 @@ async def list_agents(
     skip: int = 0, 
     limit: int = 20, 
     search: Optional[str] = None,
+    _user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     query = select(Agent).order_by(Agent.created_at.desc())
@@ -71,7 +73,7 @@ async def list_agents(
     return result.scalars().all()
 
 @router.get("/{agent_id}", response_model=AgentResponse)
-async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+async def get_agent(agent_id: str, _user: User = Depends(get_current_active_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -79,7 +81,7 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
     return agent
 
 @router.put("/{agent_id}", response_model=AgentResponse)
-async def update_agent(agent_id: str, agent_update: AgentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_agent(agent_id: str, agent_update: AgentUpdate, _admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -126,7 +128,7 @@ async def update_agent(agent_id: str, agent_update: AgentUpdate, db: AsyncSessio
     return agent
 
 @router.delete("/{agent_id}")
-async def delete_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_agent(agent_id: str, _admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Agent).filter(Agent.id == agent_id))
     agent = result.scalars().first()
     if not agent:

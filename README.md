@@ -31,6 +31,9 @@
 - **框架**: Next.js 16
 - **功能**: 系统监控、用户管理、LLM 供应商配置
 
+管理员: admin@infinite.game / admin123
+
+
 ## 目录结构
 
 ```bash

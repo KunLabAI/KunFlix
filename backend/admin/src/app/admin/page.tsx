@@ -16,7 +16,7 @@ export default function AdminDashboard() {
   if (isLoading) return <div className="p-4">加载中...</div>;
 
   const data = [
-    { name: '玩家', count: stats.players },
+    { name: '用户', count: stats.users },
     { name: '故事', count: stats.stories },
     { name: '资产', count: stats.assets },
     { name: '供应商', count: stats.providers },
@@ -29,12 +29,12 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              玩家总数
+              用户总数
             </CardTitle>
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.players}</div>
+            <div className="text-2xl font-bold text-green-600">{stats.users}</div>
           </CardContent>
         </Card>
         <Card>
@@ -78,8 +78,8 @@ export default function AdminDashboard() {
             <CardTitle>系统概览</CardTitle>
           </CardHeader>
           <CardContent className="pl-2">
-            <div className="h-[300px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[300px] w-full min-w-0">
+              <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={data}
                   margin={{

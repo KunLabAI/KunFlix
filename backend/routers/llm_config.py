@@ -4,8 +4,9 @@ from sqlalchemy.future import select
 from typing import List
 
 from database import get_db
-from models import LLMProvider
+from models import LLMProvider, User
 from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
+from auth import require_admin
 from agents import narrative_engine
 import agentscope
 from agentscope.message import Msg
@@ -18,7 +19,7 @@ router = APIRouter(
 )
 
 @router.post("/test-connection")
-async def test_connection(request: TestConnectionRequest):
+async def test_connection(request: TestConnectionRequest, _admin: User = Depends(require_admin)):
     try:
         # Initialize agentscope (logging etc)
         agentscope.init()
@@ -111,7 +112,8 @@ async def test_connection(request: TestConnectionRequest):
 
 @router.post("/", response_model=LLMProviderResponse)
 async def create_llm_provider(
-    provider: LLMProviderCreate, 
+    provider: LLMProviderCreate,
+    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     # Check if name exists
@@ -140,7 +142,8 @@ async def create_llm_provider(
 @router.get("/", response_model=List[LLMProviderResponse])
 async def read_llm_providers(
     skip: int = 0, 
-    limit: int = 100, 
+    limit: int = 100,
+    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).offset(skip).limit(limit))
@@ -148,7 +151,8 @@ async def read_llm_providers(
 
 @router.get("/{provider_id}", response_model=LLMProviderResponse)
 async def read_llm_provider(
-    provider_id: str, 
+    provider_id: str,
+    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
@@ -160,7 +164,8 @@ async def read_llm_provider(
 @router.put("/{provider_id}", response_model=LLMProviderResponse)
 async def update_llm_provider(
     provider_id: str, 
-    provider_update: LLMProviderUpdate, 
+    provider_update: LLMProviderUpdate,
+    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
@@ -189,7 +194,8 @@ async def update_llm_provider(
 
 @router.delete("/{provider_id}")
 async def delete_llm_provider(
-    provider_id: str, 
+    provider_id: str,
+    _admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))

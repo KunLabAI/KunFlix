@@ -1,6 +1,60 @@
-from pydantic import BaseModel, HttpUrl, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Optional, Dict, Any, List
 
+
+# ---------------------------------------------------------------------------
+# Auth schemas
+# ---------------------------------------------------------------------------
+class UserRegister(BaseModel):
+    email: EmailStr
+    nickname: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=6)
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenRefresh(BaseModel):
+    refresh_token: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    nickname: str
+    role: str
+    is_active: bool = True
+    current_chapter: int = 1
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_input_chars: int = 0
+    total_output_chars: int = 0
+    last_login_at: Optional[Any] = None
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    user: UserResponse
+
+
+class AccessTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+# ---------------------------------------------------------------------------
+# LLM Provider schemas
+# ---------------------------------------------------------------------------
 class LLMProviderBase(BaseModel):
     name: str
     provider_type: str
@@ -12,8 +66,10 @@ class LLMProviderBase(BaseModel):
     is_default: bool = False
     config_json: Dict[str, Any] = {}
 
+
 class LLMProviderCreate(LLMProviderBase):
     pass
+
 
 class LLMProviderUpdate(BaseModel):
     name: Optional[str] = None
@@ -26,12 +82,14 @@ class LLMProviderUpdate(BaseModel):
     is_default: Optional[bool] = None
     config_json: Optional[Dict[str, Any]] = None
 
+
 class LLMProviderResponse(LLMProviderBase):
     id: str
     created_at: Any
     updated_at: Any
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class TestConnectionRequest(BaseModel):
     provider_type: str
@@ -40,6 +98,10 @@ class TestConnectionRequest(BaseModel):
     model: str
     config_json: Optional[Dict[str, Any]] = {}
 
+
+# ---------------------------------------------------------------------------
+# Agent schemas
+# ---------------------------------------------------------------------------
 class AgentBase(BaseModel):
     name: str = Field(..., max_length=50)
     description: str = Field(..., max_length=500)
@@ -51,8 +113,10 @@ class AgentBase(BaseModel):
     tools: List[str] = Field(default_factory=list)
     thinking_mode: bool = False
 
+
 class AgentCreate(AgentBase):
     pass
+
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=50)
@@ -65,6 +129,7 @@ class AgentUpdate(BaseModel):
     tools: Optional[List[str]] = None
     thinking_mode: Optional[bool] = None
 
+
 class AgentResponse(AgentBase):
     id: str
     created_at: Any
@@ -72,30 +137,40 @@ class AgentResponse(AgentBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+# ---------------------------------------------------------------------------
+# Chat schemas
+# ---------------------------------------------------------------------------
 class ChatSessionBase(BaseModel):
     title: str = "New Chat"
     agent_id: str
 
+
 class ChatSessionCreate(ChatSessionBase):
     pass
 
+
 class ChatSessionResponse(ChatSessionBase):
     id: int
+    user_id: Optional[str] = None
     created_at: Any
     updated_at: Optional[Any] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
+
 
 class ChatMessageBase(BaseModel):
     role: str
     content: str
 
+
 class ChatMessageCreate(ChatMessageBase):
     pass
+
 
 class ChatMessageResponse(ChatMessageBase):
     id: int
     session_id: int
     created_at: Any
-    
+
     model_config = ConfigDict(from_attributes=True)

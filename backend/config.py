@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     CLAUDE_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     
+    # JWT Auth
+    JWT_SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
     # Generation Settings
     STORY_GENERATION_MODEL: str = "gpt-4-turbo"
     IMAGE_GENERATION_MODEL: str = "dall-e-3"

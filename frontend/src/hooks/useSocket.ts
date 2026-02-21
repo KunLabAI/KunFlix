@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 
-export const useSocket = (playerId: number) => {
+export const useSocket = (userId: string) => {
   const socketRef = useRef<WebSocket | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    if (!playerId) return;
+    if (!userId) return;
 
-    const ws = new WebSocket(`ws://localhost:8000/ws/${playerId}`);
+    const ws = new WebSocket(`ws://localhost:8000/ws/${userId}`);
 
     ws.onopen = () => {
       console.log('Connected to WebSocket');
@@ -30,7 +30,7 @@ export const useSocket = (playerId: number) => {
     return () => {
       ws.close();
     };
-  }, [playerId]);
+  }, [userId]);
 
   const sendMessage = (message: string) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {

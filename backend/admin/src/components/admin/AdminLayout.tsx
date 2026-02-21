@@ -34,7 +34,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   // If login page, don't show layout
   if (pathname === '/admin/login') {
@@ -58,7 +58,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       icon: Zap,
     },
     {
-      title: '玩家管理',
+      title: '用户管理',
       href: '/admin/players',
       icon: Users,
     },
@@ -133,7 +133,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuLabel>我的账户</DropdownMenuLabel>
+                <DropdownMenuLabel>{user?.nickname || '我的账户'}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
                   <LogOut className="mr-2 h-4 w-4" />

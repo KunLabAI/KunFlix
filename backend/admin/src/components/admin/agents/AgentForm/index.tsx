@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/components/ui/use-toast';
@@ -37,6 +37,7 @@ export default function AgentForm({
 }: AgentFormProps) {
   const { activeProviders, isLoading: providersLoading } = useLLMProviders();
   const { toast } = useToast();
+  const isFormInitialized = useRef(false);
 
   const form = useForm<AgentFormValues>({
     resolver: zodResolver(agentFormSchema) as unknown as any,
@@ -63,9 +64,10 @@ export default function AgentForm({
 
   // Initialize form
   useEffect(() => {
+    console.log('[AgentForm] Initializing with:', initialValues);
     if (initialValues) {
       const hasTools = !!(initialValues.tools && initialValues.tools.length > 0);
-      form.reset({
+      const formData = {
         name: initialValues.name || '',
         description: initialValues.description || '',
         provider_id: initialValues.provider_id || '',
@@ -76,8 +78,23 @@ export default function AgentForm({
         thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools,
         tools: initialValues.tools || [],
-      });
-    } else {
+      };
+      console.log('[AgentForm] Resetting form with:', formData);
+      
+      // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
+      isFormInitialized.current = false;
+      
+      // 使用 setTimeout 确保在下一个事件循环中执行
+      setTimeout(() => {
+        form.reset(formData);
+        // 延迟标记初始化完成，确保 reset 引起的渲染完成
+        setTimeout(() => {
+          isFormInitialized.current = true;
+          console.log('[AgentForm] Initialization complete');
+        }, 50);
+      }, 0);
+    } else if (initialValues === null) {
+      // 只有当 initialValues 为 null 时才重置为空
       form.reset({
         name: '',
         description: '',
@@ -90,8 +107,10 @@ export default function AgentForm({
         tools_enabled: false,
         tools: [],
       });
+      isFormInitialized.current = true;
     }
-  }, [initialValues, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialValues]); // 只依赖 initialValues
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
@@ -121,6 +140,7 @@ export default function AgentForm({
               <BasicInfo 
                 providers={activeProviders || []} 
                 loading={providersLoading || loading}
+                isFormInitialized={isFormInitialized}
               />
             </Section>
             <div className="h-px bg-border my-8"></div>
@@ -144,6 +164,7 @@ export default function AgentForm({
             <BasicInfo 
               providers={activeProviders || []} 
               loading={providersLoading || loading}
+              isFormInitialized={isFormInitialized}
             />
             
             <div className="h-px bg-border"></div>

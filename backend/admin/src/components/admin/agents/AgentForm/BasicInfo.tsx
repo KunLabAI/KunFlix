@@ -22,19 +22,31 @@ import { parseProviderModels } from '@/lib/api-utils';
 interface BasicInfoProps {
   providers: LLMProvider[];
   loading?: boolean;
+  isFormInitialized?: React.RefObject<boolean>;
 }
 
 const BasicInfo: React.FC<BasicInfoProps> = ({ 
   providers, 
-  loading 
+  loading,
+  isFormInitialized
 }) => {
   const { control, watch, setValue } = useFormContext();
   const selectedProviderId = watch('provider_id');
+  const selectedModel = watch('model');
+
+  console.log('[BasicInfo] Render:', { 
+    selectedProviderId, 
+    selectedModel, 
+    providersCount: providers.length,
+    isFormInitialized: isFormInitialized?.current 
+  });
 
   const availableModels = useMemo(() => {
     if (!selectedProviderId || !providers) return [];
     const provider = providers.find(p => p.id === selectedProviderId);
-    return provider ? parseProviderModels(provider.models) : [];
+    const models = provider ? parseProviderModels(provider.models) : [];
+    console.log('[BasicInfo] Available models:', models);
+    return models;
   }, [selectedProviderId, providers]);
 
   return (
@@ -85,7 +97,10 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 <Select 
                   onValueChange={(value) => {
                     field.onChange(value);
-                    setValue('model', ''); // Reset model when provider changes
+                    // 只在初始化完成后才重置 model
+                    if (isFormInitialized?.current) {
+                      setValue('model', '');
+                    }
                   }} 
                   value={field.value} 
                   disabled={loading}
@@ -96,11 +111,14 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
+                    {providers.map((p) => {
+                      console.log('[BasicInfo] Provider option:', p.id, p.name);
+                      return (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 <FormMessage />
