@@ -171,7 +171,7 @@ export default function AgentDetailPage() {
               <div className="absolute top-4 right-4 z-10">
                  {/* Optional: Add controls for chat here */}
               </div>
-              <div className="flex-1 p-4 lg:p-6 h-full">
+              <div className="flex-1 h-full">
                 <div className="h-full bg-card rounded-xl border shadow-sm overflow-hidden flex flex-col">
                   <div className="h-12 border-b flex items-center px-4 bg-card shrink-0">
                     <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">

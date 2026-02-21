@@ -52,6 +52,7 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
          <div className="mb-4">
            <div className="flex justify-between items-center mb-2">
              <Label className="text-sm font-medium">上下文窗口</Label>
+             <span className="text-xs text-muted-foreground">范围: 4096 - 256000</span>
            </div>
            <FormField
               control={control}
@@ -63,9 +64,15 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
                       <Input 
                         type="number" 
                         {...field} 
-                        onChange={e => field.onChange(Number(e.target.value))}
+                        value={field.value ?? 4096}
+                        onChange={e => {
+                          const val = e.target.value;
+                          field.onChange(val === '' ? 4096 : Number(val));
+                        }}
                         disabled={disabled}
                         className="font-mono"
+                        min={4096}
+                        max={256000}
                       />
                       <span className="text-xs text-muted-foreground">Tokens</span>
                     </div>

@@ -5,10 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import json
 import asyncio
+import logging
 
 from database import get_db, AsyncSessionLocal
 from models import Agent, ChatSession, ChatMessage, LLMProvider
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/chats",
@@ -109,6 +112,7 @@ async def send_message(
     # 5. Define Generator
     async def generate():
         full_response = ""
+        usage_info = {"input_tokens": 0, "output_tokens": 0}
         
         try:
             # Prepare messages
@@ -121,6 +125,21 @@ async def send_message(
                 if role not in ["user", "assistant", "system"]:
                     role = "user" # Fallback
                 messages.append({"role": role, "content": msg.content})
+            
+            # 计算输入字符数
+            input_chars = sum(len(m['content']) for m in messages)
+            history_count = len(history)
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"Agent: {agent.name} (ID: {agent.id})")
+            logger.info(f"Model: {provider.provider_type}/{agent.model}")
+            logger.info(f"Session: {session_id}")
+            logger.info(f"History messages: {history_count} (including current)")
+            logger.info(f"Input chars: {input_chars}")
+            logger.info(f"Context window: {agent.context_window}")
+            logger.info(f"Temperature: {agent.temperature}")
+            logger.info(f"\nCurrent user message: {message.content}")
+            logger.info(f"{'-'*60}")
             
             # Streaming Logic
             if "openai" in provider.provider_type or "azure" in provider.provider_type:
@@ -143,7 +162,8 @@ async def send_message(
                     model=agent.model,
                     messages=messages,
                     temperature=agent.temperature,
-                    stream=True
+                    stream=True,
+                    stream_options={"include_usage": True}  # 请求返回 token 统计
                 )
                 
                 async for chunk in stream:
@@ -151,6 +171,11 @@ async def send_message(
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield content
+                    
+                    # 获取 token 统计（通常在最后一个 chunk）
+                    if hasattr(chunk, 'usage') and chunk.usage:
+                        usage_info['input_tokens'] = chunk.usage.prompt_tokens
+                        usage_info['output_tokens'] = chunk.usage.completion_tokens
 
             elif "dashscope" in provider.provider_type:
                 import dashscope
@@ -171,6 +196,11 @@ async def send_message(
                         content = response.output.choices[0]['message']['content']
                         full_response += content
                         yield content
+                        
+                        # 获取 token 统计信息
+                        if hasattr(response, 'usage') and response.usage:
+                            usage_info['input_tokens'] = response.usage.get('input_tokens', 0)
+                            usage_info['output_tokens'] = response.usage.get('output_tokens', 0)
                     else:
                         yield f"Error: {response.message}"
             
@@ -181,7 +211,27 @@ async def send_message(
         except Exception as e:
             error_msg = f"Error generating response: {str(e)}"
             full_response += error_msg
+            logger.error(f"Agent error: {error_msg}")
             yield error_msg
+        
+        # 输出统计信息
+        output_chars = len(full_response)
+        total_chars = input_chars + output_chars
+        
+        logger.info(f"\nAssistant response: {full_response[:200]}{'...' if len(full_response) > 200 else ''}")
+        logger.info(f"Output chars: {output_chars}")
+        logger.info(f"Total chars: {total_chars}")
+        
+        # 如果有 API 返回的 token 统计，也显示
+        if usage_info['input_tokens'] > 0 or usage_info['output_tokens'] > 0:
+            total_tokens = usage_info['input_tokens'] + usage_info['output_tokens']
+            logger.info(f"\nAPI Token Usage:")
+            logger.info(f"  Input tokens: {usage_info['input_tokens']}")
+            logger.info(f"  Output tokens: {usage_info['output_tokens']}")
+            logger.info(f"  Total tokens: {total_tokens}")
+            logger.info(f"  Context usage: {total_tokens / agent.context_window * 100:.1f}%")
+        
+        logger.info(f"{'='*60}\n")
         
         # 6. Save Assistant Message (using new session)
         async with AsyncSessionLocal() as session:
@@ -203,7 +253,7 @@ async def send_message(
                 
                 await session.commit()
              except Exception as e:
-                print(f"Failed to save assistant message: {e}")
+                logger.error(f"Failed to save assistant message: {e}")
 
     return StreamingResponse(generate(), media_type="text/plain")
 

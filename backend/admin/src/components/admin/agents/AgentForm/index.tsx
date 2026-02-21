@@ -66,11 +66,17 @@ export default function AgentForm({
     if (initialValues) {
       const hasTools = !!(initialValues.tools && initialValues.tools.length > 0);
       form.reset({
-        ...initialValues,
+        name: initialValues.name || '',
+        description: initialValues.description || '',
+        provider_id: initialValues.provider_id || '',
+        model: initialValues.model || '',
+        system_prompt: initialValues.system_prompt || '',
+        temperature: Number(initialValues.temperature) || 0.7,
+        context_window: Number(initialValues.context_window) || 4096,
+        thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools,
-        // Ensure numbers are numbers
-        provider_id: initialValues.provider_id,
-      } as unknown as AgentFormValues);
+        tools: initialValues.tools || [],
+      });
     } else {
       form.reset({
         name: '',

@@ -7,7 +7,7 @@ export const agentFormSchema = z.object({
   model: z.string().min(1, "请选择模型"),
   system_prompt: z.string().min(1, "请输入系统提示词").max(5000, "最大长度5000字符"),
   temperature: z.number().min(0).max(1),
-  context_window: z.number().min(1024).max(128000),
+  context_window: z.number().min(4096, "最小值为4096").max(256000, "最大值为256000"),
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),

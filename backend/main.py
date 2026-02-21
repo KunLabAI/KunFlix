@@ -1,9 +1,31 @@
 import sys
 import asyncio
+import logging
+import codecs
 
 # Fix for asyncpg on Windows
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    # 修复Windows终端UTF-8编码问题
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'ignore')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'ignore')
+
+# 配置日志 - 精细化控制
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(name)s] %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
+# 关闭 SQLAlchemy 日志
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+
+# 关闭 uvicorn access 日志（保留 error 日志）
+logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
+
+# 保留应用日志
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, WebSocket, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse
