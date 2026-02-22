@@ -6,7 +6,7 @@ from typing import List, Optional
 import logging
 
 from database import get_db, AsyncSessionLocal
-from models import Agent, ChatSession, ChatMessage, LLMProvider, User
+from models import Agent, ChatSession, ChatMessage, LLMProvider, User, CreditTransaction
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
 from auth import get_current_active_user, scoped_query
 from services.llm_stream import stream_completion
@@ -135,8 +135,15 @@ async def send_message(
 
     # 捕获上下文变量
     user_id = current_user.id
+    input_rate = agent.input_credit_per_1k
+    output_rate = agent.output_credit_per_1k
+    is_paid_agent = input_rate > 0 or output_rate > 0
 
-    # 5. 定义生成器
+    # 5. 积分预检查：付费智能体且余额不足则拒绝
+    if is_paid_agent and (current_user.credits or 0) <= 0:
+        raise HTTPException(status_code=402, detail="积分余额不足")
+
+    # 6. 定义生成器
     async def generate():
         # 准备消息列表
         messages = []
@@ -213,6 +220,33 @@ async def send_message(
                         u.total_output_tokens = (u.total_output_tokens or 0) + result.output_tokens
                         u.total_input_chars = (u.total_input_chars or 0) + input_chars
                         u.total_output_chars = (u.total_output_chars or 0) + len(result.full_response)
+
+                        # 积分扣费
+                        credit_cost = (
+                            result.input_tokens / 1000 * input_rate
+                            + result.output_tokens / 1000 * output_rate
+                        )
+                        if credit_cost > 0:
+                            balance_before = u.credits or 0
+                            u.credits = max(0, balance_before - credit_cost)
+                            session.add(CreditTransaction(
+                                user_id=user_id,
+                                agent_id=agent.id,
+                                session_id=session_id,
+                                transaction_type="deduction",
+                                amount=-credit_cost,
+                                balance_before=balance_before,
+                                balance_after=u.credits,
+                                input_tokens=result.input_tokens,
+                                output_tokens=result.output_tokens,
+                                metadata_json={
+                                    "agent_name": agent.name,
+                                    "model": agent.model,
+                                    "input_rate": input_rate,
+                                    "output_rate": output_rate,
+                                },
+                            ))
+                            logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} → {u.credits:.2f})")
 
                     await session.commit()
                 except Exception as e:

@@ -7,6 +7,9 @@ from sqlalchemy.future import select
 from models import LLMProvider
 from database import AsyncSessionLocal
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DialogAgent(AgentBase):
     def __init__(self, name: str, sys_prompt: str, model):
@@ -29,14 +32,33 @@ class DialogAgent(AgentBase):
             elif m.role == "system":
                 role = "system"
             messages.append({"role": role, "content": m.content})
-            
+        
+        # 计算输入字符数
+        input_chars = sum(len(m['content']) for m in messages)
+        
         # Call model
         response = self.model(messages)
         
-        # Extract content
+        # Extract content and usage
         content = response.text if hasattr(response, 'text') else str(response)
         
-        res_msg = Msg(name=self.name, content=content, role="assistant")
+        # 从response.usage提取真实token统计
+        usage = getattr(response, 'usage', None)
+        input_tokens = getattr(usage, 'input_tokens', 0) if usage else 0
+        output_tokens = getattr(usage, 'output_tokens', 0) if usage else 0
+        
+        # 创建包含token统计的消息
+        res_msg = Msg(
+            name=self.name,
+            content=content,
+            role="assistant",
+            metadata={
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "input_chars": input_chars,
+                "output_chars": len(content),
+            }
+        )
         self.memory.append(res_msg)
         return res_msg
 
@@ -193,7 +215,8 @@ class NarrativeEngine:
                  return {
                     "outline": "Error: AI Engine not initialized (Missing Active Provider)",
                     "content": "The story cannot proceed without the AI engine. Please configure an LLM Provider in the admin panel.",
-                    "npc_updates": "{}"
+                    "npc_updates": "{}",
+                    "usage": {"input_tokens": 0, "output_tokens": 0, "input_chars": 0, "output_chars": 0}
                 }
 
         # 1. Director outlines the chapter
@@ -217,10 +240,33 @@ class NarrativeEngine:
         if asyncio.iscoroutine(npc_update):
             npc_update = await npc_update
         
+        # 汇总所有agent的token统计
+        all_msgs = [outline_msg, story_msg, npc_update]
+        total_input_tokens = sum(m.metadata.get("input_tokens", 0) for m in all_msgs)
+        total_output_tokens = sum(m.metadata.get("output_tokens", 0) for m in all_msgs)
+        total_input_chars = sum(m.metadata.get("input_chars", 0) for m in all_msgs)
+        total_output_chars = sum(m.metadata.get("output_chars", 0) for m in all_msgs)
+        
+        # 日志输出
+        logger.info(f"\n{'='*60}")
+        logger.info(f"NarrativeEngine Chapter Generation Complete")
+        logger.info(f"Director tokens: {outline_msg.metadata.get('input_tokens', 0)} in / {outline_msg.metadata.get('output_tokens', 0)} out")
+        logger.info(f"Narrator tokens: {story_msg.metadata.get('input_tokens', 0)} in / {story_msg.metadata.get('output_tokens', 0)} out")
+        logger.info(f"NPC Manager tokens: {npc_update.metadata.get('input_tokens', 0)} in / {npc_update.metadata.get('output_tokens', 0)} out")
+        logger.info(f"Total: {total_input_tokens} in / {total_output_tokens} out = {total_input_tokens + total_output_tokens} tokens")
+        logger.info(f"Chars: {total_input_chars} in / {total_output_chars} out = {total_input_chars + total_output_chars} chars")
+        logger.info(f"{'='*60}\n")
+        
         return {
             "outline": outline_msg.content,
             "content": story_msg.content,
-            "npc_updates": npc_update.content
+            "npc_updates": npc_update.content,
+            "usage": {
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "input_chars": total_input_chars,
+                "output_chars": total_output_chars,
+            }
         }
 
 narrative_engine = NarrativeEngine()

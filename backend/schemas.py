@@ -31,6 +31,7 @@ class UserResponse(BaseModel):
     total_output_tokens: int = 0
     total_input_chars: int = 0
     total_output_chars: int = 0
+    credits: float = 0.0
     last_login_at: Optional[Any] = None
     created_at: Optional[Any] = None
     updated_at: Optional[Any] = None
@@ -112,6 +113,8 @@ class AgentBase(BaseModel):
     system_prompt: str
     tools: List[str] = Field(default_factory=list)
     thinking_mode: bool = False
+    input_credit_per_1k: float = Field(default=0.0, ge=0.0)
+    output_credit_per_1k: float = Field(default=0.0, ge=0.0)
 
 
 class AgentCreate(AgentBase):
@@ -128,6 +131,8 @@ class AgentUpdate(BaseModel):
     system_prompt: Optional[str] = None
     tools: Optional[List[str]] = None
     thinking_mode: Optional[bool] = None
+    input_credit_per_1k: Optional[float] = Field(None, ge=0.0)
+    output_credit_per_1k: Optional[float] = Field(None, ge=0.0)
 
 
 class AgentResponse(AgentBase):
@@ -174,3 +179,29 @@ class ChatMessageResponse(ChatMessageBase):
     created_at: Any
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Credit schemas
+# ---------------------------------------------------------------------------
+class CreditTransactionResponse(BaseModel):
+    id: str
+    user_id: str
+    agent_id: Optional[str] = None
+    session_id: Optional[str] = None
+    transaction_type: str
+    amount: float
+    balance_before: float
+    balance_after: float
+    input_tokens: int = 0
+    output_tokens: int = 0
+    metadata_json: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+    created_at: Any
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreditAdjustRequest(BaseModel):
+    amount: float
+    description: str = ""

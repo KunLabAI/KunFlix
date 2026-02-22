@@ -149,6 +149,59 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
           <span>1 (创造性)</span>
         </div>
       </div>
+
+      <div className="rounded-xl border bg-card p-5 shadow-sm">
+        <Label className="text-sm font-medium mb-4 block">积分定价</Label>
+        <div className="space-y-4">
+          <FormField
+            control={control}
+            name="input_credit_per_1k"
+            render={({ field }) => (
+              <FormItem>
+                <div className="flex items-center justify-between">
+                  <FormLabel className="text-xs text-muted-foreground">输入价格 (积分/1K tokens)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      value={field.value ?? 0}
+                      onChange={e => field.onChange(Number(e.target.value))}
+                      step={0.01}
+                      min={0}
+                      className="w-24 font-mono"
+                      disabled={disabled}
+                    />
+                  </FormControl>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={control}
+            name="output_credit_per_1k"
+            render={({ field }) => (
+              <FormItem>
+                <div className="flex items-center justify-between">
+                  <FormLabel className="text-xs text-muted-foreground">输出价格 (积分/1K tokens)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      value={field.value ?? 0}
+                      onChange={e => field.onChange(Number(e.target.value))}
+                      step={0.01}
+                      min={0}
+                      className="w-24 font-mono"
+                      disabled={disabled}
+                    />
+                  </FormControl>
+                </div>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">设置为 0 表示免费，不消耗用户积分。</p>
+      </div>
     </div>
   );
 };

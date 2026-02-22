@@ -11,6 +11,8 @@ export const agentFormSchema = z.object({
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
+  input_credit_per_1k: z.number().min(0, "不能为负数").default(0),
+  output_credit_per_1k: z.number().min(0, "不能为负数").default(0),
 }).refine((data) => {
   if (data.tools_enabled && (!data.tools || data.tools.length === 0)) {
     return false;

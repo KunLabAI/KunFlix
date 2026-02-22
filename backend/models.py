@@ -29,6 +29,7 @@ class User(Base):
     total_output_tokens = Column(BigInteger, default=0)
     total_input_chars = Column(BigInteger, default=0)
     total_output_chars = Column(BigInteger, default=0)
+    credits = Column(Float, default=0.0, nullable=False)  # 积分余额
     register_ip = Column(String(45), nullable=True)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
@@ -147,5 +148,30 @@ class Agent(Base):
     tools = Column(JSON, default=[])  # List of enabled tools
     thinking_mode = Column(Boolean, default=False)
 
+    # Credit pricing
+    input_credit_per_1k = Column(Float, default=0.0, nullable=False)   # 每1K输入tokens积分
+    output_credit_per_1k = Column(Float, default=0.0, nullable=False)  # 每1K输出tokens积分
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CreditTransaction(Base):
+    __tablename__ = "credit_transactions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
+
+    transaction_type = Column(String(20), nullable=False)  # deduction | recharge | admin_adjust
+    amount = Column(Float, nullable=False)          # 负数=扣费, 正数=充值
+    balance_before = Column(Float, nullable=False)
+    balance_after = Column(Float, nullable=False)
+
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    metadata_json = Column(JSON, default={})  # 费率快照等扩展信息
+    description = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

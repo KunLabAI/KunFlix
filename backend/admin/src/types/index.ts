@@ -9,6 +9,8 @@ export interface Agent {
   system_prompt: string;
   tools: string[];
   thinking_mode: boolean;
+  input_credit_per_1k: number;
+  output_credit_per_1k: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -38,6 +40,7 @@ export interface User {
   total_output_tokens: number;
   total_input_chars: number;
   total_output_chars: number;
+  credits: number;
   last_login_at: string | null;
   created_at: string | null;
   updated_at: string | null;

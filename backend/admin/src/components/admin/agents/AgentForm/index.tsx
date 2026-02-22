@@ -52,6 +52,8 @@ export default function AgentForm({
       thinking_mode: false,
       tools_enabled: false,
       tools: [],
+      input_credit_per_1k: 0,
+      output_credit_per_1k: 0,
     },
   });
 
@@ -78,6 +80,8 @@ export default function AgentForm({
         thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools,
         tools: initialValues.tools || [],
+        input_credit_per_1k: Number(initialValues.input_credit_per_1k) || 0,
+        output_credit_per_1k: Number(initialValues.output_credit_per_1k) || 0,
       };
       console.log('[AgentForm] Resetting form with:', formData);
       
@@ -106,6 +110,8 @@ export default function AgentForm({
         thinking_mode: false,
         tools_enabled: false,
         tools: [],
+        input_credit_per_1k: 0,
+        output_credit_per_1k: 0,
       });
       isFormInitialized.current = true;
     }

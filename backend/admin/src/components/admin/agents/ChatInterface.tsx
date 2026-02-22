@@ -10,7 +10,7 @@ import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
 
@@ -228,7 +228,6 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                     {msg.role === 'assistant' && (
                       <Avatar className="h-8 w-8 mt-1 border">
                         <AvatarFallback><Bot className="h-4 w-4" /></AvatarFallback>
-                        <AvatarImage src="/bot-avatar.png" />
                       </Avatar>
                     )}
                     
