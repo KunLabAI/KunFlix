@@ -20,6 +20,12 @@ import { Label } from '@/components/ui/label';
 const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const { control, watch } = useFormContext();
   const temperature = watch('temperature');
+  const contextWindow = watch('context_window');
+
+  // 格式化显示 context_window (如 128K)
+  const formatContextWindow = (value: number) => {
+    return value >= 1000 ? `${Math.round(value / 1024)}K` : value.toString();
+  };
 
   return (
     <div className="space-y-6">
@@ -52,7 +58,9 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
          <div className="mb-4">
            <div className="flex justify-between items-center mb-2">
              <Label className="text-sm font-medium">上下文窗口</Label>
-             <span className="text-xs text-muted-foreground">范围: 4096 - 256000</span>
+             <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
+               {formatContextWindow(contextWindow || 4096)} ({contextWindow || 4096} tokens)
+             </span>
            </div>
            <FormField
               control={control}
@@ -60,27 +68,39 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
               render={({ field }) => (
                 <FormItem>
                   <FormControl>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-4">
+                      <Slider
+                        min={4096}
+                        max={262144}
+                        step={1024}
+                        value={[field.value ?? 4096]}
+                        onValueChange={(vals) => field.onChange(vals[0])}
+                        disabled={disabled}
+                        className="flex-1"
+                      />
                       <Input 
                         type="number" 
-                        {...field} 
                         value={field.value ?? 4096}
                         onChange={e => {
                           const val = e.target.value;
                           field.onChange(val === '' ? 4096 : Number(val));
                         }}
-                        disabled={disabled}
-                        className="font-mono"
+                        step={1024}
                         min={4096}
-                        max={256000}
+                        max={262144}
+                        className="w-24 font-mono"
+                        disabled={disabled}
                       />
-                      <span className="text-xs text-muted-foreground">Tokens</span>
                     </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+           <div className="flex justify-between text-xs text-muted-foreground mt-2">
+             <span>4K</span>
+             <span>256K</span>
+           </div>
          </div>
       </div>
 

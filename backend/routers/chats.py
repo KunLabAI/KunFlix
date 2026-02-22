@@ -3,14 +3,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-import json
-import asyncio
 import logging
 
 from database import get_db, AsyncSessionLocal
 from models import Agent, ChatSession, ChatMessage, LLMProvider, User
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
 from auth import get_current_active_user, scoped_query
+from services.llm_stream import stream_completion
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ async def create_session(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Verify agent exists
     result = await db.execute(select(Agent).filter(Agent.id == session.agent_id))
     agent = result.scalars().first()
     if not agent:
@@ -65,7 +63,7 @@ async def list_sessions(
 
 @router.get("/{session_id}", response_model=ChatSessionResponse)
 async def get_session(
-    session_id: int,
+    session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -79,11 +77,10 @@ async def get_session(
 
 @router.get("/{session_id}/messages", response_model=List[ChatMessageResponse])
 async def get_session_messages(
-    session_id: int,
+    session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Verify session ownership
     session_query = select(ChatSession).filter(ChatSession.id == session_id)
     session_query = scoped_query(session_query, ChatSession, current_user)
     chat_session = await db.scalar(session_query)
@@ -100,12 +97,12 @@ async def get_session_messages(
 
 @router.post("/{session_id}/messages")
 async def send_message(
-    session_id: int,
+    session_id: str,
     message: ChatMessageCreate,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 1. Get Session (with ownership check) and Agent
+    # 1. 验证会话和智能体
     session_query = select(ChatSession).filter(ChatSession.id == session_id)
     session_query = scoped_query(session_query, ChatSession, current_user)
     chat_session = await db.scalar(session_query)
@@ -117,16 +114,12 @@ async def send_message(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # 2. Save User Message
-    user_msg = ChatMessage(
-        session_id=session_id,
-        role="user",
-        content=message.content,
-    )
+    # 2. 保存用户消息
+    user_msg = ChatMessage(session_id=session_id, role="user", content=message.content)
     db.add(user_msg)
     await db.commit()
 
-    # 3. Prepare History
+    # 3. 获取历史消息
     history_result = await db.execute(
         select(ChatMessage)
         .filter(ChatMessage.session_id == session_id)
@@ -134,259 +127,103 @@ async def send_message(
     )
     history = history_result.scalars().all()
 
-    # 4. Prepare Provider/Model
+    # 4. 获取供应商配置
     provider_result = await db.execute(select(LLMProvider).filter(LLMProvider.id == agent.provider_id))
     provider = provider_result.scalars().first()
     if not provider or not provider.is_active:
         raise HTTPException(status_code=400, detail="Agent provider is not available")
 
-    # Capture user id for token persistence inside generator
+    # 捕获上下文变量
     user_id = current_user.id
 
-    # 5. Define Generator
+    # 5. 定义生成器
     async def generate():
-        full_response = ""
-        reasoning_content = ""  # 用于存储 thinking 内容
-        usage_info = {"input_tokens": 0, "output_tokens": 0}
+        # 准备消息列表
+        messages = []
+        if agent.system_prompt:
+            messages.append({"role": "system", "content": agent.system_prompt})
 
-        try:
-            # Prepare messages
-            messages = []
-            if agent.system_prompt:
-                messages.append({"role": "system", "content": agent.system_prompt})
+        for msg in history:
+            role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
+            messages.append({"role": role, "content": msg.content})
 
-            for msg in history:
-                role = msg.role
-                if role not in ["user", "assistant", "system"]:
-                    role = "user"  # Fallback
-                messages.append({"role": role, "content": msg.content})
+        input_chars = sum(len(m['content']) for m in messages)
 
-            # 计算输入字符数
-            input_chars = sum(len(m['content']) for m in messages)
-            history_count = len(history)
+        # 日志输出
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Agent: {agent.name} (ID: {agent.id})")
+        logger.info(f"Model: {provider.provider_type}/{agent.model}")
+        logger.info(f"Session: {session_id} | User: {user_id}")
+        logger.info(f"History: {len(history)} | Input chars: {input_chars}")
+        logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
+        logger.info(f"Current message: {message.content}")
+        logger.info(f"{'-'*60}")
 
-            logger.info(f"\n{'='*60}")
-            logger.info(f"Agent: {agent.name} (ID: {agent.id})")
-            logger.info(f"Model: {provider.provider_type}/{agent.model}")
-            logger.info(f"Session: {session_id}")
-            logger.info(f"User: {user_id}")
-            logger.info(f"History messages: {history_count} (including current)")
-            logger.info(f"Input chars: {input_chars}")
-            logger.info(f"Context window: {agent.context_window}")
-            logger.info(f"Temperature: {agent.temperature}")
-            logger.info(f"\nCurrent user message: {message.content}")
-            logger.info(f"{'-'*60}")
+        # 调用 LLM 流式接口
+        result = None
+        async for chunk, result in stream_completion(
+            provider_type=provider.provider_type,
+            api_key=provider.api_key,
+            base_url=provider.base_url,
+            model=agent.model,
+            messages=messages,
+            temperature=agent.temperature,
+            context_window=agent.context_window,
+            thinking_mode=agent.thinking_mode,
+        ):
+            yield chunk
 
-            # Streaming Logic - OpenAI 兼容格式 (openai, azure, deepseek)
-            openai_compatible = ["openai", "azure", "deepseek"]
-            anthropic_compatible = ["anthropic", "minimax"]
-            provider_type_lower = provider.provider_type.lower()
+        # 输出统计日志
+        if result:
+            if result.reasoning_content:
+                logger.info(f"\nThinking: {result.reasoning_content[:300]}{'...' if len(result.reasoning_content) > 300 else ''}")
             
-            # 默认 base_url 配置
-            default_base_urls = {
-                "deepseek": "https://api.deepseek.com/v1",
-                "minimax": "https://api.minimax.chat/v1"
-            }
+            logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
+            logger.info(f"Output chars: {len(result.full_response)}")
             
-            if any(t in provider_type_lower for t in openai_compatible):
-                from openai import AsyncOpenAI, AsyncAzureOpenAI
+            if result.input_tokens > 0 or result.output_tokens > 0:
+                total_tokens = result.input_tokens + result.output_tokens
+                logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}")
+                logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%")
+            
+            logger.info(f"{'='*60}\n")
 
-                client = None
-                if "azure" in provider_type_lower:
-                    client = AsyncAzureOpenAI(
-                        api_key=provider.api_key,
-                        api_version="2023-05-15",
-                        azure_endpoint=provider.base_url,
+            # 6. 保存助手消息和统计
+            async with AsyncSessionLocal() as session:
+                try:
+                    assistant_msg = ChatMessage(
+                        session_id=session_id,
+                        role="assistant",
+                        content=result.full_response,
                     )
-                else:
-                    # openai / deepseek 使用相同的 OpenAI 客户端
-                    base_url = provider.base_url or default_base_urls.get(provider_type_lower)
-                    client = AsyncOpenAI(
-                        api_key=provider.api_key,
-                        base_url=base_url,
-                    )
+                    session.add(assistant_msg)
 
-                stream = await client.chat.completions.create(
-                    model=agent.model,
-                    messages=messages,
-                    temperature=agent.temperature,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                )
+                    # 更新会话时间戳
+                    s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+                    s = s_result.scalars().first()
+                    if s:
+                        from sqlalchemy import func as sa_func
+                        s.updated_at = sa_func.now()
 
-                thinking_started = False
-                async for chunk in stream:
-                    # 处理 deepseek reasoning_content (thinking mode)
-                    if agent.thinking_mode and chunk.choices and hasattr(chunk.choices[0].delta, 'reasoning_content'):
-                        rc = chunk.choices[0].delta.reasoning_content
-                        if rc:
-                            # 首次输出 thinking 内容时，先输出开始标签
-                            if not thinking_started:
-                                yield "<think>"
-                                thinking_started = True
-                            reasoning_content += rc
-                            yield rc
-                    
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        # 如果之前有 thinking 内容，先关闭标签
-                        if thinking_started:
-                            yield "</think>"
-                            thinking_started = False
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield content
+                    # 更新用户统计
+                    u_result = await session.execute(select(User).filter(User.id == user_id))
+                    u = u_result.scalars().first()
+                    if u:
+                        u.total_input_tokens = (u.total_input_tokens or 0) + result.input_tokens
+                        u.total_output_tokens = (u.total_output_tokens or 0) + result.output_tokens
+                        u.total_input_chars = (u.total_input_chars or 0) + input_chars
+                        u.total_output_chars = (u.total_output_chars or 0) + len(result.full_response)
 
-                    # 获取 token 统计（通常在最后一个 chunk）
-                    if hasattr(chunk, 'usage') and chunk.usage:
-                        usage_info['input_tokens'] = chunk.usage.prompt_tokens
-                        usage_info['output_tokens'] = chunk.usage.completion_tokens
-                
-                # 如果 thinking 没有正常关闭（没有后续 content），关闭标签
-                if thinking_started:
-                    yield "</think>"
-
-            elif any(t in provider_type_lower for t in anthropic_compatible):
-                from anthropic import AsyncAnthropic
-                
-                base_url = provider.base_url or default_base_urls.get(provider_type_lower)
-                client = AsyncAnthropic(
-                    api_key=provider.api_key,
-                    base_url=base_url,
-                )
-                
-                # 提取 system message
-                system_content = ""
-                chat_messages = []
-                for msg in messages:
-                    if msg["role"] == "system":
-                        system_content = msg["content"]
-                    else:
-                        chat_messages.append(msg)
-                
-                # 构建请求参数
-                request_params = {
-                    "model": agent.model,
-                    "messages": chat_messages,
-                    "system": system_content,
-                    "max_tokens": agent.context_window,
-                }
-                
-                # thinking mode 需要 temperature=1
-                request_params["temperature"] = 1 if agent.thinking_mode else agent.temperature
-                
-                # 启用 extended thinking
-                if agent.thinking_mode:
-                    request_params["thinking"] = {
-                        "type": "enabled",
-                        "budget_tokens": min(10000, agent.context_window // 4)
-                    }
-                
-                async with client.messages.stream(**request_params) as stream:
-                    async for text in stream.text_stream:
-                        full_response += text
-                        yield text
-                    
-                    # 获取最终的 usage 信息
-                    final_message = await stream.get_final_message()
-                    if final_message.usage:
-                        usage_info['input_tokens'] = final_message.usage.input_tokens
-                        usage_info['output_tokens'] = final_message.usage.output_tokens
-
-            elif "dashscope" in provider_type_lower:
-                import dashscope
-                from http import HTTPStatus
-
-                responses = dashscope.Generation.call(
-                    model=agent.model,
-                    api_key=provider.api_key,
-                    messages=messages,
-                    result_format='message',
-                    stream=True,
-                    incremental_output=True,
-                )
-
-                for response in responses:
-                    if response.status_code == HTTPStatus.OK:
-                        content = response.output.choices[0]['message']['content']
-                        full_response += content
-                        yield content
-
-                        # 获取 token 统计信息
-                        if hasattr(response, 'usage') and response.usage:
-                            usage_info['input_tokens'] = response.usage.get('input_tokens', 0)
-                            usage_info['output_tokens'] = response.usage.get('output_tokens', 0)
-                    else:
-                        yield f"Error: {response.message}"
-
-            else:
-                yield "Provider not supported for streaming yet."
-                full_response = "Provider not supported for streaming yet."
-
-        except Exception as e:
-            error_msg = f"Error generating response: {str(e)}"
-            full_response += error_msg
-            logger.error(f"Agent error: {error_msg}")
-            yield error_msg
-
-        # 输出统计信息
-        output_chars = len(full_response)
-        total_chars = input_chars + output_chars
-
-        # 如果有 reasoning/thinking 内容，显示在日志中
-        if reasoning_content:
-            logger.info(f"\nThinking content: {reasoning_content[:300]}{'...' if len(reasoning_content) > 300 else ''}")
-
-        logger.info(f"\nAssistant response: {full_response[:200]}{'...' if len(full_response) > 200 else ''}")
-        logger.info(f"Output chars: {output_chars}")
-        logger.info(f"Total chars: {total_chars}")
-
-        # 如果有 API 返回的 token 统计，也显示
-        if usage_info['input_tokens'] > 0 or usage_info['output_tokens'] > 0:
-            total_tokens = usage_info['input_tokens'] + usage_info['output_tokens']
-            logger.info(f"\nAPI Token Usage:")
-            logger.info(f"  Input tokens: {usage_info['input_tokens']}")
-            logger.info(f"  Output tokens: {usage_info['output_tokens']}")
-            logger.info(f"  Total tokens: {total_tokens}")
-            logger.info(f"  Context usage: {total_tokens / agent.context_window * 100:.1f}%")
-
-        logger.info(f"{'='*60}\n")
-
-        # 6. Save Assistant Message + persist token counts (using new session)
-        async with AsyncSessionLocal() as session:
-            try:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    role="assistant",
-                    content=full_response,
-                )
-                session.add(assistant_msg)
-
-                # Update session timestamp
-                result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
-                s = result.scalars().first()
-                if s:
-                    from sqlalchemy import func as sa_func
-                    s.updated_at = sa_func.now()
-
-                # Persist token & char counts to user
-                user_result = await session.execute(select(User).filter(User.id == user_id))
-                u = user_result.scalars().first()
-                if u:
-                    u.total_input_tokens = (u.total_input_tokens or 0) + usage_info['input_tokens']
-                    u.total_output_tokens = (u.total_output_tokens or 0) + usage_info['output_tokens']
-                    u.total_input_chars = (u.total_input_chars or 0) + input_chars
-                    u.total_output_chars = (u.total_output_chars or 0) + output_chars
-
-                await session.commit()
-            except Exception as e:
-                logger.error(f"Failed to save assistant message or update token counts: {e}")
+                    await session.commit()
+                except Exception as e:
+                    logger.error(f"Failed to save message: {e}")
 
     return StreamingResponse(generate(), media_type="text/plain")
 
 
 @router.delete("/{session_id}")
 async def delete_session(
-    session_id: int,
+    session_id: str,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -396,7 +233,6 @@ async def delete_session(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Delete messages manually (no cascade configured)
     from sqlalchemy import delete
     await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
 

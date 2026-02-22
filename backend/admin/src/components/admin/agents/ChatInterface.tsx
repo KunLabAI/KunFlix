@@ -19,22 +19,22 @@ interface ChatInterfaceProps {
 }
 
 interface ChatSession {
-  id: number;
+  id: string;
   title: string;
-  agent_id: number;
+  agent_id: string;
   created_at: string;
   updated_at: string;
 }
 
 interface ChatMessage {
-  id?: number;
+  id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   created_at?: string;
 }
 
 export default function ChatInterface({ agentId }: ChatInterfaceProps) {
-  const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -82,7 +82,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
     }
   };
 
-  const handleDeleteSession = async (e: React.MouseEvent, id: number) => {
+  const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
       await api.delete(`/chats/${id}`);

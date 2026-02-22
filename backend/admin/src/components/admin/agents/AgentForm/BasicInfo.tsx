@@ -133,7 +133,12 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
               <FormItem>
                 <FormLabel className="text-xs">模型</FormLabel>
                 <Select 
-                  onValueChange={field.onChange} 
+                  onValueChange={(value) => {
+                    // 防止意外清空：只有当新值非空或用户主动选择时才更新
+                    if (value || !availableModels.includes(field.value)) {
+                      field.onChange(value);
+                    }
+                  }} 
                   value={field.value} 
                   disabled={!selectedProviderId || loading}
                 >
