@@ -146,6 +146,7 @@ async def send_message(
     # 5. Define Generator
     async def generate():
         full_response = ""
+        reasoning_content = ""  # 用于存储 thinking 内容
         usage_info = {"input_tokens": 0, "output_tokens": 0}
 
         try:
@@ -176,21 +177,33 @@ async def send_message(
             logger.info(f"\nCurrent user message: {message.content}")
             logger.info(f"{'-'*60}")
 
-            # Streaming Logic
-            if "openai" in provider.provider_type or "azure" in provider.provider_type:
+            # Streaming Logic - OpenAI 兼容格式 (openai, azure, deepseek)
+            openai_compatible = ["openai", "azure", "deepseek"]
+            anthropic_compatible = ["anthropic", "minimax"]
+            provider_type_lower = provider.provider_type.lower()
+            
+            # 默认 base_url 配置
+            default_base_urls = {
+                "deepseek": "https://api.deepseek.com/v1",
+                "minimax": "https://api.minimax.chat/v1"
+            }
+            
+            if any(t in provider_type_lower for t in openai_compatible):
                 from openai import AsyncOpenAI, AsyncAzureOpenAI
 
                 client = None
-                if "azure" in provider.provider_type:
+                if "azure" in provider_type_lower:
                     client = AsyncAzureOpenAI(
                         api_key=provider.api_key,
                         api_version="2023-05-15",
                         azure_endpoint=provider.base_url,
                     )
                 else:
+                    # openai / deepseek 使用相同的 OpenAI 客户端
+                    base_url = provider.base_url or default_base_urls.get(provider_type_lower)
                     client = AsyncOpenAI(
                         api_key=provider.api_key,
-                        base_url=provider.base_url,
+                        base_url=base_url,
                     )
 
                 stream = await client.chat.completions.create(
@@ -201,8 +214,24 @@ async def send_message(
                     stream_options={"include_usage": True},
                 )
 
+                thinking_started = False
                 async for chunk in stream:
+                    # 处理 deepseek reasoning_content (thinking mode)
+                    if agent.thinking_mode and chunk.choices and hasattr(chunk.choices[0].delta, 'reasoning_content'):
+                        rc = chunk.choices[0].delta.reasoning_content
+                        if rc:
+                            # 首次输出 thinking 内容时，先输出开始标签
+                            if not thinking_started:
+                                yield "<think>"
+                                thinking_started = True
+                            reasoning_content += rc
+                            yield rc
+                    
                     if chunk.choices and chunk.choices[0].delta.content:
+                        # 如果之前有 thinking 内容，先关闭标签
+                        if thinking_started:
+                            yield "</think>"
+                            thinking_started = False
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield content
@@ -211,8 +240,59 @@ async def send_message(
                     if hasattr(chunk, 'usage') and chunk.usage:
                         usage_info['input_tokens'] = chunk.usage.prompt_tokens
                         usage_info['output_tokens'] = chunk.usage.completion_tokens
+                
+                # 如果 thinking 没有正常关闭（没有后续 content），关闭标签
+                if thinking_started:
+                    yield "</think>"
 
-            elif "dashscope" in provider.provider_type:
+            elif any(t in provider_type_lower for t in anthropic_compatible):
+                from anthropic import AsyncAnthropic
+                
+                base_url = provider.base_url or default_base_urls.get(provider_type_lower)
+                client = AsyncAnthropic(
+                    api_key=provider.api_key,
+                    base_url=base_url,
+                )
+                
+                # 提取 system message
+                system_content = ""
+                chat_messages = []
+                for msg in messages:
+                    if msg["role"] == "system":
+                        system_content = msg["content"]
+                    else:
+                        chat_messages.append(msg)
+                
+                # 构建请求参数
+                request_params = {
+                    "model": agent.model,
+                    "messages": chat_messages,
+                    "system": system_content,
+                    "max_tokens": agent.context_window,
+                }
+                
+                # thinking mode 需要 temperature=1
+                request_params["temperature"] = 1 if agent.thinking_mode else agent.temperature
+                
+                # 启用 extended thinking
+                if agent.thinking_mode:
+                    request_params["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": min(10000, agent.context_window // 4)
+                    }
+                
+                async with client.messages.stream(**request_params) as stream:
+                    async for text in stream.text_stream:
+                        full_response += text
+                        yield text
+                    
+                    # 获取最终的 usage 信息
+                    final_message = await stream.get_final_message()
+                    if final_message.usage:
+                        usage_info['input_tokens'] = final_message.usage.input_tokens
+                        usage_info['output_tokens'] = final_message.usage.output_tokens
+
+            elif "dashscope" in provider_type_lower:
                 import dashscope
                 from http import HTTPStatus
 
@@ -251,6 +331,10 @@ async def send_message(
         # 输出统计信息
         output_chars = len(full_response)
         total_chars = input_chars + output_chars
+
+        # 如果有 reasoning/thinking 内容，显示在日志中
+        if reasoning_content:
+            logger.info(f"\nThinking content: {reasoning_content[:300]}{'...' if len(reasoning_content) > 300 else ''}")
 
         logger.info(f"\nAssistant response: {full_response[:200]}{'...' if len(full_response) > 200 else ''}")
         logger.info(f"Output chars: {output_chars}")

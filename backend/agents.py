@@ -1,7 +1,7 @@
 import agentscope
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel, DashScopeChatModel
+from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel
 from config import settings
 from sqlalchemy.future import select
 from models import LLMProvider
@@ -106,18 +106,51 @@ class NarrativeEngine:
         try:
             agentscope.init()
             
-            if "dashscope" in provider_type:
-                 self.current_model = DashScopeChatModel(
-                    model_name=model_name,
-                    api_key=api_key
-                 )
-            else:
-                 # Default to OpenAI
-                 self.current_model = OpenAIChatModel(
+            provider_type_lower = provider_type.lower()
+            
+            # 供应商类型映射到模型类和配置
+            openai_compatible = ["openai", "azure", "deepseek"]
+            anthropic_compatible = ["anthropic", "minimax"]
+            
+            # 默认 base_url 配置
+            default_base_urls = {
+                "deepseek": "https://api.deepseek.com",
+                "minimax": "https://api.minimax.chat/v1"
+            }
+            
+            # 确定实际使用的 base_url
+            effective_base_url = base_url or default_base_urls.get(provider_type_lower)
+            client_kwargs = {"base_url": effective_base_url} if effective_base_url else None
+            
+            # 根据供应商类型创建对应的模型实例
+            model_creators = {
+                "dashscope": lambda: DashScopeChatModel(model_name=model_name, api_key=api_key),
+                "gemini": lambda: GeminiChatModel(model_name=model_name, api_key=api_key),
+            }
+            
+            # 检查是否有直接匹配的创建器
+            creator = model_creators.get(provider_type_lower)
+            
+            # 检查是否属于 OpenAI 兼容类型
+            is_openai = creator is None and any(t in provider_type_lower for t in openai_compatible)
+            # 检查是否属于 Anthropic 兼容类型
+            is_anthropic = creator is None and any(t in provider_type_lower for t in anthropic_compatible)
+            
+            if creator:
+                self.current_model = creator()
+            elif is_anthropic:
+                self.current_model = AnthropicChatModel(
                     model_name=model_name,
                     api_key=api_key,
-                    client_kwargs={"base_url": base_url} if base_url else None
-                 )
+                    client_kwargs=client_kwargs
+                )
+            else:
+                # 默认使用 OpenAI 兼容格式
+                self.current_model = OpenAIChatModel(
+                    model_name=model_name,
+                    api_key=api_key,
+                    client_kwargs=client_kwargs
+                )
 
             print(f"AgentScope initialized with model: {model_name} ({provider_type})")
         except Exception as e:

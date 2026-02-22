@@ -369,6 +369,8 @@ export default function LLMPage() {
                           <SelectItem value="dashscope">Dashscope</SelectItem>
                           <SelectItem value="anthropic">Anthropic</SelectItem>
                           <SelectItem value="gemini">Gemini</SelectItem>
+                          <SelectItem value="deepseek">DeepSeek</SelectItem>
+                          <SelectItem value="minimax">MiniMax</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

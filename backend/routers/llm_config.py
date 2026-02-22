@@ -30,16 +30,26 @@ async def test_connection(request: TestConnectionRequest, _admin: User = Depends
         # Parse config_json
         extra_config = request.config_json or {}
         
-        if provider_type in ["openai", "azure"]:
+        if provider_type in ["openai", "azure", "deepseek"]:
             from agentscope.model import OpenAIChatModel
             client_kwargs = {}
             if request.base_url:
                 client_kwargs["base_url"] = request.base_url
             
+            # deepseek 默认使用其官方 API 地址
+            default_base_urls = {
+                "deepseek": "https://api.deepseek.com"
+            }
+            client_kwargs.setdefault("base_url", default_base_urls.get(provider_type))
+            
+            # azure 使用 azure，其他使用 openai
+            client_type_map = {"azure": "azure"}
+            client_type = client_type_map.get(provider_type, "openai")
+            
             model_instance = OpenAIChatModel(
                 model_name=request.model,
                 api_key=request.api_key,
-                client_type=provider_type, # "openai" or "azure"
+                client_type=client_type,
                 client_kwargs=client_kwargs,
                 generate_kwargs=extra_config
             )
@@ -52,11 +62,17 @@ async def test_connection(request: TestConnectionRequest, _admin: User = Depends
                 generate_kwargs=extra_config
             )
             
-        elif provider_type == "anthropic":
+        elif provider_type in ["anthropic", "minimax"]:
             from agentscope.model import AnthropicChatModel
             client_kwargs = {}
             if request.base_url:
                 client_kwargs["base_url"] = request.base_url
+            
+            # minimax 默认使用其官方 API 地址
+            default_base_urls = {
+                "minimax": "https://api.minimax.chat/v1"
+            }
+            client_kwargs.setdefault("base_url", default_base_urls.get(provider_type))
             
             model_instance = AnthropicChatModel(
                 model_name=request.model,

@@ -106,10 +106,14 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
 
     try {
       const baseURL = api.defaults.baseURL || '/api';
+      const token = localStorage.getItem('access_token');
       
       const response = await fetch(`${baseURL}/chats/${selectedSessionId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
         body: JSON.stringify({ role: 'user', content: userMsg.content })
       });
 
