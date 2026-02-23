@@ -70,7 +70,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   ];
 
   return (
-    <div className="flex min-h-screen w-full bg-muted/40">
+    <div className="flex h-screen w-full bg-muted/40 overflow-hidden">
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-10 hidden flex-col border-r bg-background sm:flex transition-all duration-300",
@@ -110,7 +110,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
       </aside>
 
-      <div className={cn("flex flex-col sm:pl-64 transition-all duration-300 w-full", collapsed && "sm:pl-14")}>
+      <div className={cn("flex flex-col sm:pl-64 transition-all duration-300 w-full h-full overflow-hidden", collapsed && "sm:pl-14")}>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
           <Button
             variant="outline"
@@ -143,7 +143,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:px-6 sm:py-0 md:gap-8 lg:py-4">
+        <main className="flex-1 min-h-0 p-4 sm:px-6 sm:py-0 md:gap-8 lg:py-4 overflow-auto">
           {children}
         </main>
       </div>

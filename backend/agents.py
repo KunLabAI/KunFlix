@@ -36,11 +36,29 @@ class DialogAgent(AgentBase):
         # 计算输入字符数
         input_chars = sum(len(m['content']) for m in messages)
         
-        # Call model
+        # Call model (handle sync, coroutine, and async_generator)
         response = self.model(messages)
         
-        # Extract content and usage
-        content = response.text if hasattr(response, 'text') else str(response)
+        # First: await coroutine if needed
+        if asyncio.iscoroutine(response):
+            response = await response
+        
+        # Second: consume async generator if needed (streaming response)
+        if hasattr(response, '__anext__'):
+            chunks = []
+            async for chunk in response:
+                chunks.append(chunk)
+            response = chunks[-1] if chunks else None
+        
+        # Extract content (handle various response formats safely)
+        content = ""
+        try:
+            content = response.text
+        except (AttributeError, KeyError, TypeError):
+            try:
+                content = response.content
+            except (AttributeError, KeyError, TypeError):
+                content = str(response) if response else ""
         
         # 从response.usage提取真实token统计
         usage = getattr(response, 'usage', None)

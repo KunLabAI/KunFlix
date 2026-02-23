@@ -6,11 +6,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/components/ui/use-toast';
 import { Agent } from '@/types';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
+import { useAgents } from '@/hooks/useAgents';
 import { agentFormSchema, AgentFormValues } from './schema';
 import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
 import Parameters from './Parameters';
 import Tools from './Tools';
+import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
 
 interface AgentFormProps {
@@ -36,6 +38,7 @@ export default function AgentForm({
   twoColumn = false 
 }: AgentFormProps) {
   const { activeProviders, isLoading: providersLoading } = useLLMProviders();
+  const { agents: availableAgents } = useAgents();
   const { toast } = useToast();
   const isFormInitialized = useRef(false);
 
@@ -54,6 +57,11 @@ export default function AgentForm({
       tools: [],
       input_credit_per_1k: 0,
       output_credit_per_1k: 0,
+      is_leader: false,
+      coordination_modes: [],
+      member_agent_ids: [],
+      max_subtasks: 10,
+      enable_auto_review: true,
     },
   });
 
@@ -82,6 +90,11 @@ export default function AgentForm({
         tools: initialValues.tools || [],
         input_credit_per_1k: Number(initialValues.input_credit_per_1k) || 0,
         output_credit_per_1k: Number(initialValues.output_credit_per_1k) || 0,
+        is_leader: Boolean(initialValues.is_leader),
+        coordination_modes: initialValues.coordination_modes || [],
+        member_agent_ids: initialValues.member_agent_ids || [],
+        max_subtasks: Number(initialValues.max_subtasks) || 10,
+        enable_auto_review: initialValues.enable_auto_review !== false,
       };
       console.log('[AgentForm] Resetting form with:', formData);
       
@@ -112,6 +125,11 @@ export default function AgentForm({
         tools: [],
         input_credit_per_1k: 0,
         output_credit_per_1k: 0,
+        is_leader: false,
+        coordination_modes: [],
+        member_agent_ids: [],
+        max_subtasks: 10,
+        enable_auto_review: true,
       });
       isFormInitialized.current = true;
     }
@@ -155,12 +173,15 @@ export default function AgentForm({
             </Section>
           </div>
           <div className="lg:col-span-5 xl:col-span-4">
-            <div className="sticky top-0 space-y-6">
+            <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto space-y-6 pb-4">
               <Section title="参数设置">
                 <Parameters disabled={loading} />
               </Section>
-              <Section title="工具能力" className="mb-0">
+              <Section title="工具能力">
                 <Tools disabled={loading} />
+              </Section>
+              <Section title="协作配置" className="mb-0">
+                <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
               </Section>
             </div>
           </div>
@@ -179,10 +200,15 @@ export default function AgentForm({
             
             <div className="h-px bg-border"></div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <Parameters disabled={loading} />
-               <Tools disabled={loading} />
-            </div>
+            <Parameters disabled={loading} />
+
+            <div className="h-px bg-border"></div>
+
+            <Tools disabled={loading} />
+
+            <div className="h-px bg-border"></div>
+
+            <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
         </div>
       )}
     </>

@@ -13,6 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import MultiAgentSteps, { type AgentStep, type MultiAgentData } from './MultiAgentSteps';
 
 interface ChatInterfaceProps {
   agentId: string;
@@ -31,6 +32,7 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   created_at?: string;
+  multi_agent?: MultiAgentData;
 }
 
 export default function ChatInterface({ agentId }: ChatInterfaceProps) {
@@ -123,19 +125,112 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let assistantMsg: ChatMessage = { role: 'assistant', content: '' };
+      const isSSE = response.headers.get('content-type')?.includes('text/event-stream');
       
       setMessages(prev => [...prev, assistantMsg]);
+
+      // SSE mode: collect structured multi-agent events
+      // Plain text mode: stream text directly
+      const stepMap = new Map<string, AgentStep>();
+      const steps: AgentStep[] = [];
+      let multiAgent: MultiAgentData | null = isSSE ? {
+        steps,
+        finalResult: '',
+        totalTokens: { input: 0, output: 0 },
+        creditCost: 0
+      } : null;
+      let sseBuffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
-        assistantMsg.content += chunk;
+
+        // Plain text mode
+        const updated = !isSSE ? (() => {
+          assistantMsg.content += chunk;
+          return true;
+        })() : (() => {
+          // SSE mode: parse events into structured data
+          sseBuffer += chunk;
+          const blocks = sseBuffer.split('\n\n');
+          sseBuffer = blocks.pop() || '';
+          
+          for (const block of blocks) {
+            const lines = block.split('\n');
+            let eventType = '';
+            let dataStr = '';
+            for (const line of lines) {
+              const eventMatch = line.match(/^event:\s*(.+)/);
+              const dataMatch = line.match(/^data:\s*(.+)/);
+              eventType = eventMatch ? eventMatch[1] : eventType;
+              dataStr = dataMatch ? dataMatch[1] : dataStr;
+            }
+            try {
+              const data = JSON.parse(dataStr);
+              // Event handlers as lookup table
+              const handlers: Record<string, () => void> = {
+                subtask_created: () => {
+                  const step: AgentStep = {
+                    subtask_id: data.subtask_id,
+                    agent_name: data.agent || '',
+                    description: data.description || '',
+                    status: 'pending',
+                  };
+                  stepMap.set(data.subtask_id, step);
+                  steps.push(step);
+                  assistantMsg.content = `正在协作... (${steps.length} 个智能体)`;
+                },
+                subtask_started: () => {
+                  const step = stepMap.get(data.subtask_id);
+                  step && (step.status = 'running', step.result = '');
+                  assistantMsg.content = `协作中... (${data.agent_name || ''} 正在生成)`;
+                },
+                subtask_chunk: () => {
+                  const step = stepMap.get(data.subtask_id);
+                  step && (step.result = (step.result || '') + (data.chunk || ''));
+                },
+                subtask_completed: () => {
+                  const step = stepMap.get(data.subtask_id);
+                  const target: AgentStep = step || { subtask_id: data.subtask_id, agent_name: data.agent_name || '', description: data.description || '', status: 'completed' };
+                  target.status = 'completed';
+                  target.result = data.result;
+                  target.tokens = data.tokens;
+                  target.agent_name = data.agent_name || target.agent_name;
+                  target.description = data.description || target.description;
+                  const completed = steps.filter(s => s.status === 'completed').length;
+                  assistantMsg.content = `协作中... (${completed}/${steps.length} 完成)`;
+                },
+                subtask_failed: () => {
+                  const step = stepMap.get(data.subtask_id);
+                  step && (step.status = 'failed', step.error = data.error);
+                },
+                task_completed: () => {
+                  multiAgent!.finalResult = data.result || '';
+                  multiAgent!.totalTokens = { input: data.total_input_tokens || 0, output: data.total_output_tokens || 0 };
+                  multiAgent!.creditCost = data.total_credit_cost || 0;
+                  assistantMsg.content = data.result || '';
+                  assistantMsg.multi_agent = { ...multiAgent!, steps: [...steps] };
+                },
+                task_failed: () => {
+                  assistantMsg.content = `[Error] ${data.error}`;
+                },
+              };
+              handlers[eventType]?.();
+            } catch {}
+          }
+          return true;
+        })();
         
         setMessages(prev => {
           const newMsgs = [...prev];
-          newMsgs[newMsgs.length - 1] = { ...assistantMsg };
+          // In SSE mode, always attach multi_agent data for live rendering
+          const updated = { ...assistantMsg };
+          if (multiAgent) {
+            updated.multi_agent = { ...multiAgent, steps: steps.map(s => ({ ...s })) };
+          }
+          newMsgs[newMsgs.length - 1] = updated;
           return newMsgs;
         });
       }
@@ -238,11 +333,15 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                         : "bg-muted text-foreground rounded-tl-sm"
                     )}>
                       {msg.role === 'assistant' ? (
-                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                          </ReactMarkdown>
-                        </div>
+                        msg.multi_agent ? (
+                          <MultiAgentSteps {...msg.multi_agent} />
+                        ) : (
+                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
+                        )
                       ) : (
                         <div className="whitespace-pre-wrap">{msg.content}</div>
                       )}

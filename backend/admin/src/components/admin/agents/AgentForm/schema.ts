@@ -13,6 +13,12 @@ export const agentFormSchema = z.object({
   tools: z.array(z.string()).optional(),
   input_credit_per_1k: z.number().min(0, "不能为负数").default(0),
   output_credit_per_1k: z.number().min(0, "不能为负数").default(0),
+  // Leader configuration
+  is_leader: z.boolean().optional().default(false),
+  coordination_modes: z.array(z.string()).optional().default([]),
+  member_agent_ids: z.array(z.string()).optional().default([]),
+  max_subtasks: z.number().min(1).max(20).optional().default(10),
+  enable_auto_review: z.boolean().optional().default(true),
 }).refine((data) => {
   if (data.tools_enabled && (!data.tools || data.tools.length === 0)) {
     return false;
@@ -21,6 +27,14 @@ export const agentFormSchema = z.object({
 }, {
   message: "启用工具时至少选择一个工具",
   path: ["tools"],
+}).refine((data) => {
+  if (data.is_leader && (!data.coordination_modes || data.coordination_modes.length === 0)) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Leader模式至少选择一种协作方式",
+  path: ["coordination_modes"],
 });
 
 export type AgentFormValues = z.infer<typeof agentFormSchema>;

@@ -11,6 +11,12 @@ export interface Agent {
   thinking_mode: boolean;
   input_credit_per_1k: number;
   output_credit_per_1k: number;
+  // Leader configuration
+  is_leader: boolean;
+  coordination_modes: string[];
+  member_agent_ids: string[];
+  max_subtasks: number;
+  enable_auto_review: boolean;
   created_at?: string;
   updated_at?: string;
 }

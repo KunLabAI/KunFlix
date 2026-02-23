@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from services import GameService
 from models import User, StoryChapter
-from routers import llm_config, admin as admin_router, agents, chats
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -91,6 +91,7 @@ app.include_router(llm_config.router)
 app.include_router(admin_router.router)
 app.include_router(agents.router)
 app.include_router(chats.router)
+app.include_router(orchestrate.router)
 
 
 @app.get("/")

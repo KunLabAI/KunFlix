@@ -5,10 +5,16 @@ export const AVAILABLE_TOOLS = [
   { label: 'Knowledge Base', value: 'knowledge_base' },
 ];
 
+export const COORDINATION_MODES = [
+  { label: 'Pipeline', value: 'pipeline', description: 'Sequential or parallel task execution' },
+  { label: 'Plan', value: 'plan', description: 'Task decomposition with dependencies' },
+  { label: 'Discussion', value: 'discussion', description: 'Multi-round discussion among agents' },
+];
+
 export const DEFAULT_AGENT_VALUES = {
   name: '',
   description: '',
-  provider_id: 0,
+  provider_id: '',
   model: '',
   system_prompt: '',
   temperature: 0.7,
@@ -16,4 +22,12 @@ export const DEFAULT_AGENT_VALUES = {
   thinking_mode: false,
   tools_enabled: false,
   tools: [],
+  input_credit_per_1k: 0,
+  output_credit_per_1k: 0,
+  // Leader defaults
+  is_leader: false,
+  coordination_modes: [],
+  member_agent_ids: [],
+  max_subtasks: 10,
+  enable_auto_review: true,
 };

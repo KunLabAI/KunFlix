@@ -152,6 +152,13 @@ class Agent(Base):
     input_credit_per_1k = Column(Float, default=0.0, nullable=False)   # 每1K输入tokens积分
     output_credit_per_1k = Column(Float, default=0.0, nullable=False)  # 每1K输出tokens积分
 
+    # Multi-Agent Orchestration (Leader Config)
+    is_leader = Column(Boolean, default=False)
+    coordination_modes = Column(JSON, default=[])  # ["pipeline", "plan", "discussion"]
+    member_agent_ids = Column(JSON, default=[])    # UUIDs of agents this leader can orchestrate
+    max_subtasks = Column(Integer, default=10)
+    enable_auto_review = Column(Boolean, default=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -175,3 +182,52 @@ class CreditTransaction(Base):
     description = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskExecution(Base):
+    """Multi-agent task execution record"""
+    __tablename__ = "task_executions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    leader_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
+
+    task_description = Column(Text, nullable=False)
+    coordination_mode = Column(String(20))  # auto, pipeline, plan, discussion
+    status = Column(String(20), default="pending", index=True)  # pending, running, completed, failed
+    result = Column(JSON)
+
+    total_input_tokens = Column(Integer, default=0)
+    total_output_tokens = Column(Integer, default=0)
+    total_credit_cost = Column(Float, default=0.0)
+    execution_metadata = Column(JSON, default={})
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SubTask(Base):
+    """Sub-task within a multi-agent task execution"""
+    __tablename__ = "subtasks"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    task_execution_id = Column(String(36), ForeignKey("task_executions.id"), nullable=False, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False)
+    parent_subtask_id = Column(String(36), ForeignKey("subtasks.id"), nullable=True)
+
+    description = Column(Text, nullable=False)
+    order_index = Column(Integer, default=0)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed
+
+    input_data = Column(JSON)
+    output_data = Column(JSON)
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    credit_cost = Column(Float, default=0.0)
+
+    retry_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
