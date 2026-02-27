@@ -1,3 +1,18 @@
+// ---------------------------------------------------------------------------
+// Gemini 3.1 配置类型
+// ---------------------------------------------------------------------------
+export interface GeminiImageConfig {
+  aspect_ratio?: "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | null;
+  image_size?: "4K" | "2K" | "auto" | null;
+}
+
+export interface GeminiConfig {
+  thinking_level?: "high" | "medium" | "low" | "minimal" | null;
+  media_resolution?: "ultra_high" | "high" | "medium" | "low" | null;
+  image_generation_enabled?: boolean;  // 图片生成开关
+  image_config?: GeminiImageConfig | null;
+}
+
 export interface Agent {
   id?: string;
   name: string;
@@ -17,6 +32,8 @@ export interface Agent {
   member_agent_ids: string[];
   max_subtasks: number;
   enable_auto_review: boolean;
+  // Gemini 3.1 配置
+  gemini_config?: GeminiConfig;
   created_at?: string;
   updated_at?: string;
 }
@@ -24,6 +41,7 @@ export interface Agent {
 export interface LLMProvider {
   id: string;
   name: string;
+  provider_type: string;
   models: string[] | string;
   is_active: boolean;
 }

@@ -156,6 +156,7 @@ class AgentExecutor:
             temperature=agent_config.temperature,
             context_window=agent_config.context_window,
             thinking_mode=agent_config.thinking_mode or False,
+            gemini_config=agent_config.gemini_config,
         ):
             yield chunk, result
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Literal
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +101,23 @@ class TestConnectionRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Gemini 3.1 配置 schemas
+# ---------------------------------------------------------------------------
+class GeminiImageConfig(BaseModel):
+    """Gemini 图片生成配置"""
+    aspect_ratio: Optional[Literal["16:9", "4:3", "1:1", "3:4", "9:16"]] = None
+    image_size: Optional[Literal["4K", "2K", "auto"]] = None
+
+
+class GeminiConfig(BaseModel):
+    """Gemini 3.1 配置 (thinking_level, media_resolution, image_config)"""
+    thinking_level: Optional[Literal["high", "medium", "low", "minimal"]] = None
+    media_resolution: Optional[Literal["ultra_high", "high", "medium", "low"]] = None
+    image_generation_enabled: bool = False  # 图片生成开关
+    image_config: Optional[GeminiImageConfig] = None
+
+
+# ---------------------------------------------------------------------------
 # Agent schemas
 # ---------------------------------------------------------------------------
 class AgentBase(BaseModel):
@@ -121,6 +138,8 @@ class AgentBase(BaseModel):
     member_agent_ids: List[str] = Field(default_factory=list)
     max_subtasks: int = Field(default=10, ge=1, le=20)
     enable_auto_review: bool = True
+    # Gemini 3.1 配置
+    gemini_config: Optional[GeminiConfig] = None
 
 
 class AgentCreate(AgentBase):
@@ -145,6 +164,8 @@ class AgentUpdate(BaseModel):
     member_agent_ids: Optional[List[str]] = None
     max_subtasks: Optional[int] = Field(None, ge=1, le=20)
     enable_auto_review: Optional[bool] = None
+    # Gemini 3.1 配置
+    gemini_config: Optional[GeminiConfig] = None
 
 
 class AgentResponse(AgentBase):
@@ -158,6 +179,11 @@ class AgentResponse(AgentBase):
     @classmethod
     def none_to_list(cls, v):
         return v or []
+
+    @field_validator('gemini_config', mode='before')
+    @classmethod
+    def none_to_gemini_config(cls, v):
+        return v or None
 
 
 # ---------------------------------------------------------------------------

@@ -6,9 +6,11 @@ import codecs
 # Fix for asyncpg on Windows
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # 修复Windows终端UTF-8编码问题
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'ignore')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'ignore')
+    # 修复Windows终端UTF-8编码问题（仅在buffer属性存在时）
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'ignore')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'ignore')
 
 # 配置日志 - 精细化控制
 logging.basicConfig(

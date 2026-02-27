@@ -159,8 +159,17 @@ class Agent(Base):
     max_subtasks = Column(Integer, default=10)
     enable_auto_review = Column(Boolean, default=True)
 
+    # Gemini 3.1 配置 (thinking_level, media_resolution, image_config)
+    gemini_config = Column(JSON, default=dict)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    @property
+    def effective_thinking_level(self) -> str | None:
+        """向后兼容：优先使用 gemini_config.thinking_level，否则根据 thinking_mode 返回"""
+        level = (self.gemini_config or {}).get("thinking_level")
+        return level or ("high" if self.thinking_mode else None)
 
 
 class CreditTransaction(Base):

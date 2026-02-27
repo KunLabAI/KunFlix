@@ -277,6 +277,7 @@ async def _generate_single_agent(
         temperature=agent.temperature,
         context_window=agent.context_window,
         thinking_mode=agent.thinking_mode,
+        gemini_config=agent.gemini_config,
     ):
         yield chunk
 

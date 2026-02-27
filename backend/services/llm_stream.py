@@ -19,6 +19,7 @@ class StreamContext:
     temperature: float
     context_window: int
     thinking_mode: bool
+    gemini_config: Dict[str, Any] | None = None  # Gemini 3.1 配置
 
 
 @dataclass
@@ -219,6 +220,15 @@ async def stream_dashscope(ctx: StreamContext, result: StreamResult) -> AsyncGen
 # Gemini 供应商
 # ============================================================
 
+# Gemini 3.1 配置映射表 (避免 if-else 条件)
+GEMINI_THINKING_LEVELS = {"high": "HIGH", "medium": "MEDIUM", "low": "LOW", "minimal": "MINIMAL"}
+GEMINI_MEDIA_RESOLUTIONS = {
+    "ultra_high": "media_resolution_ultra_high",
+    "high": "media_resolution_high",
+    "medium": "media_resolution_medium",
+    "low": "media_resolution_low",
+}
+
 # Gemini 角色映射 (OpenAI -> Gemini)
 _GEMINI_ROLE_MAP = {"assistant": "model", "user": "user"}
 
@@ -238,43 +248,136 @@ def _format_gemini_messages(messages: list[dict]) -> tuple[list[dict], str]:
 
 @register_provider("gemini")
 async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """Gemini 流式调用（支持文本 + 图片）"""
+    """Gemini 流式调用（支持文本 + 图片 + Gemini 3.1 配置）"""
     from google import genai
+    from google.genai import types
     from services.media_utils import save_inline_image
 
-    client = genai.Client(api_key=ctx.api_key)
+    # 解析 Gemini 配置
+    gemini_cfg = ctx.gemini_config or {}
+    media_res = gemini_cfg.get("media_resolution")
+    
+    # API 版本控制：media_resolution 需要 v1alpha
+    http_options = {'api_version': 'v1alpha'} if media_res else None
+    client = genai.Client(api_key=ctx.api_key, http_options=http_options)
+    
     contents, system_instruction = _format_gemini_messages(ctx.messages)
 
-    config = {"temperature": ctx.temperature}
-    if system_instruction:
-        config["system_instruction"] = system_instruction
+    # 构建配置参数（使用映射表避免 if-else）
+    config_params = {"temperature": ctx.temperature}
+    system_instruction and config_params.update(system_instruction=system_instruction)
+    
+    # Gemini 图片生成与思考模式互斥（Gemini API 限制：两者不能同时启用）
+    img_enabled = gemini_cfg.get("image_generation_enabled")
+    img_cfg = gemini_cfg.get("image_config") or {}
+    thinking_level = gemini_cfg.get("thinking_level")
+    sdk_level = GEMINI_THINKING_LEVELS.get(thinking_level)
 
-    response = await client.aio.models.generate_content_stream(
-        model=ctx.model,
-        contents=contents,
-        config=config,
+    # response_modalities：图片模式 → ["TEXT","IMAGE"]，文本模式 → ["TEXT"]
+    config_params["response_modalities"] = ["TEXT", "IMAGE"] if img_enabled else ["TEXT"]
+
+    # 图片模式：始终传递 ImageConfig（SDK 会忽略 None 值，使用默认 1:1 / 1K）
+    # image_size 有效值：1K, 2K, 4K（前端 "auto" 映射为 None 让 SDK 使用默认值）
+    _VALID_IMAGE_SIZES = {"1K", "2K", "4K"}
+    raw_size = img_cfg.get("image_size")
+    img_enabled and config_params.update(
+        image_config=types.ImageConfig(
+            aspect_ratio=img_cfg.get("aspect_ratio"),
+            image_size=raw_size if raw_size in _VALID_IMAGE_SIZES else None
+        )
     )
 
-    async for chunk in response:
-        # 遍历 candidates -> content -> parts 提取文本和图片
-        for candidate in (getattr(chunk, 'candidates', None) or []):
+    # 思考模式：仅在图片生成关闭时生效（两者互斥，同时启用会导致死循环）
+    (not img_enabled) and sdk_level and config_params.update(
+        thinking_config=types.ThinkingConfig(thinking_level=sdk_level, include_thoughts=True)
+    )
+    # 互斥警告日志
+    img_enabled and sdk_level and logger.warning(
+        f"Gemini 限制：图片生成与思考模式互斥，已自动关闭思考模式 (thinking_level={thinking_level})"
+    )
+
+    # 详细日志：记录发送给 Gemini API 的完整配置
+    _ic = config_params.get('image_config')
+    _ic_str = (
+        f"aspect_ratio={getattr(_ic, 'aspect_ratio', None)}, image_size={getattr(_ic, 'image_size', None)}"
+        if _ic else "NOT SET"
+    )
+    logger.info(
+        f"Gemini API → model={ctx.model}, "
+        f"response_modalities={config_params.get('response_modalities')}, "
+        f"thinking={'ON(' + str(thinking_level) + ')' if 'thinking_config' in config_params else 'OFF'}, "
+        f"image={'ON' if img_enabled else 'OFF'}, "
+        f"image_config={{{_ic_str}}}, "
+        f"api_version={http_options.get('api_version', 'default') if http_options else 'default'}"
+    )
+
+    # ---- 响应处理 ----
+    # 图片模式：非流式调用（避免 aiohttp "Chunk too big"，图片二进制数据通常数 MB）
+    # 文本模式：流式调用（支持思考过程实时输出）
+
+    if img_enabled:
+        # 非流式：一次性获取完整响应（含图片数据）
+        response = await client.aio.models.generate_content(
+            model=ctx.model,
+            contents=contents,
+            config=types.GenerateContentConfig(**config_params),
+        )
+
+        for candidate in (getattr(response, 'candidates', None) or []):
             for part in (getattr(getattr(candidate, 'content', None), 'parts', None) or []):
-                # 文本 part
                 text = getattr(part, 'text', None)
                 if text:
                     result.full_response += text
                     yield text
 
-                # 图片 part (inline_data)
                 inline_data = getattr(part, 'inline_data', None)
                 if inline_data:
                     data = getattr(inline_data, 'data', None)
                     if data:
                         mime_type = getattr(inline_data, 'mime_type', 'image/png')
                         url = save_inline_image(mime_type, data)
+                        logger.info(f"Gemini image saved: {url} ({len(data)} bytes)")
                         md = f"\n\n![image]({url})\n\n"
                         result.full_response += md
                         yield md
+
+        usage = getattr(response, 'usage_metadata', None)
+        if usage:
+            result.input_tokens = getattr(usage, 'prompt_token_count', 0) or 0
+            result.output_tokens = (
+                (getattr(usage, 'total_token_count', 0) or 0)
+                - (getattr(usage, 'prompt_token_count', 0) or 0)
+            )
+        return
+
+    # 流式：文本模式（支持思考过程实时输出，不处理图片 inline_data）
+    response = await client.aio.models.generate_content_stream(
+        model=ctx.model,
+        contents=contents,
+        config=types.GenerateContentConfig(**config_params),
+    )
+
+    # 思考状态转换映射表：(当前状态, 新状态) -> 前缀
+    THINK_TRANSITIONS = {
+        (False, True): "<think>\n",   # 进入思考
+        (True, False): "</think>\n",  # 退出思考
+    }
+    in_thinking = False
+
+    async for chunk in response:
+        # 遍历 candidates -> content -> parts 提取文本
+        for candidate in (getattr(chunk, 'candidates', None) or []):
+            for part in (getattr(getattr(candidate, 'content', None), 'parts', None) or []):
+                text = getattr(part, 'text', None)
+                if text:
+                    is_thought = getattr(part, 'thought', False)
+                    prefix = THINK_TRANSITIONS.get((in_thinking, is_thought), "")
+
+                    output = prefix + text
+                    result.full_response += output
+                    yield output
+
+                    in_thinking = is_thought
 
         # Token 统计
         usage = getattr(chunk, 'usage_metadata', None)
@@ -284,6 +387,11 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                 (getattr(usage, 'total_token_count', 0) or 0)
                 - (getattr(usage, 'prompt_token_count', 0) or 0)
             )
+
+    # 流结束后，确保关闭思考标签
+    if in_thinking:
+        result.full_response += "</think>\n"
+        yield "</think>\n"
 
 
 # ============================================================
@@ -298,6 +406,7 @@ async def stream_completion(
     temperature: float,
     context_window: int,
     thinking_mode: bool = False,
+    gemini_config: Dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, StreamResult], None]:
     """
     统一的流式调用入口
@@ -314,6 +423,7 @@ async def stream_completion(
         temperature=temperature,
         context_window=context_window,
         thinking_mode=thinking_mode,
+        gemini_config=gemini_config,
     )
     result = StreamResult()
     
@@ -329,7 +439,10 @@ async def stream_completion(
         async for chunk in handler(ctx, result):
             yield chunk, result
     except Exception as e:
-        error_msg = f"Error generating response: {str(e)}"
-        result.full_response += error_msg
-        logger.error(f"LLM stream error: {error_msg}")
-        yield error_msg, result
+        error_str = str(e)
+        logger.error(f"LLM stream error: {error_str}")
+        
+        # 如果已有响应内容，静默处理（可能是流正常结束时的传输错误）
+        # 仅在没有内容时向用户显示错误
+        has_content = result.full_response.strip()
+        has_content or setattr(result, 'full_response', f"Error: {error_str}") or (yield result.full_response, result)

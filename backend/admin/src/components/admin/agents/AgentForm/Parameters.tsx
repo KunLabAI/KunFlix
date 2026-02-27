@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
 import {
   FormControl,
@@ -11,16 +11,60 @@ import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { LLMProvider } from '@/types';
 
-// I'll assume RadioGroup is available or use native input type="radio" styled, or shadcn RadioGroup.
-// I'll implement a simple button group for thinking mode or use ToggleGroup if available.
-// For now I'll use a simple flex container with buttons or just a Switch for boolean.
-// The original used Radio.Group with buttons.
+// Gemini 3.1 配置选项（使用映射表避免 if-else）
+const THINKING_LEVELS = [
+  { value: "high", label: "高 (High) - 深度推理" },
+  { value: "medium", label: "中 (Medium) - 平衡" },
+  { value: "low", label: "低 (Low) - 快速响应" },
+  { value: "minimal", label: "最小 (Minimal) - 仅Flash支持" },
+];
 
-const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
+const MEDIA_RESOLUTIONS = [
+  { value: "high", label: "高 - 图片1120 tokens" },
+  { value: "medium", label: "中 - 图片560 tokens" },
+  { value: "low", label: "低 - 图片280 tokens" },
+  { value: "ultra_high", label: "超高 - 最高精度 (v1alpha)" },
+];
+
+const ASPECT_RATIOS = [
+  { value: "16:9", label: "16:9 (宽屏)" },
+  { value: "4:3", label: "4:3 (标准)" },
+  { value: "1:1", label: "1:1 (方形)" },
+  { value: "3:4", label: "3:4 (竖屏)" },
+  { value: "9:16", label: "9:16 (手机)" },
+];
+
+const IMAGE_SIZES = [
+  { value: "auto", label: "自动" },
+  { value: "2K", label: "2K" },
+  { value: "4K", label: "4K (最高质量)" },
+];
+
+interface ParametersProps {
+  disabled?: boolean;
+  providers?: LLMProvider[];
+}
+
+const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const { control, watch } = useFormContext();
   const temperature = watch('temperature');
   const contextWindow = watch('context_window');
+  const providerId = watch('provider_id');
+
+  // 判断当前供应商是否为 Gemini
+  const isGeminiProvider = useMemo(() => {
+    const provider = providers?.find(p => p.id === providerId);
+    return provider?.provider_type?.toLowerCase() === 'gemini';
+  }, [providerId, providers]);
 
   // 格式化显示 context_window (如 128K)
   const formatContextWindow = (value: number) => {
@@ -53,6 +97,161 @@ const Parameters: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
          </div>
          <p className="text-xs text-muted-foreground">开启后，模型会在回答前进行思考过程（Chain of Thought）。</p>
       </div>
+
+      {/* Gemini 3.1 配置区块 - 仅在选择 Gemini 供应商时显示 */}
+      {isGeminiProvider && (
+        <div className="rounded-xl border bg-card p-5 shadow-sm border-blue-200 dark:border-blue-800">
+          <Label className="text-sm font-medium mb-4 block text-blue-600 dark:text-blue-400">Gemini 3.1 高级配置</Label>
+          <div className="space-y-4">
+            {/* 思考等级 */}
+            <FormField
+              control={control}
+              name="gemini_config.thinking_level"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel className="text-xs text-muted-foreground">思考等级</FormLabel>
+                    <FormControl>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || ""}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger className="w-48 bg-background">
+                          <SelectValue placeholder="选择等级" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {THINKING_LEVELS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* 媒体分辨率 */}
+            <FormField
+              control={control}
+              name="gemini_config.media_resolution"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel className="text-xs text-muted-foreground">媒体分辨率</FormLabel>
+                    <FormControl>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || ""}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger className="w-48 bg-background">
+                          <SelectValue placeholder="选择分辨率" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MEDIA_RESOLUTIONS.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="pt-2 border-t">
+              {/* 图片生成开关 */}
+              <div className="flex justify-between items-center mb-3">
+                <Label className="text-xs font-medium text-muted-foreground">图片生成</Label>
+                <FormField
+                  control={control}
+                  name="gemini_config.image_generation_enabled"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            checked={field.value || false}
+                            onCheckedChange={field.onChange}
+                            disabled={disabled}
+                          />
+                          <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
+                        </div>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              {/* 图片配置 - 仅在开启时显示 */}
+              {watch('gemini_config.image_generation_enabled') && (
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 宽高比 */}
+                  <FormField
+                    control={control}
+                    name="gemini_config.image_config.aspect_ratio"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">宽高比</FormLabel>
+                        <FormControl>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || ""}
+                            disabled={disabled}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="选择" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ASPECT_RATIOS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* 图片尺寸 */}
+                  <FormField
+                    control={control}
+                    name="gemini_config.image_config.image_size"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">图片尺寸</FormLabel>
+                        <FormControl>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || ""}
+                            disabled={disabled}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="选择" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {IMAGE_SIZES.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">这些配置仅对 Gemini 3.1 系列模型生效。</p>
+        </div>
+      )}
 
       <div className="rounded-xl border bg-card p-5 shadow-sm">
          <div className="mb-4">

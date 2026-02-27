@@ -62,6 +62,7 @@ export default function AgentForm({
       member_agent_ids: [],
       max_subtasks: 10,
       enable_auto_review: true,
+      gemini_config: null,
     },
   });
 
@@ -95,6 +96,7 @@ export default function AgentForm({
         member_agent_ids: initialValues.member_agent_ids || [],
         max_subtasks: Number(initialValues.max_subtasks) || 10,
         enable_auto_review: initialValues.enable_auto_review !== false,
+        gemini_config: initialValues.gemini_config || null,
       };
       console.log('[AgentForm] Resetting form with:', formData);
       
@@ -130,6 +132,7 @@ export default function AgentForm({
         member_agent_ids: [],
         max_subtasks: 10,
         enable_auto_review: true,
+        gemini_config: null,
       });
       isFormInitialized.current = true;
     }
@@ -138,10 +141,11 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, ...rest } = values;
+      const { tools_enabled, gemini_config, ...rest } = values;
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
+        gemini_config: gemini_config || undefined,
       };
       
       await onSubmit(payload);
@@ -175,7 +179,7 @@ export default function AgentForm({
           <div className="lg:col-span-5 xl:col-span-4">
             <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto space-y-6 pb-4">
               <Section title="参数设置">
-                <Parameters disabled={loading} />
+                <Parameters disabled={loading} providers={activeProviders || []} />
               </Section>
               <Section title="工具能力">
                 <Tools disabled={loading} />
@@ -200,7 +204,7 @@ export default function AgentForm({
             
             <div className="h-px bg-border"></div>
 
-            <Parameters disabled={loading} />
+            <Parameters disabled={loading} providers={activeProviders || []} />
 
             <div className="h-px bg-border"></div>
 
