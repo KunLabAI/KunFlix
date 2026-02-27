@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown } from 'lucide-react';
+import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown, ImagePlus, X } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { fetcher } from '@/lib/api-utils';
@@ -36,9 +36,16 @@ interface ChatSession {
 interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | Array<{type: string; text?: string; image_url?: {url: string}}>;
   created_at?: string;
   multi_agent?: MultiAgentData;
+}
+
+// 图片附件类型
+interface ImageAttachment {
+  id: string;
+  dataUrl: string;
+  name: string;
 }
 
 export default function ChatInterface({ agentId }: ChatInterfaceProps) {
@@ -46,7 +53,9 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [images, setImages] = useState<ImageAttachment[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: sessions, isLoading: sessionsLoading } = useSWR(
@@ -104,12 +113,45 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || !selectedSessionId || isStreaming) return;
+  // 图片上传处理
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        dataUrl && setImages(prev => [...prev, {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          dataUrl,
+          name: file.name
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // 清空 input 以便重复选择同一文件
+    e.target.value = '';
+  };
 
-    const userMsg: ChatMessage = { role: 'user', content: inputValue };
+  const removeImage = (id: string) => setImages(prev => prev.filter(img => img.id !== id));
+
+  const handleSendMessage = async () => {
+    if ((!inputValue.trim() && images.length === 0) || !selectedSessionId || isStreaming) return;
+
+    // 构建消息内容：纯文本或多模态
+    const content = images.length === 0 
+      ? inputValue 
+      : [
+          ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img.dataUrl } })),
+          ...(inputValue.trim() ? [{ type: 'text' as const, text: inputValue }] : [])
+        ];
+
+    const userMsg: ChatMessage = { role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
+    setImages([]);
     setIsStreaming(true);
 
     try {
@@ -346,12 +388,37 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                         ) : (
                           <div className="prose prose-sm dark:prose-invert max-w-none break-words">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {msg.content}
+                              {typeof msg.content === 'string' ? msg.content : ''}
                             </ReactMarkdown>
                           </div>
                         )
                       ) : (
-                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                        <div className="space-y-2">
+                          {/* 渲染用户消息：支持纯文本和多模态 */}
+                          {typeof msg.content === 'string' ? (
+                            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                          ) : (
+                            <>
+                              {/* 图片 */}
+                              {msg.content.filter(p => p.type === 'image_url').length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {msg.content.filter(p => p.type === 'image_url').map((p, i) => (
+                                    <img 
+                                      key={i} 
+                                      src={p.image_url?.url} 
+                                      alt="uploaded" 
+                                      className="max-w-[200px] max-h-[200px] rounded-lg object-cover"
+                                    />
+                                  ))}
+                                </div>
+                              )}
+                              {/* 文本 */}
+                              {msg.content.filter(p => p.type === 'text').map((p, i) => (
+                                <div key={i} className="whitespace-pre-wrap break-words">{p.text}</div>
+                              ))}
+                            </>
+                          )}
+                        </div>
                       )}
                     </div>
 
@@ -369,18 +436,61 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
             {/* Input Area */}
             <div className="p-4 border-t bg-background">
                <div className="relative max-w-3xl mx-auto">
+                 {/* 图片预览区 */}
+                 {images.length > 0 && (
+                   <div className="flex flex-wrap gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
+                     {images.map(img => (
+                       <div key={img.id} className="relative group">
+                         <img src={img.dataUrl} alt={img.name} className="h-16 w-16 object-cover rounded-md" />
+                         <button
+                           onClick={() => removeImage(img.id)}
+                           className="absolute -top-1 -right-1 h-5 w-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                         >
+                           <X className="h-3 w-3" />
+                         </button>
+                       </div>
+                     ))}
+                   </div>
+                 )}
+                 
+                 {/* 隐藏的文件输入 */}
+                 <input
+                   ref={fileInputRef}
+                   type="file"
+                   accept="image/*"
+                   multiple
+                   onChange={handleImageUpload}
+                   className="hidden"
+                 />
+                 
                  <Textarea 
                    value={inputValue}
                    onChange={(e) => setInputValue(e.target.value)}
                    onKeyDown={handleKeyDown}
                    placeholder="输入消息..."
-                   className="min-h-[60px] pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors"
+                   className="min-h-[60px] pl-12 pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors"
                  />
+                 
+                 {/* 图片上传按钮 */}
+                 <div className="absolute left-2 bottom-3">
+                   <Button
+                     type="button"
+                     variant="ghost"
+                     size="icon"
+                     onClick={() => fileInputRef.current?.click()}
+                     disabled={isStreaming}
+                     className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                     title="上传图片"
+                   >
+                     <ImagePlus className="h-4 w-4" />
+                   </Button>
+                 </div>
+                 
                  <div className="absolute right-2 bottom-3">
                    <Button 
                      size="icon"
                      onClick={handleSendMessage}
-                     disabled={!inputValue.trim() || isStreaming}
+                     disabled={(!inputValue.trim() && images.length === 0) || isStreaming}
                      className="h-8 w-8 rounded-lg shadow-sm"
                    >
                      {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

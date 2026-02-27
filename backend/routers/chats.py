@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List, Optional
+from typing import List, Optional, Any
 import logging
+import json
 
 from database import get_db, AsyncSessionLocal
 from models import Agent, ChatSession, ChatMessage, LLMProvider, User, CreditTransaction
@@ -13,6 +14,21 @@ from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_content(content: Any) -> str:
+    """序列化消息内容：列表转 JSON 字符串，字符串保持原样"""
+    return json.dumps(content, ensure_ascii=False) if isinstance(content, list) else str(content)
+
+
+def _deserialize_content(content: str) -> Any:
+    """反序列化消息内容：尝试解析 JSON，失败则返回原字符串"""
+    try:
+        parsed = json.loads(content)
+        return parsed if isinstance(parsed, list) else content
+    except (json.JSONDecodeError, TypeError):
+        return content
+
 
 router = APIRouter(
     prefix="/api/chats",
@@ -76,7 +92,7 @@ async def get_session(
     return session
 
 
-@router.get("/{session_id}/messages", response_model=List[ChatMessageResponse])
+@router.get("/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
     current_user: User = Depends(get_current_active_user),
@@ -93,7 +109,12 @@ async def get_session_messages(
         .filter(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc())
     )
-    return result.scalars().all()
+    # 反序列化多模态消息内容
+    return [
+        {"id": msg.id, "session_id": msg.session_id, "role": msg.role, 
+         "content": _deserialize_content(msg.content), "created_at": msg.created_at}
+        for msg in result.scalars().all()
+    ]
 
 
 @router.post("/{session_id}/messages")
@@ -115,8 +136,8 @@ async def send_message(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # 2. 保存用户消息
-    user_msg = ChatMessage(session_id=session_id, role="user", content=message.content)
+    # 2. 保存用户消息（多模态内容序列化为 JSON）
+    user_msg = ChatMessage(session_id=session_id, role="user", content=_serialize_content(message.content))
     db.add(user_msg)
     await db.commit()
 
@@ -172,7 +193,7 @@ async def _generate_multi_agent(
     history_messages = []
     for msg in history[:-1]:
         role = msg.role if msg.role in ["user", "assistant"] else "user"
-        history_messages.append({"role": role, "content": msg.content})
+        history_messages.append({"role": role, "content": _deserialize_content(msg.content)})
 
     orchestrator = DynamicOrchestrator(db)
     coordination_mode = (agent.coordination_modes or ["pipeline"])[0]
@@ -252,9 +273,11 @@ async def _generate_single_agent(
 
     for msg in history:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
-        messages.append({"role": role, "content": msg.content})
+        messages.append({"role": role, "content": _deserialize_content(msg.content)})
 
-    input_chars = sum(len(m['content']) for m in messages)
+    # 计算输入字符数（兼容多模态消息）
+    def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
+    input_chars = sum(_content_len(m['content']) for m in messages)
 
     # 日志输出
     logger.info(f"\n{'='*60}")

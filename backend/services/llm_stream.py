@@ -233,16 +233,64 @@ GEMINI_MEDIA_RESOLUTIONS = {
 _GEMINI_ROLE_MAP = {"assistant": "model", "user": "user"}
 
 
-def _format_gemini_messages(messages: list[dict]) -> tuple[list[dict], str]:
-    """将 OpenAI 格式消息转换为 Gemini contents + system_instruction"""
-    system_parts = []
-    contents = []
+def _parse_data_url(data_url: str) -> tuple[str, bytes]:
+    """解析 data URL 格式: data:image/png;base64,xxxx → (mime_type, bytes)"""
+    import base64
+    parts = data_url.split(",", 1)
+    return (
+        (parts[0].replace("data:", "").split(";")[0], base64.b64decode(parts[1]))
+        if len(parts) == 2 else ("image/png", b"")
+    )
+
+
+def _content_part_to_gemini(part: dict):
+    """将 OpenAI 格式的内容部分转换为 Gemini Part
+    
+    输入格式：
+    - {"type": "text", "text": "..."} 
+    - {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+    """
+    from google.genai import types
+    
+    part_type = part.get("type", "")
+    
+    # 文本
+    text = part.get("text")
+    return {"text": text} if part_type == "text" and text else (
+        # 图片 (data URL)
+        types.Part.from_bytes(data=img_data[1], mime_type=img_data[0])
+        if part_type == "image_url" 
+           and (img_url := part.get("image_url", {}).get("url", ""))
+           and img_url.startswith("data:")
+           and (img_data := _parse_data_url(img_url))[1]
+        else None
+    )
+
+
+def _format_gemini_messages(messages: list[dict]) -> tuple[list, str]:
+    """将 OpenAI 格式消息转换为 Gemini contents + system_instruction
+    
+    支持多模态消息格式：
+    - 纯文本: {"role": "user", "content": "hello"}
+    - 多模态: {"role": "user", "content": [{"type": "text", "text": "..."}, {"type": "image_url", ...}]}
+    """
+    system_parts, contents = [], []
+    
     for m in messages:
-        role = m["role"]
-        system_parts.append(m["content"]) if role == "system" else contents.append({
-            "role": _GEMINI_ROLE_MAP.get(role, "user"),
-            "parts": [{"text": m["content"]}],
-        })
+        role, content = m["role"], m["content"]
+        
+        # system 消息
+        (role == "system") and system_parts.append(content if isinstance(content, str) else str(content))
+        
+        # user/assistant 消息：构建 parts
+        parts = (
+            [{"text": content}] if isinstance(content, str) else
+            [p for item in content if (p := _content_part_to_gemini(item) if isinstance(item, dict) else {"text": str(item)})]
+        ) if role != "system" else []
+        
+        # 添加非空消息
+        parts and contents.append({"role": _GEMINI_ROLE_MAP.get(role, "user"), "parts": parts})
+    
     return contents, "\n".join(system_parts)
 
 

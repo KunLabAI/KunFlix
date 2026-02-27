@@ -209,7 +209,7 @@ class ChatSessionResponse(ChatSessionBase):
 
 class ChatMessageBase(BaseModel):
     role: str
-    content: str
+    content: Any  # str 或 List[Dict] (多模态消息: [{type: "text", text: "..."}, {type: "image_url", ...}])
 
 
 class ChatMessageCreate(ChatMessageBase):
