@@ -1,7 +1,14 @@
 import agentscope
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel
+from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel, OllamaChatModel
+from agentscope.formatter import (
+    OpenAIChatFormatter,
+    DashScopeChatFormatter,
+    AnthropicChatFormatter,
+    GeminiChatFormatter,
+    OllamaChatFormatter,
+)
 from config import settings
 from sqlalchemy.future import select
 from models import LLMProvider
@@ -11,61 +18,77 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _extract_response_text(response) -> str:
+    """从 ChatResponse 的 content blocks 中提取文本"""
+    content = getattr(response, 'content', None)
+    extractors = {
+        str: lambda c: c,
+        list: lambda c: "".join(
+            block.get("text", "") for block in c
+            if isinstance(block, dict) and block.get("type") == "text"
+        ),
+    }
+    return extractors.get(type(content), lambda c: str(c) if c else "")(content)
+
+
 class DialogAgent(AgentBase):
+    # Model type -> Formatter class (OpenAI as default fallback)
+    _FORMATTER_MAP = {
+        GeminiChatModel: GeminiChatFormatter,
+        DashScopeChatModel: DashScopeChatFormatter,
+        AnthropicChatModel: AnthropicChatFormatter,
+        OllamaChatModel: OllamaChatFormatter,
+    }
+
     def __init__(self, name: str, sys_prompt: str, model):
         super().__init__()
         self.name = name
         self.sys_prompt = sys_prompt
         self.model = model
         self.memory = []
+        # Resolve formatter based on model type
+        formatter_cls = self._FORMATTER_MAP.get(type(model), OpenAIChatFormatter)
+        self._formatter = formatter_cls()
 
     async def reply(self, x: Msg = None) -> Msg:
         if x:
             self.memory.append(x)
-        
-        # Prepare messages for model
-        messages = [{"role": "system", "content": self.sys_prompt}]
+
+        # Build Msg list with correct roles for formatter
+        msgs = [Msg(name="system", content=self.sys_prompt, role="system")]
         for m in self.memory:
-            role = "user"
-            if m.name == self.name:
-                role = "assistant"
-            elif m.role == "system":
-                role = "system"
-            messages.append({"role": role, "content": m.content})
-        
+            role = "assistant" if m.name == self.name else (m.role if m.role == "system" else "user")
+            msgs.append(Msg(name=m.name, content=m.content, role=role))
+
         # 计算输入字符数
-        input_chars = sum(len(m['content']) for m in messages)
-        
-        # Call model (handle sync, coroutine, and async_generator)
-        response = self.model(messages)
-        
-        # First: await coroutine if needed
+        input_chars = len(self.sys_prompt) + sum(
+            len(m.content) if isinstance(m.content, str) else 0 for m in self.memory
+        )
+
+        # Format -> Call -> Collect (formatter handles provider-specific conversion)
+        formatted = await self._formatter.format(msgs)
+        response = self.model(formatted)
+
         if asyncio.iscoroutine(response):
             response = await response
-        
-        # Second: consume async generator if needed (streaming response)
+
+        # Consume async generator (streaming)
         if hasattr(response, '__anext__'):
             chunks = []
             async for chunk in response:
                 chunks.append(chunk)
             response = chunks[-1] if chunks else None
-        
-        # Extract content (handle various response formats safely)
-        content = ""
-        try:
-            content = response.text
-        except (AttributeError, KeyError, TypeError):
-            try:
-                content = response.content
-            except (AttributeError, KeyError, TypeError):
-                content = str(response) if response else ""
-        
-        # 从response.usage提取真实token统计
+
+        # Extract text from ChatResponse content blocks
+        content = _extract_response_text(response)
+
+        # 从 response.usage 提取真实 API token 统计
         usage = getattr(response, 'usage', None)
         input_tokens = getattr(usage, 'input_tokens', 0) if usage else 0
         output_tokens = getattr(usage, 'output_tokens', 0) if usage else 0
-        
-        # 创建包含token统计的消息
+
+        # 创建包含双维度统计的消息
         res_msg = Msg(
             name=self.name,
             content=content,
@@ -149,7 +172,7 @@ class NarrativeEngine:
             provider_type_lower = provider_type.lower()
             
             # 供应商类型映射到模型类和配置
-            openai_compatible = ["openai", "azure", "deepseek"]
+            openai_compatible = ["openai", "azure", "deepseek", "vllm"]
             anthropic_compatible = ["anthropic", "minimax"]
             
             # 默认 base_url 配置
@@ -166,6 +189,7 @@ class NarrativeEngine:
             model_creators = {
                 "dashscope": lambda: DashScopeChatModel(model_name=model_name, api_key=api_key),
                 "gemini": lambda: GeminiChatModel(model_name=model_name, api_key=api_key),
+                "ollama": lambda: OllamaChatModel(model_name=model_name, host=effective_base_url),
             }
             
             # 检查是否有直接匹配的创建器

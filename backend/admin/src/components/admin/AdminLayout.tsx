@@ -1,10 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
 import {
@@ -13,11 +11,10 @@ import {
   Zap,
   Users,
   BookOpen,
-  Menu,
   ChevronLeft,
   ChevronRight,
   LogOut,
-  User
+  MoreHorizontal
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -77,12 +74,24 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           collapsed ? "w-14" : "w-64"
         )}
       >
-        <div className={cn("flex h-14 items-center border-b px-4 lg:h-[60px]", collapsed ? "justify-center" : "gap-2")}>
-          <div className="flex items-center gap-2 font-semibold">
-            <span className={cn("text-lg transition-all", collapsed && "hidden")}>Infinite Game</span>
-            {collapsed && <span className="text-lg">IG</span>}
-          </div>
+        <div className={cn("flex h-14 items-center border-b px-3 lg:h-[60px]", collapsed ? "justify-center" : "justify-between")}>
+          {!collapsed && (
+            <div className="flex items-center gap-2 font-semibold truncate">
+              <span className="text-lg ml-2">Infinite Game</span>
+            </div>
+          )}
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn("h-8 w-8", collapsed ? "" : "")}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            <span className="sr-only">Toggle Menu</span>
+          </Button>
         </div>
+        
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             {items.map((item) => {
@@ -105,45 +114,40 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             })}
           </nav>
         </div>
-        <div className="mt-auto p-4">
-           {/* Footer content if needed */}
+        
+        <div className="mt-auto p-4 border-t">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className={cn("w-full justify-start pl-0 hover:bg-muted", collapsed && "justify-center px-0")}>
+                <div className="flex items-center gap-2 w-full">
+                   <Avatar className="h-8 w-8">
+                      <AvatarImage src="/avatars/01.png" alt="@admin" />
+                      <AvatarFallback>AD</AvatarFallback>
+                   </Avatar>
+                   {!collapsed && (
+                     <div className="flex flex-col items-start text-xs flex-1 min-w-0">
+                       <span className="font-medium truncate w-full text-left">{user?.nickname || '管理员'}</span>
+                       <span className="text-muted-foreground truncate w-full text-left">admin@infinitegame.com</span>
+                     </div>
+                   )}
+                   {!collapsed && <MoreHorizontal className="h-4 w-4 text-muted-foreground ml-auto" />}
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" side="right" className="w-56" sideOffset={10}>
+                <DropdownMenuLabel>{user?.nickname || '我的账户'}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={logout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>退出登录</span>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
 
       <div className={cn("flex flex-col sm:pl-64 transition-all duration-300 w-full h-full overflow-hidden", collapsed && "sm:pl-14")}>
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-          <Button
-            variant="outline"
-            size="icon"
-            className="hidden sm:flex"
-            onClick={() => setCollapsed(!collapsed)}
-          >
-            {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
-            <span className="sr-only">Toggle Menu</span>
-          </Button>
-          
-          {/* Mobile Menu Trigger could be added here for mobile view */}
-
-          <div className="ml-auto flex items-center gap-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon" className="rounded-full">
-                  <User className="h-5 w-5" />
-                  <span className="sr-only">Toggle user menu</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>{user?.nickname || '我的账户'}</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>退出登录</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
-        <main className="flex-1 min-h-0 p-4 sm:px-6 sm:py-0 md:gap-8 lg:py-4 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 sm:px-6 sm:py-6 md:gap-8 overflow-auto">
           {children}
         </main>
       </div>

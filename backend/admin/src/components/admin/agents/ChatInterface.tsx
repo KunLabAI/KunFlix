@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2 } from 'lucide-react';
+import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { fetcher } from '@/lib/api-utils';
@@ -12,6 +12,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from '@/lib/utils';
 import MultiAgentSteps, { type AgentStep, type MultiAgentData } from './MultiAgentSteps';
 
@@ -253,65 +259,67 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex h-full bg-background">
-      {/* Sidebar - Session List */}
-      <div className="w-64 border-r flex flex-col bg-muted/30">
-        <div className="p-4 border-b flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">对话历史</span>
+    <div className="flex flex-col h-full bg-background relative">
+      {/* Header */}
+      <div className="h-12 border-b flex items-center justify-between px-4 shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
+        <div className="flex items-center gap-2 font-medium text-sm text-muted-foreground">
+          <MessageSquare className="h-4 w-4" />
+          <span>预览对话</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 min-w-[140px] justify-between font-normal text-xs px-3">
+                <span className="truncate max-w-[100px]">
+                  {sessions?.find((s: ChatSession) => s.id === selectedSessionId)?.title || "选择对话"}
+                </span>
+                <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[200px]">
+              {sessionsLoading && <div className="p-2 text-xs text-center text-muted-foreground">Loading...</div>}
+              {sessions?.map((item: ChatSession) => (
+                <DropdownMenuItem 
+                  key={item.id} 
+                  onClick={() => setSelectedSessionId(item.id)}
+                  className="justify-between text-xs cursor-pointer group"
+                >
+                  <span className={cn("truncate flex-1", selectedSessionId === item.id && "font-medium")}>{item.title}</span>
+                  <div 
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-destructive/10 rounded transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSession(e, item.id);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              {(!sessions || sessions.length === 0) && (
+                <div className="text-center text-muted-foreground text-xs py-2">无历史记录</div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button 
             variant="ghost" 
-            size="sm" 
+            size="icon" 
             onClick={handleCreateSession}
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            title="新对话"
           >
             <Plus className="h-4 w-4" />
           </Button>
         </div>
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-1">
-            {sessionsLoading ? (
-               <div className="p-5 text-center text-muted-foreground text-sm">Loading...</div>
-            ) : (
-              <>
-                {sessions?.map((item: ChatSession) => (
-                  <div 
-                    key={item.id}
-                    onClick={() => setSelectedSessionId(item.id)}
-                    className={cn(
-                      "cursor-pointer px-3 py-2.5 rounded-lg text-sm transition-all group flex items-center justify-between",
-                      selectedSessionId === item.id 
-                        ? "bg-background shadow-sm text-foreground font-medium" 
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                    )}
-                  >
-                    <span className="truncate flex-1">{item.title}</span>
-                    {selectedSessionId === item.id && (
-                      <Button 
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
-                        onClick={(e) => handleDeleteSession(e, item.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                {(!sessions || sessions.length === 0) && (
-                  <div className="text-center text-muted-foreground text-xs py-8">无历史记录</div>
-                )}
-              </>
-            )}
-          </div>
-        </ScrollArea>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full relative">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-h-0 relative">
         {selectedSessionId ? (
           <>
-            <ScrollArea className="flex-1 p-6">
-              <div className="space-y-6 max-w-3xl mx-auto">
+            <ScrollArea className="flex-1 p-4 md:p-6">
+              <div className="space-y-6 max-w-3xl mx-auto pb-4">
                 {messages.length === 0 && (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground mt-20">
                     <Bot className="h-12 w-12 mb-4 opacity-20" />
@@ -327,23 +335,23 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                     )}
                     
                     <div className={cn(
-                      "max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed",
+                      "max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed shadow-sm",
                       msg.role === 'user' 
                         ? "bg-primary text-primary-foreground rounded-tr-sm" 
-                        : "bg-muted text-foreground rounded-tl-sm"
+                        : "bg-muted/50 border text-foreground rounded-tl-sm"
                     )}>
                       {msg.role === 'assistant' ? (
                         msg.multi_agent ? (
                           <MultiAgentSteps {...msg.multi_agent} />
                         ) : (
-                          <div className="prose prose-sm dark:prose-invert max-w-none">
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                               {msg.content}
                             </ReactMarkdown>
                           </div>
                         )
                       ) : (
-                        <div className="whitespace-pre-wrap">{msg.content}</div>
+                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                       )}
                     </div>
 
@@ -366,29 +374,33 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                    onChange={(e) => setInputValue(e.target.value)}
                    onKeyDown={handleKeyDown}
                    placeholder="输入消息..."
-                   className="min-h-[60px] pr-12 resize-none rounded-xl bg-muted/50 border-muted focus:bg-background transition-colors"
+                   className="min-h-[60px] pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors"
                  />
                  <div className="absolute right-2 bottom-3">
                    <Button 
                      size="icon"
                      onClick={handleSendMessage}
                      disabled={!inputValue.trim() || isStreaming}
-                     className="h-8 w-8 rounded-lg"
+                     className="h-8 w-8 rounded-lg shadow-sm"
                    >
                      {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                    </Button>
                  </div>
                </div>
                <div className="text-center mt-2">
-                 <span className="text-[10px] text-muted-foreground">AI 可能会生成不准确的信息，请核对重要事实。</span>
+                 <span className="text-[10px] text-muted-foreground/60">AI 可能会生成不准确的信息，请核对重要事实。</span>
                </div>
             </div>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/10">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
             <div className="flex flex-col items-center gap-2">
-              <Bot className="h-12 w-12 opacity-20" />
-              <p>选择或创建一个对话开始</p>
+              <Bot className="h-12 w-12 opacity-10" />
+              <p className="text-sm">选择或创建一个对话开始</p>
+              <Button variant="outline" size="sm" onClick={handleCreateSession} className="mt-4">
+                <Plus className="mr-2 h-4 w-4" />
+                创建新对话
+              </Button>
             </div>
           </div>
         )}

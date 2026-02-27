@@ -160,6 +160,20 @@ async def _generate_multi_agent(
     logger.info(f"Task: {content}")
     logger.info(f"{'='*60}\n")
 
+    # 获取历史消息（不包含刚发送的用户消息，因为已经commit了）
+    history_result = await db.execute(
+        select(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    history = history_result.scalars().all()
+    
+    # 构建历史消息列表（排除最后一条，即刚发送的用户消息）
+    history_messages = []
+    for msg in history[:-1]:
+        role = msg.role if msg.role in ["user", "assistant"] else "user"
+        history_messages.append({"role": role, "content": msg.content})
+
     orchestrator = DynamicOrchestrator(db)
     coordination_mode = (agent.coordination_modes or ["pipeline"])[0]
     
@@ -171,10 +185,11 @@ async def _generate_multi_agent(
         session_id=session_id,
         coordination_mode=coordination_mode,
         max_iterations=agent.max_subtasks or 5,
-        enable_review=agent.enable_auto_review or False
+        enable_review=agent.enable_auto_review or False,
+        history_messages=history_messages
     ):
-        # 记录事件
-        logger.info(f"[Orchestration] {event.event_type}: {event.data}")
+        # 记录事件（过滤高频chunk事件）
+        event.event_type != "subtask_chunk" and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
         
         # 保存最终结果用于存储助手消息
         if event.event_type == "task_completed":

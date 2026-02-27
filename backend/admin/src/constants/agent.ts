@@ -6,9 +6,9 @@ export const AVAILABLE_TOOLS = [
 ];
 
 export const COORDINATION_MODES = [
-  { label: 'Pipeline', value: 'pipeline', description: 'Sequential or parallel task execution' },
-  { label: 'Plan', value: 'plan', description: 'Task decomposition with dependencies' },
-  { label: 'Discussion', value: 'discussion', description: 'Multi-round discussion among agents' },
+  { label: '流水线', value: 'pipeline', description: '顺序或并行执行任务' },
+  { label: '计划', value: 'plan', description: '任务分解与依赖调度' },
+  { label: '讨论', value: 'discussion', description: '多智能体多轮讨论协作' },
 ];
 
 export const DEFAULT_AGENT_VALUES = {

@@ -10,7 +10,7 @@ import logging
 from models import Agent, LLMProvider
 from agents import DialogAgent
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel
+from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel, OllamaChatModel
 import agentscope
 from services.llm_stream import stream_completion, StreamResult
 
@@ -47,9 +47,10 @@ class ExecutionResult:
 MODEL_CREATORS = {
     "dashscope": lambda model_name, api_key, **_: DashScopeChatModel(model_name=model_name, api_key=api_key),
     "gemini": lambda model_name, api_key, **_: GeminiChatModel(model_name=model_name, api_key=api_key),
+    "ollama": lambda model_name, base_url=None, **_: OllamaChatModel(model_name=model_name, host=base_url),
 }
 
-OPENAI_COMPATIBLE = ["openai", "azure", "deepseek"]
+OPENAI_COMPATIBLE = ["openai", "azure", "deepseek", "vllm"]
 ANTHROPIC_COMPATIBLE = ["anthropic", "minimax"]
 
 DEFAULT_BASE_URLS = {
@@ -247,7 +248,7 @@ class AgentExecutor:
         # Check direct creator first
         creator = MODEL_CREATORS.get(provider_type)
         if creator:
-            return creator(model_name=model_name, api_key=api_key)
+            return creator(model_name=model_name, api_key=api_key, base_url=base_url)
         
         # Check Anthropic compatible
         is_anthropic = any(t in provider_type for t in ANTHROPIC_COMPATIBLE)

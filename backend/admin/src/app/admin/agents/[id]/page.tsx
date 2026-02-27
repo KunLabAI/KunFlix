@@ -95,9 +95,9 @@ export default function AgentDetailPage() {
       <Header title={agent?.name} subtitle={`ID: ${id}`} saving={saving} onSave={handleSave} onBack={() => router.push('/admin/agents')} />
       <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden h-full">
         {/* Left: Configuration */}
-        <div className="flex-1 lg:w-1/2 lg:flex-none xl:w-[45%] border-r flex flex-col min-h-0 h-full overflow-hidden">
+        <div className="flex-1 lg:flex-none xl:w-[30%] border-r flex flex-col min-h-0 h-full overflow-hidden">
           <ScrollArea className="h-full w-full">
-            <div className="p-6 lg:p-8 max-w-3xl mx-auto">
+            <div className="p-6  max-w-3xl mx-auto">
               <div className="flex items-center gap-2 mb-6 font-medium">
                 <Settings className="h-5 w-5" />
                 <span>配置</span>
@@ -107,17 +107,9 @@ export default function AgentDetailPage() {
           </ScrollArea>
         </div>
         {/* Right: Chat Preview */}
-        <div className="flex-1 bg-muted/20 p-4 min-h-0">
-          <div className="h-full bg-card rounded-xl border shadow-sm overflow-hidden flex flex-col">
-            <div className="h-12 border-b flex items-center px-4 shrink-0">
-              <span className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <MessageSquare className="h-4 w-4" />
-                预览对话
-              </span>
-            </div>
-            <div className="flex-1 min-h-0">
-              <ChatInterface agentId={id} />
-            </div>
+        <div className="flex-1 bg-muted/20 min-h-0">
+          <div className="h-full bg-card overflow-hidden flex flex-col">
+            <ChatInterface agentId={id} />
           </div>
         </div>
       </div>

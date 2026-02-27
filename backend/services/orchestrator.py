@@ -87,13 +87,15 @@ class CollaborationStrategy(ABC):
         executor: AgentExecutor,
         task_execution: TaskExecution,
         leader: Agent,
-        members: Dict[str, Agent]
+        members: Dict[str, Agent],
+        history_messages: Optional[List[Dict[str, str]]] = None
     ):
         self.db = db
         self.executor = executor
         self.task_execution = task_execution
         self.leader = leader
         self.members = members  # agent_id -> Agent
+        self.history_messages = history_messages or []
 
     @abstractmethod
     async def execute(
@@ -127,10 +129,13 @@ class CollaborationStrategy(ABC):
         subtask.status = "running"
         await self.db.flush()
 
+        # 构建消息列表：历史消息 + 当前任务
+        messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
+
         try:
             result = await self.executor.execute(
                 agent_id=subtask.agent_id,
-                messages=[{"role": "user", "content": input_content}],
+                messages=messages,
                 context={"subtask_id": subtask.id}
             )
 
@@ -178,11 +183,14 @@ class CollaborationStrategy(ABC):
             "agent_name": agent_name,
         })
 
+        # 构建消息列表：历史消息 + 当前任务
+        messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
+
         try:
             last_result: Optional[StreamResult] = None
             async for chunk, result in self.executor.execute_streaming(
                 agent_id=subtask.agent_id,
-                messages=[{"role": "user", "content": input_content}],
+                messages=messages,
                 context={"subtask_id": subtask.id}
             ):
                 last_result = result
@@ -571,7 +579,8 @@ class DynamicOrchestrator:
         session_id: Optional[str] = None,
         coordination_mode: str = "auto",
         max_iterations: int = 3,
-        enable_review: bool = True
+        enable_review: bool = True,
+        history_messages: Optional[List[Dict[str, str]]] = None
     ) -> AsyncGenerator[OrchestrationEvent, None]:
         """
         Execute a multi-agent task.
@@ -618,7 +627,8 @@ class DynamicOrchestrator:
                 executor=self.executor,
                 task_execution=task_execution,
                 leader=leader,
-                members=members
+                members=members,
+                history_messages=history_messages or []
             )
 
             async for event in strategy.execute(decomposition, task_description):

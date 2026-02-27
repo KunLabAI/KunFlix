@@ -10,6 +10,10 @@ from auth import require_admin
 from agents import narrative_engine
 import agentscope
 from agentscope.message import Msg
+from agentscope.model import (
+    OpenAIChatModel, DashScopeChatModel, AnthropicChatModel,
+    GeminiChatModel, OllamaChatModel,
+)
 import asyncio
 
 router = APIRouter(
@@ -18,109 +22,85 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
+# Default base URLs for specific providers
+_DEFAULT_BASE_URLS = {
+    "deepseek": "https://api.deepseek.com",
+    "minimax": "https://api.minimax.chat/v1",
+}
+
+# Azure uses "azure" client type, all others use "openai"
+_CLIENT_TYPE_MAP = {"azure": "azure"}
+
+
+def _build_client_kwargs(base_url: str | None, provider_type: str) -> dict:
+    """Build client_kwargs with provider-specific base_url fallback."""
+    kwargs = {}
+    if base_url:
+        kwargs["base_url"] = base_url
+    kwargs.setdefault("base_url", _DEFAULT_BASE_URLS.get(provider_type))
+    return kwargs
+
+
+def _create_test_model(provider_type: str, model: str, api_key: str,
+                       base_url: str | None, extra_config: dict):
+    """Create model instance for connection testing via factory dispatch."""
+    client_kwargs = _build_client_kwargs(base_url, provider_type)
+
+    # Anthropic-compatible factory (shared by anthropic & minimax)
+    def _anthropic():
+        return AnthropicChatModel(
+            model_name=model, api_key=api_key,
+            client_kwargs=client_kwargs, generate_kwargs=extra_config,
+        )
+
+    # Provider-specific factories
+    factories = {
+        "dashscope": lambda: DashScopeChatModel(
+            model_name=model, api_key=api_key, generate_kwargs=extra_config,
+        ),
+        "gemini": lambda: GeminiChatModel(
+            model_name=model, api_key=api_key, generate_kwargs=extra_config,
+        ),
+        "ollama": lambda: OllamaChatModel(
+            model_name=model, host=base_url,
+        ),
+        "anthropic": _anthropic,
+        "minimax": _anthropic,
+    }
+
+    factory = factories.get(provider_type)
+    # Found a specific factory -> use it; otherwise default to OpenAI-compatible
+    return factory() if factory else OpenAIChatModel(
+        model_name=model, api_key=api_key,
+        client_type=_CLIENT_TYPE_MAP.get(provider_type, "openai"),
+        client_kwargs=client_kwargs, generate_kwargs=extra_config,
+    )
+
+
 @router.post("/test-connection")
 async def test_connection(request: TestConnectionRequest, _admin: User = Depends(require_admin)):
     try:
-        # Initialize agentscope (logging etc)
         agentscope.init()
-        
-        provider_type = request.provider_type.lower()
-        model_instance = None
-        
-        # Parse config_json
-        extra_config = request.config_json or {}
-        
-        if provider_type in ["openai", "azure", "deepseek"]:
-            from agentscope.model import OpenAIChatModel
-            client_kwargs = {}
-            if request.base_url:
-                client_kwargs["base_url"] = request.base_url
-            
-            # deepseek 默认使用其官方 API 地址
-            default_base_urls = {
-                "deepseek": "https://api.deepseek.com"
-            }
-            client_kwargs.setdefault("base_url", default_base_urls.get(provider_type))
-            
-            # azure 使用 azure，其他使用 openai
-            client_type_map = {"azure": "azure"}
-            client_type = client_type_map.get(provider_type, "openai")
-            
-            model_instance = OpenAIChatModel(
-                model_name=request.model,
-                api_key=request.api_key,
-                client_type=client_type,
-                client_kwargs=client_kwargs,
-                generate_kwargs=extra_config
-            )
-            
-        elif provider_type == "dashscope":
-            from agentscope.model import DashScopeChatModel
-            model_instance = DashScopeChatModel(
-                model_name=request.model,
-                api_key=request.api_key,
-                generate_kwargs=extra_config
-            )
-            
-        elif provider_type in ["anthropic", "minimax"]:
-            from agentscope.model import AnthropicChatModel
-            client_kwargs = {}
-            if request.base_url:
-                client_kwargs["base_url"] = request.base_url
-            
-            # minimax 默认使用其官方 API 地址
-            default_base_urls = {
-                "minimax": "https://api.minimax.chat/v1"
-            }
-            client_kwargs.setdefault("base_url", default_base_urls.get(provider_type))
-            
-            model_instance = AnthropicChatModel(
-                model_name=request.model,
-                api_key=request.api_key,
-                client_kwargs=client_kwargs,
-                generate_kwargs=extra_config
-            )
-            
-        elif provider_type == "gemini":
-            from agentscope.model import GeminiChatModel
-            model_instance = GeminiChatModel(
-                model_name=request.model,
-                api_key=request.api_key,
-                generate_kwargs=extra_config
-            )
-        
-        else:
-             # Default fallback to OpenAI compatible
-             from agentscope.model import OpenAIChatModel
-             client_kwargs = {}
-             if request.base_url:
-                 client_kwargs["base_url"] = request.base_url
-             
-             model_instance = OpenAIChatModel(
-                model_name=request.model,
-                api_key=request.api_key,
-                client_kwargs=client_kwargs,
-                generate_kwargs=extra_config
-            )
 
-        # Create a simple agent
-        # Use the DialogAgent we fixed earlier
+        provider_type = request.provider_type.lower()
+        extra_config = request.config_json or {}
+
+        model_instance = _create_test_model(
+            provider_type, request.model, request.api_key,
+            request.base_url, extra_config,
+        )
+
         from agents import DialogAgent as MyDialogAgent
-        
         agent = MyDialogAgent(name="Tester", sys_prompt="You are a connection tester.", model=model_instance)
-        
-        # Send a simple message
+
         msg = Msg(name="User", content="Hello", role="user")
-        # AgentBase.__call__ is async in newer agentscope versions
         response = agent(msg)
         if asyncio.iscoroutine(response):
             response = await response
-        
-        # Ensure content is string and safe for JSON serialization
+
         response_content = str(response.content) if response.content is not None else ""
-        
         return {"success": True, "message": "Connection successful", "response": response_content}
-        
+
     except Exception as e:
         import traceback
         traceback.print_exc()

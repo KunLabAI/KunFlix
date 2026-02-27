@@ -218,12 +218,72 @@ async def stream_dashscope(ctx: StreamContext, result: StreamResult) -> AsyncGen
 # ============================================================
 # Gemini 供应商
 # ============================================================
+
+# Gemini 角色映射 (OpenAI -> Gemini)
+_GEMINI_ROLE_MAP = {"assistant": "model", "user": "user"}
+
+
+def _format_gemini_messages(messages: list[dict]) -> tuple[list[dict], str]:
+    """将 OpenAI 格式消息转换为 Gemini contents + system_instruction"""
+    system_parts = []
+    contents = []
+    for m in messages:
+        role = m["role"]
+        system_parts.append(m["content"]) if role == "system" else contents.append({
+            "role": _GEMINI_ROLE_MAP.get(role, "user"),
+            "parts": [{"text": m["content"]}],
+        })
+    return contents, "\n".join(system_parts)
+
+
 @register_provider("gemini")
 async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """Gemini 流式调用 (TODO: 实现)"""
-    error_msg = "Gemini streaming not implemented yet."
-    result.full_response = error_msg
-    yield error_msg
+    """Gemini 流式调用（支持文本 + 图片）"""
+    from google import genai
+    from services.media_utils import save_inline_image
+
+    client = genai.Client(api_key=ctx.api_key)
+    contents, system_instruction = _format_gemini_messages(ctx.messages)
+
+    config = {"temperature": ctx.temperature}
+    if system_instruction:
+        config["system_instruction"] = system_instruction
+
+    response = await client.aio.models.generate_content_stream(
+        model=ctx.model,
+        contents=contents,
+        config=config,
+    )
+
+    async for chunk in response:
+        # 遍历 candidates -> content -> parts 提取文本和图片
+        for candidate in (getattr(chunk, 'candidates', None) or []):
+            for part in (getattr(getattr(candidate, 'content', None), 'parts', None) or []):
+                # 文本 part
+                text = getattr(part, 'text', None)
+                if text:
+                    result.full_response += text
+                    yield text
+
+                # 图片 part (inline_data)
+                inline_data = getattr(part, 'inline_data', None)
+                if inline_data:
+                    data = getattr(inline_data, 'data', None)
+                    if data:
+                        mime_type = getattr(inline_data, 'mime_type', 'image/png')
+                        url = save_inline_image(mime_type, data)
+                        md = f"\n\n![image]({url})\n\n"
+                        result.full_response += md
+                        yield md
+
+        # Token 统计
+        usage = getattr(chunk, 'usage_metadata', None)
+        if usage:
+            result.input_tokens = getattr(usage, 'prompt_token_count', 0) or 0
+            result.output_tokens = (
+                (getattr(usage, 'total_token_count', 0) or 0)
+                - (getattr(usage, 'prompt_token_count', 0) or 0)
+            )
 
 
 # ============================================================

@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from services import GameService
 from models import User, StoryChapter
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -73,6 +73,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Failed to load LLM config on startup: {e}")
     
+    # 确保媒体目录存在
+    from pathlib import Path
+    Path(__file__).resolve().parent.joinpath("media").mkdir(exist_ok=True)
+    
     yield
 
 app = FastAPI(title="Infinite Narrative Game", lifespan=lifespan)
@@ -92,6 +96,7 @@ app.include_router(admin_router.router)
 app.include_router(agents.router)
 app.include_router(chats.router)
 app.include_router(orchestrate.router)
+app.include_router(media.router)
 
 
 @app.get("/")
