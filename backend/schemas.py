@@ -66,6 +66,7 @@ class LLMProviderBase(BaseModel):
     is_active: bool = True
     is_default: bool = False
     config_json: Dict[str, Any] = {}
+    model_costs: Dict[str, Dict[str, float]] = Field(default_factory=dict)  # Per-model API costs (USD)
 
 
 class LLMProviderCreate(LLMProviderBase):
@@ -82,6 +83,7 @@ class LLMProviderUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
     config_json: Optional[Dict[str, Any]] = None
+    model_costs: Optional[Dict[str, Dict[str, float]]] = None
 
 
 class LLMProviderResponse(LLMProviderBase):
@@ -115,6 +117,7 @@ class GeminiConfig(BaseModel):
     media_resolution: Optional[Literal["ultra_high", "high", "medium", "low"]] = None
     image_generation_enabled: bool = False  # 图片生成开关
     image_config: Optional[GeminiImageConfig] = None
+    google_search_enabled: bool = False  # Google 搜索开关
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +133,10 @@ class AgentBase(BaseModel):
     system_prompt: str
     tools: List[str] = Field(default_factory=list)
     thinking_mode: bool = False
-    input_credit_per_1k: float = Field(default=0.0, ge=0.0)
-    output_credit_per_1k: float = Field(default=0.0, ge=0.0)
+    input_credit_per_1m: float = Field(default=0.0, ge=0.0)
+    output_credit_per_1m: float = Field(default=0.0, ge=0.0)
+    image_output_credit_per_1m: float = Field(default=0.0, ge=0.0)
+    search_credit_per_query: float = Field(default=0.0, ge=0.0)
     # Leader configuration
     is_leader: bool = False
     coordination_modes: List[str] = Field(default_factory=list)  # ["pipeline", "plan", "discussion"]
@@ -156,8 +161,10 @@ class AgentUpdate(BaseModel):
     system_prompt: Optional[str] = None
     tools: Optional[List[str]] = None
     thinking_mode: Optional[bool] = None
-    input_credit_per_1k: Optional[float] = Field(None, ge=0.0)
-    output_credit_per_1k: Optional[float] = Field(None, ge=0.0)
+    input_credit_per_1m: Optional[float] = Field(None, ge=0.0)
+    output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
+    image_output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
+    search_credit_per_query: Optional[float] = Field(None, ge=0.0)
     # Leader configuration
     is_leader: Optional[bool] = None
     coordination_modes: Optional[List[str]] = None
@@ -303,5 +310,42 @@ class TaskExecutionResponse(BaseModel):
     subtasks: List[SubTaskResponse] = Field(default_factory=list)
     created_at: Any
     completed_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Subscription Plan schemas
+# ---------------------------------------------------------------------------
+class SubscriptionPlanBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    price_usd: float = Field(..., gt=0)
+    credits: float = Field(..., gt=0)
+    billing_period: Literal["monthly", "yearly", "lifetime"] = "monthly"
+    features: List[str] = Field(default_factory=list)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class SubscriptionPlanCreate(SubscriptionPlanBase):
+    pass
+
+
+class SubscriptionPlanUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    price_usd: Optional[float] = Field(None, gt=0)
+    credits: Optional[float] = Field(None, gt=0)
+    billing_period: Optional[Literal["monthly", "yearly", "lifetime"]] = None
+    features: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class SubscriptionPlanResponse(SubscriptionPlanBase):
+    id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
 
     model_config = ConfigDict(from_attributes=True)

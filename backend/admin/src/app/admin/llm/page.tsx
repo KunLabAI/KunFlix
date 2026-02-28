@@ -56,9 +56,17 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Pencil, Trash2, Plug, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Plug, X, ChevronDown, ChevronRight } from 'lucide-react';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
+
+// 成本维度映射表 (避免 if-else)
+const PRESET_COST_DIMENSIONS: Record<string, { label: string; unit: string }> = {
+  input:        { label: '输入',     unit: 'USD/1M tokens' },
+  text_output:  { label: '文本输出', unit: 'USD/1M tokens' },
+  image_output: { label: '图片输出', unit: 'USD/1M tokens' },
+  search:       { label: '搜索查询', unit: 'USD/次' },
+};
 
 const formSchema = z.object({
   name: z.string().min(1, "请输入名称"),
@@ -91,6 +99,7 @@ type LLMProvider = {
   base_url?: string;
   api_key?: string;
   config_json?: any;
+  model_costs?: Record<string, Record<string, number>>;
 };
 
 export default function LLMPage() {
@@ -98,6 +107,8 @@ export default function LLMPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>({});
+  const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -121,6 +132,8 @@ export default function LLMPage() {
 
   const handleAdd = () => {
     setEditingProvider(null);
+    setModelCosts({});
+    setExpandedModels({});
     form.reset({
       name: "",
       provider_type: "",
@@ -136,6 +149,8 @@ export default function LLMPage() {
 
   const handleEdit = (record: LLMProvider) => {
     setEditingProvider(record);
+    setModelCosts(record.model_costs || {});
+    setExpandedModels({});
     form.reset({
       name: record.name,
       provider_type: record.provider_type,
@@ -217,10 +232,20 @@ export default function LLMPage() {
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
+      const modelNames = values.models.map(m => m.value);
+      // 清理 modelCosts 中不在 models 列表中的孤立数据
+      const cleanedCosts: Record<string, Record<string, number>> = {};
+      modelNames.forEach(name => {
+        if (modelCosts[name]) {
+          cleanedCosts[name] = modelCosts[name];
+        }
+      });
+
       const submitValues = {
         ...values,
-        models: values.models.map(m => m.value),
-        config_json: JSON.parse(values.config_json || '{}')
+        models: modelNames,
+        config_json: JSON.parse(values.config_json || '{}'),
+        model_costs: cleanedCosts,
       };
 
       if (editingProvider) {
@@ -419,6 +444,141 @@ export default function LLMPage() {
                   <p className="text-sm font-medium text-destructive">{String(form.formState.errors.models.message)}</p>
                 )}
               </div>
+
+              {/* 模型成本配置 */}
+              {fields.length > 0 && fields.some(f => form.getValues(`models.${fields.indexOf(f)}.value`)) && (
+                <div className="space-y-2">
+                  <FormLabel>模型成本配置 (选填)</FormLabel>
+                  <p className="text-xs text-muted-foreground mb-2">为每个模型输入 API 成本 (USD)，用于智能体定价时参考。</p>
+                  {fields.map((field, index) => {
+                    const modelName = form.watch(`models.${index}.value`);
+                    if (!modelName) return null;
+                    const isExpanded = expandedModels[modelName] || false;
+                    const costs = modelCosts[modelName] || {};
+                    const customKeys = Object.keys(costs).filter(k => !(k in PRESET_COST_DIMENSIONS));
+
+                    return (
+                      <div key={field.id + '-cost'} className="rounded-lg border p-3">
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 w-full text-left text-sm font-medium"
+                          onClick={() => setExpandedModels(prev => ({ ...prev, [modelName]: !prev[modelName] }))}
+                        >
+                          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          <span className="font-mono">{modelName}</span>
+                          {Object.keys(costs).length > 0 && (
+                            <Badge variant="secondary" className="ml-auto text-xs">
+                              {Object.keys(costs).length} 项
+                            </Badge>
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              {Object.entries(PRESET_COST_DIMENSIONS).map(([dimKey, dimConfig]) => (
+                                <div key={dimKey} className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">{dimConfig.label} ({dimConfig.unit})</label>
+                                  <Input
+                                    type="number"
+                                    step="0.001"
+                                    min={0}
+                                    placeholder="0"
+                                    value={costs[dimKey] ?? ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setModelCosts(prev => {
+                                        const updated = { ...prev };
+                                        const modelEntry = { ...(updated[modelName] || {}) };
+                                        if (val === '' || val === '0') {
+                                          delete modelEntry[dimKey];
+                                        } else {
+                                          modelEntry[dimKey] = Number(val);
+                                        }
+                                        updated[modelName] = modelEntry;
+                                        return updated;
+                                      });
+                                    }}
+                                    className="font-mono h-8"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            {/* 自定义参数 */}
+                            {customKeys.map((customKey) => (
+                              <div key={customKey} className="flex gap-2 items-end">
+                                <div className="flex-1 space-y-1">
+                                  <label className="text-xs text-muted-foreground">参数名</label>
+                                  <Input value={customKey} disabled className="font-mono h-8" />
+                                </div>
+                                <div className="flex-1 space-y-1">
+                                  <label className="text-xs text-muted-foreground">成本 (USD)</label>
+                                  <Input
+                                    type="number"
+                                    step="0.001"
+                                    min={0}
+                                    value={costs[customKey] ?? ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setModelCosts(prev => {
+                                        const updated = { ...prev };
+                                        const modelEntry = { ...(updated[modelName] || {}) };
+                                        modelEntry[customKey] = Number(val);
+                                        updated[modelName] = modelEntry;
+                                        return updated;
+                                      });
+                                    }}
+                                    className="font-mono h-8"
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 shrink-0"
+                                  onClick={() => {
+                                    setModelCosts(prev => {
+                                      const updated = { ...prev };
+                                      const modelEntry = { ...(updated[modelName] || {}) };
+                                      delete modelEntry[customKey];
+                                      updated[modelName] = modelEntry;
+                                      return updated;
+                                    });
+                                  }}
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const name = prompt('输入自定义参数名 (英文, 如 reasoning_output)');
+                                if (!name || !name.match(/^[a-z_][a-z0-9_]*$/)) {
+                                  if (name) toast({ variant: "destructive", title: "参数名格式错误", description: "仅支持小写字母、数字和下划线" });
+                                  return;
+                                }
+                                if (name in PRESET_COST_DIMENSIONS || (costs[name] !== undefined)) {
+                                  toast({ variant: "destructive", title: "参数名已存在" });
+                                  return;
+                                }
+                                setModelCosts(prev => {
+                                  const updated = { ...prev };
+                                  updated[modelName] = { ...(updated[modelName] || {}), [name]: 0 };
+                                  return updated;
+                                });
+                              }}
+                            >
+                              <Plus className="mr-1 h-3 w-3" /> 添加自定义参数
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               <FormField
                 control={form.control}

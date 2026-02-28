@@ -11,6 +11,7 @@ import {
   Zap,
   Users,
   BookOpen,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -63,6 +64,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '故事管理',
       href: '/admin/stories',
       icon: BookOpen,
+    },
+    {
+      title: '订阅套餐',
+      href: '/admin/subscriptions',
+      icon: CreditCard,
     },
   ];
 

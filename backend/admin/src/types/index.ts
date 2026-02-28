@@ -11,6 +11,7 @@ export interface GeminiConfig {
   media_resolution?: "ultra_high" | "high" | "medium" | "low" | null;
   image_generation_enabled?: boolean;  // 图片生成开关
   image_config?: GeminiImageConfig | null;
+  google_search_enabled?: boolean;  // Google 搜索开关
 }
 
 export interface Agent {
@@ -24,8 +25,10 @@ export interface Agent {
   system_prompt: string;
   tools: string[];
   thinking_mode: boolean;
-  input_credit_per_1k: number;
-  output_credit_per_1k: number;
+  input_credit_per_1m: number;
+  output_credit_per_1m: number;
+  image_output_credit_per_1m: number;
+  search_credit_per_query: number;
   // Leader configuration
   is_leader: boolean;
   coordination_modes: string[];
@@ -44,6 +47,7 @@ export interface LLMProvider {
   provider_type: string;
   models: string[] | string;
   is_active: boolean;
+  model_costs?: Record<string, Record<string, number>>;
 }
 
 export interface AgentFormValues extends Omit<Agent, 'id' | 'created_at' | 'updated_at'> {
@@ -82,4 +86,21 @@ export interface AccessTokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+}
+
+// ---------------------------------------------------------------------------
+// Subscription Plan types
+// ---------------------------------------------------------------------------
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description?: string;
+  price_usd: number;
+  credits: number;
+  billing_period: 'monthly' | 'yearly' | 'lifetime';
+  features: string[];
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at?: string;
 }

@@ -15,7 +15,8 @@ import json
 import logging
 
 from models import Agent, TaskExecution, SubTask, User, CreditTransaction
-from services.agent_executor import AgentExecutor, ExecutionResult, calculate_credit_cost
+from services.agent_executor import AgentExecutor, ExecutionResult
+from services.billing import calculate_credit_cost
 from services.llm_stream import StreamResult
 
 logger = logging.getLogger(__name__)
@@ -145,14 +146,9 @@ class CollaborationStrategy(ABC):
             subtask.output_tokens = result.output_tokens
             subtask.completed_at = sa_func.now()
 
-            # Calculate credit cost
+            # Calculate credit cost (ExecutionResult 兼容：billing 自动回退)
             agent = self.members.get(subtask.agent_id)
-            subtask.credit_cost = calculate_credit_cost(
-                result.input_tokens,
-                result.output_tokens,
-                agent.input_credit_per_1k if agent else 0,
-                agent.output_credit_per_1k if agent else 0
-            )
+            subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
 
             await self.db.flush()
             return result
@@ -205,17 +201,17 @@ class CollaborationStrategy(ABC):
             output_tokens = last_result.output_tokens if last_result else 0
 
             subtask.status = "completed"
-            subtask.output_data = {"content": full_content}
+            subtask.output_data = {
+                "content": full_content,
+                "text_output_tokens": last_result.text_output_tokens,
+                "image_output_tokens": last_result.image_output_tokens,
+                "search_count": last_result.search_query_count,
+            }
             subtask.input_tokens = input_tokens
             subtask.output_tokens = output_tokens
             subtask.completed_at = sa_func.now()
 
-            subtask.credit_cost = calculate_credit_cost(
-                input_tokens,
-                output_tokens,
-                agent.input_credit_per_1k if agent else 0,
-                agent.output_credit_per_1k if agent else 0
-            )
+            subtask.credit_cost, _ = calculate_credit_cost(last_result, agent or self.leader)
             await self.db.flush()
 
             # Store result for caller to read after generator exhaustion
@@ -880,7 +876,13 @@ Provide a cohesive final result that integrates all outputs:"""
                     output_tokens=total_output,
                     metadata_json={
                         "task_execution_id": task_execution.id,
-                        "subtask_count": len(subtasks)
+                        "subtask_count": len(subtasks),
+                        "total_image_output_tokens": sum(
+                            (st.output_data or {}).get("image_output_tokens", 0) for st in subtasks
+                        ),
+                        "total_search_count": sum(
+                            (st.output_data or {}).get("search_count", 0) for st in subtasks
+                        ),
                     },
                     description=f"Multi-agent task: {task_execution.task_description[:100]}"
                 )

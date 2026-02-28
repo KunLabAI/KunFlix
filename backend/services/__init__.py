@@ -1,6 +1,7 @@
 from .llm_stream import stream_completion
 from .game import GameService
-from .agent_executor import AgentExecutor, ExecutionResult, calculate_credit_cost
+from .agent_executor import AgentExecutor, ExecutionResult
+from .billing import calculate_credit_cost
 from .orchestrator import DynamicOrchestrator, OrchestrationEvent
 
 __all__ = [

@@ -12,6 +12,7 @@ from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, C
 from auth import get_current_active_user, scoped_query
 from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
+from services.billing import calculate_credit_cost
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +144,12 @@ async def send_message(
 
     # 捕获上下文变量
     user_id = current_user.id
-    input_rate = agent.input_credit_per_1k
-    output_rate = agent.output_credit_per_1k
-    is_paid_agent = input_rate > 0 or output_rate > 0
+    is_paid_agent = (
+        agent.input_credit_per_1m > 0
+        or agent.output_credit_per_1m > 0
+        or agent.image_output_credit_per_1m > 0
+        or agent.search_credit_per_query > 0
+    )
 
     # 3. 积分预检查：付费智能体且余额不足则拒绝
     if is_paid_agent and (current_user.credits or 0) <= 0:
@@ -158,7 +162,7 @@ async def send_message(
     generator = (
         _generate_multi_agent(db, agent, message.content, user_id, session_id)
         if is_multi_agent else
-        _generate_single_agent(db, agent, message.content, user_id, session_id, input_rate, output_rate)
+        _generate_single_agent(db, agent, message.content, user_id, session_id)
     )
 
     media_type = "text/event-stream" if is_multi_agent else "text/plain"
@@ -247,8 +251,6 @@ async def _generate_single_agent(
     content: str,
     user_id: str,
     session_id: str,
-    input_rate: float,
-    output_rate: float
 ):
     """单智能体模式生成器"""
     # 获取历史消息
@@ -315,6 +317,7 @@ async def _generate_single_agent(
         if result.input_tokens > 0 or result.output_tokens > 0:
             total_tokens = result.input_tokens + result.output_tokens
             logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}")
+            logger.info(f"  text_out={result.text_output_tokens}, image_out={result.image_output_tokens}, search={result.search_query_count}")
             logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%")
         
         logger.info(f"{'='*60}\n")
@@ -345,11 +348,8 @@ async def _generate_single_agent(
                     u.total_input_chars = (u.total_input_chars or 0) + input_chars
                     u.total_output_chars = (u.total_output_chars or 0) + len(result.full_response)
 
-                    # 积分扣费
-                    credit_cost = (
-                        result.input_tokens / 1000 * input_rate
-                        + result.output_tokens / 1000 * output_rate
-                    )
+                    # 积分扣费（映射表驱动多维度计费）
+                    credit_cost, billing_metadata = calculate_credit_cost(result, agent)
                     if credit_cost > 0:
                         balance_before = u.credits or 0
                         u.credits = max(0, balance_before - credit_cost)
@@ -363,14 +363,9 @@ async def _generate_single_agent(
                             balance_after=u.credits,
                             input_tokens=result.input_tokens,
                             output_tokens=result.output_tokens,
-                            metadata_json={
-                                "agent_name": agent.name,
-                                "model": agent.model,
-                                "input_rate": input_rate,
-                                "output_rate": output_rate,
-                            },
+                            metadata_json=billing_metadata,
                         ))
-                        logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} → {u.credits:.2f})")
+                        logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {u.credits:.2f})")
 
                 await session.commit()
             except Exception as e:

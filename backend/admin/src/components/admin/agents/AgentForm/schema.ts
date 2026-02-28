@@ -11,6 +11,7 @@ const geminiConfigSchema = z.object({
   media_resolution: z.enum(["ultra_high", "high", "medium", "low"]).optional().nullable(),
   image_generation_enabled: z.boolean().optional().default(false),
   image_config: geminiImageConfigSchema,
+  google_search_enabled: z.boolean().optional().default(false),
 }).optional().nullable();
 
 export const agentFormSchema = z.object({
@@ -24,8 +25,10 @@ export const agentFormSchema = z.object({
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
-  input_credit_per_1k: z.number().min(0, "不能为负数").default(0),
-  output_credit_per_1k: z.number().min(0, "不能为负数").default(0),
+  input_credit_per_1m: z.number().min(0, "不能为负数").default(0),
+  output_credit_per_1m: z.number().min(0, "不能为负数").default(0),
+  image_output_credit_per_1m: z.number().min(0, "不能为负数").default(0),
+  search_credit_per_query: z.number().min(0, "不能为负数").default(0),
   // Leader configuration
   is_leader: z.boolean().optional().default(false),
   coordination_modes: z.array(z.string()).optional().default([]),

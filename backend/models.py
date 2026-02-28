@@ -101,6 +101,9 @@ class LLMProvider(Base):
 
     config_json = Column(JSON, default={})  # Extra config for AgentScope
 
+    # Per-model API costs in USD: {"model_name": {"input": 0.125, "text_output": 0.75, ...}}
+    model_costs = Column(JSON, default=dict)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -148,9 +151,11 @@ class Agent(Base):
     tools = Column(JSON, default=[])  # List of enabled tools
     thinking_mode = Column(Boolean, default=False)
 
-    # Credit pricing
-    input_credit_per_1k = Column(Float, default=0.0, nullable=False)   # 每1K输入tokens积分
-    output_credit_per_1k = Column(Float, default=0.0, nullable=False)  # 每1K输出tokens积分
+    # Credit pricing (per 1M tokens)
+    input_credit_per_1m = Column(Float, default=0.0, nullable=False)   # 每1M输入tokens积分
+    output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M输出tokens积分
+    image_output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M图像输出tokens积分
+    search_credit_per_query = Column(Float, default=0.0, nullable=False)     # 每次搜索查询积分
 
     # Multi-Agent Orchestration (Leader Config)
     is_leader = Column(Boolean, default=False)
@@ -240,3 +245,25 @@ class SubTask(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SubscriptionPlan(Base):
+    """Subscription plan configuration for credit packages"""
+    __tablename__ = "subscription_plans"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+
+    # Pricing
+    price_usd = Column(Float, nullable=False)       # 套餐价格 (USD)
+    credits = Column(Float, nullable=False)          # 包含积分数
+    billing_period = Column(String(20), default="monthly")  # monthly | yearly | lifetime
+
+    # Features & display
+    features = Column(JSON, default=[])              # ["特性1", "特性2", ...]
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)           # 前端排序展示
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

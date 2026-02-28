@@ -28,7 +28,10 @@ class StreamResult:
     full_response: str = ""
     reasoning_content: str = ""
     input_tokens: int = 0
-    output_tokens: int = 0
+    output_tokens: int = 0          # 总输出 tokens（保持兼容）
+    text_output_tokens: int = 0     # TEXT 模态输出 tokens
+    image_output_tokens: int = 0    # IMAGE 模态输出 tokens
+    search_query_count: int = 0     # Google Search 查询次数
 
 
 # 供应商默认 base_url 配置
@@ -229,8 +232,30 @@ GEMINI_MEDIA_RESOLUTIONS = {
     "low": "media_resolution_low",
 }
 
+# Gemini 模态 token 映射表
+_MODALITY_FIELDS = {"TEXT": "text_output_tokens", "IMAGE": "image_output_tokens"}
+
 # Gemini 角色映射 (OpenAI -> Gemini)
 _GEMINI_ROLE_MAP = {"assistant": "model", "user": "user"}
+
+
+def _parse_gemini_usage(usage_metadata, result: StreamResult):
+    """从 Gemini usage_metadata 解析分模态 token 统计，填充到 result"""
+    result.input_tokens = getattr(usage_metadata, 'prompt_token_count', 0) or 0
+
+    details = getattr(usage_metadata, 'candidates_tokens_details', None) or []
+    # 按模态累加 token（使用映射表避免 if 分支）
+    for item in details:
+        modality = str(getattr(item, 'modality', ''))
+        field = _MODALITY_FIELDS.get(modality)
+        field and setattr(result, field, getattr(result, field) + (getattr(item, 'token_count', 0) or 0))
+
+    # 总输出 = candidates_token_count 或 text + image 之和
+    candidates = getattr(usage_metadata, 'candidates_token_count', 0) or 0
+    result.output_tokens = candidates or (result.text_output_tokens + result.image_output_tokens)
+
+    # 无 details 时回退：全部视为 text
+    details or setattr(result, 'text_output_tokens', result.output_tokens)
 
 
 def _parse_data_url(data_url: str) -> tuple[str, bytes]:
@@ -344,6 +369,12 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
         f"Gemini 限制：图片生成与思考模式互斥，已自动关闭思考模式 (thinking_level={thinking_level})"
     )
 
+    # Google Search 工具配置
+    search_enabled = gemini_cfg.get("google_search_enabled", False)
+    search_enabled and config_params.update(
+        tools=[types.Tool(google_search=types.GoogleSearch())]
+    )
+
     # 详细日志：记录发送给 Gemini API 的完整配置
     _ic = config_params.get('image_config')
     _ic_str = (
@@ -355,6 +386,7 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
         f"response_modalities={config_params.get('response_modalities')}, "
         f"thinking={'ON(' + str(thinking_level) + ')' if 'thinking_config' in config_params else 'OFF'}, "
         f"image={'ON' if img_enabled else 'OFF'}, "
+        f"search={'ON' if search_enabled else 'OFF'}, "
         f"image_config={{{_ic_str}}}, "
         f"api_version={http_options.get('api_version', 'default') if http_options else 'default'}"
     )
@@ -390,12 +422,14 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                         yield md
 
         usage = getattr(response, 'usage_metadata', None)
-        if usage:
-            result.input_tokens = getattr(usage, 'prompt_token_count', 0) or 0
-            result.output_tokens = (
-                (getattr(usage, 'total_token_count', 0) or 0)
-                - (getattr(usage, 'prompt_token_count', 0) or 0)
-            )
+        usage and _parse_gemini_usage(usage, result)
+
+        # 统计搜索查询次数（保守策略：检测到 grounding_metadata 即计 1 次）
+        for candidate in (getattr(response, 'candidates', None) or []):
+            grounding = getattr(candidate, 'grounding_metadata', None)
+            chunks = getattr(grounding, 'grounding_chunks', None) or []
+            result.search_query_count += min(len(chunks), 1)
+
         return
 
     # 流式：文本模式（支持思考过程实时输出，不处理图片 inline_data）
@@ -429,12 +463,13 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
         # Token 统计
         usage = getattr(chunk, 'usage_metadata', None)
-        if usage:
-            result.input_tokens = getattr(usage, 'prompt_token_count', 0) or 0
-            result.output_tokens = (
-                (getattr(usage, 'total_token_count', 0) or 0)
-                - (getattr(usage, 'prompt_token_count', 0) or 0)
-            )
+        usage and _parse_gemini_usage(usage, result)
+
+        # 搜索查询统计（流式模式下累计）
+        for candidate in (getattr(chunk, 'candidates', None) or []):
+            grounding = getattr(candidate, 'grounding_metadata', None)
+            chunks = getattr(grounding, 'grounding_chunks', None) or []
+            chunks and setattr(result, 'search_query_count', max(result.search_query_count, 1))
 
     # 流结束后，确保关闭思考标签
     if in_thinking:
