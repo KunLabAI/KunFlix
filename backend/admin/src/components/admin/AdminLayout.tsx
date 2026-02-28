@@ -12,6 +12,7 @@ import {
   Users,
   BookOpen,
   CreditCard,
+  Shield,
   ChevronLeft,
   ChevronRight,
   LogOut,
@@ -69,6 +70,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '订阅套餐',
       href: '/admin/subscriptions',
       icon: CreditCard,
+    },
+    {
+      title: '管理员',
+      href: '/admin/admins',
+      icon: Shield,
     },
   ];
 
@@ -133,7 +139,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                    {!collapsed && (
                      <div className="flex flex-col items-start text-xs flex-1 min-w-0">
                        <span className="font-medium truncate w-full text-left">{user?.nickname || '管理员'}</span>
-                       <span className="text-muted-foreground truncate w-full text-left">admin@infinitegame.com</span>
+                       <span className="text-muted-foreground truncate w-full text-left">{user?.email || 'admin@infinitegame.com'}</span>
                      </div>
                    )}
                    {!collapsed && <MoreHorizontal className="h-4 w-4 text-muted-foreground ml-auto" />}

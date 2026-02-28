@@ -61,7 +61,6 @@ export interface User {
   id: string;
   email: string;
   nickname: string;
-  role: 'user' | 'admin';
   is_active: boolean;
   current_chapter: number;
   total_input_tokens: number;
@@ -69,6 +68,27 @@ export interface User {
   total_input_chars: number;
   total_output_chars: number;
   credits: number;
+  // 订阅信息
+  subscription_plan_id?: string | null;
+  subscription_status: 'inactive' | 'active' | 'expired';
+  subscription_start_at?: string | null;
+  subscription_end_at?: string | null;
+  last_login_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface Admin {
+  id: string;
+  email: string;
+  nickname: string;
+  permission_level: string;
+  is_active: boolean;
+  credits: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_input_chars: number;
+  total_output_chars: number;
   last_login_at: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -82,10 +102,37 @@ export interface TokenResponse {
   user: User;
 }
 
+export interface AdminTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  admin: Admin;
+}
+
 export interface AccessTokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+}
+
+// ---------------------------------------------------------------------------
+// Credit Transaction types
+// ---------------------------------------------------------------------------
+export interface CreditTransaction {
+  id: string;
+  user_id: string;
+  agent_id?: string | null;
+  session_id?: string | null;
+  transaction_type: 'deduction' | 'recharge' | 'admin_adjust';
+  amount: number;
+  balance_before: number;
+  balance_after: number;
+  input_tokens: number;
+  output_tokens: number;
+  metadata_json?: Record<string, any> | null;
+  description?: string | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------

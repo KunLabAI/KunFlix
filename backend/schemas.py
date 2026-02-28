@@ -1,9 +1,10 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 from typing import Optional, Dict, Any, List, Literal
+from datetime import datetime
 
 
 # ---------------------------------------------------------------------------
-# Auth schemas
+# Auth schemas (用户)
 # ---------------------------------------------------------------------------
 class UserRegister(BaseModel):
     email: EmailStr
@@ -24,7 +25,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     nickname: str
-    role: str
+    role: str = "user"  # 已废弃，保留向后兼容
     is_active: bool = True
     current_chapter: int = 1
     total_input_tokens: int = 0
@@ -32,6 +33,11 @@ class UserResponse(BaseModel):
     total_input_chars: int = 0
     total_output_chars: int = 0
     credits: float = 0.0
+    # 订阅信息
+    subscription_plan_id: Optional[str] = None
+    subscription_status: str = "inactive"
+    subscription_start_at: Optional[Any] = None
+    subscription_end_at: Optional[Any] = None
     last_login_at: Optional[Any] = None
     created_at: Optional[Any] = None
     updated_at: Optional[Any] = None
@@ -51,6 +57,64 @@ class AccessTokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+# ---------------------------------------------------------------------------
+# Admin schemas (管理员)
+# ---------------------------------------------------------------------------
+class AdminLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AdminCreate(BaseModel):
+    email: EmailStr
+    nickname: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=6)
+    permission_level: str = "admin"
+
+
+class AdminUpdate(BaseModel):
+    nickname: Optional[str] = Field(None, min_length=1, max_length=100)
+    password: Optional[str] = Field(None, min_length=6)
+    permission_level: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class AdminResponse(BaseModel):
+    id: str
+    email: str
+    nickname: str
+    permission_level: str
+    is_active: bool = True
+    credits: float = 0.0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_input_chars: int = 0
+    total_output_chars: int = 0
+    last_login_at: Optional[Any] = None
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    admin: AdminResponse
+
+
+# ---------------------------------------------------------------------------
+# Subscription assign schema (订阅设置)
+# ---------------------------------------------------------------------------
+class SubscriptionAssignRequest(BaseModel):
+    plan_id: str
+    start_at: datetime
+    end_at: datetime
+    auto_grant_credits: bool = False
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -10,6 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,29 +32,82 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from "@/components/ui/badge";
-import { Trash2 } from 'lucide-react';
+import { Switch } from "@/components/ui/switch";
+import { Trash2, Coins, CreditCard, History } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { useToast } from '@/components/ui/use-toast';
+import type { User, SubscriptionPlan } from '@/types';
+import Link from 'next/link';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
-interface UserRow {
-  id: string;
-  email: string;
-  nickname: string;
-  role: string;
-  is_active: boolean;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  last_login_at: string | null;
-  created_at: string | null;
-}
+// 积分调整表单 Schema
+const creditAdjustSchema = z.object({
+  amount: z.number().refine(v => v !== 0, { message: '金额不能为 0' }),
+  description: z.string().min(1, '请输入操作说明'),
+});
+
+// 订阅设置表单 Schema
+const subscriptionSchema = z.object({
+  plan_id: z.string().min(1, '请选择套餐'),
+  start_at: z.string().min(1, '请选择开始时间'),
+  end_at: z.string().min(1, '请选择结束时间'),
+  auto_grant_credits: z.boolean(),
+});
+
+type CreditAdjustValues = z.infer<typeof creditAdjustSchema>;
+type SubscriptionValues = z.infer<typeof subscriptionSchema>;
+
+// 订阅状态映射表
+const SUBSCRIPTION_STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
+  active: { label: '生效中', variant: 'default' },
+  inactive: { label: '未订阅', variant: 'secondary' },
+  expired: { label: '已过期', variant: 'destructive' },
+};
 
 export default function UsersPage() {
-  const { data: users, error, isLoading } = useSWR<UserRow[]>('/admin/users', fetcher);
+  const { data: users, error, isLoading } = useSWR<User[]>('/admin/users', fetcher);
+  const { data: plans } = useSWR<SubscriptionPlan[]>('/admin/subscriptions', fetcher);
   const { toast } = useToast();
+
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const creditForm = useForm<CreditAdjustValues>({
+    resolver: zodResolver(creditAdjustSchema),
+    defaultValues: { amount: 0, description: '' },
+  });
+
+  const subscriptionForm = useForm<SubscriptionValues>({
+    resolver: zodResolver(subscriptionSchema),
+    defaultValues: { 
+      plan_id: '', 
+      start_at: new Date().toISOString().slice(0, 16),
+      end_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
+      auto_grant_credits: true,
+    },
+  });
 
   const handleDelete = async (id: string) => {
     try {
@@ -62,12 +126,86 @@ export default function UsersPage() {
     }
   };
 
-  const roleBadgeVariant = (role: string) => {
-    const variants: Record<string, 'default' | 'secondary'> = {
-      admin: 'default',
-      user: 'secondary',
-    };
-    return variants[role] ?? 'secondary';
+  const openCreditDialog = (user: User) => {
+    setSelectedUser(user);
+    creditForm.reset({ amount: 0, description: '' });
+    setCreditDialogOpen(true);
+  };
+
+  const openSubscriptionDialog = (user: User) => {
+    setSelectedUser(user);
+    const now = new Date();
+    const monthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    subscriptionForm.reset({
+      plan_id: user.subscription_plan_id || '',
+      start_at: now.toISOString().slice(0, 16),
+      end_at: monthLater.toISOString().slice(0, 16),
+      auto_grant_credits: true,
+    });
+    setSubscriptionDialogOpen(true);
+  };
+
+  const onCreditSubmit = async (values: CreditAdjustValues) => {
+    if (!selectedUser) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/admin/users/${selectedUser.id}/credits/adjust`, {
+        amount: values.amount,
+        description: values.description,
+      });
+      toast({ 
+        title: values.amount > 0 ? '充值成功' : '扣除成功',
+        description: `已${values.amount > 0 ? '充值' : '扣除'} ${Math.abs(values.amount)} 积分`,
+      });
+      setCreditDialogOpen(false);
+      mutate('/admin/users');
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: '操作失败',
+        description: err?.response?.data?.detail || '请稍后重试',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubscriptionSubmit = async (values: SubscriptionValues) => {
+    if (!selectedUser) return;
+    setSubmitting(true);
+    try {
+      await api.put(`/admin/users/${selectedUser.id}/subscription`, {
+        plan_id: values.plan_id,
+        start_at: new Date(values.start_at).toISOString(),
+        end_at: new Date(values.end_at).toISOString(),
+        auto_grant_credits: values.auto_grant_credits,
+      });
+      toast({ title: '订阅设置成功' });
+      setSubscriptionDialogOpen(false);
+      mutate('/admin/users');
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: '设置失败',
+        description: err?.response?.data?.detail || '请稍后重试',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const cancelSubscription = async (userId: string) => {
+    try {
+      await api.delete(`/admin/users/${userId}/subscription`);
+      toast({ title: '订阅已取消' });
+      mutate('/admin/users');
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: '取消失败',
+        description: err?.response?.data?.detail || '请稍后重试',
+      });
+    }
   };
 
   return (
@@ -79,10 +217,10 @@ export default function UsersPage() {
             <TableRow>
               <TableHead>邮箱</TableHead>
               <TableHead>昵称</TableHead>
-              <TableHead>角色</TableHead>
+              <TableHead className="text-right">积分</TableHead>
+              <TableHead>订阅状态</TableHead>
               <TableHead className="text-right">Token (输入/输出)</TableHead>
               <TableHead>最后登录</TableHead>
-              <TableHead>注册时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -93,48 +231,219 @@ export default function UsersPage() {
                   加载中...
                 </TableCell>
               </TableRow>
-            ) : users?.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.email}</TableCell>
-                <TableCell>{user.nickname}</TableCell>
-                <TableCell>
-                  <Badge variant={roleBadgeVariant(user.role)}>{user.role}</Badge>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {(user.total_input_tokens || 0).toLocaleString()} / {(user.total_output_tokens || 0).toLocaleString()}
-                </TableCell>
-                <TableCell>
-                  {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '-'}
-                </TableCell>
-                <TableCell>
-                  {user.created_at ? new Date(user.created_at).toLocaleString() : '-'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive" size="icon">
-                        <Trash2 className="h-4 w-4" />
+            ) : users?.map((user) => {
+              const statusInfo = SUBSCRIPTION_STATUS_MAP[user.subscription_status] || SUBSCRIPTION_STATUS_MAP.inactive;
+              return (
+                <TableRow key={user.id}>
+                  <TableCell className="font-medium">{user.email}</TableCell>
+                  <TableCell>{user.nickname}</TableCell>
+                  <TableCell className="text-right tabular-nums font-mono">
+                    {(user.credits || 0).toFixed(2)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {(user.total_input_tokens || 0).toLocaleString()} / {(user.total_output_tokens || 0).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '-'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" title="积分管理" onClick={() => openCreditDialog(user)}>
+                        <Coins className="h-4 w-4" />
                       </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          此操作不可撤销。这将永久删除该用户及其相关数据。
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>取消</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDelete(user.id)}>确认删除</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </TableCell>
-              </TableRow>
-            ))}
+                      <Button variant="ghost" size="icon" title="订阅管理" onClick={() => openSubscriptionDialog(user)}>
+                        <CreditCard className="h-4 w-4" />
+                      </Button>
+                      <Link href={`/admin/players/${user.id}/credits`}>
+                        <Button variant="ghost" size="icon" title="积分历史">
+                          <History className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              此操作不可撤销。这将永久删除该用户及其相关数据。
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(user.id)}>确认删除</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
+
+      {/* 积分管理 Dialog */}
+      <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>积分管理</DialogTitle>
+            <DialogDescription>
+              为用户 {selectedUser?.nickname} 调整积分（当前余额: {selectedUser?.credits?.toFixed(2) || '0.00'}）
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...creditForm}>
+            <form onSubmit={creditForm.handleSubmit(onCreditSubmit)} className="space-y-4">
+              <FormField
+                control={creditForm.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>调整金额</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="正数=充值，负数=扣除"
+                        value={field.value}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={creditForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>操作说明</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="请输入操作原因" rows={2} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreditDialogOpen(false)}>取消</Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? '提交中...' : '确认'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 订阅管理 Dialog */}
+      <Dialog open={subscriptionDialogOpen} onOpenChange={setSubscriptionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>订阅管理</DialogTitle>
+            <DialogDescription>
+              为用户 {selectedUser?.nickname} 设置订阅套餐
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...subscriptionForm}>
+            <form onSubmit={subscriptionForm.handleSubmit(onSubscriptionSubmit)} className="space-y-4">
+              <FormField
+                control={subscriptionForm.control}
+                name="plan_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>订阅套餐</FormLabel>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="选择套餐" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {plans?.filter(p => p.is_active).map(plan => (
+                            <SelectItem key={plan.id} value={plan.id}>
+                              {plan.name} - ${plan.price_usd} ({plan.credits} 积分)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={subscriptionForm.control}
+                  name="start_at"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>开始时间</FormLabel>
+                      <FormControl>
+                        <Input type="datetime-local" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={subscriptionForm.control}
+                  name="end_at"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>结束时间</FormLabel>
+                      <FormControl>
+                        <Input type="datetime-local" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={subscriptionForm.control}
+                name="auto_grant_credits"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>自动发放套餐积分</FormLabel>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter className="flex gap-2">
+                {selectedUser?.subscription_status === 'active' && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => {
+                      cancelSubscription(selectedUser.id);
+                      setSubscriptionDialogOpen(false);
+                    }}
+                  >
+                    取消订阅
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>取消</Button>
+                <Button type="submit" disabled={submitting}>
+                  {submitting ? '提交中...' : '设置订阅'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

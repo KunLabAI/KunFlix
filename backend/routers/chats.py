@@ -7,9 +7,9 @@ import logging
 import json
 
 from database import get_db, AsyncSessionLocal
-from models import Agent, ChatSession, ChatMessage, LLMProvider, User, CreditTransaction
+from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, CreditTransaction
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
-from auth import get_current_active_user, scoped_query
+from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost
@@ -41,7 +41,7 @@ router = APIRouter(
 @router.post("/", response_model=ChatSessionResponse)
 async def create_session(
     session: ChatSessionCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Agent).filter(Agent.id == session.agent_id))
@@ -65,7 +65,7 @@ async def list_sessions(
     agent_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(ChatSession).order_by(ChatSession.updated_at.desc())
@@ -82,7 +82,7 @@ async def list_sessions(
 @router.get("/{session_id}", response_model=ChatSessionResponse)
 async def get_session(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(ChatSession).filter(ChatSession.id == session_id)
@@ -96,7 +96,7 @@ async def get_session(
 @router.get("/{session_id}/messages")
 async def get_session_messages(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     session_query = select(ChatSession).filter(ChatSession.id == session_id)
@@ -122,7 +122,7 @@ async def get_session_messages(
 async def send_message(
     session_id: str,
     message: ChatMessageCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     # 1. 验证会话和智能体
@@ -143,7 +143,8 @@ async def send_message(
     await db.commit()
 
     # 捕获上下文变量
-    user_id = current_user.id
+    entity_id = current_user.id
+    is_admin = is_admin_entity(current_user)
     is_paid_agent = (
         agent.input_credit_per_1m > 0
         or agent.output_credit_per_1m > 0
@@ -151,7 +152,7 @@ async def send_message(
         or agent.search_credit_per_query > 0
     )
 
-    # 3. 积分预检查：付费智能体且余额不足则拒绝
+    # 3. 积分预检查：付费智能体且余额不足则拒绝（管理员也需要检查以便调试）
     if is_paid_agent and (current_user.credits or 0) <= 0:
         raise HTTPException(status_code=402, detail="积分余额不足")
 
@@ -160,9 +161,9 @@ async def send_message(
 
     # 5. 根据模式选择生成器
     generator = (
-        _generate_multi_agent(db, agent, message.content, user_id, session_id)
+        _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin)
         if is_multi_agent else
-        _generate_single_agent(db, agent, message.content, user_id, session_id)
+        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin)
     )
 
     media_type = "text/event-stream" if is_multi_agent else "text/plain"
@@ -173,15 +174,16 @@ async def _generate_multi_agent(
     db: AsyncSession,
     agent: Agent,
     content: str,
-    user_id: str,
-    session_id: str
+    entity_id: str,
+    session_id: str,
+    is_admin: bool = False
 ):
     """多智能体协作模式生成器"""
     logger.info(f"\n{'='*60}")
     logger.info(f"[Multi-Agent] Leader: {agent.name} (ID: {agent.id})")
     logger.info(f"Coordination mode: {agent.coordination_modes}")
     logger.info(f"Member agents: {agent.member_agent_ids}")
-    logger.info(f"Session: {session_id} | User: {user_id}")
+    logger.info(f"Session: {session_id} | {'Admin' if is_admin else 'User'}: {entity_id}")
     logger.info(f"Task: {content}")
     logger.info(f"{'='*60}\n")
 
@@ -205,7 +207,7 @@ async def _generate_multi_agent(
     final_result = None
     async for event in orchestrator.execute(
         task_description=content,
-        user_id=user_id,
+        user_id=entity_id,
         leader_agent_id=agent.id,
         session_id=session_id,
         coordination_mode=coordination_mode,
@@ -249,8 +251,9 @@ async def _generate_single_agent(
     db: AsyncSession,
     agent: Agent,
     content: str,
-    user_id: str,
+    entity_id: str,
     session_id: str,
+    is_admin: bool = False,
 ):
     """单智能体模式生成器"""
     # 获取历史消息
@@ -285,7 +288,7 @@ async def _generate_single_agent(
     logger.info(f"\n{'='*60}")
     logger.info(f"Agent: {agent.name} (ID: {agent.id})")
     logger.info(f"Model: {provider.provider_type}/{agent.model}")
-    logger.info(f"Session: {session_id} | User: {user_id}")
+    logger.info(f"Session: {session_id} | {'Admin' if is_admin else 'User'}: {entity_id}")
     logger.info(f"History: {len(history)} | Input chars: {input_chars}")
     logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
     logger.info(f"Current message: {content}")
@@ -293,89 +296,103 @@ async def _generate_single_agent(
 
     # 调用 LLM 流式接口
     result = None
-    async for chunk, result in stream_completion(
-        provider_type=provider.provider_type,
-        api_key=provider.api_key,
-        base_url=provider.base_url,
-        model=agent.model,
-        messages=messages,
-        temperature=agent.temperature,
-        context_window=agent.context_window,
-        thinking_mode=agent.thinking_mode,
-        gemini_config=agent.gemini_config,
-    ):
-        yield chunk
+    generation_failed = False
+    try:
+        async for chunk, result in stream_completion(
+            provider_type=provider.provider_type,
+            api_key=provider.api_key,
+            base_url=provider.base_url,
+            model=agent.model,
+            messages=messages,
+            temperature=agent.temperature,
+            context_window=agent.context_window,
+            thinking_mode=agent.thinking_mode,
+            gemini_config=agent.gemini_config,
+        ):
+            yield chunk
+    except Exception as e:
+        generation_failed = True
+        logger.error(f"LLM generation failed: {e}")
+        yield f"Error: {str(e)}"
+
+    # 生成失败时不保存消息也不扣费
+    if generation_failed or not result:
+        logger.info(f"{'='*60} (no billing - generation {'failed' if generation_failed else 'empty'})\n")
+        return
 
     # 输出统计日志
-    if result:
-        if result.reasoning_content:
-            logger.info(f"\nThinking: {result.reasoning_content[:300]}{'...' if len(result.reasoning_content) > 300 else ''}")
-        
-        logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
-        logger.info(f"Output chars: {len(result.full_response)}")
-        
-        if result.input_tokens > 0 or result.output_tokens > 0:
-            total_tokens = result.input_tokens + result.output_tokens
-            logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}")
-            logger.info(f"  text_out={result.text_output_tokens}, image_out={result.image_output_tokens}, search={result.search_query_count}")
-            logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%")
-        
-        logger.info(f"{'='*60}\n")
+    if result.reasoning_content:
+        logger.info(f"\nThinking: {result.reasoning_content[:300]}{'...' if len(result.reasoning_content) > 300 else ''}")
+    
+    logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
+    logger.info(f"Output chars: {len(result.full_response)}")
+    
+    if result.input_tokens > 0 or result.output_tokens > 0:
+        total_tokens = result.input_tokens + result.output_tokens
+        logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}")
+        logger.info(f"  text_out={result.text_output_tokens}, image_out={result.image_output_tokens}, search={result.search_query_count}")
+        logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%")
+    
+    logger.info(f"{'='*60}\n")
 
-        # 保存助手消息和统计
-        async with AsyncSessionLocal() as session:
-            try:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    role="assistant",
-                    content=result.full_response,
-                )
-                session.add(assistant_msg)
+    # 保存助手消息、更新统计、扣费（仅在生成成功后执行）
+    async with AsyncSessionLocal() as session:
+        try:
+            assistant_msg = ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=result.full_response,
+            )
+            session.add(assistant_msg)
 
-                # 更新会话时间戳
-                from sqlalchemy import func as sa_func
-                s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
-                s = s_result.scalars().first()
-                if s:
-                    s.updated_at = sa_func.now()
+            # 更新会话时间戳
+            from sqlalchemy import func as sa_func
+            s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+            s = s_result.scalars().first()
+            if s:
+                s.updated_at = sa_func.now()
 
-                # 更新用户统计
-                u_result = await session.execute(select(User).filter(User.id == user_id))
-                u = u_result.scalars().first()
-                if u:
-                    u.total_input_tokens = (u.total_input_tokens or 0) + result.input_tokens
-                    u.total_output_tokens = (u.total_output_tokens or 0) + result.output_tokens
-                    u.total_input_chars = (u.total_input_chars or 0) + input_chars
-                    u.total_output_chars = (u.total_output_chars or 0) + len(result.full_response)
+            # 查询实体并更新统计（映射表驱动，避免 if-else）
+            entity_model_map = {True: Admin, False: User}
+            entity_model = entity_model_map[is_admin]
+            e_result = await session.execute(select(entity_model).filter(entity_model.id == entity_id))
+            entity = e_result.scalars().first()
+            if entity:
+                entity.total_input_tokens = (entity.total_input_tokens or 0) + result.input_tokens
+                entity.total_output_tokens = (entity.total_output_tokens or 0) + result.output_tokens
+                entity.total_input_chars = (entity.total_input_chars or 0) + input_chars
+                entity.total_output_chars = (entity.total_output_chars or 0) + len(result.full_response)
 
-                    # 积分扣费（映射表驱动多维度计费）
-                    credit_cost, billing_metadata = calculate_credit_cost(result, agent)
-                    if credit_cost > 0:
-                        balance_before = u.credits or 0
-                        u.credits = max(0, balance_before - credit_cost)
-                        session.add(CreditTransaction(
-                            user_id=user_id,
-                            agent_id=agent.id,
-                            session_id=session_id,
-                            transaction_type="deduction",
-                            amount=-credit_cost,
-                            balance_before=balance_before,
-                            balance_after=u.credits,
-                            input_tokens=result.input_tokens,
-                            output_tokens=result.output_tokens,
-                            metadata_json=billing_metadata,
-                        ))
-                        logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {u.credits:.2f})")
+                # 积分扣费（映射表驱动多维度计费，仅在生成成功后扣费）
+                credit_cost, billing_metadata = calculate_credit_cost(result, agent)
+                if credit_cost > 0:
+                    balance_before = entity.credits or 0
+                    entity.credits = max(0, balance_before - credit_cost)
+                    # 根据实体类型设置对应的 ID 字段
+                    tx_kwargs = {
+                        "admin_id" if is_admin else "user_id": entity_id,
+                        "agent_id": agent.id,
+                        "session_id": session_id,
+                        "transaction_type": "deduction",
+                        "amount": -credit_cost,
+                        "balance_before": balance_before,
+                        "balance_after": entity.credits,
+                        "input_tokens": result.input_tokens,
+                        "output_tokens": result.output_tokens,
+                        "metadata_json": billing_metadata,
+                    }
+                    session.add(CreditTransaction(**tx_kwargs))
+                    logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {entity.credits:.2f})")
 
-                await session.commit()
-            except Exception as e:
-                logger.error(f"Failed to save message: {e}")
+            await session.commit()
+        except Exception as e:
+            logger.error(f"Failed to save message: {e}")
 
 
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(ChatSession).filter(ChatSession.id == session_id)

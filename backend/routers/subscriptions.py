@@ -3,7 +3,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from database import get_db
-from models import SubscriptionPlan, User
+from models import SubscriptionPlan, Admin
 from schemas import (
     SubscriptionPlanCreate,
     SubscriptionPlanUpdate,
@@ -21,7 +21,7 @@ router = APIRouter(
 @router.post("/", response_model=SubscriptionPlanResponse)
 async def create_plan(
     plan: SubscriptionPlanCreate,
-    _admin: User = Depends(require_admin),
+    _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     existing = await db.execute(
@@ -39,7 +39,7 @@ async def create_plan(
 
 @router.get("/", response_model=List[SubscriptionPlanResponse])
 async def list_plans(
-    _admin: User = Depends(require_admin),
+    _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -54,7 +54,7 @@ async def list_plans(
 @router.get("/{plan_id}", response_model=SubscriptionPlanResponse)
 async def get_plan(
     plan_id: str,
-    _admin: User = Depends(require_admin),
+    _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -70,7 +70,7 @@ async def get_plan(
 async def update_plan(
     plan_id: str,
     plan_update: SubscriptionPlanUpdate,
-    _admin: User = Depends(require_admin),
+    _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -103,7 +103,7 @@ async def update_plan(
 @router.delete("/{plan_id}")
 async def delete_plan(
     plan_id: str,
-    _admin: User = Depends(require_admin),
+    _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

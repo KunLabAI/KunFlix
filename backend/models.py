@@ -7,7 +7,33 @@ def generate_uuid():
     return str(uuid.uuid4())
 
 
+class Admin(Base):
+    """管理员表 - 与用户表分离"""
+    __tablename__ = "admins"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    nickname = Column(String(100), nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    permission_level = Column(String(20), default="admin")  # admin | super_admin
+
+    # Operations stats (与用户一致，用于调试积分规则)
+    total_input_tokens = Column(BigInteger, default=0)
+    total_output_tokens = Column(BigInteger, default=0)
+    total_input_chars = Column(BigInteger, default=0)
+    total_output_chars = Column(BigInteger, default=0)
+    credits = Column(Float, default=0.0, nullable=False)  # 积分余额
+
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_ip = Column(String(45), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class User(Base):
+    """前端用户表"""
     __tablename__ = "users"
 
     # Identity
@@ -20,9 +46,15 @@ class User(Base):
     google_id = Column(String(255), unique=True, nullable=True)
     github_id = Column(String(255), unique=True, nullable=True)
 
-    # Role & status
-    role = Column(String(20), default="user", index=True)  # "user" | "admin"
+    # Status (role 字段已废弃，将在迁移后移除)
+    role = Column(String(20), default="user", index=True)  # 已废弃，保留向后兼容
     is_active = Column(Boolean, default=True)
+
+    # Subscription (订阅系统)
+    subscription_plan_id = Column(String(36), ForeignKey("subscription_plans.id"), nullable=True)
+    subscription_status = Column(String(20), default="inactive")  # inactive | active | expired
+    subscription_start_at = Column(DateTime(timezone=True), nullable=True)
+    subscription_end_at = Column(DateTime(timezone=True), nullable=True)
 
     # Operations stats
     total_input_tokens = Column(BigInteger, default=0)
@@ -114,7 +146,7 @@ class ChatSession(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     title = Column(String, default="New Chat")
     agent_id = Column(String(36), ForeignKey("agents.id"))
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    user_id = Column(String(36), nullable=True, index=True)  # 可存储用户或管理员 ID
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -181,7 +213,8 @@ class CreditTransaction(Base):
     __tablename__ = "credit_transactions"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    admin_id = Column(String(36), ForeignKey("admins.id"), nullable=True, index=True)
     agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
 

@@ -3,13 +3,24 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import api from '@/lib/axios';
-import type { User } from '@/types';
+
+// 管理员类型定义
+interface Admin {
+  id: string;
+  email: string;
+  nickname: string;
+  permission_level: string;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: Admin | null;
   isAuthenticated: boolean;
   loading: boolean;
-  login: (accessToken: string, refreshToken: string, user: User) => void;
+  login: (accessToken: string, refreshToken: string, admin: Admin) => void;
   logout: () => void;
 }
 
@@ -26,7 +37,7 @@ export const useAuth = () => useContext(AuthContext);
 const isProtectedRoute = (path: string) => path.startsWith('/admin') && path !== '/admin/login';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Admin | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const validated = useRef(false);
@@ -46,7 +57,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    api.get<User>('/auth/me')
+    // 调用管理员认证接口
+    api.get<Admin>('/admin/auth/me')
       .then(({ data }) => {
         setUser(data);
         setIsAuthenticated(true);
@@ -71,11 +83,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [pathname, loading, isAuthenticated, router]);
 
   const login = useCallback(
-    (accessToken: string, refreshToken: string, userData: User) => {
+    (accessToken: string, refreshToken: string, adminData: Admin) => {
       localStorage.setItem('access_token', accessToken);
       localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(adminData));
+      setUser(adminData);
       setIsAuthenticated(true);
       router.push('/admin');
     },

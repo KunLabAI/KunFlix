@@ -39,7 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from services import GameService
 from models import User, StoryChapter
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -93,6 +93,7 @@ app.add_middleware(
 
 # Register Routers
 app.include_router(auth_router.router)
+app.include_router(admin_auth.router)
 app.include_router(llm_config.router)
 app.include_router(admin_router.router)
 app.include_router(agents.router)
