@@ -284,7 +284,7 @@ class ChatMessageBase(BaseModel):
 
 
 class ChatMessageCreate(ChatMessageBase):
-    pass
+    edit_last_image: bool = False
 
 
 class ChatMessageResponse(ChatMessageBase):

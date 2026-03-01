@@ -48,14 +48,22 @@ interface ImageAttachment {
   name: string;
 }
 
+// 提取助手消息中的图片URL
+function extractImageUrl(content: string): string | null {
+  const match = content.match(/!\[image\]\((\/api\/media\/[^)]+)\)/);
+  return match ? match[1] : null;
+}
+
 export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   const { data: sessions, isLoading: sessionsLoading } = useSWR(
@@ -84,6 +92,22 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      const newHeight = Math.min(textarea.scrollHeight, 280);
+      textarea.style.height = `${newHeight}px`;
+      
+      if (textarea.scrollHeight > 280) {
+        textarea.style.overflowY = 'auto';
+      } else {
+        textarea.style.overflowY = 'hidden';
+      }
+    }
+  }, [inputValue]);
 
   const handleCreateSession = async () => {
     if (!agentId) return;
@@ -141,17 +165,30 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
     if ((!inputValue.trim() && images.length === 0) || !selectedSessionId || isStreaming) return;
 
     // 构建消息内容：纯文本或多模态
-    const content = images.length === 0 
-      ? inputValue 
-      : [
-          ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img.dataUrl } })),
-          ...(inputValue.trim() ? [{ type: 'text' as const, text: inputValue }] : [])
-        ];
+    let content: string | Array<{type: string; text?: string; image_url?: {url: string}}>;
+    
+    if (editImageUrl) {
+      // 编辑模式：注入指定图片 + 用户文本
+      content = [
+        { type: 'image_url' as const, image_url: { url: editImageUrl } },
+        ...(inputValue.trim() ? [{ type: 'text' as const, text: inputValue }] : [])
+      ];
+    } else if (images.length > 0) {
+      // 上传图片模式
+      content = [
+        ...images.map(img => ({ type: 'image_url' as const, image_url: { url: img.dataUrl } })),
+        ...(inputValue.trim() ? [{ type: 'text' as const, text: inputValue }] : [])
+      ];
+    } else {
+      // 纯文本模式
+      content = inputValue;
+    }
 
     const userMsg: ChatMessage = { role: 'user', content };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setImages([]);
+    setEditImageUrl(null);
     setIsStreaming(true);
 
     try {
@@ -164,7 +201,11 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
           'Content-Type': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
         },
-        body: JSON.stringify({ role: 'user', content: userMsg.content })
+        body: JSON.stringify({ 
+          role: 'user', 
+          content: userMsg.content,
+          edit_last_image: false  // 前端已直接注入图片，后端无需再处理
+        })
       });
 
       if (!response.ok) throw new Error(response.statusText);
@@ -387,7 +428,64 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                           <MultiAgentSteps {...msg.multi_agent} />
                         ) : (
                           <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                img: ({node, src, alt, ...props}) => {
+                                  const imgUrl = typeof src === 'string' ? src : '';
+                                  return (
+                                    <span className="relative inline-block group not-prose">
+                                      <img 
+                                        src={imgUrl} 
+                                        alt={alt} 
+                                        {...props} 
+                                        className="rounded-lg max-w-full" 
+                                      />
+                                      {/* 每张图片独立的"继续编辑"按钮 */}
+                                      {imgUrl.startsWith('/api/media/') && (
+                                        <span className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={async () => {
+                                              try {
+                                                // 读取图片并转为 data URL
+                                                const token = localStorage.getItem('access_token');
+                                                const response = await fetch(imgUrl, {
+                                                  headers: { 'Authorization': token ? `Bearer ${token}` : '' }
+                                                });
+                                                const blob = await response.blob();
+                                                const reader = new FileReader();
+                                                reader.onloadend = () => {
+                                                  const dataUrl = reader.result as string;
+                                                  setEditImageUrl(dataUrl);
+                                                  textareaRef.current?.focus();
+                                                  toast({ 
+                                                    title: "已选择此图进行编辑", 
+                                                    description: "下一条消息将基于这张图片进行修改" 
+                                                  });
+                                                };
+                                                reader.readAsDataURL(blob);
+                                              } catch (err) {
+                                                toast({ 
+                                                  variant: "destructive", 
+                                                  title: "无法加载图片" 
+                                                });
+                                              }
+                                            }}
+                                            disabled={isStreaming}
+                                            className="h-7 text-xs shadow-lg"
+                                          >
+                                            <ImagePlus className="h-3 w-3 mr-1" />
+                                            继续编辑
+                                          </Button>
+                                        </span>
+                                      )}
+                                    </span>
+                                  );
+                                }
+                              }}
+                            >
                               {typeof msg.content === 'string' ? msg.content : ''}
                             </ReactMarkdown>
                           </div>
@@ -436,6 +534,22 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
             {/* Input Area */}
             <div className="p-4 border-t bg-background">
                <div className="relative max-w-3xl mx-auto">
+                 {/* 编辑模式提示 */}
+                 {editImageUrl && (
+                   <div className="flex items-center gap-2 mb-2 p-2 bg-primary/10 text-primary text-xs rounded-lg">
+                     <ImagePlus className="h-3 w-3" />
+                     <span>编辑模式：下一条消息将基于选中的图片进行修改</span>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={() => setEditImageUrl(null)}
+                       className="ml-auto h-5 w-5 p-0"
+                     >
+                       <X className="h-3 w-3" />
+                     </Button>
+                   </div>
+                 )}
+                 
                  {/* 图片预览区 */}
                  {images.length > 0 && (
                    <div className="flex flex-wrap gap-2 mb-3 p-2 bg-muted/30 rounded-lg">
@@ -464,15 +578,17 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                  />
                  
                  <Textarea 
+                   ref={textareaRef}
                    value={inputValue}
                    onChange={(e) => setInputValue(e.target.value)}
                    onKeyDown={handleKeyDown}
                    placeholder="输入消息..."
-                   className="min-h-[60px] pl-12 pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors"
-                 />
+                   rows={1}
+                    className="min-h-[44px] max-h-[280px] pl-12 pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors overflow-y-auto py-3"
+                  />
                  
                  {/* 图片上传按钮 */}
-                 <div className="absolute left-2 bottom-3">
+                 <div className="absolute left-2 bottom-[6px]">
                    <Button
                      type="button"
                      variant="ghost"
@@ -486,7 +602,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                    </Button>
                  </div>
                  
-                 <div className="absolute right-2 bottom-3">
+                 <div className="absolute right-2 bottom-[6px]">
                    <Button 
                      size="icon"
                      onClick={handleSendMessage}

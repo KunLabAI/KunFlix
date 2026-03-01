@@ -5,6 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Any
 import logging
 import json
+import base64
+import mimetypes
+import re
 
 from database import get_db, AsyncSessionLocal
 from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, CreditTransaction
@@ -13,6 +16,7 @@ from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost
+from services.media_utils import MEDIA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +33,40 @@ def _deserialize_content(content: str) -> Any:
         return parsed if isinstance(parsed, list) else content
     except (json.JSONDecodeError, TypeError):
         return content
+
+
+_IMAGE_MD_PATTERN = re.compile(r"!\[image\]\((/api/media/[^)]+)\)")
+
+
+def _get_last_image_path(history) -> str | None:
+    """从历史消息中找到最后一张助手图片对应的本地文件路径"""
+    for msg in reversed(history):
+        if getattr(msg, "role", None) != "assistant":
+            continue
+        content = getattr(msg, "content", "") or ""
+        if not isinstance(content, str):
+            continue
+        m = _IMAGE_MD_PATTERN.search(content)
+        if m:
+            url = m.group(1)  # /api/media/xxxx.png
+            filename = url.rsplit("/", 1)[-1]
+            return str(MEDIA_DIR / filename)
+    return None
+
+
+def _image_file_to_data_url(path: str) -> str | None:
+    """读取本地图片文件并转换为 data URL，供 Gemini image_url 使用"""
+    from pathlib import Path
+
+    file_path = Path(path)
+    if not file_path.exists():
+        return None
+
+    mime, _ = mimetypes.guess_type(str(file_path))
+    mime = mime or "image/png"
+    data = file_path.read_bytes()
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 
 router = APIRouter(
@@ -163,7 +201,7 @@ async def send_message(
     generator = (
         _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin)
         if is_multi_agent else
-        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin)
+        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image)
     )
 
     media_type = "text/event-stream" if is_multi_agent else "text/plain"
@@ -250,10 +288,11 @@ async def _generate_multi_agent(
 async def _generate_single_agent(
     db: AsyncSession,
     agent: Agent,
-    content: str,
+    content: Any,
     entity_id: str,
     session_id: str,
     is_admin: bool = False,
+    edit_last_image: bool = False,
 ):
     """单智能体模式生成器"""
     # 获取历史消息
@@ -279,6 +318,32 @@ async def _generate_single_agent(
     for msg in history:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
         messages.append({"role": role, "content": _deserialize_content(msg.content)})
+
+    # 如果用户请求编辑上一张图片，且当前为 Gemini 图片生成场景，则注入上一张图片为本轮输入
+    if edit_last_image and provider.provider_type == "gemini":
+        gemini_cfg = agent.gemini_config or {}
+        if gemini_cfg.get("image_generation_enabled"):
+            last_image_path = _get_last_image_path(history)
+            if last_image_path is not None:
+                data_url = _image_file_to_data_url(last_image_path)
+                if data_url:
+                    # 修改最后一条用户消息的 content，注入 image_url part
+                    if messages:
+                        last_msg = messages[-1]
+                        if last_msg.get("role") == "user":
+                            user_content = last_msg.get("content")
+                            if isinstance(user_content, str):
+                                parts = [
+                                    {"type": "image_url", "image_url": {"url": data_url}},
+                                    {"type": "text", "text": user_content},
+                                ]
+                            elif isinstance(user_content, list):
+                                parts = [{"type": "image_url", "image_url": {"url": data_url}}] + [
+                                    p for p in user_content
+                                ]
+                            else:
+                                parts = [{"type": "image_url", "image_url": {"url": data_url}}]
+                            last_msg["content"] = parts
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))

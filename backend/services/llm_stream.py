@@ -353,9 +353,12 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
     # image_size 有效值：1K, 2K, 4K（前端 "auto" 映射为 None 让 SDK 使用默认值）
     _VALID_IMAGE_SIZES = {"512", "1024", "1K", "2K", "4K"}
     raw_size = img_cfg.get("image_size")
+    _ASPECT_AUTO_MAP = {"auto": None}
+    raw_aspect = img_cfg.get("aspect_ratio")
+    safe_aspect = _ASPECT_AUTO_MAP.get(raw_aspect, raw_aspect)
     img_enabled and config_params.update(
         image_config=types.ImageConfig(
-            aspect_ratio=img_cfg.get("aspect_ratio"),
+            aspect_ratio=safe_aspect,
             image_size=raw_size if raw_size in _VALID_IMAGE_SIZES else None
         )
     )
