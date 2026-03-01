@@ -2,8 +2,8 @@ import * as z from 'zod';
 
 // Gemini 3.1 配置 schema
 const geminiImageConfigSchema = z.object({
-  aspect_ratio: z.enum(["16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable(),
-  image_size: z.enum(["4K", "2K", "auto"]).optional().nullable(),
+  aspect_ratio: z.enum(["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable(),
+  image_size: z.enum(["4K", "2K", "1024", "512", "auto"]).optional().nullable(),
 }).optional().nullable();
 
 const geminiConfigSchema = z.object({

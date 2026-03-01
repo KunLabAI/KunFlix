@@ -2,8 +2,8 @@
 // Gemini 3.1 配置类型
 // ---------------------------------------------------------------------------
 export interface GeminiImageConfig {
-  aspect_ratio?: "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | null;
-  image_size?: "4K" | "2K" | "auto" | null;
+  aspect_ratio?: "auto" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | null;
+  image_size?: "4K" | "2K" | "1024" | "512" | "auto" | null;
 }
 
 export interface GeminiConfig {

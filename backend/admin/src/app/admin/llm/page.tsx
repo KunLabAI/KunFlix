@@ -489,7 +489,7 @@ export default function LLMPage() {
                                       setModelCosts(prev => {
                                         const updated = { ...prev };
                                         const modelEntry = { ...(updated[modelName] || {}) };
-                                        if (val === '' || val === '0') {
+                                        if (val === '') {
                                           delete modelEntry[dimKey];
                                         } else {
                                           modelEntry[dimKey] = Number(val);
@@ -522,7 +522,11 @@ export default function LLMPage() {
                                       setModelCosts(prev => {
                                         const updated = { ...prev };
                                         const modelEntry = { ...(updated[modelName] || {}) };
-                                        modelEntry[customKey] = Number(val);
+                                        if (val === '') {
+                                          delete modelEntry[customKey];
+                                        } else {
+                                          modelEntry[customKey] = Number(val);
+                                        }
                                         updated[modelName] = modelEntry;
                                         return updated;
                                       });

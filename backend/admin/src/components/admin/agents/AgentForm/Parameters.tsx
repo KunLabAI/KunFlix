@@ -37,6 +37,7 @@ const MEDIA_RESOLUTIONS = [
 ];
 
 const ASPECT_RATIOS = [
+  { value: "auto", label: "自动" },
   { value: "16:9", label: "16:9 (宽屏)" },
   { value: "4:3", label: "4:3 (标准)" },
   { value: "1:1", label: "1:1 (方形)" },
@@ -46,6 +47,8 @@ const ASPECT_RATIOS = [
 
 const IMAGE_SIZES = [
   { value: "auto", label: "自动" },
+  { value: "512", label: "512" },
+  { value: "1024", label: "1K" },
   { value: "2K", label: "2K" },
   { value: "4K", label: "4K (最高质量)" },
 ];

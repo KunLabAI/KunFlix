@@ -171,8 +171,8 @@ class TestConnectionRequest(BaseModel):
 # ---------------------------------------------------------------------------
 class GeminiImageConfig(BaseModel):
     """Gemini 图片生成配置"""
-    aspect_ratio: Optional[Literal["16:9", "4:3", "1:1", "3:4", "9:16"]] = None
-    image_size: Optional[Literal["4K", "2K", "auto"]] = None
+    aspect_ratio: Optional[Literal["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]] = None
+    image_size: Optional[Literal["4K", "2K", "1024", "512", "auto"]] = None
 
 
 class GeminiConfig(BaseModel):
