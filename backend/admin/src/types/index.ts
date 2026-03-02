@@ -4,6 +4,11 @@
 export interface GeminiImageConfig {
   aspect_ratio?: "auto" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | null;
   image_size?: "4K" | "2K" | "1024" | "512" | "auto" | null;
+  output_format?: "png" | "jpeg" | "webp" | null;  // 输出格式
+  batch_count?: number | null;  // 批量生成数量 (1-8)
+  // 参考图片数量限制配置
+  max_person_images?: number | null;  // 角色参考图片最大数量 (0-4)
+  max_object_images?: number | null;  // 高保真对象图片最大数量 (0-10)
 }
 
 export interface GeminiConfig {
@@ -12,6 +17,7 @@ export interface GeminiConfig {
   image_generation_enabled?: boolean;  // 图片生成开关
   image_config?: GeminiImageConfig | null;
   google_search_enabled?: boolean;  // Google 搜索开关
+  google_image_search_enabled?: boolean;  // Google 图片搜索开关
 }
 
 export interface Agent {

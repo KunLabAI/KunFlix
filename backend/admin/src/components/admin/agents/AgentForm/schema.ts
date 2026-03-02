@@ -4,6 +4,10 @@ import * as z from 'zod';
 const geminiImageConfigSchema = z.object({
   aspect_ratio: z.enum(["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable(),
   image_size: z.enum(["4K", "2K", "1024", "512", "auto"]).optional().nullable(),
+  output_format: z.enum(["png", "jpeg", "webp"]).optional().nullable(),
+  batch_count: z.number().min(1).max(8).optional().nullable(),
+  max_person_images: z.number().min(0).max(4).optional().nullable(),
+  max_object_images: z.number().min(0).max(10).optional().nullable(),
 }).optional().nullable();
 
 const geminiConfigSchema = z.object({
@@ -12,6 +16,7 @@ const geminiConfigSchema = z.object({
   image_generation_enabled: z.boolean().optional().default(false),
   image_config: geminiImageConfigSchema,
   google_search_enabled: z.boolean().optional().default(false),
+  google_image_search_enabled: z.boolean().optional().default(false),
 }).optional().nullable();
 
 export const agentFormSchema = z.object({

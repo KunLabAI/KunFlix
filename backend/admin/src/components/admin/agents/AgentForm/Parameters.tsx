@@ -224,25 +224,54 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               
               {/* 图片配置 - 仅在开启时显示 */}
               {watch('gemini_config.image_generation_enabled') && (
-                <div className="grid grid-cols-2 gap-4">
-                  {/* 宽高比 */}
-                  <FormField
-                    control={control}
-                    name="gemini_config.image_config.aspect_ratio"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">宽高比</FormLabel>
-                        <FormControl>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                            disabled={disabled}
-                          >
-                            <SelectTrigger className="bg-background">
-                              <SelectValue placeholder="选择" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {ASPECT_RATIOS.map(opt => (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* 宽高比 */}
+                    <FormField
+                      control={control}
+                      name="gemini_config.image_config.aspect_ratio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">宽高比</FormLabel>
+                          <FormControl>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value || ""}
+                              disabled={disabled}
+                            >
+                              <SelectTrigger className="bg-background">
+                                <SelectValue placeholder="选择" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ASPECT_RATIOS.map(opt => (
+                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* 图片尺寸 */}
+                    <FormField
+                      control={control}
+                      name="gemini_config.image_config.image_size"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs text-muted-foreground">图片尺寸</FormLabel>
+                          <FormControl>
+                            <Select
+                              onValueChange={field.onChange}
+                              value={field.value || ""}
+                              disabled={disabled}
+                            >
+                              <SelectTrigger className="bg-background">
+                                <SelectValue placeholder="选择" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {IMAGE_SIZES.map(opt => (
                                 <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                               ))}
                             </SelectContent>
@@ -252,34 +281,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                       </FormItem>
                     )}
                   />
-
-                  {/* 图片尺寸 */}
-                  <FormField
-                    control={control}
-                    name="gemini_config.image_config.image_size"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">图片尺寸</FormLabel>
-                        <FormControl>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                            disabled={disabled}
-                          >
-                            <SelectTrigger className="bg-background">
-                              <SelectValue placeholder="选择" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {IMAGE_SIZES.map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  </div>
                 </div>
               )}
             </div>

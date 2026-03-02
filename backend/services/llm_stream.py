@@ -349,18 +349,34 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
     # response_modalities：图片模式 → ["TEXT","IMAGE"]，文本模式 → ["TEXT"]
     config_params["response_modalities"] = ["TEXT", "IMAGE"] if img_enabled else ["TEXT"]
 
-    # 图片模式：始终传递 ImageConfig（SDK 会忽略 None 值，使用默认 1:1 / 1K）
-    # image_size 有效值：1K, 2K, 4K（前端 "auto" 映射为 None 让 SDK 使用默认值）
-    _VALID_IMAGE_SIZES = {"512", "1024", "1K", "2K", "4K"}
-    raw_size = img_cfg.get("image_size")
+    # 图片模式：动态构建 ImageConfig（SDK 使用 camelCase 参数名）
+    # image_size 映射表：前端数值 → API 标准值（512px/1K/2K/4K）
+    _IMAGE_SIZE_MAP = {
+        "512": "512px",    # 前端发送 "512"，后端转为 "512px"
+        "1K": "1K",
+        "2K": "2K",
+        "4K": "4K",
+        "auto": None,
+    }
     _ASPECT_AUTO_MAP = {"auto": None}
+    
+    raw_size = img_cfg.get("image_size")
     raw_aspect = img_cfg.get("aspect_ratio")
+    
+    safe_size = _IMAGE_SIZE_MAP.get(raw_size)
     safe_aspect = _ASPECT_AUTO_MAP.get(raw_aspect, raw_aspect)
+    
+    # 动态构建 ImageConfig 参数（SDK 使用 camelCase，过滤 None 值避免验证错误）
+    # 注意：outputMimeType / batch_count 当前 API 不支持，UI 可配置但后端暂不传递
+    _img_cfg_params = {
+        "aspectRatio": safe_aspect,
+        "imageSize": safe_size,
+    }
+    # 过滤掉 None 值
+    _img_cfg_params = {k: v for k, v in _img_cfg_params.items() if v is not None}
+    
     img_enabled and config_params.update(
-        image_config=types.ImageConfig(
-            aspect_ratio=safe_aspect,
-            image_size=raw_size if raw_size in _VALID_IMAGE_SIZES else None
-        )
+        image_config=types.ImageConfig(**_img_cfg_params)
     )
 
     # 思考模式：仅在图片生成关闭时生效（两者互斥，同时启用会导致死循环）
@@ -372,16 +388,16 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
         f"Gemini 限制：图片生成与思考模式互斥，已自动关闭思考模式 (thinking_level={thinking_level})"
     )
 
-    # Google Search 工具配置
+    # Google Search 工具配置（使用简单字典格式，参考官方文档）
     search_enabled = gemini_cfg.get("google_search_enabled", False)
-    search_enabled and config_params.update(
-        tools=[types.Tool(google_search=types.GoogleSearch())]
-    )
+    
+    search_enabled and config_params.update(tools=[{"google_search": {}}])
 
     # 详细日志：记录发送给 Gemini API 的完整配置
     _ic = config_params.get('image_config')
     _ic_str = (
-        f"aspect_ratio={getattr(_ic, 'aspect_ratio', None)}, image_size={getattr(_ic, 'image_size', None)}"
+        f"aspect_ratio={getattr(_ic, 'aspect_ratio', None)}, "
+        f"image_size={getattr(_ic, 'image_size', None)}"
         if _ic else "NOT SET"
     )
     logger.info(

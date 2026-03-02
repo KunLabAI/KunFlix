@@ -173,6 +173,11 @@ class GeminiImageConfig(BaseModel):
     """Gemini 图片生成配置"""
     aspect_ratio: Optional[Literal["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]] = None
     image_size: Optional[Literal["4K", "2K", "1024", "512", "auto"]] = None
+    output_format: Optional[Literal["png", "jpeg", "webp"]] = None  # 输出格式
+    batch_count: Optional[int] = Field(None, ge=1, le=8)  # 批量生成数量 (1-8)
+    # 参考图片数量限制配置
+    max_person_images: Optional[int] = Field(None, ge=0, le=4)  # 角色参考图片最大数量 (0-4)
+    max_object_images: Optional[int] = Field(None, ge=0, le=10)  # 高保真对象图片最大数量 (0-10)
 
 
 class GeminiConfig(BaseModel):
@@ -182,6 +187,7 @@ class GeminiConfig(BaseModel):
     image_generation_enabled: bool = False  # 图片生成开关
     image_config: Optional[GeminiImageConfig] = None
     google_search_enabled: bool = False  # Google 搜索开关
+    google_image_search_enabled: bool = False  # Google 图片搜索开关
 
 
 # ---------------------------------------------------------------------------
@@ -413,3 +419,45 @@ class SubscriptionPlanResponse(SubscriptionPlanBase):
     updated_at: Optional[Any] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Batch Image Generation schemas
+# ---------------------------------------------------------------------------
+class BatchImageConfigRequest(BaseModel):
+    """批量图片生成配置"""
+    aspect_ratio: Literal["auto", "16:9", "4:3", "1:1", "3:4", "9:16"] = "1:1"
+    image_size: Literal["4K", "2K", "1024", "512", "auto"] = "2K"
+    output_format: Literal["png", "jpeg", "webp"] = "png"
+    google_search_enabled: bool = False
+    google_image_search_enabled: bool = False
+
+
+class BatchImageGenerateRequest(BaseModel):
+    """批量图片生成请求"""
+    agent_id: str  # 使用指定智能体的配置（API key、模型等）
+    prompts: List[str] = Field(..., min_length=1, max_length=8)
+    config: Optional[BatchImageConfigRequest] = None
+    max_concurrent: int = Field(default=4, ge=1, le=8)
+
+
+class SingleImageResultResponse(BaseModel):
+    """单张图片生成结果"""
+    prompt_index: int
+    prompt: str
+    success: bool
+    image_url: Optional[str] = None
+    text_response: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    error: Optional[str] = None
+
+
+class BatchImageGenerateResponse(BaseModel):
+    """批量图片生成响应"""
+    success: bool
+    total_prompts: int
+    completed: int
+    failed: int
+    results: List[SingleImageResultResponse]
+
