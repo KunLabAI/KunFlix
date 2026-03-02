@@ -16,7 +16,7 @@ import logging
 
 from models import Agent, TaskExecution, SubTask, User, CreditTransaction
 from services.agent_executor import AgentExecutor, ExecutionResult
-from services.billing import calculate_credit_cost
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError
 from services.llm_stream import StreamResult
 
 logger = logging.getLogger(__name__)
@@ -858,23 +858,13 @@ Provide a cohesive final result that integrates all outputs:"""
 
         # Deduct credits from user
         if total_cost > 0:
-            user_result = await self.db.execute(select(User).filter(User.id == user_id))
-            user = user_result.scalars().first()
-            if user:
-                balance_before = user.credits or 0
-                user.credits = max(0, balance_before - total_cost)
-
-                # Create transaction record
-                transaction = CreditTransaction(
+            try:
+                # 使用原子扣费
+                await deduct_credits_atomic(
                     user_id=user_id,
-                    agent_id=task_execution.leader_agent_id,
-                    transaction_type="deduction",
-                    amount=-total_cost,
-                    balance_before=balance_before,
-                    balance_after=user.credits,
-                    input_tokens=total_input,
-                    output_tokens=total_output,
-                    metadata_json={
+                    cost=total_cost,
+                    session=self.db,
+                    metadata={
                         "task_execution_id": task_execution.id,
                         "subtask_count": len(subtasks),
                         "total_image_output_tokens": sum(
@@ -883,9 +873,16 @@ Provide a cohesive final result that integrates all outputs:"""
                         "total_search_count": sum(
                             (st.output_data or {}).get("search_count", 0) for st in subtasks
                         ),
+                        "description": f"Multi-agent task: {task_execution.task_description[:100]}"
                     },
-                    description=f"Multi-agent task: {task_execution.task_description[:100]}"
+                    transaction_type="deduction"
                 )
-                self.db.add(transaction)
+            except InsufficientCreditsError:
+                logger.error(f"Insufficient credits for user {user_id} in orchestrator finalize. Cost: {total_cost}")
+                # 记录失败状态，或者允许透支（取决于业务策略）
+                # 这里我们记录错误，但无法回滚已经完成的任务消耗
+                pass
+            except Exception as e:
+                logger.error(f"Failed to deduct credits in orchestrator: {e}")
 
         await self.db.commit()

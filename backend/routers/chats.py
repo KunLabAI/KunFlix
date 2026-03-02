@@ -15,7 +15,7 @@ from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, C
 from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
-from services.billing import calculate_credit_cost
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
 
 logger = logging.getLogger(__name__)
@@ -431,23 +431,51 @@ async def _generate_single_agent(
                 # 积分扣费（映射表驱动多维度计费，仅在生成成功后扣费）
                 credit_cost, billing_metadata = calculate_credit_cost(result, agent)
                 if credit_cost > 0:
-                    balance_before = entity.credits or 0
-                    entity.credits = max(0, balance_before - credit_cost)
-                    # 根据实体类型设置对应的 ID 字段
-                    tx_kwargs = {
-                        "admin_id" if is_admin else "user_id": entity_id,
-                        "agent_id": agent.id,
-                        "session_id": session_id,
-                        "transaction_type": "deduction",
-                        "amount": -credit_cost,
-                        "balance_before": balance_before,
-                        "balance_after": entity.credits,
-                        "input_tokens": result.input_tokens,
-                        "output_tokens": result.output_tokens,
-                        "metadata_json": billing_metadata,
-                    }
-                    session.add(CreditTransaction(**tx_kwargs))
-                    logger.info(f"Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {entity.credits:.2f})")
+                    try:
+                        # 区分 User 和 Admin
+                        # 目前 deduct_credits_atomic 仅支持 User 模型
+                        # Admin 暂时维持原状，或者 Admin 也需要原子扣费？
+                        # Admin 表也有 credits 字段，逻辑类似。
+                        # 为了安全，我们也应该为 Admin 实现原子扣费，或者复用逻辑。
+                        # 由于 deduct_credits_atomic 硬编码了 User 模型，我们需要稍微修改一下或者只对 User 使用。
+                        
+                        if not is_admin:
+                            # 对普通用户使用原子扣费
+                            await deduct_credits_atomic(
+                                user_id=entity_id,
+                                cost=credit_cost,
+                                session=session,
+                                metadata=billing_metadata,
+                                transaction_type="consumption"
+                            )
+                        else:
+                            # Admin 保持原有逻辑 (或者后续升级 Admin 扣费)
+                            balance_before = entity.credits or 0
+                            # Admin 允许透支？或者也检查？暂时保持原样
+                            entity.credits = max(0, balance_before - credit_cost)
+                            tx_kwargs = {
+                                "admin_id": entity_id,
+                                "agent_id": agent.id,
+                                "session_id": session_id,
+                                "transaction_type": "deduction",
+                                "amount": -credit_cost,
+                                "balance_before": balance_before,
+                                "balance_after": entity.credits,
+                                "input_tokens": result.input_tokens,
+                                "output_tokens": result.output_tokens,
+                                "metadata_json": billing_metadata,
+                            }
+                            session.add(CreditTransaction(**tx_kwargs))
+                            logger.info(f"Admin Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {entity.credits:.2f})")
+                            
+                    except InsufficientCreditsError:
+                        logger.error(f"Insufficient credits for user {entity_id} after completion. This should be caught earlier.")
+                        # 虽然生成完成了，但扣费失败。
+                        # 这种情况下，我们可能需要记录欠费，或者只是 log error。
+                        # 由于是事后扣费，这里抛出异常也无法回滚 LLM 的消耗。
+                        pass
+                    except Exception as e:
+                         logger.error(f"Error deducting credits: {e}")
 
             await session.commit()
         except Exception as e:

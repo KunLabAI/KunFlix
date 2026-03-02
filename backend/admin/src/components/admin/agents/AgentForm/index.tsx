@@ -167,7 +167,7 @@ export default function AgentForm({
     <>
       {twoColumn ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-7 xl:col-span-8">
+          <div className="lg:col-span-6 xl:col-span-7">
             <Section title="基础信息">
               <BasicInfo 
                 providers={activeProviders || []} 
@@ -180,7 +180,7 @@ export default function AgentForm({
                <SystemPrompt disabled={loading} />
             </Section>
           </div>
-          <div className="lg:col-span-5 xl:col-span-4">
+          <div className="lg:col-span-6 xl:col-span-5">
             <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto space-y-6 pb-4">
               <Section title="参数设置">
                 <Parameters disabled={loading} providers={activeProviders || []} />

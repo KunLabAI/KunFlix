@@ -75,7 +75,7 @@ export default function AgentDetailPage() {
       <div className="h-full flex flex-col">
         <Header title="创建新智能体" saving={saving} onSave={handleSave} onBack={() => router.push('/admin/agents')} />
         <div className="flex-1 overflow-y-auto bg-muted/20">
-          <div className="max-w-5xl mx-auto py-12 px-6">
+          <div className="max-w-7xl mx-auto py-12 px-6">
             <div className="mb-8">
               <h2 className="text-2xl font-bold tracking-tight mb-2">开始配置</h2>
               <p className="text-muted-foreground">配置智能体的基础信息、模型参数及系统提示词。</p>
