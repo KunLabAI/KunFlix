@@ -49,6 +49,7 @@ class User(Base):
     # Status (role 字段已废弃，将在迁移后移除)
     role = Column(String(20), default="user", index=True)  # 已废弃，保留向后兼容
     is_active = Column(Boolean, default=True)
+    is_balance_frozen = Column(Boolean, default=False)  # 资金冻结状态
 
     # Subscription (订阅系统)
     subscription_plan_id = Column(String(36), ForeignKey("subscription_plans.id"), nullable=True)

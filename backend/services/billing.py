@@ -23,9 +23,13 @@ class InsufficientCreditsError(Exception):
     """用户积分不足异常"""
     pass
 
+class BalanceFrozenError(Exception):
+    """用户资金已冻结异常"""
+    pass
+
 async def check_balance_sufficient(user_id: str, estimated_cost: float, session: AsyncSession) -> bool:
     """
-    检查用户余额是否足够支付预估费用。
+    检查用户余额是否足够支付预估费用，并检查是否冻结。
     
     Args:
         user_id: 用户ID
@@ -34,10 +38,22 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
         
     Returns:
         bool: 是否足够
+        
+    Raises:
+        BalanceFrozenError: 如果账户被冻结
     """
-    stmt = select(User.credits).where(User.id == user_id)
+    stmt = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
     result = await session.execute(stmt)
-    current_balance = result.scalar() or Decimal('0.0')
+    row = result.first()
+    
+    if not row:
+        return False
+        
+    current_balance = row.credits or Decimal('0.0')
+    is_frozen = row.is_balance_frozen or False
+    
+    if is_frozen:
+        raise BalanceFrozenError(f"User {user_id} balance is frozen")
     
     # 转换为 Decimal 进行比较
     cost_decimal = Decimal(str(estimated_cost))
@@ -45,6 +61,70 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
     if current_balance < cost_decimal:
         return False
     return True
+
+async def refund_credits_atomic(
+    user_id: str,
+    amount: float,
+    session: AsyncSession,
+    metadata: Dict = None,
+    description: str = "Refund"
+) -> CreditTransaction:
+    """
+    原子退还用户积分。
+    
+    Args:
+        user_id: 用户ID
+        amount: 退还金额 (必须 >= 0)
+        session: 数据库会话
+        metadata: 交易元数据
+        description: 描述
+        
+    Returns:
+        CreditTransaction: 交易记录
+    """
+    if amount < 0:
+        raise ValueError("Refund amount cannot be negative")
+    
+    if amount == 0:
+        pass
+
+    amount_decimal = Decimal(str(amount))
+    
+    # 1. 原子增加余额
+    # UPDATE users SET credits = credits + :amount WHERE id = :id
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(credits=User.credits + amount_decimal)
+        .execution_options(synchronize_session="fetch")
+    )
+    
+    result = await session.execute(stmt)
+    
+    if result.rowcount == 0:
+        raise ValueError(f"User {user_id} not found")
+        
+    # 2. 获取更新后的余额
+    balance_stmt = select(User.credits).where(User.id == user_id)
+    balance_result = await session.execute(balance_stmt)
+    current_balance = balance_result.scalar()
+    
+    # 推算退还前的余额
+    balance_before = current_balance - amount_decimal
+    
+    # 3. 创建交易记录
+    transaction = CreditTransaction(
+        user_id=user_id,
+        amount=amount_decimal,  # 收入为正
+        balance_before=balance_before,
+        balance_after=current_balance,
+        transaction_type="refund",
+        metadata_json=metadata or {},
+        description=description
+    )
+    session.add(transaction)
+    
+    return transaction
 
 async def deduct_credits_atomic(
     user_id: str, 
@@ -81,12 +161,18 @@ async def deduct_credits_atomic(
 
     cost_decimal = Decimal(str(cost))
     
+    # 0. 检查冻结状态 (Optional, UPDATE 条件里也可以加，但显式检查报错更友好)
+    # 为了性能，我们可以直接在 UPDATE 中判断，如果 UPDATE 失败再查原因。
+    # 但为了明确区分“余额不足”和“冻结”，先查一次或者在 UPDATE 中加条件并检查。
+    # 这里选择在 UPDATE 语句中加入 is_balance_frozen = False 条件
+    
     # 1. 原子更新余额
-    # UPDATE users SET credits = credits - :cost WHERE id = :id AND credits >= :cost
+    # UPDATE users SET credits = credits - :cost WHERE id = :id AND credits >= :cost AND is_balance_frozen = False
     stmt = (
         update(User)
         .where(User.id == user_id)
         .where(User.credits >= cost_decimal)
+        .where(User.is_balance_frozen == False) # 确保未冻结
         .values(credits=User.credits - cost_decimal)
         .execution_options(synchronize_session="fetch")
     )
@@ -94,15 +180,23 @@ async def deduct_credits_atomic(
     result = await session.execute(stmt)
     
     if result.rowcount == 0:
-        # 更新失败，可能是余额不足或用户不存在
-        # 再次检查用户是否存在
-        user_exists = await session.execute(select(User.id).where(User.id == user_id))
-        if not user_exists.scalar():
-            raise ValueError(f"User {user_id} not found")
+        # 更新失败，排查原因
+        stmt_check = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
+        res_check = await session.execute(stmt_check)
+        row = res_check.first()
         
-        # 既然用户存在，那就是余额不足
-        logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
-        raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+        if not row:
+            raise ValueError(f"User {user_id} not found")
+            
+        if row.is_balance_frozen:
+             raise BalanceFrozenError(f"User {user_id} balance is frozen")
+             
+        if row.credits < cost_decimal:
+            logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
+            raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+            
+        # 其他未知原因
+        raise Exception("Failed to deduct credits (unknown reason)")
     
     # 2. 获取更新后的余额（用于记录交易）
     # 注意：在高并发下，再次查询的余额可能已经发生变化，
