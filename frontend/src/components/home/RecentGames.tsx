@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import GameCard from "./GameCard";
 import CreateGameCard from "./CreateGameCard";
@@ -17,18 +18,13 @@ const CREATED_GAMES = [
 ];
 
 export default function RecentGames() {
+  const router = useRouter();
   const carouselRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
 
   useEffect(() => {
     const updateWidth = () => {
       if (carouselRef.current) {
-        // We need to calculate the difference between the scrollable width of the inner content
-        // and the visible width of the container.
-        // However, since we are using drag on the inner motion.div, we need to know its full width.
-        // The current implementation might be slightly off if the ref is on the container.
-        // Better approach: Measure the scrollWidth of the container (which contains the long flex row)
-        // minus the offsetWidth (visible part).
         setWidth(carouselRef.current.scrollWidth - carouselRef.current.offsetWidth);
       }
     };
@@ -54,7 +50,7 @@ export default function RecentGames() {
           className="flex gap-6"
         >
           {/* Create Game Card - Always First */}
-          <CreateGameCard onClick={() => console.log("Create Game Clicked")} />
+          <CreateGameCard onClick={() => router.push('/create-game')} />
 
           {/* User's Created Games */}
           {CREATED_GAMES.map((game) => (

@@ -7,7 +7,7 @@ import { Loader2 } from "lucide-react";
 // Mock data generator
 const generateGames = (startId: number, count: number) => {
   return Array.from({ length: count }).map((_, i) => ({
-    id: `shared-${startId + i}`,
+    id: `shared-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     title: `Shared Game ${startId + i}`,
     image: "/api/placeholder/400/600",
   }));
@@ -16,19 +16,24 @@ const generateGames = (startId: number, count: number) => {
 export default function SharedGames() {
   const [games, setGames] = useState<Array<{ id: string; title: string; image: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const observerTarget = useRef<HTMLDivElement>(null);
 
   const loadMoreGames = useCallback(() => {
-    if (loading) return;
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     
     // Simulate API call
     setTimeout(() => {
-      const newGames = generateGames(games.length, 6);
-      setGames((prev) => [...prev, ...newGames]);
+      setGames((prev) => {
+        const newGames = generateGames(prev.length, 6);
+        return [...prev, ...newGames];
+      });
       setLoading(false);
+      loadingRef.current = false;
     }, 1000);
-  }, [games.length, loading]);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(

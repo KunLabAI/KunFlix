@@ -88,3 +88,7 @@ backend/media/*.jpeg
 backend/media/*.jpg
 backend/media/*.png
 
+frontend/public/*.png
+frontend/public/*.jpg
+frontend/public/*.jpeg
+
