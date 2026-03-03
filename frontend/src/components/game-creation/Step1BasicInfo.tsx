@@ -79,37 +79,28 @@ export default function Step1BasicInfo({ state, template, updateBasicInfo, onNex
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-              游戏标题
-            </label>
             <Input
               value={state.basicInfo.title}
               onChange={(e) => updateBasicInfo({ title: e.target.value })}
-              placeholder="为你的冒险起个名字..."
+              placeholder="游戏标题 (为你的冒险起个名字...)"
               className="bg-background"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-              一句话简介
-            </label>
             <Input
               value={state.basicInfo.description}
               onChange={(e) => updateBasicInfo({ description: e.target.value })}
-              placeholder="简单描述这个故事..."
+              placeholder="一句话简介 (简单描述这个故事...)"
               className="bg-background"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-              世界观设定 (详细)
-            </label>
             <Textarea
               value={state.basicInfo.worldSetting}
               onChange={(e) => updateBasicInfo({ worldSetting: e.target.value })}
-              placeholder="详细描述这个世界的规则、现状和危机..."
+              placeholder="世界观设定 (详细描述这个世界的规则、历史、现状...)"
               className="min-h-[200px] bg-background leading-relaxed resize-none"
             />
           </div>

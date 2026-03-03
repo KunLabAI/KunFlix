@@ -29,7 +29,7 @@ function GameCreationWorkflowContent() {
   );
 
   const updateBasicInfo = (payload: any) => dispatch({ type: 'UPDATE_BASIC_INFO', payload });
-  const updateCharacter = (payload: any) => dispatch({ type: 'UPDATE_MAIN_CHARACTER', payload });
+  const updateCharacters = (payload: any) => dispatch({ type: 'UPDATE_CHARACTERS', payload });
   const nextStep = () => dispatch({ type: 'NEXT_STEP' });
   const prevStep = () => dispatch({ type: 'PREV_STEP' });
 
@@ -42,7 +42,7 @@ function GameCreationWorkflowContent() {
   return (
     <div className="h-screen w-full flex bg-background overflow-hidden">
       {/* Left Column: Form Section (Fixed 350px) */}
-      <div className="w-[350px] h-full flex flex-col border-r border-border bg-background z-20 shadow-xl flex-shrink-0">
+      <div className="w-[450px] h-full flex flex-col border-r border-border bg-background z-20 shadow-xl flex-shrink-0">
         <div className="p-4 border-b border-border flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => router.push('/create-game')} className="rounded-full h-8 w-8">
             <ChevronLeft className="w-4 h-4" />
@@ -66,7 +66,7 @@ function GameCreationWorkflowContent() {
                 key="step2"
                 state={state}
                 template={selectedTemplate}
-                updateCharacter={updateCharacter}
+                updateCharacters={updateCharacters}
                 onNext={nextStep}
                 onPrev={prevStep}
               />
@@ -92,7 +92,7 @@ function GameCreationWorkflowContent() {
       </div>
 
       {/* Right Column: Asset Library (Fixed 300px) */}
-      <div className="w-[300px] h-full flex-shrink-0 z-20 shadow-xl">
+      <div className="w-[450px] h-full flex-shrink-0 z-20 shadow-xl">
         <AssetLibrary onDragStart={handleAssetDragStart} />
       </div>
     </div>

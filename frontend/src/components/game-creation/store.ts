@@ -9,12 +9,7 @@ export interface GameState {
     description: string;
     worldSetting: string; // The core world setting, potentially AI-enhanced
   };
-  mainCharacter: {
-    name: string;
-    archetype: string;
-    background: string;
-    traits: string[];
-  };
+  characters: Character[];
   opening: {
     location: string;
     situation: string;
@@ -22,12 +17,24 @@ export interface GameState {
   };
 }
 
+export interface Character {
+  id: string;
+  name: string;
+  gender: 'male' | 'female' | 'unknown';
+  role: 'protagonist' | 'npc';
+  archetype: string;
+  background: string;
+  traits: string[];
+  avatar?: string;
+  isExpanded?: boolean;
+}
+
 export type GameCreationAction =
   | { type: 'SET_TEMPLATE'; payload: string }
   | { type: 'NEXT_STEP' }
   | { type: 'PREV_STEP' }
   | { type: 'UPDATE_BASIC_INFO'; payload: Partial<GameState['basicInfo']> }
-  | { type: 'UPDATE_MAIN_CHARACTER'; payload: Partial<GameState['mainCharacter']> }
+  | { type: 'UPDATE_CHARACTERS'; payload: Character[] }
   | { type: 'UPDATE_OPENING'; payload: Partial<GameState['opening']> };
 
 export const INITIAL_GAME_STATE: GameState = {
@@ -38,12 +45,16 @@ export const INITIAL_GAME_STATE: GameState = {
     description: '',
     worldSetting: '',
   },
-  mainCharacter: {
+  characters: [{
+    id: 'init-1',
     name: '',
+    gender: 'unknown',
+    role: undefined as any,
     archetype: '',
     background: '',
     traits: [],
-  },
+    isExpanded: true,
+  }],
   opening: {
     location: '',
     situation: '',
@@ -61,8 +72,8 @@ export function gameCreationReducer(state: GameState, action: GameCreationAction
       return { ...state, step: Math.max(1, state.step - 1) };
     case 'UPDATE_BASIC_INFO':
       return { ...state, basicInfo: { ...state.basicInfo, ...action.payload } };
-    case 'UPDATE_MAIN_CHARACTER':
-      return { ...state, mainCharacter: { ...state.mainCharacter, ...action.payload } };
+    case 'UPDATE_CHARACTERS':
+      return { ...state, characters: action.payload };
     case 'UPDATE_OPENING':
       return { ...state, opening: { ...state.opening, ...action.payload } };
     default:

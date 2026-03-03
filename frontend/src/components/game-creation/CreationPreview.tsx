@@ -1,10 +1,10 @@
-
 'use client';
 
 import { motion } from 'framer-motion';
 import { GameState } from './store';
 import { StoryTemplate } from '@/components/create-game/data';
 import { Gamepad2, User, Flag, ArrowRight } from 'lucide-react';
+import Image from 'next/image';
 
 interface CreationPreviewProps {
   state: GameState;
@@ -13,6 +13,7 @@ interface CreationPreviewProps {
 
 export default function CreationPreview({ state, template }: CreationPreviewProps) {
   const currentStep = state.step;
+  const mainChar = state.characters?.[0];
 
   return (
     <div className="relative h-full w-full bg-zinc-950 text-zinc-100 overflow-hidden flex flex-col items-center justify-center p-8">
@@ -49,7 +50,7 @@ export default function CreationPreview({ state, template }: CreationPreviewProp
             <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 2 ? 'border-primary bg-primary/20' : 'border-muted-foreground/30'}`}>
               <User className="w-4 h-4" />
             </div>
-            <span className="text-xs font-medium">主角</span>
+            <span className="text-xs font-medium">角色</span>
           </div>
           <div className="flex-1 h-0.5 mx-2 bg-muted-foreground/20">
             <motion.div 
@@ -123,19 +124,35 @@ export default function CreationPreview({ state, template }: CreationPreviewProp
                 animate={{ opacity: 1 }}
                 className="space-y-4"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
-                    <User className="w-8 h-8 text-zinc-500" />
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800 flex-shrink-0 flex items-center justify-center border border-zinc-700 overflow-hidden relative">
+                    {mainChar?.avatar ? (
+                        <Image 
+                            src={mainChar.avatar} 
+                            alt={mainChar.name || "Character"} 
+                            fill 
+                            className="object-cover"
+                        />
+                    ) : (
+                        <User className="w-8 h-8 text-zinc-500" />
+                    )}
                   </div>
-                  <div>
-                    <h3 className="font-bold text-white">{state.mainCharacter.name || '无名氏'}</h3>
-                    <span className="text-xs text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
-                      {state.mainCharacter.archetype || '未定职业'}
-                    </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-white truncate">{mainChar?.name || '无名氏'}</h3>
+                        <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                            {mainChar?.role === 'protagonist' ? '主角' : 'NPC'}
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        <span className="text-xs text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 truncate max-w-full">
+                        {mainChar?.archetype || '未定职业'}
+                        </span>
+                    </div>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-300">
-                  {state.mainCharacter.background || '等待设定背景故事...'}
+                <p className="text-sm text-zinc-300 line-clamp-4">
+                  {mainChar?.background || '等待设定背景故事...'}
                 </p>
               </motion.div>
             )}
