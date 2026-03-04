@@ -34,19 +34,10 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
   const selectedProviderId = watch('provider_id');
   const selectedModel = watch('model');
 
-  console.log('[BasicInfo] Render:', { 
-    selectedProviderId, 
-    selectedModel, 
-    providersCount: providers.length,
-    isFormInitialized: isFormInitialized?.current 
-  });
-
   const availableModels = useMemo(() => {
     if (!selectedProviderId || !providers) return [];
     const provider = providers.find(p => p.id === selectedProviderId);
-    const models = provider ? parseProviderModels(provider.models) : [];
-    console.log('[BasicInfo] Available models:', models);
-    return models;
+    return provider ? parseProviderModels(provider.models) : [];
   }, [selectedProviderId, providers]);
 
   return (
@@ -134,14 +125,11 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {providers.map((p) => {
-                      console.log('[BasicInfo] Provider option:', p.id, p.name);
-                      return (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      );
-                    })}
+                    {providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />

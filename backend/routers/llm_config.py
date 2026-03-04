@@ -26,6 +26,7 @@ router = APIRouter(
 _DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
     "minimax": "https://api.minimax.chat/v1",
+    "xai": "https://api.x.ai/v1",
 }
 
 # Azure uses "azure" client type, all others use "openai"

@@ -15,45 +15,53 @@ router = APIRouter(
 
 @router.post("/", response_model=AgentResponse)
 async def create_agent(agent: AgentCreate, _admin: Admin = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    # 1. Check if name exists
-    existing_agent = await db.execute(select(Agent).filter(Agent.name == agent.name))
-    if existing_agent.scalars().first():
-        raise HTTPException(status_code=400, detail="Agent name already exists")
+    try:
+        # 1. Check if name exists
+        existing_agent = await db.execute(select(Agent).filter(Agent.name == agent.name))
+        if existing_agent.scalars().first():
+            raise HTTPException(status_code=400, detail="Agent name already exists")
 
-    # 2. Validate Provider and Model
-    provider_result = await db.execute(select(LLMProvider).filter(LLMProvider.id == agent.provider_id))
-    provider = provider_result.scalars().first()
-    if not provider:
-        raise HTTPException(status_code=400, detail="Provider not found")
-    
-    # 3. Check if model is in provider's model list
-    # Models can be stored as JSON list or string
-    provider_models = []
-    if provider.models:
-        if isinstance(provider.models, list):
-            provider_models = provider.models
-        elif isinstance(provider.models, str):
-            import json
-            try:
-                provider_models = json.loads(provider.models)
-            except:
-                provider_models = [provider.models]
-    
-    if agent.model not in provider_models:
-        # Relaxed check: if model is not in list but provider is generic, maybe allow?
-        # But requirement says "must select from provider's models".
-        # Let's assume the frontend sends a valid model from the list.
-        # But for safety, we should check if possible.
-        # If the list is empty, maybe we skip check?
-        if provider_models:
-             if agent.model not in provider_models:
-                 raise HTTPException(status_code=400, detail=f"Model {agent.model} not available for this provider")
+        # 2. Validate Provider and Model
+        provider_result = await db.execute(select(LLMProvider).filter(LLMProvider.id == agent.provider_id))
+        provider = provider_result.scalars().first()
+        if not provider:
+            raise HTTPException(status_code=400, detail="Provider not found")
+        
+        # 3. Check if model is in provider's model list
+        # Models can be stored as JSON list or string
+        provider_models = []
+        if provider.models:
+            if isinstance(provider.models, list):
+                provider_models = provider.models
+            elif isinstance(provider.models, str):
+                import json
+                try:
+                    provider_models = json.loads(provider.models)
+                except:
+                    provider_models = [provider.models]
+        
+        if agent.model not in provider_models:
+            # Relaxed check: if model is not in list but provider is generic, maybe allow?
+            # But requirement says "must select from provider's models".
+            # Let's assume the frontend sends a valid model from the list.
+            # But for safety, we should check if possible.
+            # If the list is empty, maybe we skip check?
+            if provider_models:
+                 if agent.model not in provider_models:
+                     raise HTTPException(status_code=400, detail=f"Model {agent.model} not available for this provider")
 
-    new_agent = Agent(**agent.model_dump())
-    db.add(new_agent)
-    await db.commit()
-    await db.refresh(new_agent)
-    return new_agent
+        new_agent = Agent(**agent.model_dump())
+        db.add(new_agent)
+        await db.commit()
+        await db.refresh(new_agent)
+        return new_agent
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error creating agent: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=List[AgentResponse])
 async def list_agents(

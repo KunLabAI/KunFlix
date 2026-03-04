@@ -396,6 +396,7 @@ export default function LLMPage() {
                           <SelectItem value="gemini">Gemini</SelectItem>
                           <SelectItem value="deepseek">DeepSeek</SelectItem>
                           <SelectItem value="minimax">MiniMax</SelectItem>
+                          <SelectItem value="xai">xAI (Grok)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

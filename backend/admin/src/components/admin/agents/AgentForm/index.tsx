@@ -30,6 +30,22 @@ const Section = ({ title, children, className }: { title: string, children: Reac
   </div>
 );
 
+const defaultGeminiConfig = {
+  thinking_level: null,
+  media_resolution: null,
+  image_generation_enabled: false,
+  image_config: {
+    aspect_ratio: null,
+    image_size: null,
+    output_format: null,
+    batch_count: null,
+    max_person_images: null,
+    max_object_images: null,
+  },
+  google_search_enabled: false,
+  google_image_search_enabled: false,
+};
+
 export default function AgentForm({ 
   initialValues, 
   onSubmit, 
@@ -65,7 +81,7 @@ export default function AgentForm({
       member_agent_ids: [],
       max_subtasks: 10,
       enable_auto_review: true,
-      gemini_config: null,
+      gemini_config: defaultGeminiConfig,
     },
   });
 
@@ -78,7 +94,6 @@ export default function AgentForm({
 
   // Initialize form
   useEffect(() => {
-    console.log('[AgentForm] Initializing with:', initialValues);
     if (initialValues) {
       const hasTools = !!(initialValues.tools && initialValues.tools.length > 0);
       const formData = {
@@ -102,9 +117,8 @@ export default function AgentForm({
         member_agent_ids: initialValues.member_agent_ids || [],
         max_subtasks: Number(initialValues.max_subtasks) || 10,
         enable_auto_review: initialValues.enable_auto_review !== false,
-        gemini_config: initialValues.gemini_config || null,
+        gemini_config: initialValues.gemini_config || defaultGeminiConfig,
       };
-      console.log('[AgentForm] Resetting form with:', formData);
       
       // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
       isFormInitialized.current = false;
@@ -115,7 +129,6 @@ export default function AgentForm({
         // 延迟标记初始化完成，确保 reset 引起的渲染完成
         setTimeout(() => {
           isFormInitialized.current = true;
-          console.log('[AgentForm] Initialization complete');
         }, 50);
       }, 0);
     } else if (initialValues === null) {
@@ -139,7 +152,7 @@ export default function AgentForm({
         member_agent_ids: [],
         max_subtasks: 10,
         enable_auto_review: true,
-        gemini_config: null,
+        gemini_config: defaultGeminiConfig,
       });
       isFormInitialized.current = true;
     }
@@ -148,22 +161,67 @@ export default function AgentForm({
 
   const agentType = form.watch('agent_type') as 'text' | 'image' | 'multimodal';
 
+  // 字段名映射表（避免 if-else，直接查表显示中文名）
+  const FIELD_LABELS: Record<string, string> = {
+    name: '名称', description: '描述', provider_id: '供应商', model: '模型',
+    system_prompt: '系统提示词', temperature: '温度', context_window: '上下文窗口',
+    tools: '工具', coordination_modes: '协作方式', gemini_config: 'Gemini 配置',
+  };
+
+  const handleInvalid = (errors: Record<string, any>) => {
+    console.error('Form validation errors:', errors);
+    const fields = Object.keys(errors).map(k => FIELD_LABELS[k] || k);
+    toast({
+      variant: "destructive",
+      title: "请检查以下字段",
+      description: fields.join('、'),
+    });
+  };
+
   const handleFinish = async (values: AgentFormValues) => {
     try {
       const { tools_enabled, gemini_config, ...rest } = values;
+      
+      // Clean up gemini_config
+      let cleanedGeminiConfig = undefined;
+      if (gemini_config) {
+        const imageConfig = gemini_config.image_generation_enabled && gemini_config.image_config ? {
+            aspect_ratio: gemini_config.image_config.aspect_ratio || null,
+            image_size: gemini_config.image_config.image_size || null,
+            output_format: gemini_config.image_config.output_format || null,
+            batch_count: gemini_config.image_config.batch_count || null,
+            max_person_images: gemini_config.image_config.max_person_images || null,
+            max_object_images: gemini_config.image_config.max_object_images || null,
+        } : null;
+
+        cleanedGeminiConfig = {
+          thinking_level: gemini_config.thinking_level || null,
+          media_resolution: gemini_config.media_resolution || null,
+          image_generation_enabled: gemini_config.image_generation_enabled || false,
+          google_search_enabled: gemini_config.google_search_enabled || false,
+          google_image_search_enabled: gemini_config.google_image_search_enabled || false,
+          image_config: imageConfig
+        };
+      }
+
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
-        gemini_config: gemini_config || undefined,
+        gemini_config: cleanedGeminiConfig,
       };
       
+      console.log('Submitting payload:', JSON.stringify(payload, null, 2));
       await onSubmit(payload);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Form submission error:', error);
+      if (error.response) {
+        console.error('Response data:', error.response.data);
+        console.error('Response status:', error.response.status);
+      }
       toast({
         variant: "destructive",
         title: "提交失败",
-        description: "请重试",
+        description: error.response?.data?.detail ? JSON.stringify(error.response.data.detail) : "请重试",
       });
     }
   };
@@ -229,7 +287,7 @@ export default function AgentForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleFinish)} className="space-y-8">
+      <form onSubmit={form.handleSubmit(handleFinish, handleInvalid)} className="space-y-8">
         {formContent}
       </form>
     </Form>

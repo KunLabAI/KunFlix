@@ -68,6 +68,10 @@ class DialogAgent(AgentBase):
 
         # Format -> Call -> Collect (formatter handles provider-specific conversion)
         formatted = await self._formatter.format(msgs)
+        # Sanitize: strip `name` from non-user messages
+        # (xAI only allows name on user role; safe for all other providers)
+        for m in formatted:
+            m.get("role") != "user" and m.pop("name", None)
         response = self.model(formatted)
 
         if asyncio.iscoroutine(response):
@@ -172,13 +176,14 @@ class NarrativeEngine:
             provider_type_lower = provider_type.lower()
             
             # 供应商类型映射到模型类和配置
-            openai_compatible = ["openai", "azure", "deepseek", "vllm"]
+            openai_compatible = ["openai", "azure", "deepseek", "vllm", "xai"]
             anthropic_compatible = ["anthropic", "minimax"]
             
             # 默认 base_url 配置
             default_base_urls = {
                 "deepseek": "https://api.deepseek.com",
-                "minimax": "https://api.minimax.chat/v1"
+                "minimax": "https://api.minimax.chat/v1",
+                "xai": "https://api.x.ai/v1",
             }
             
             # 确定实际使用的 base_url

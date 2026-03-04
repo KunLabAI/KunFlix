@@ -81,7 +81,7 @@ export default function AgentDetailPage() {
               <p className="text-muted-foreground">配置智能体的基础信息、模型参数及系统提示词。</p>
             </div>
             <div className="bg-card rounded-xl border shadow-sm p-8">
-              <AgentForm onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} twoColumn={true} />
+              <AgentForm initialValues={null} onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} twoColumn={true} />
             </div>
           </div>
         </div>

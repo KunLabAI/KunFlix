@@ -38,6 +38,7 @@ class StreamResult:
 DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
     "minimax": "https://api.minimax.chat/v1",
+    "xai": "https://api.x.ai/v1",
 }
 
 # 供应商注册表：provider_type -> stream handler
@@ -61,7 +62,7 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 # ============================================================
 # OpenAI 兼容供应商 (openai, azure, deepseek)
 # ============================================================
-@register_provider("openai", "deepseek")
+@register_provider("openai", "deepseek", "xai")
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """OpenAI/DeepSeek 流式调用"""
     from openai import AsyncOpenAI

@@ -50,12 +50,13 @@ MODEL_CREATORS = {
     "ollama": lambda model_name, base_url=None, **_: OllamaChatModel(model_name=model_name, host=base_url),
 }
 
-OPENAI_COMPATIBLE = ["openai", "azure", "deepseek", "vllm"]
+OPENAI_COMPATIBLE = ["openai", "azure", "deepseek", "vllm", "xai"]
 ANTHROPIC_COMPATIBLE = ["anthropic", "minimax"]
 
 DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
     "minimax": "https://api.minimax.chat/v1",
+    "xai": "https://api.x.ai/v1",
 }
 
 

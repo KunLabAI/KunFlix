@@ -1,18 +1,23 @@
 import * as z from 'zod';
 
+const emptyStringToNull = (val: unknown) => {
+  if (val === "" || val === "undefined") return null;
+  return val;
+};
+
 // Gemini 3.1 配置 schema
 const geminiImageConfigSchema = z.object({
-  aspect_ratio: z.enum(["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable(),
-  image_size: z.enum(["4K", "2K", "1024", "512", "auto"]).optional().nullable(),
-  output_format: z.enum(["png", "jpeg", "webp"]).optional().nullable(),
-  batch_count: z.number().min(1).max(8).optional().nullable(),
-  max_person_images: z.number().min(0).max(4).optional().nullable(),
-  max_object_images: z.number().min(0).max(10).optional().nullable(),
+  aspect_ratio: z.preprocess(emptyStringToNull, z.enum(["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable()),
+  image_size: z.preprocess(emptyStringToNull, z.enum(["4K", "2K", "1024", "512", "auto"]).optional().nullable()),
+  output_format: z.preprocess(emptyStringToNull, z.enum(["png", "jpeg", "webp"]).optional().nullable()),
+  batch_count: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(1).max(8).optional().nullable()),
+  max_person_images: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(0).max(4).optional().nullable()),
+  max_object_images: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(0).max(10).optional().nullable()),
 }).optional().nullable();
 
 const geminiConfigSchema = z.object({
-  thinking_level: z.enum(["high", "medium", "low", "minimal"]).optional().nullable(),
-  media_resolution: z.enum(["ultra_high", "high", "medium", "low"]).optional().nullable(),
+  thinking_level: z.preprocess(emptyStringToNull, z.enum(["high", "medium", "low", "minimal"]).optional().nullable()),
+  media_resolution: z.preprocess(emptyStringToNull, z.enum(["ultra_high", "high", "medium", "low"]).optional().nullable()),
   image_generation_enabled: z.boolean().optional().default(false),
   image_config: geminiImageConfigSchema,
   google_search_enabled: z.boolean().optional().default(false),
