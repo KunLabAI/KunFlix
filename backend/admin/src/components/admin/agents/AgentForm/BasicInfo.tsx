@@ -85,6 +85,29 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         )}
       />
 
+      <FormField
+        control={control}
+        name="agent_type"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>智能体类型</FormLabel>
+            <Select onValueChange={field.onChange} value={field.value} disabled={loading}>
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="选择类型" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="text">📝 文本处理（故事、角色、分镜脚本）</SelectItem>
+                <SelectItem value="image">🎨 图像处理（角色立绘、场景图）</SelectItem>
+                <SelectItem value="multimodal">✨ 多模态（文本 + 图像）</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
       <div className="p-4 bg-muted/50 rounded-xl border">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">模型配置</div>
         <div className="grid grid-cols-2 gap-4">

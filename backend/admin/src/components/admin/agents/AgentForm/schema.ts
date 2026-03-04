@@ -24,6 +24,7 @@ export const agentFormSchema = z.object({
   description: z.string().min(1, "请输入描述").max(500, "最大长度500字符"),
   provider_id: z.string().min(1, "请选择供应商"),
   model: z.string().min(1, "请选择模型"),
+  agent_type: z.enum(["text", "image", "multimodal"]).default("text"),
   system_prompt: z.string().min(1, "请输入系统提示词").max(5000, "最大长度5000字符"),
   temperature: z.number().min(0).max(1),
   context_window: z.number().min(4096, "最小值为4096").max(262144, "最大值为262144"),

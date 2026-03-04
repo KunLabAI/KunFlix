@@ -49,6 +49,7 @@ export default function AgentForm({
       description: '',
       provider_id: '',
       model: '',
+      agent_type: 'text' as const,
       system_prompt: '',
       temperature: 0.7,
       context_window: 4096,
@@ -85,6 +86,7 @@ export default function AgentForm({
         description: initialValues.description || '',
         provider_id: initialValues.provider_id || '',
         model: initialValues.model || '',
+        agent_type: (initialValues.agent_type || 'text') as 'text' | 'image' | 'multimodal',
         system_prompt: initialValues.system_prompt || '',
         temperature: Number(initialValues.temperature) || 0.7,
         context_window: Number(initialValues.context_window) || 4096,
@@ -123,6 +125,7 @@ export default function AgentForm({
         description: '',
         provider_id: '',
         model: '',
+        agent_type: 'text' as const,
         system_prompt: '',
         temperature: 0.7,
         context_window: 4096,
@@ -142,6 +145,8 @@ export default function AgentForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]); // 只依赖 initialValues
+
+  const agentType = form.watch('agent_type') as 'text' | 'image' | 'multimodal';
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
@@ -177,7 +182,7 @@ export default function AgentForm({
             </Section>
             <div className="h-px bg-border my-8"></div>
             <Section title="系统设定">
-               <SystemPrompt disabled={loading} />
+               <SystemPrompt disabled={loading} agentType={agentType} />
             </Section>
           </div>
           <div className="lg:col-span-6 xl:col-span-5">
@@ -204,7 +209,7 @@ export default function AgentForm({
             
             <div className="h-px bg-border"></div>
             
-            <SystemPrompt disabled={loading} />
+            <SystemPrompt disabled={loading} agentType={agentType} />
             
             <div className="h-px bg-border"></div>
 

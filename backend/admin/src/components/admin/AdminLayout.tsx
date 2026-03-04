@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  MoreHorizontal
+  MoreHorizontal,
+  FileCode2
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -55,6 +56,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '智能体管理',
       href: '/admin/agents',
       icon: Zap,
+    },
+    {
+      title: '提示词模板',
+      href: '/admin/prompt-templates',
+      icon: FileCode2,
     },
     {
       title: '用户管理',

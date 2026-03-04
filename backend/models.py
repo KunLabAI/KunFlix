@@ -175,6 +175,9 @@ class Agent(Base):
     provider_id = Column(String(36), ForeignKey("llm_providers.id"))
     model = Column(String)  # The specific model name under the provider
 
+    # Agent Type: text | image | multimodal
+    agent_type = Column(String(20), default="text", nullable=False)
+
     # Parameters
     temperature = Column(Float, default=0.7)
     context_window = Column(Integer, default=4096)
@@ -279,6 +282,43 @@ class SubTask(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class PromptTemplate(Base):
+    """提示词模板 - 用于游戏创建等场景的 AI 生成任务"""
+    __tablename__ = "prompt_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    name = Column(String(100), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    
+    # 模板类型: story_basic | character | scene | storyboard | custom
+    template_type = Column(String(50), nullable=False, index=True)
+    
+    # 适用的智能体类型: text | image | multimodal
+    agent_type = Column(String(20), default="text", nullable=False)
+    
+    # 系统提示词模板（支持 Jinja2 格式变量）
+    system_prompt_template = Column(Text, nullable=False)
+    
+    # 用户提示词模板（可选）
+    user_prompt_template = Column(Text, nullable=True)
+    
+    # 输出格式定义（JSON Schema 或示例）
+    output_schema = Column(JSON, default=dict)
+    
+    # 变量定义说明，用于前端表单生成
+    # [{"name": "template_name", "label": "模板名称", "type": "string", "required": true}]
+    variables_schema = Column(JSON, default=list)
+    
+    # 关联的智能体（可选，指定默认使用哪个智能体）
+    default_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
+    
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)  # 是否为该类型的默认模板
+    
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class SubscriptionPlan(Base):

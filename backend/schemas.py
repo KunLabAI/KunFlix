@@ -198,6 +198,7 @@ class AgentBase(BaseModel):
     description: str = Field(..., max_length=500)
     provider_id: str
     model: str
+    agent_type: Literal["text", "image", "multimodal"] = Field(default="text")
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
     context_window: int = Field(default=4096, ge=4096, le=262144)
     system_prompt: str
@@ -226,6 +227,7 @@ class AgentUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     provider_id: Optional[str] = None
     model: Optional[str] = None
+    agent_type: Optional[Literal["text", "image", "multimodal"]] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     context_window: Optional[int] = Field(None, ge=4096, le=262144)
     system_prompt: Optional[str] = None
@@ -460,4 +462,76 @@ class BatchImageGenerateResponse(BaseModel):
     completed: int
     failed: int
     results: List[SingleImageResultResponse]
+
+
+# ---------------------------------------------------------------------------
+# Prompt Template schemas
+# ---------------------------------------------------------------------------
+class PromptTemplateVariable(BaseModel):
+    """模板变量定义"""
+    name: str
+    label: str
+    type: Literal["string", "number", "boolean", "select", "textarea"] = "string"
+    required: bool = True
+    options: Optional[List[str]] = None  # 用于 select 类型
+    default: Optional[Any] = None
+    description: Optional[str] = None
+
+
+class PromptTemplateBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    template_type: str = Field(..., min_length=1, max_length=50)  # story_basic | character | scene | storyboard | custom
+    agent_type: Literal["text", "image", "multimodal"] = Field(default="text")
+    system_prompt_template: str = Field(..., min_length=1)
+    user_prompt_template: Optional[str] = None
+    output_schema: Dict[str, Any] = Field(default_factory=dict)
+    variables_schema: List[PromptTemplateVariable] = Field(default_factory=list)
+    default_agent_id: Optional[str] = None
+    is_active: bool = True
+    is_default: bool = False
+
+
+class PromptTemplateCreate(PromptTemplateBase):
+    pass
+
+
+class PromptTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    template_type: Optional[str] = Field(None, min_length=1, max_length=50)
+    agent_type: Optional[Literal["text", "image", "multimodal"]] = None
+    system_prompt_template: Optional[str] = None
+    user_prompt_template: Optional[str] = None
+    output_schema: Optional[Dict[str, Any]] = None
+    variables_schema: Optional[List[PromptTemplateVariable]] = None
+    default_agent_id: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+
+
+class PromptTemplateResponse(PromptTemplateBase):
+    id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# AI Generation schemas (for game creation)
+# ---------------------------------------------------------------------------
+class AIGenerateRequest(BaseModel):
+    """AI 生成请求"""
+    template_id: str  # 使用哪个提示词模板
+    variables: Dict[str, Any] = Field(default_factory=dict)  # 模板变量值
+    agent_id: Optional[str] = None  # 可选：指定智能体（覆盖模板的 default_agent_id）
+
+
+class AIGenerateResponse(BaseModel):
+    """AI 生成响应"""
+    success: bool
+    data: Dict[str, Any]  # 根据模板 output_schema 生成的数据
+    tokens_used: Dict[str, int] = Field(default_factory=dict)
+    credit_cost: float = 0.0
 

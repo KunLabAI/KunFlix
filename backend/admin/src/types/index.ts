@@ -26,6 +26,7 @@ export interface Agent {
   description: string;
   provider_id: string;
   model: string;
+  agent_type: 'text' | 'image' | 'multimodal';
   temperature: number;
   context_window: number;
   system_prompt: string;
@@ -155,5 +156,35 @@ export interface SubscriptionPlan {
   is_active: boolean;
   sort_order: number;
   created_at: string;
+  updated_at?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt Template types
+// ---------------------------------------------------------------------------
+export interface PromptTemplateVariable {
+  name: string;
+  label: string;
+  type: 'string' | 'number' | 'boolean' | 'select' | 'textarea';
+  required: boolean;
+  options?: string[] | null;
+  default?: any;
+  description?: string | null;
+}
+
+export interface PromptTemplate {
+  id?: string;
+  name: string;
+  description?: string | null;
+  template_type: string;
+  agent_type: 'text' | 'image' | 'multimodal';
+  system_prompt_template: string;
+  user_prompt_template?: string | null;
+  output_schema: Record<string, any>;
+  variables_schema: PromptTemplateVariable[];
+  default_agent_id?: string | null;
+  is_active: boolean;
+  is_default: boolean;
+  created_at?: string;
   updated_at?: string;
 }
