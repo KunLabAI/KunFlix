@@ -107,6 +107,7 @@ export default function LLMPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [tagInput, setTagInput] = useState("");
   const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>({});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
@@ -116,6 +117,7 @@ export default function LLMPage() {
     defaultValues: {
       name: "",
       provider_type: "",
+      tags: [],
       models: [{ value: "" }],
       base_url: "",
       api_key: "",
@@ -132,11 +134,13 @@ export default function LLMPage() {
 
   const handleAdd = () => {
     setEditingProvider(null);
+    setTagInput("");
     setModelCosts({});
     setExpandedModels({});
     form.reset({
       name: "",
       provider_type: "",
+      tags: [],
       models: [{ value: "" }],
       base_url: "",
       api_key: "",
@@ -149,6 +153,7 @@ export default function LLMPage() {
 
   const handleEdit = (record: LLMProvider) => {
     setEditingProvider(record);
+    setTagInput("");
     setModelCosts(record.model_costs || {});
     setExpandedModels({});
     form.reset({
@@ -404,6 +409,58 @@ export default function LLMPage() {
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="tags"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>标签</FormLabel>
+                    <FormControl>
+                      <div className="flex flex-wrap items-center gap-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 min-h-[2.5rem]">
+                        {field.value?.map((tag, index) => (
+                          <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                            {tag}
+                            <X
+                              className="h-3 w-3 cursor-pointer hover:text-destructive"
+                              onClick={() => {
+                                const newTags = [...(field.value || [])];
+                                newTags.splice(index, 1);
+                                field.onChange(newTags);
+                              }}
+                            />
+                          </Badge>
+                        ))}
+                        <input
+                          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[120px]"
+                          placeholder={field.value?.length ? "" : "输入标签后按回车添加"}
+                          value={tagInput}
+                          onChange={(e) => setTagInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = tagInput.trim();
+                              if (val) {
+                                const currentTags = field.value || [];
+                                if (!currentTags.includes(val)) {
+                                  field.onChange([...currentTags, val]);
+                                }
+                                setTagInput("");
+                              }
+                            } else if (e.key === 'Backspace' && !tagInput && field.value?.length) {
+                              // 当输入框为空且按删除键时，删除最后一个标签
+                              const newTags = [...(field.value || [])];
+                              newTags.pop();
+                              field.onChange(newTags);
+                            }
+                          }}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="space-y-2">
                 <FormLabel>模型列表</FormLabel>
