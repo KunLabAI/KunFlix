@@ -560,7 +560,7 @@ class VideoConfig(BaseModel):
 class VideoGenerateRequest(BaseModel):
     """视频生成请求"""
     agent_id: str
-    session_id: str
+    session_id: Optional[str] = None
     video_mode: Literal["text_to_video", "image_to_video", "edit"] = "text_to_video"
     prompt: str = Field(..., min_length=1, max_length=2000)
     image_url: Optional[str] = None
@@ -576,9 +576,14 @@ class VideoTaskResponse(BaseModel):
     prompt: str = ""
     duration: int = 5
     quality: str = "720p"
+    aspect_ratio: str = "16:9"
     video_url: Optional[str] = None
     credit_cost: float = 0.0
     error_message: Optional[str] = None
+    agent_id: str = ""
+    agent_name: Optional[str] = None
+    user_id: str = ""
+    image_url: Optional[str] = None
     created_at: Any
     completed_at: Optional[Any] = None
 
@@ -589,4 +594,12 @@ class VideoTaskResponse(BaseModel):
     def map_result_video_url(cls, v, info):
         """兼容数据库字段名 result_video_url"""
         return v
+
+
+class VideoTaskListResponse(BaseModel):
+    """视频任务分页列表响应"""
+    items: List[VideoTaskResponse]
+    total: int
+    page: int
+    page_size: int
 

@@ -17,7 +17,8 @@ import {
   ChevronRight,
   LogOut,
   MoreHorizontal,
-  FileCode2
+  FileCode2,
+  Film
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -56,6 +57,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '智能体管理',
       href: '/admin/agents',
       icon: Zap,
+    },
+    {
+      title: '视频生成',
+      href: '/admin/videos',
+      icon: Film,
     },
     {
       title: '提示词模板',

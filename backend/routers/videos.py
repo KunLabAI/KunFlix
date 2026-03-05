@@ -1,16 +1,18 @@
 """
 视频生成 API 路由
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.future import select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
+from typing import Optional
 import logging
 
 from database import get_db
 from models import Agent, LLMProvider, VideoTask, ChatSession, ChatMessage
-from schemas import VideoGenerateRequest, VideoTaskResponse, VideoConfig
-from auth import get_current_active_user_or_admin, is_admin_entity
+from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
+from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
 from services.media_utils import save_video_from_url
@@ -18,6 +20,54 @@ from services.media_utils import save_video_from_url
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
+
+
+@router.get("/", response_model=VideoTaskListResponse)
+async def list_video_tasks(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None,
+    video_mode: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """分页查询视频任务列表"""
+    query = select(VideoTask)
+    count_query = select(func.count(VideoTask.id))
+
+    # 行级隔离
+    query = scoped_query(query, VideoTask, current_user)
+    count_query = scoped_query(count_query, VideoTask, current_user)
+
+    # 筛选条件映射表
+    filter_map = {
+        VideoTask.status: status,
+        VideoTask.video_mode: video_mode,
+        VideoTask.agent_id: agent_id,
+    }
+    for field, value in filter_map.items():
+        value and (query := query.where(field == value))
+        value and (count_query := count_query.where(field == value))
+
+    # 总数
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # 分页排序
+    query = query.order_by(VideoTask.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    tasks = (await db.execute(query)).scalars().all()
+
+    # 批量获取 Agent 名称（一次 IN 查询）
+    agent_ids = list({t.agent_id for t in tasks if t.agent_id})
+    agent_name_map = {}
+    agent_ids and (agent_name_map := {
+        a.id: a.name
+        for a in (await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))).scalars().all()
+    })
+
+    items = [_build_task_response(t, agent_name=agent_name_map.get(t.agent_id)) for t in tasks]
+    return VideoTaskListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post("/", response_model=VideoTaskResponse)
@@ -88,20 +138,7 @@ async def create_video_task(
 
     logger.info(f"Video task created: {task.id} (xai: {result.xai_task_id})")
 
-    return VideoTaskResponse(
-        id=task.id,
-        xai_task_id=task.xai_task_id or "",
-        status=task.status,
-        video_mode=task.video_mode or "",
-        prompt=task.prompt or "",
-        duration=task.duration or 5,
-        quality=task.quality or "720p",
-        video_url=None,
-        credit_cost=0.0,
-        error_message=None,
-        created_at=task.created_at,
-        completed_at=None,
-    )
+    return _build_task_response(task, agent_name=agent.name)
 
 
 @router.get("/{task_id}/status", response_model=VideoTaskResponse)
@@ -121,7 +158,10 @@ async def get_video_task_status(
     # 终态直接返回缓存结果
     terminal_states = {"completed", "failed"}
     if task.status in terminal_states:
-        return _build_task_response(task)
+        # 查询 Agent 名称用于响应
+        agent_result = await db.execute(select(Agent).where(Agent.id == task.agent_id))
+        agent = agent_result.scalar_one_or_none()
+        return _build_task_response(task, agent_name=getattr(agent, "name", None))
 
     # 查询 Agent 获取 API key
     agent_result = await db.execute(select(Agent).where(Agent.id == task.agent_id))
@@ -182,7 +222,7 @@ async def get_video_task_status(
     await db.commit()
     await db.refresh(task)
 
-    return _build_task_response(task)
+    return _build_task_response(task, agent_name=agent.name)
 
 
 @router.get("/session/{session_id}", response_model=list[VideoTaskResponse])
@@ -201,7 +241,7 @@ async def get_session_video_tasks(
     return [_build_task_response(t) for t in tasks]
 
 
-def _build_task_response(task: VideoTask) -> VideoTaskResponse:
+def _build_task_response(task: VideoTask, agent_name: str = None) -> VideoTaskResponse:
     """构建视频任务响应"""
     return VideoTaskResponse(
         id=task.id,
@@ -211,9 +251,14 @@ def _build_task_response(task: VideoTask) -> VideoTaskResponse:
         prompt=task.prompt or "",
         duration=task.duration or 5,
         quality=task.quality or "720p",
+        aspect_ratio=task.aspect_ratio or "16:9",
         video_url=task.result_video_url,
         credit_cost=task.credit_cost or 0.0,
         error_message=task.error_message,
+        agent_id=task.agent_id or "",
+        agent_name=agent_name,
+        user_id=task.user_id or "",
+        image_url=task.image_url,
         created_at=task.created_at,
         completed_at=task.completed_at,
     )

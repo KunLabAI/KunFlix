@@ -205,9 +205,33 @@ export interface VideoTaskResponse {
   prompt: string;
   duration: number;
   quality: '480p' | '720p';
+  aspect_ratio?: string;
   video_url?: string | null;
   credit_cost: number;
   error_message?: string | null;
+  agent_id: string;
+  agent_name?: string;
+  user_id: string;
+  image_url?: string | null;
   created_at: string;
   completed_at?: string | null;
+}
+
+export interface VideoTaskListResponse {
+  items: VideoTaskResponse[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface VideoCreateRequest {
+  agent_id: string;
+  video_mode: 'text_to_video' | 'image_to_video' | 'edit';
+  prompt: string;
+  image_url?: string;
+  config?: {
+    duration: number;
+    quality: '480p' | '720p';
+    aspect_ratio: string;
+  };
 }
