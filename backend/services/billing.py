@@ -19,13 +19,13 @@ BILLING_DIMENSIONS = {
     "search":       ("search_credit_per_query",     1),
 }
 
-# 视频计费维度映射表：dim_name -> (Agent 费率字段, scale)
-# scale=1 表示每单位（张/秒）计费
+# 视频计费维度映射表：dim_name -> scale
+# scale=1 表示每单位（张/秒）计费，费率从 provider.model_costs[model] 字典中按 dim_name 读取
 VIDEO_BILLING_DIMENSIONS = {
-    "video_input_image":  ("video_input_image_credit",   1),  # 每张输入图片
-    "video_input_second": ("video_input_second_credit",  1),  # 每秒输入视频(edit)
-    "video_output_480p":  ("video_output_480p_credit",   1),  # 每秒480p输出
-    "video_output_720p":  ("video_output_720p_credit",   1),  # 每秒720p输出
+    "video_input_image":  1,  # 每张输入图片
+    "video_input_second": 1,  # 每秒输入视频(edit)
+    "video_output_480p":  1,  # 每秒480p输出
+    "video_output_720p":  1,  # 每秒720p输出
 }
 
 # 视频质量 -> 输出计费维度映射（避免 if-else）
@@ -284,13 +284,13 @@ def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
     return total, metadata
 
 
-def calculate_video_credit_cost(task, agent) -> Tuple[float, Dict]:
+def calculate_video_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
     """
     视频任务积分计费（映射表驱动）。
 
     Args:
-        task:  VideoTask 对象，包含 input_image_count, output_duration_seconds, quality
-        agent: Agent 对象，包含各视频计费费率
+        task:     VideoTask 对象，包含 input_image_count, output_duration_seconds, quality
+        rate_map: provider.model_costs[model] 字典，dim_name -> rate
 
     Returns:
         (total_cost, metadata_dict)
@@ -306,15 +306,13 @@ def calculate_video_credit_cost(task, agent) -> Tuple[float, Dict]:
 
     total = 0.0
     metadata = {
-        "agent_name": getattr(agent, 'name', ''),
-        "model": getattr(agent, 'model', ''),
         "video_mode": getattr(task, 'video_mode', ''),
         "quality": getattr(task, 'quality', ''),
     }
 
-    for dim_name, (agent_field, scale) in VIDEO_BILLING_DIMENSIONS.items():
+    for dim_name, scale in VIDEO_BILLING_DIMENSIONS.items():
         quantity = quantities[dim_name]
-        rate = getattr(agent, agent_field, 0) or 0
+        rate = rate_map.get(dim_name, 0) or 0
         cost = quantity / scale * rate
         total += cost
         metadata[f"{dim_name}_quantity"] = quantity

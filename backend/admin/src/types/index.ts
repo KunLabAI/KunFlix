@@ -209,8 +209,9 @@ export interface VideoTaskResponse {
   video_url?: string | null;
   credit_cost: number;
   error_message?: string | null;
-  agent_id: string;
-  agent_name?: string;
+  provider_id: string;
+  provider_name?: string;
+  model: string;
   user_id: string;
   image_url?: string | null;
   created_at: string;
@@ -225,7 +226,8 @@ export interface VideoTaskListResponse {
 }
 
 export interface VideoCreateRequest {
-  agent_id: string;
+  provider_id: string;
+  model: string;
   video_mode: 'text_to_video' | 'image_to_video' | 'edit';
   prompt: string;
   image_url?: string;

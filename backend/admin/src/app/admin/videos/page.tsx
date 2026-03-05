@@ -1,28 +1,28 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { useVideoTasks } from '@/hooks/useVideoTasks';
-import { useAgents } from '@/hooks/useAgents';
-import { VideoTaskResponse, Agent } from '@/types';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useVideoTasks, useDeleteVideoTask } from '@/hooks/useVideoTasks';
+import { VideoTaskResponse } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  Card,
+  CardContent,
+  CardFooter,
+} from '@/components/ui/card';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Plus, Play, AlertCircle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
-import CreateVideoDialog from './CreateVideoDialog';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/components/ui/use-toast';
+import { Plus, Play, AlertCircle, ChevronLeft, ChevronRight, Loader2, Video, Clock, Trash2 } from 'lucide-react';
 import VideoPreviewModal from './VideoPreviewModal';
 
 // ---------------------------------------------------------------------------
@@ -41,20 +41,7 @@ const MODE_LABELS: Record<string, string> = {
   edit:           '视频编辑',
 };
 
-const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: '全部状态' },
-  { value: 'pending', label: '排队中' },
-  { value: 'processing', label: '生成中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'failed', label: '失败' },
-] as const;
-
-const MODE_FILTER_OPTIONS = [
-  { value: 'all', label: '全部模式' },
-  { value: 'text_to_video', label: '文字生成' },
-  { value: 'image_to_video', label: '图片生成' },
-  { value: 'edit', label: '视频编辑' },
-] as const;
+const DELETABLE_STATUSES = new Set(['completed', 'failed']);
 
 // ---------------------------------------------------------------------------
 // 工具函数
@@ -70,38 +57,42 @@ function formatRelativeTime(dateStr: string): string {
   return match ? `${match[0]}${match[1]}前` : '刚刚';
 }
 
-function truncate(str: string, max: number): string {
-  return str.length > max ? str.slice(0, max) + '...' : str;
-}
-
 // ---------------------------------------------------------------------------
 // Page component
 // ---------------------------------------------------------------------------
 export default function VideosPage() {
+  const router = useRouter();
+  const { toast } = useToast();
   const [page, setPage] = useState(1);
   const pageSize = 20;
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [modeFilter, setModeFilter] = useState('all');
-  const [agentFilter, setAgentFilter] = useState('all');
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [previewTask, setPreviewTask] = useState<VideoTaskResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<VideoTaskResponse | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const { agents } = useAgents(undefined, 1, 100);
-  const videoAgents = useMemo(
-    () => (agents ?? []).filter((a: Agent) => a.agent_type === 'video'),
-    [agents],
-  );
-
-  const { tasks, total, isLoading, mutate } = useVideoTasks({
-    page,
-    pageSize,
-    status: statusFilter !== 'all' ? statusFilter : undefined,
-    videoMode: modeFilter !== 'all' ? modeFilter : undefined,
-    agentId: agentFilter !== 'all' ? agentFilter : undefined,
-  });
+  const { tasks, total, isLoading, mutate } = useVideoTasks({ page, pageSize });
+  const { deleteVideoTask } = useDeleteVideoTask();
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const handleDelete = async () => {
+    const task = deleteTarget;
+    setDeleting(true);
+    try {
+      await deleteVideoTask(task!.id);
+      toast({ title: '删除成功' });
+      setDeleteTarget(null);
+      mutate();
+    } catch (e: any) {
+      toast({
+        title: '删除失败',
+        description: e?.response?.data?.detail || e?.message || '未知错误',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -111,140 +102,114 @@ export default function VideosPage() {
           <h2 className="text-3xl font-bold tracking-tight">视频生成</h2>
           <p className="text-muted-foreground">管理和监控视频生成任务</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>
+        <Button onClick={() => router.push('/admin/videos/new')}>
           <Plus className="mr-2 h-4 w-4" /> 新建视频任务
         </Button>
       </div>
 
-      {/* 筛选栏 */}
-      <div className="flex flex-wrap gap-3">
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_FILTER_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={modeFilter} onValueChange={(v) => { setModeFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODE_FILTER_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {videoAgents.length > 0 && (
-          <Select value={agentFilter} onValueChange={(v) => { setAgentFilter(v); setPage(1); }}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="全部 Agent" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部 Agent</SelectItem>
-              {videoAgents.map((a: Agent) => (
-                <SelectItem key={a.id} value={a.id!}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
-
-      {/* 数据表格 */}
-      <div className="rounded-md border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[200px]">提示词</TableHead>
-              <TableHead>Agent</TableHead>
-              <TableHead>配置</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>费用</TableHead>
-              <TableHead>时间</TableHead>
-              <TableHead className="text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
-                  <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
-                </TableCell>
-              </TableRow>
-            ) : tasks.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
-                  暂无视频任务
-                </TableCell>
-              </TableRow>
-            ) : tasks.map((task: VideoTaskResponse) => {
+      {/* 视频列表（卡片式） */}
+      <div className="min-h-[400px]">
+        {isLoading ? (
+          <div className="flex h-40 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : tasks.length === 0 ? (
+          <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/50 text-muted-foreground">
+            <Video className="mb-2 h-8 w-8 opacity-50" />
+            <p>暂无视频任务</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {tasks.map((task: VideoTaskResponse) => {
               const statusInfo = STATUS_MAP[task.status] ?? STATUS_MAP.pending;
+              const canDelete = DELETABLE_STATUSES.has(task.status);
+              
               return (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm">{truncate(task.prompt, 50)}</span>
-                      <Badge variant="secondary" className="w-fit text-[10px]">
-                        {MODE_LABELS[task.video_mode] ?? task.video_mode}
+                <Card 
+                  key={task.id} 
+                  className="group relative flex flex-col overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
+                >
+                  <div className="relative aspect-video w-full bg-muted">
+                    {task.status === 'completed' && task.video_url ? (
+                      <video 
+                        src={task.video_url} 
+                        className="h-full w-full object-cover"
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-muted/50 text-muted-foreground">
+                        {task.status === 'failed' ? (
+                          <AlertCircle className="h-8 w-8 text-destructive/50" />
+                        ) : (
+                          <Video className="h-8 w-8 opacity-20" />
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* 状态标签 */}
+                    <div className="absolute right-2 top-2">
+                      <Badge variant={statusInfo.variant} className="shadow-sm">
+                        {statusInfo.label}
                       </Badge>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm">{task.agent_name ?? '-'}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {task.quality} · {task.duration}s · {task.aspect_ratio ?? '16:9'}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm">
-                      {task.credit_cost > 0 ? task.credit_cost.toFixed(2) : '-'}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">
-                      {formatRelativeTime(task.created_at)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {task.status === 'completed' && task.video_url && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPreviewTask(task)}
+
+                    {/* 操作遮罩 */}
+                    <div 
+                      className="absolute inset-0 flex items-center justify-center gap-3 bg-black/0 transition-colors group-hover:bg-black/20 cursor-pointer"
+                      onClick={() => setPreviewTask(task)}
+                    >
+                      {task.status === 'completed' && (
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background/90 opacity-0 shadow-lg transition-all group-hover:opacity-100 group-hover:scale-110">
+                          <Play className="h-5 w-5 fill-foreground text-foreground ml-1" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 删除按钮 */}
+                    {canDelete && (
+                      <button
+                        className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-background/80 opacity-0 shadow transition-opacity group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(task); }}
                       >
-                        <Play className="h-4 w-4" />
-                      </Button>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                    {task.status === 'failed' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setPreviewTask(task)}
-                      >
-                        <AlertCircle className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </TableCell>
-                </TableRow>
+                  </div>
+
+                  <CardContent className="flex-1 p-4">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <Badge variant="outline" className="text-[10px] font-normal">
+                        {MODE_LABELS[task.video_mode] ?? task.video_mode}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {task.quality} · {task.duration}s
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 text-sm text-foreground/90 font-medium leading-snug">
+                      {task.prompt}
+                    </p>
+                  </CardContent>
+
+                  <CardFooter className="flex items-center justify-between border-t bg-muted/20 p-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary/50" />
+                      <span className="truncate max-w-[120px]">{task.provider_name ?? '-'} / {task.model ?? '-'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <span>{formatRelativeTime(task.created_at)}</span>
+                    </div>
+                  </CardFooter>
+                </Card>
               );
             })}
-          </TableBody>
-        </Table>
+          </div>
+        )}
       </div>
 
       {/* 分页 */}
       {total > pageSize && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-4">
           <span className="text-sm text-muted-foreground">
             共 {total} 条记录
           </span>
@@ -272,17 +237,31 @@ export default function VideosPage() {
         </div>
       )}
 
-      {/* Dialogs */}
-      <CreateVideoDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        onCreated={mutate}
-      />
       <VideoPreviewModal
         task={previewTask}
         open={!!previewTask}
         onOpenChange={(open) => { !open && setPreviewTask(null); }}
+        onDelete={(task) => { setPreviewTask(null); setDeleteTarget(task); }}
       />
+
+      {/* 删除确认对话框 */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { !open && setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              删除后视频文件和任务记录将不可恢复，是否继续？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

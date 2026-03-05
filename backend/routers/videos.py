@@ -10,12 +10,12 @@ from typing import Optional
 import logging
 
 from database import get_db
-from models import Agent, LLMProvider, VideoTask, ChatSession, ChatMessage
+from models import LLMProvider, VideoTask, ChatMessage
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
-from services.media_utils import save_video_from_url
+from services.media_utils import save_video_from_url, MEDIA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ async def list_video_tasks(
     page_size: int = Query(20, ge=1, le=100),
     status: Optional[str] = None,
     video_mode: Optional[str] = None,
-    agent_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
     current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -44,7 +44,7 @@ async def list_video_tasks(
     filter_map = {
         VideoTask.status: status,
         VideoTask.video_mode: video_mode,
-        VideoTask.agent_id: agent_id,
+        VideoTask.provider_id: provider_id,
     }
     for field, value in filter_map.items():
         value and (query := query.where(field == value))
@@ -58,15 +58,15 @@ async def list_video_tasks(
     query = query.offset((page - 1) * page_size).limit(page_size)
     tasks = (await db.execute(query)).scalars().all()
 
-    # 批量获取 Agent 名称（一次 IN 查询）
-    agent_ids = list({t.agent_id for t in tasks if t.agent_id})
-    agent_name_map = {}
-    agent_ids and (agent_name_map := {
-        a.id: a.name
-        for a in (await db.execute(select(Agent).where(Agent.id.in_(agent_ids)))).scalars().all()
+    # 批量获取 LLMProvider 名称（一次 IN 查询）
+    prov_ids = list({t.provider_id for t in tasks if t.provider_id})
+    provider_name_map = {}
+    prov_ids and (provider_name_map := {
+        p.id: p.name
+        for p in (await db.execute(select(LLMProvider).where(LLMProvider.id.in_(prov_ids)))).scalars().all()
     })
 
-    items = [_build_task_response(t, agent_name=agent_name_map.get(t.agent_id)) for t in tasks]
+    items = [_build_task_response(t, provider_name=provider_name_map.get(t.provider_id)) for t in tasks]
     return VideoTaskListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
@@ -79,13 +79,8 @@ async def create_video_task(
     """提交视频生成任务"""
     entity_id = current_user.id
 
-    # 查询 Agent
-    agent_result = await db.execute(select(Agent).where(Agent.id == request.agent_id))
-    agent = agent_result.scalar_one_or_none()
-    agent or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Agent not found"))
-
     # 查询 LLMProvider
-    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == agent.provider_id))
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == request.provider_id))
     provider = provider_result.scalar_one_or_none()
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="LLM Provider not found"))
 
@@ -98,7 +93,7 @@ async def create_video_task(
     # 构建视频上下文
     ctx = VideoContext(
         api_key=provider.api_key,
-        model=agent.model,
+        model=request.model,
         prompt=request.prompt,
         image_url=request.image_url,
         duration=config.duration,
@@ -120,7 +115,8 @@ async def create_video_task(
     task = VideoTask(
         xai_task_id=result.xai_task_id,
         session_id=request.session_id,
-        agent_id=request.agent_id,
+        provider_id=request.provider_id,
+        model=request.model,
         user_id=entity_id,
         video_mode=request.video_mode,
         prompt=request.prompt,
@@ -138,7 +134,7 @@ async def create_video_task(
 
     logger.info(f"Video task created: {task.id} (xai: {result.xai_task_id})")
 
-    return _build_task_response(task, agent_name=agent.name)
+    return _build_task_response(task, provider_name=provider.name)
 
 
 @router.get("/{task_id}/status", response_model=VideoTaskResponse)
@@ -158,17 +154,12 @@ async def get_video_task_status(
     # 终态直接返回缓存结果
     terminal_states = {"completed", "failed"}
     if task.status in terminal_states:
-        # 查询 Agent 名称用于响应
-        agent_result = await db.execute(select(Agent).where(Agent.id == task.agent_id))
-        agent = agent_result.scalar_one_or_none()
-        return _build_task_response(task, agent_name=getattr(agent, "name", None))
+        provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == task.provider_id))
+        provider = provider_result.scalar_one_or_none()
+        return _build_task_response(task, provider_name=getattr(provider, "name", None))
 
-    # 查询 Agent 获取 API key
-    agent_result = await db.execute(select(Agent).where(Agent.id == task.agent_id))
-    agent = agent_result.scalar_one_or_none()
-    agent or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Agent not found"))
-
-    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == agent.provider_id))
+    # 查询 LLMProvider 获取 API key
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == task.provider_id))
     provider = provider_result.scalar_one_or_none()
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Provider not found"))
 
@@ -192,8 +183,9 @@ async def get_video_task_status(
             task.output_duration_seconds = poll_result.duration_seconds or task.duration
             task.completed_at = datetime.now(timezone.utc)
 
-            # 计费
-            credit_cost, billing_metadata = calculate_video_credit_cost(task, agent)
+            # 计费：从 provider.model_costs[model] 获取费率
+            rate_map = (provider.model_costs or {}).get(task.model, {})
+            credit_cost, billing_metadata = calculate_video_credit_cost(task, rate_map)
             task.credit_cost = credit_cost
 
             # 扣费
@@ -222,7 +214,7 @@ async def get_video_task_status(
     await db.commit()
     await db.refresh(task)
 
-    return _build_task_response(task, agent_name=agent.name)
+    return _build_task_response(task, provider_name=provider.name)
 
 
 @router.get("/session/{session_id}", response_model=list[VideoTaskResponse])
@@ -241,7 +233,54 @@ async def get_session_video_tasks(
     return [_build_task_response(t) for t in tasks]
 
 
-def _build_task_response(task: VideoTask, agent_name: str = None) -> VideoTaskResponse:
+# 可删除的终态集合
+_DELETABLE_STATUSES = {"completed", "failed"}
+
+
+@router.delete("/{task_id}")
+async def delete_video_task(
+    task_id: str,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除视频任务及其本地视频文件"""
+    task_result = await db.execute(select(VideoTask).where(VideoTask.id == task_id))
+    task = task_result.scalar_one_or_none()
+    task or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Video task not found"))
+
+    # 仅允许删除终态任务
+    (task.status in _DELETABLE_STATUSES) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="只能删除已完成或失败的任务")
+    )
+
+    # 删除本地视频文件（路径格式: /api/media/{uuid}.mp4）
+    video_path = task.result_video_url
+    video_path and _try_delete_local_file(video_path)
+
+    # 删除关联的聊天消息
+    task.message_id and await db.execute(
+        select(ChatMessage).where(ChatMessage.id == task.message_id)
+    ) and await db.execute(
+        ChatMessage.__table__.delete().where(ChatMessage.id == task.message_id)
+    )
+
+    await db.delete(task)
+    await db.commit()
+
+    logger.info(f"Video task deleted: {task_id}")
+    return {"detail": "ok"}
+
+
+def _try_delete_local_file(media_url: str):
+    """尝试删除本地媒体文件，忽略不存在的情况"""
+    # /api/media/xxx.mp4 → xxx.mp4
+    filename = media_url.rsplit("/", 1)[-1]
+    filepath = MEDIA_DIR / filename
+    filepath.unlink(missing_ok=True)
+    logger.info(f"Deleted local file: {filepath}")
+
+
+def _build_task_response(task: VideoTask, provider_name: str = None) -> VideoTaskResponse:
     """构建视频任务响应"""
     return VideoTaskResponse(
         id=task.id,
@@ -255,8 +294,9 @@ def _build_task_response(task: VideoTask, agent_name: str = None) -> VideoTaskRe
         video_url=task.result_video_url,
         credit_cost=task.credit_cost or 0.0,
         error_message=task.error_message,
-        agent_id=task.agent_id or "",
-        agent_name=agent_name,
+        provider_id=task.provider_id or "",
+        provider_name=provider_name,
+        model=task.model or "",
         user_id=task.user_id or "",
         image_url=task.image_url,
         created_at=task.created_at,

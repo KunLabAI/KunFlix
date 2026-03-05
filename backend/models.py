@@ -357,7 +357,8 @@ class VideoTask(Base):
     xai_task_id = Column(String(255), index=True)           # xAI 返回的外部任务ID
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
     message_id = Column(String(36), ForeignKey("chat_messages.id"), nullable=True)
-    agent_id = Column(String(36), ForeignKey("agents.id"))
+    provider_id = Column(String(36), ForeignKey("llm_providers.id"))
+    model = Column(String, nullable=True)
     user_id = Column(String(36), index=True)
 
     video_mode = Column(String(20))                         # text_to_video / image_to_video / edit

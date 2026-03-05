@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
 import { VideoTaskResponse } from '@/types';
 
 const MODE_LABELS: Record<string, string> = {
@@ -11,13 +12,18 @@ const MODE_LABELS: Record<string, string> = {
   edit: '视频编辑',
 };
 
+const DELETABLE_STATUSES = new Set(['completed', 'failed']);
+
 interface VideoPreviewModalProps {
   task: VideoTaskResponse | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDelete?: (task: VideoTaskResponse) => void;
 }
 
-export default function VideoPreviewModal({ task, open, onOpenChange }: VideoPreviewModalProps) {
+export default function VideoPreviewModal({ task, open, onOpenChange, onDelete }: VideoPreviewModalProps) {
+  const canDelete = task && DELETABLE_STATUSES.has(task.status);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[640px]">
@@ -68,8 +74,12 @@ export default function VideoPreviewModal({ task, open, onOpenChange }: VideoPre
                 {task.credit_cost > 0 ? `${task.credit_cost.toFixed(2)} 积分` : '-'}
               </div>
               <div>
-                <span className="text-muted-foreground">Agent：</span>
-                {task.agent_name ?? '-'}
+                <span className="text-muted-foreground">供应商：</span>
+                {task.provider_name ?? '-'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">模型：</span>
+                {task.model ?? '-'}
               </div>
             </div>
 
@@ -85,6 +95,19 @@ export default function VideoPreviewModal({ task, open, onOpenChange }: VideoPre
               {task.completed_at && <span>完成: {new Date(task.completed_at).toLocaleString()}</span>}
             </div>
           </div>
+        )}
+
+        {canDelete && onDelete && (
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => onDelete(task)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              删除任务
+            </Button>
+          </DialogFooter>
         )}
       </DialogContent>
     </Dialog>

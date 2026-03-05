@@ -11,11 +11,11 @@ interface VideoTaskFilters {
   pageSize?: number;
   status?: string;
   videoMode?: string;
-  agentId?: string;
+  providerId?: string;
 }
 
 export function useVideoTasks(filters: VideoTaskFilters = {}) {
-  const { page = 1, pageSize = 20, status, videoMode, agentId } = filters;
+  const { page = 1, pageSize = 20, status, videoMode, providerId } = filters;
   const [refreshInterval, setRefreshInterval] = useState(0);
   const pollingRef = useRef(false);
 
@@ -24,7 +24,7 @@ export function useVideoTasks(filters: VideoTaskFilters = {}) {
   params.set('page_size', String(pageSize));
   status && params.set('status', status);
   videoMode && params.set('video_mode', videoMode);
-  agentId && params.set('agent_id', agentId);
+  providerId && params.set('provider_id', providerId);
 
   const url = `/videos/?${params.toString()}`;
   const { data, error, isLoading, mutate } = useSWR<VideoTaskListResponse>(url, fetcher, {
@@ -62,4 +62,11 @@ export function useCreateVideoTask() {
     return res.data;
   };
   return { createVideoTask };
+}
+
+export function useDeleteVideoTask() {
+  const deleteVideoTask = async (taskId: string) => {
+    await api.delete(`/videos/${taskId}`);
+  };
+  return { deleteVideoTask };
 }

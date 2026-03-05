@@ -559,7 +559,8 @@ class VideoConfig(BaseModel):
 
 class VideoGenerateRequest(BaseModel):
     """视频生成请求"""
-    agent_id: str
+    provider_id: str
+    model: str
     session_id: Optional[str] = None
     video_mode: Literal["text_to_video", "image_to_video", "edit"] = "text_to_video"
     prompt: str = Field(..., min_length=1, max_length=2000)
@@ -580,8 +581,9 @@ class VideoTaskResponse(BaseModel):
     video_url: Optional[str] = None
     credit_cost: float = 0.0
     error_message: Optional[str] = None
-    agent_id: str = ""
-    agent_name: Optional[str] = None
+    provider_id: str = ""
+    provider_name: Optional[str] = None
+    model: str = ""
     user_id: str = ""
     image_url: Optional[str] = None
     created_at: Any
