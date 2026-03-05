@@ -23,8 +23,8 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
-# 安全文件名：UUID + 已知图片扩展名
-_SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif)$')
+# 安全文件名：UUID + 已知媒体扩展名（图片 + 视频）
+_SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov)$')
 
 # 扩展名 -> MIME
 _EXT_MIME = {
@@ -33,6 +33,9 @@ _EXT_MIME = {
     "jpeg": "image/jpeg",
     "webp": "image/webp",
     "gif": "image/gif",
+    "mp4": "video/mp4",
+    "webm": "video/webm",
+    "mov": "video/quicktime",
 }
 
 

@@ -19,6 +19,21 @@ BILLING_DIMENSIONS = {
     "search":       ("search_credit_per_query",     1),
 }
 
+# 视频计费维度映射表：dim_name -> (Agent 费率字段, scale)
+# scale=1 表示每单位（张/秒）计费
+VIDEO_BILLING_DIMENSIONS = {
+    "video_input_image":  ("video_input_image_credit",   1),  # 每张输入图片
+    "video_input_second": ("video_input_second_credit",  1),  # 每秒输入视频(edit)
+    "video_output_480p":  ("video_output_480p_credit",   1),  # 每秒480p输出
+    "video_output_720p":  ("video_output_720p_credit",   1),  # 每秒720p输出
+}
+
+# 视频质量 -> 输出计费维度映射（避免 if-else）
+QUALITY_BILLING_FIELD = {
+    "480p": "video_output_480p",
+    "720p": "video_output_720p",
+}
+
 class InsufficientCreditsError(Exception):
     """用户积分不足异常"""
     pass
@@ -264,6 +279,45 @@ def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
         cost = quantity / scale * rate
         total += cost
         metadata[f"{dim_name}_tokens"] = quantity
+        metadata[f"{dim_name}_rate"] = rate
+
+    return total, metadata
+
+
+def calculate_video_credit_cost(task, agent) -> Tuple[float, Dict]:
+    """
+    视频任务积分计费（映射表驱动）。
+
+    Args:
+        task:  VideoTask 对象，包含 input_image_count, output_duration_seconds, quality
+        agent: Agent 对象，包含各视频计费费率
+
+    Returns:
+        (total_cost, metadata_dict)
+    """
+    output_dim = QUALITY_BILLING_FIELD.get(task.quality, "video_output_720p")
+
+    quantities = {
+        "video_input_image":  getattr(task, 'input_image_count', 0) or 0,
+        "video_input_second": 0,  # edit 模式才有输入视频时长
+        "video_output_480p":  task.output_duration_seconds if output_dim == "video_output_480p" else 0,
+        "video_output_720p":  task.output_duration_seconds if output_dim == "video_output_720p" else 0,
+    }
+
+    total = 0.0
+    metadata = {
+        "agent_name": getattr(agent, 'name', ''),
+        "model": getattr(agent, 'model', ''),
+        "video_mode": getattr(task, 'video_mode', ''),
+        "quality": getattr(task, 'quality', ''),
+    }
+
+    for dim_name, (agent_field, scale) in VIDEO_BILLING_DIMENSIONS.items():
+        quantity = quantities[dim_name]
+        rate = getattr(agent, agent_field, 0) or 0
+        cost = quantity / scale * rate
+        total += cost
+        metadata[f"{dim_name}_quantity"] = quantity
         metadata[f"{dim_name}_rate"] = rate
 
     return total, metadata

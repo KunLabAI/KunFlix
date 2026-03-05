@@ -87,6 +87,7 @@ cover/
 backend/media/*.jpeg
 backend/media/*.jpg
 backend/media/*.png
+backend/media/*.MP4
 
 frontend/public/*.png
 frontend/public/*.jpg

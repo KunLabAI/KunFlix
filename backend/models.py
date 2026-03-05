@@ -175,7 +175,7 @@ class Agent(Base):
     provider_id = Column(String(36), ForeignKey("llm_providers.id"))
     model = Column(String)  # The specific model name under the provider
 
-    # Agent Type: text | image | multimodal
+    # Agent Type: text | image | multimodal | video
     agent_type = Column(String(20), default="text", nullable=False)
 
     # Parameters
@@ -192,6 +192,12 @@ class Agent(Base):
     output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M输出tokens积分
     image_output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M图像输出tokens积分
     search_credit_per_query = Column(Float, default=0.0, nullable=False)     # 每次搜索查询积分
+
+    # Video pricing (per unit)
+    video_input_image_credit = Column(Float, default=0.0, nullable=False)    # 积分/张输入图片
+    video_input_second_credit = Column(Float, default=0.0, nullable=False)   # 积分/秒输入视频(edit)
+    video_output_480p_credit = Column(Float, default=0.0, nullable=False)    # 积分/秒480p输出
+    video_output_720p_credit = Column(Float, default=0.0, nullable=False)    # 积分/秒720p输出
 
     # Multi-Agent Orchestration (Leader Config)
     is_leader = Column(Boolean, default=False)
@@ -341,3 +347,35 @@ class SubscriptionPlan(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class VideoTask(Base):
+    """异步视频生成任务追踪"""
+    __tablename__ = "video_tasks"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    xai_task_id = Column(String(255), index=True)           # xAI 返回的外部任务ID
+    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
+    message_id = Column(String(36), ForeignKey("chat_messages.id"), nullable=True)
+    agent_id = Column(String(36), ForeignKey("agents.id"))
+    user_id = Column(String(36), index=True)
+
+    video_mode = Column(String(20))                         # text_to_video / image_to_video / edit
+    prompt = Column(Text)
+    image_url = Column(String, nullable=True)               # 输入图片(image_to_video/edit)
+    duration = Column(Integer, default=5)                    # 1-15秒
+    quality = Column(String(10), default="720p")             # 480p / 720p
+    aspect_ratio = Column(String(10), default="16:9")
+    mode = Column(String(10), default="normal")              # fun / normal / spicy
+
+    status = Column(String(20), default="pending", index=True)  # pending/processing/completed/failed
+    result_video_url = Column(String, nullable=True)         # 本地存储路径
+    error_message = Column(Text, nullable=True)
+
+    # 计费相关
+    input_image_count = Column(Integer, default=0)
+    output_duration_seconds = Column(Float, default=0)
+    credit_cost = Column(Float, default=0)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)

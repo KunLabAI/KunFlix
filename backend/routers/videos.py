@@ -1,0 +1,231 @@
+"""
+视频生成 API 路由
+"""
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime, timezone
+import logging
+
+from database import get_db
+from models import Agent, LLMProvider, VideoTask, ChatSession, ChatMessage
+from schemas import VideoGenerateRequest, VideoTaskResponse, VideoConfig
+from auth import get_current_active_user_or_admin, is_admin_entity
+from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES
+from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
+from services.media_utils import save_video_from_url
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/videos", tags=["videos"])
+
+
+@router.post("/", response_model=VideoTaskResponse)
+async def create_video_task(
+    request: VideoGenerateRequest,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """提交视频生成任务"""
+    entity_id = current_user.id
+
+    # 查询 Agent
+    agent_result = await db.execute(select(Agent).where(Agent.id == request.agent_id))
+    agent = agent_result.scalar_one_or_none()
+    agent or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Agent not found"))
+
+    # 查询 LLMProvider
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == agent.provider_id))
+    provider = provider_result.scalar_one_or_none()
+    provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="LLM Provider not found"))
+
+    # 合并配置
+    config = request.config or VideoConfig()
+
+    # 计算输入图片数量
+    input_image_count = 1 if request.image_url and request.video_mode in ("image_to_video", "edit") else 0
+
+    # 构建视频上下文
+    ctx = VideoContext(
+        api_key=provider.api_key,
+        model=agent.model,
+        prompt=request.prompt,
+        image_url=request.image_url,
+        duration=config.duration,
+        quality=config.quality,
+        aspect_ratio=config.aspect_ratio,
+        mode=config.mode,
+        video_mode=request.video_mode,
+    )
+
+    # 提交到 xAI
+    result = await submit_video_task(ctx)
+
+    # 提交失败
+    (result.status == "failed") and (_ for _ in ()).throw(
+        HTTPException(status_code=502, detail=f"Video generation failed: {result.error}")
+    )
+
+    # 创建 VideoTask 记录
+    task = VideoTask(
+        xai_task_id=result.xai_task_id,
+        session_id=request.session_id,
+        agent_id=request.agent_id,
+        user_id=entity_id,
+        video_mode=request.video_mode,
+        prompt=request.prompt,
+        image_url=request.image_url,
+        duration=config.duration,
+        quality=config.quality,
+        aspect_ratio=config.aspect_ratio,
+        mode=config.mode,
+        status="pending",
+        input_image_count=input_image_count,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    logger.info(f"Video task created: {task.id} (xai: {result.xai_task_id})")
+
+    return VideoTaskResponse(
+        id=task.id,
+        xai_task_id=task.xai_task_id or "",
+        status=task.status,
+        video_mode=task.video_mode or "",
+        prompt=task.prompt or "",
+        duration=task.duration or 5,
+        quality=task.quality or "720p",
+        video_url=None,
+        credit_cost=0.0,
+        error_message=None,
+        created_at=task.created_at,
+        completed_at=None,
+    )
+
+
+@router.get("/{task_id}/status", response_model=VideoTaskResponse)
+async def get_video_task_status(
+    task_id: str,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """轮询视频任务状态"""
+    entity_id = current_user.id
+
+    # 查询任务
+    task_result = await db.execute(select(VideoTask).where(VideoTask.id == task_id))
+    task = task_result.scalar_one_or_none()
+    task or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Video task not found"))
+
+    # 终态直接返回缓存结果
+    terminal_states = {"completed", "failed"}
+    if task.status in terminal_states:
+        return _build_task_response(task)
+
+    # 查询 Agent 获取 API key
+    agent_result = await db.execute(select(Agent).where(Agent.id == task.agent_id))
+    agent = agent_result.scalar_one_or_none()
+    agent or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Agent not found"))
+
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == agent.provider_id))
+    provider = provider_result.scalar_one_or_none()
+    provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Provider not found"))
+
+    # 轮询 xAI
+    poll_result = await poll_video_task(provider.api_key, task.xai_task_id)
+
+    # 超时保护：pending 且有错误超过 5 分钟 → 判定失败
+    poll_has_error = poll_result.error and poll_result.status == "pending"
+    elapsed = (datetime.now() - task.created_at.replace(tzinfo=None)).total_seconds() if task.created_at else 0
+    timed_out = poll_has_error and elapsed > 300
+
+    # 更新任务状态（SDK 层已处理 moderation → failed）
+    task.status = "failed" if timed_out else poll_result.status
+    timed_out and setattr(task, "error_message", poll_result.error or "Timeout")
+
+    # 完成处理：下载视频 + 计费
+    if poll_result.status == "completed" and poll_result.video_url:
+        try:
+            local_url = await save_video_from_url(poll_result.video_url)
+            task.result_video_url = local_url
+            task.output_duration_seconds = poll_result.duration_seconds or task.duration
+            task.completed_at = datetime.now(timezone.utc)
+
+            # 计费
+            credit_cost, billing_metadata = calculate_video_credit_cost(task, agent)
+            task.credit_cost = credit_cost
+
+            # 扣费
+            (credit_cost > 0) and await deduct_credits_atomic(
+                user_id=entity_id,
+                cost=credit_cost,
+                session=db,
+                metadata=billing_metadata,
+                transaction_type="consumption",
+            )
+
+            # 在聊天会话中插入视频消息
+            task.session_id and await _insert_video_chat_message(db, task)
+
+        except InsufficientCreditsError:
+            task.status = "failed"
+            task.error_message = "Insufficient credits"
+        except Exception as e:
+            logger.error(f"Video completion processing failed: {e}")
+            task.status = "failed"
+            task.error_message = str(e)
+
+    # 失败处理
+    (poll_result.status == "failed") and setattr(task, "error_message", poll_result.error)
+
+    await db.commit()
+    await db.refresh(task)
+
+    return _build_task_response(task)
+
+
+@router.get("/session/{session_id}", response_model=list[VideoTaskResponse])
+async def get_session_video_tasks(
+    session_id: str,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取会话的视频任务列表"""
+    result = await db.execute(
+        select(VideoTask)
+        .where(VideoTask.session_id == session_id)
+        .order_by(VideoTask.created_at.asc())
+    )
+    tasks = result.scalars().all()
+    return [_build_task_response(t) for t in tasks]
+
+
+def _build_task_response(task: VideoTask) -> VideoTaskResponse:
+    """构建视频任务响应"""
+    return VideoTaskResponse(
+        id=task.id,
+        xai_task_id=task.xai_task_id or "",
+        status=task.status or "pending",
+        video_mode=task.video_mode or "",
+        prompt=task.prompt or "",
+        duration=task.duration or 5,
+        quality=task.quality or "720p",
+        video_url=task.result_video_url,
+        credit_cost=task.credit_cost or 0.0,
+        error_message=task.error_message,
+        created_at=task.created_at,
+        completed_at=task.completed_at,
+    )
+
+
+async def _insert_video_chat_message(db: AsyncSession, task: VideoTask):
+    """在聊天会话中插入视频结果消息"""
+    content = f"__VIDEO_DONE__{task.id}|{task.result_video_url}|{task.quality}|{task.output_duration_seconds or 0}|{task.credit_cost or 0}"
+    msg = ChatMessage(
+        session_id=task.session_id,
+        role="assistant",
+        content=content,
+    )
+    db.add(msg)
+    task.message_id = msg.id

@@ -76,6 +76,10 @@ export default function AgentForm({
       output_credit_per_1m: 0,
       image_output_credit_per_1m: 0,
       search_credit_per_query: 0,
+      video_input_image_credit: 0,
+      video_input_second_credit: 0,
+      video_output_480p_credit: 0,
+      video_output_720p_credit: 0,
       is_leader: false,
       coordination_modes: [],
       member_agent_ids: [],
@@ -101,7 +105,7 @@ export default function AgentForm({
         description: initialValues.description || '',
         provider_id: initialValues.provider_id || '',
         model: initialValues.model || '',
-        agent_type: (initialValues.agent_type || 'text') as 'text' | 'image' | 'multimodal',
+        agent_type: (initialValues.agent_type || 'text') as 'text' | 'image' | 'multimodal' | 'video',
         system_prompt: initialValues.system_prompt || '',
         temperature: Number(initialValues.temperature) || 0.7,
         context_window: Number(initialValues.context_window) || 4096,
@@ -112,6 +116,10 @@ export default function AgentForm({
         output_credit_per_1m: Number(initialValues.output_credit_per_1m) || 0,
         image_output_credit_per_1m: Number(initialValues.image_output_credit_per_1m) || 0,
         search_credit_per_query: Number(initialValues.search_credit_per_query) || 0,
+        video_input_image_credit: Number(initialValues.video_input_image_credit) || 0,
+        video_input_second_credit: Number(initialValues.video_input_second_credit) || 0,
+        video_output_480p_credit: Number(initialValues.video_output_480p_credit) || 0,
+        video_output_720p_credit: Number(initialValues.video_output_720p_credit) || 0,
         is_leader: Boolean(initialValues.is_leader),
         coordination_modes: initialValues.coordination_modes || [],
         member_agent_ids: initialValues.member_agent_ids || [],
@@ -159,7 +167,7 @@ export default function AgentForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialValues]); // 只依赖 initialValues
 
-  const agentType = form.watch('agent_type') as 'text' | 'image' | 'multimodal';
+  const agentType = form.watch('agent_type') as 'text' | 'image' | 'multimodal' | 'video';
 
   // 字段名映射表（避免 if-else，直接查表显示中文名）
   const FIELD_LABELS: Record<string, string> = {

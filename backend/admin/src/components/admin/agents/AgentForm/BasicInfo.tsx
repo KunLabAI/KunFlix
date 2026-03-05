@@ -92,6 +92,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 <SelectItem value="text">📝 文本处理（故事、角色、分镜脚本）</SelectItem>
                 <SelectItem value="image">🎨 图像处理（角色立绘、场景图）</SelectItem>
                 <SelectItem value="multimodal">✨ 多模态（文本 + 图像）</SelectItem>
+                <SelectItem value="video">🎬 视频生成（xAI Video）</SelectItem>
               </SelectContent>
             </Select>
             <FormMessage />

@@ -198,7 +198,7 @@ class AgentBase(BaseModel):
     description: str = Field(..., max_length=500)
     provider_id: str
     model: str
-    agent_type: Literal["text", "image", "multimodal"] = Field(default="text")
+    agent_type: Literal["text", "image", "multimodal", "video"] = Field(default="text")
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
     context_window: int = Field(default=4096, ge=4096, le=262144)
     system_prompt: str
@@ -208,6 +208,11 @@ class AgentBase(BaseModel):
     output_credit_per_1m: float = Field(default=0.0, ge=0.0)
     image_output_credit_per_1m: float = Field(default=0.0, ge=0.0)
     search_credit_per_query: float = Field(default=0.0, ge=0.0)
+    # Video pricing (per unit)
+    video_input_image_credit: float = Field(default=0.0, ge=0.0)
+    video_input_second_credit: float = Field(default=0.0, ge=0.0)
+    video_output_480p_credit: float = Field(default=0.0, ge=0.0)
+    video_output_720p_credit: float = Field(default=0.0, ge=0.0)
     # Leader configuration
     is_leader: bool = False
     coordination_modes: List[str] = Field(default_factory=list)  # ["pipeline", "plan", "discussion"]
@@ -227,7 +232,7 @@ class AgentUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=500)
     provider_id: Optional[str] = None
     model: Optional[str] = None
-    agent_type: Optional[Literal["text", "image", "multimodal"]] = None
+    agent_type: Optional[Literal["text", "image", "multimodal", "video"]] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
     context_window: Optional[int] = Field(None, ge=4096, le=262144)
     system_prompt: Optional[str] = None
@@ -237,6 +242,11 @@ class AgentUpdate(BaseModel):
     output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
     image_output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
     search_credit_per_query: Optional[float] = Field(None, ge=0.0)
+    # Video pricing
+    video_input_image_credit: Optional[float] = Field(None, ge=0.0)
+    video_input_second_credit: Optional[float] = Field(None, ge=0.0)
+    video_output_480p_credit: Optional[float] = Field(None, ge=0.0)
+    video_output_720p_credit: Optional[float] = Field(None, ge=0.0)
     # Leader configuration
     is_leader: Optional[bool] = None
     coordination_modes: Optional[List[str]] = None
@@ -482,7 +492,7 @@ class PromptTemplateBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
     template_type: str = Field(..., min_length=1, max_length=50)  # story_basic | character | scene | storyboard | custom
-    agent_type: Literal["text", "image", "multimodal"] = Field(default="text")
+    agent_type: Literal["text", "image", "multimodal", "video"] = Field(default="text")
     system_prompt_template: str = Field(..., min_length=1)
     user_prompt_template: Optional[str] = None
     output_schema: Dict[str, Any] = Field(default_factory=dict)
@@ -500,7 +510,7 @@ class PromptTemplateUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
     template_type: Optional[str] = Field(None, min_length=1, max_length=50)
-    agent_type: Optional[Literal["text", "image", "multimodal"]] = None
+    agent_type: Optional[Literal["text", "image", "multimodal", "video"]] = None
     system_prompt_template: Optional[str] = None
     user_prompt_template: Optional[str] = None
     output_schema: Optional[Dict[str, Any]] = None
@@ -534,4 +544,49 @@ class AIGenerateResponse(BaseModel):
     data: Dict[str, Any]  # 根据模板 output_schema 生成的数据
     tokens_used: Dict[str, int] = Field(default_factory=dict)
     credit_cost: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Video Generation schemas
+# ---------------------------------------------------------------------------
+class VideoConfig(BaseModel):
+    """视频生成配置"""
+    duration: int = Field(default=5, ge=1, le=15)
+    quality: Literal["480p", "720p"] = "720p"
+    aspect_ratio: str = "16:9"
+    mode: str = "normal"  # 保留字段兼容前端，xAI API 不使用
+
+
+class VideoGenerateRequest(BaseModel):
+    """视频生成请求"""
+    agent_id: str
+    session_id: str
+    video_mode: Literal["text_to_video", "image_to_video", "edit"] = "text_to_video"
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    image_url: Optional[str] = None
+    config: Optional[VideoConfig] = None
+
+
+class VideoTaskResponse(BaseModel):
+    """视频任务响应"""
+    id: str
+    xai_task_id: str = ""
+    status: str
+    video_mode: str = ""
+    prompt: str = ""
+    duration: int = 5
+    quality: str = "720p"
+    video_url: Optional[str] = None
+    credit_cost: float = 0.0
+    error_message: Optional[str] = None
+    created_at: Any
+    completed_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('video_url', mode='before')
+    @classmethod
+    def map_result_video_url(cls, v, info):
+        """兼容数据库字段名 result_video_url"""
+        return v
 

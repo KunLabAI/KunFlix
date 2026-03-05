@@ -37,7 +37,7 @@ const TEMPLATE_TYPE_LABELS: Record<string, string> = {
 
 interface SystemPromptProps {
   disabled?: boolean;
-  agentType?: 'text' | 'image' | 'multimodal';
+  agentType?: 'text' | 'image' | 'multimodal' | 'video';
 }
 
 const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled, agentType }) => {

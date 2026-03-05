@@ -62,10 +62,14 @@ const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 // 成本维度映射表 (避免 if-else)
 const PRESET_COST_DIMENSIONS: Record<string, { label: string; unit: string }> = {
-  input:        { label: '输入',     unit: 'USD/1M tokens' },
-  text_output:  { label: '文本输出', unit: 'USD/1M tokens' },
-  image_output: { label: '图片输出', unit: 'USD/1M tokens' },
-  search:       { label: '搜索查询', unit: 'USD/次' },
+  input:              { label: '输入',         unit: 'USD/1M tokens' },
+  text_output:        { label: '文本输出',     unit: 'USD/1M tokens' },
+  image_output:       { label: '图片输出',     unit: 'USD/1M tokens' },
+  search:             { label: '搜索查询',     unit: 'USD/次' },
+  video_input_image:  { label: '视频输入图片', unit: 'USD/张' },
+  video_input_second: { label: '视频输入时长', unit: 'USD/秒' },
+  video_output_480p:  { label: '视频输出480p', unit: 'USD/秒' },
+  video_output_720p:  { label: '视频输出720p', unit: 'USD/秒' },
 };
 
 const formSchema = z.object({

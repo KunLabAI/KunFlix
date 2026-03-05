@@ -59,13 +59,18 @@ const COST_DIMENSIONS = [
   { key: 'text_output', label: '输出价格', unit: '积分/1M tokens', costUnit: '/1M tokens', formField: 'output_credit_per_1m', step: 0.01, group: 'base' },
   { key: 'image_output', label: '图片输出价格', unit: '积分/1M tokens', costUnit: '/1M tokens', formField: 'image_output_credit_per_1m', step: 0.01, group: 'gemini' },
   { key: 'search', label: '搜索查询价格', unit: '积分/次', costUnit: '/次', formField: 'search_credit_per_query', step: 0.1, group: 'gemini_search' },
+  { key: 'video_input_image', label: '视频-输入图片', unit: '积分/张', costUnit: '/张', formField: 'video_input_image_credit', step: 0.001, group: 'video' },
+  { key: 'video_input_second', label: '视频-输入时长', unit: '积分/秒', costUnit: '/秒', formField: 'video_input_second_credit', step: 0.001, group: 'video' },
+  { key: 'video_output_480p', label: '视频输出(480p)', unit: '积分/秒', costUnit: '/秒', formField: 'video_output_480p_credit', step: 0.001, group: 'video' },
+  { key: 'video_output_720p', label: '视频输出(720p)', unit: '积分/秒', costUnit: '/秒', formField: 'video_output_720p_credit', step: 0.001, group: 'video' },
 ] as const;
 
 // 维度组可见性规则映射（避免 if-else 分支）
-const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; searchEnabled: boolean }) => boolean> = {
+const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; searchEnabled: boolean; agentType: string }) => boolean> = {
   base: () => true,
   gemini: ({ isGemini }) => isGemini,
   gemini_search: ({ isGemini, searchEnabled }) => isGemini && searchEnabled,
+  video: ({ agentType }) => agentType === 'video',
 };
 
 interface ParametersProps {
@@ -96,7 +101,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const hasAnyCost = Object.keys(modelCosts).length > 0;
 
   // 根据可见性规则过滤定价维度（映射表驱动，避免 if-else）
-  const visibilityCtx = { isGemini: !!isGeminiProvider, searchEnabled: !!searchEnabled };
+  const visibilityCtx = { isGemini: !!isGeminiProvider, searchEnabled: !!searchEnabled, agentType: watch('agent_type') || 'text' };
   const visibleDimensions = COST_DIMENSIONS.filter(
     dim => GROUP_VISIBILITY[dim.group]?.(visibilityCtx) ?? true
   );

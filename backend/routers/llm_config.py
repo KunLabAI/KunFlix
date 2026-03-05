@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
+import httpx
 
 from database import get_db
 from models import LLMProvider, Admin
@@ -31,6 +32,9 @@ _DEFAULT_BASE_URLS = {
 
 # Azure uses "azure" client type, all others use "openai"
 _CLIENT_TYPE_MAP = {"azure": "azure"}
+
+# 视频模型关键词 → 跳过聊天测试，使用 API key 验证
+_VIDEO_MODEL_PATTERNS = ("video", "imagine-video")
 
 
 def _build_client_kwargs(base_url: str | None, provider_type: str) -> dict:
@@ -78,9 +82,32 @@ def _create_test_model(provider_type: str, model: str, api_key: str,
     )
 
 
+async def _test_video_model_connection(api_key: str, base_url: str | None, provider_type: str) -> dict:
+    """视频模型连接测试 — 使用 /v1/models 端点验证 API key"""
+    url = (base_url or _DEFAULT_BASE_URLS.get(provider_type, "https://api.x.ai/v1")).rstrip("/") + "/models"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(url, headers=headers)
+        resp.raise_for_status()
+    return {"success": True, "message": "视频模型 API Key 验证成功", "response": "Video model connection OK"}
+
+
+def _is_video_model(model_name: str) -> bool:
+    """检测是否为视频模型（基于关键词匹配）"""
+    model_lower = model_name.lower()
+    return any(p in model_lower for p in _VIDEO_MODEL_PATTERNS)
+
+
 @router.post("/test-connection")
 async def test_connection(request: TestConnectionRequest, _admin: Admin = Depends(require_admin)):
     try:
+        # 视频模型使用专用测试方式
+        is_video = _is_video_model(request.model)
+        if is_video:
+            return await _test_video_model_connection(
+                request.api_key, request.base_url, request.provider_type.lower()
+            )
+
         agentscope.init()
 
         provider_type = request.provider_type.lower()

@@ -26,7 +26,7 @@ export interface Agent {
   description: string;
   provider_id: string;
   model: string;
-  agent_type: 'text' | 'image' | 'multimodal';
+  agent_type: 'text' | 'image' | 'multimodal' | 'video';
   temperature: number;
   context_window: number;
   system_prompt: string;
@@ -36,6 +36,11 @@ export interface Agent {
   output_credit_per_1m: number;
   image_output_credit_per_1m: number;
   search_credit_per_query: number;
+  // Video pricing
+  video_input_image_credit: number;
+  video_input_second_credit: number;
+  video_output_480p_credit: number;
+  video_output_720p_credit: number;
   // Leader configuration
   is_leader: boolean;
   coordination_modes: string[];
@@ -177,7 +182,7 @@ export interface PromptTemplate {
   name: string;
   description?: string | null;
   template_type: string;
-  agent_type: 'text' | 'image' | 'multimodal';
+  agent_type: 'text' | 'image' | 'multimodal' | 'video';
   system_prompt_template: string;
   user_prompt_template?: string | null;
   output_schema: Record<string, any>;
@@ -187,4 +192,22 @@ export interface PromptTemplate {
   is_default: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Video Task types
+// ---------------------------------------------------------------------------
+export interface VideoTaskResponse {
+  id: string;
+  xai_task_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  video_mode: 'text_to_video' | 'image_to_video' | 'edit';
+  prompt: string;
+  duration: number;
+  quality: '480p' | '720p';
+  video_url?: string | null;
+  credit_cost: number;
+  error_message?: string | null;
+  created_at: string;
+  completed_at?: string | null;
 }

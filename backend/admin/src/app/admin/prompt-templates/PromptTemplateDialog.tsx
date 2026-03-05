@@ -38,7 +38,7 @@ interface FormValues {
   description: string;
   template_type: string;
   custom_template_type: string;
-  agent_type: 'text' | 'image' | 'multimodal';
+  agent_type: 'text' | 'image' | 'multimodal' | 'video';
   system_prompt_template: string;
   user_prompt_template: string;
   is_active: boolean;
@@ -254,6 +254,7 @@ export default function PromptTemplateDialog({
                       <SelectItem value="text">📝 文本处理</SelectItem>
                       <SelectItem value="image">🎨 图像处理</SelectItem>
                       <SelectItem value="multimodal">✨ 多模态</SelectItem>
+                      <SelectItem value="video">🎬 视频生成</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

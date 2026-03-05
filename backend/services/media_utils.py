@@ -26,3 +26,20 @@ def save_inline_image(mime_type: str, data: bytes) -> str:
     filepath.write_bytes(data)
     logger.info(f"Saved image: {filename} ({len(data)} bytes, {mime_type})")
     return f"/api/media/{filename}"
+
+
+async def save_video_from_url(video_url: str) -> str:
+    """从远端 URL 下载视频并保存到本地，返回 /api/media/{uuid}.mp4 路径"""
+    import httpx
+
+    MEDIA_DIR.mkdir(exist_ok=True)
+    filename = f"{uuid.uuid4()}.mp4"
+    filepath = MEDIA_DIR / filename
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.get(video_url)
+        resp.raise_for_status()
+        filepath.write_bytes(resp.content)
+
+    logger.info(f"Saved video: {filename} ({len(resp.content)} bytes) from {video_url}")
+    return f"/api/media/{filename}"
