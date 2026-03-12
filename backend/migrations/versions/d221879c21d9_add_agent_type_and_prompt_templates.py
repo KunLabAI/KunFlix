@@ -57,8 +57,18 @@ def upgrade() -> None:
     with op.batch_alter_table('agents', schema=None) as batch_op:
         batch_op.add_column(sa.Column('agent_type', sa.String(length=20), nullable=False, server_default='text'))
 
-    with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
+    # 删除 chat_sessions 的外键约束（如果存在）
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'chat_sessions' in tables:
+        fks = inspector.get_foreign_keys('chat_sessions')
+        for fk in fks:
+            fk_name = fk.get('name')
+            if fk_name:
+                with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
+                    batch_op.drop_constraint(fk_name, type_='foreignkey')
 
     with op.batch_alter_table('credit_transactions', schema=None) as batch_op:
         batch_op.alter_column('amount',
@@ -107,8 +117,17 @@ def downgrade() -> None:
                type_=sa.DECIMAL(precision=18, scale=4),
                existing_nullable=False)
 
-    with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
-        batch_op.create_foreign_key(None, 'users', ['user_id'], ['id'])
+    # 创建 chat_sessions 的外键约束
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'chat_sessions' in tables:
+        fks = inspector.get_foreign_keys('chat_sessions')
+        fk_names = [fk.get('name') for fk in fks]
+        if 'fk_chat_sessions_user_id' not in fk_names:
+            with op.batch_alter_table('chat_sessions', schema=None) as batch_op:
+                batch_op.create_foreign_key('fk_chat_sessions_user_id', 'users', ['user_id'], ['id'])
 
     with op.batch_alter_table('agents', schema=None) as batch_op:
         batch_op.drop_column('agent_type')

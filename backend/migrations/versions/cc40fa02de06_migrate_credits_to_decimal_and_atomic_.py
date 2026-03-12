@@ -18,7 +18,54 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _cleanup_temp_tables():
+    """清理可能残留的 Alembic 临时表"""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    for table in tables:
+        if table.startswith('_alembic_tmp_'):
+            print(f"Cleaning up residual temp table: {table}")
+            op.execute(f'DROP TABLE IF EXISTS "{table}"')
+
+def _create_assets_table_if_not_exists():
+    """创建 assets 表（如果不存在）"""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'assets' not in tables:
+        print("Creating assets table...")
+        op.create_table('assets',
+            sa.Column('id', sa.String(36), nullable=False),
+            sa.Column('user_id', sa.String(36), nullable=True),
+            sa.Column('filename', sa.String(255), nullable=False),
+            sa.Column('original_name', sa.String(255), nullable=True),
+            sa.Column('file_path', sa.String(500), nullable=False),
+            sa.Column('file_type', sa.String(50), nullable=True),
+            sa.Column('mime_type', sa.String(100), nullable=True),
+            sa.Column('size', sa.Integer(), nullable=True),
+            sa.Column('width', sa.Integer(), nullable=True),
+            sa.Column('height', sa.Integer(), nullable=True),
+            sa.Column('duration', sa.Float(), nullable=True),
+            sa.Column('metadata_json', sa.JSON(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=True),
+            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+            sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+            sa.PrimaryKeyConstraint('id')
+        )
+        with op.batch_alter_table('assets', schema=None) as batch_op:
+            batch_op.create_index('ix_assets_id', ['id'], unique=False)
+            batch_op.create_index('ix_assets_user_id', ['user_id'], unique=False)
+
 def upgrade() -> None:
+    # 首先清理可能残留的临时表
+    _cleanup_temp_tables()
+    
+    # 创建 assets 表（如果模型中有但数据库中没有）
+    _create_assets_table_if_not_exists()
+    
     # 1. 迁移用户表 credits 字段为 DECIMAL(18, 4)
     # 注意：SQLite 不支持直接 ALTER COLUMN 修改类型为 DECIMAL，这里使用 batch_alter_table
     # 但 SQLAlchemy 对 SQLite 的 DECIMAL 支持通常是存储为浮点或字符串。
@@ -73,9 +120,19 @@ def upgrade() -> None:
                nullable=True,
                existing_server_default=sa.text("'1'"))
 
-    with op.batch_alter_table('assets', schema=None) as batch_op:
-        # SQLite batch mode requires named constraints
-        batch_op.create_foreign_key('fk_assets_user_id', 'users', ['user_id'], ['id'])
+    # assets 表的外键已在 _create_assets_table_if_not_exists 中创建
+    # 如果表已存在，检查是否需要添加外键
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'assets' in tables:
+        # 检查外键是否已存在
+        fks = inspector.get_foreign_keys('assets')
+        fk_names = [fk.get('name') for fk in fks]
+        if 'fk_assets_user_id' not in fk_names:
+            with op.batch_alter_table('assets', schema=None) as batch_op:
+                batch_op.create_foreign_key('fk_assets_user_id', 'users', ['user_id'], ['id'])
 
     with op.batch_alter_table('chat_messages', schema=None) as batch_op:
         batch_op.alter_column('id',
@@ -205,8 +262,14 @@ def downgrade() -> None:
                existing_type=sa.VARCHAR(length=36),
                nullable=True)
 
-    with op.batch_alter_table('assets', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
+    # assets 表在降级时可能被删除，检查是否存在
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
+    
+    if 'assets' in tables:
+        with op.batch_alter_table('assets', schema=None) as batch_op:
+            batch_op.drop_constraint('fk_assets_user_id', type_='foreignkey')
 
     with op.batch_alter_table('agents', schema=None) as batch_op:
         batch_op.alter_column('enable_auto_review',

@@ -1,4 +1,5 @@
 """管理员认证路由 - 独立于用户认证"""
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -23,6 +24,8 @@ from auth import (
 )
 from config import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/api/admin/auth",
     tags=["admin_auth"],
@@ -37,23 +40,37 @@ async def admin_login(
     db: AsyncSession = Depends(get_db),
 ):
     """管理员登录"""
+    client_ip = request.client.host if request.client else None
+    
+    logger.info(f"Admin login attempt: email={body.email}, ip={client_ip}")
+    
     result = await db.execute(select(Admin).filter(Admin.email == body.email))
     admin = result.scalars().first()
 
-    # 验证管理员存在且密码正确
-    is_valid = admin and verify_password(body.password, admin.password_hash)
+    # 验证管理员存在
+    if not admin:
+        logger.warning(f"Admin login failed: admin not found, email={body.email}, ip={client_ip}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="邮箱或密码错误",
+        )
     
-    if not is_valid:
+    # 验证密码
+    if not verify_password(body.password, admin.password_hash):
+        logger.warning(f"Admin login failed: invalid password, email={body.email}, ip={client_ip}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="邮箱或密码错误",
         )
 
     if not admin.is_active:
+        logger.warning(f"Admin login failed: account disabled, email={body.email}, ip={client_ip}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="账户已被禁用",
         )
+    
+    logger.info(f"Admin login successful: email={body.email}, admin_id={admin.id}")
 
     # 更新登录信息
     admin.last_login_at = datetime.now(timezone.utc)

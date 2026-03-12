@@ -45,7 +45,8 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     // Skip refresh for auth endpoints and already-retried requests
-    const isAuthEndpoint = originalRequest?.url?.startsWith('/auth/');
+    // Fix: check for /auth/ in the URL to cover /admin/auth/... endpoints
+    const isAuthEndpoint = originalRequest?.url?.includes('/auth/');
     if (error.response?.status !== 401 || isAuthEndpoint || originalRequest._retry) {
       return Promise.reject(error);
     }

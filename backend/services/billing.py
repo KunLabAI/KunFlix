@@ -57,25 +57,40 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
     Raises:
         BalanceFrozenError: 如果账户被冻结
     """
+    # 转换为 Decimal 进行比较
+    cost_decimal = Decimal(str(estimated_cost))
+    
+    # 1. 尝试查询用户
     stmt = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
     result = await session.execute(stmt)
     row = result.first()
     
-    if not row:
-        return False
+    if row:
+        current_balance = row.credits or Decimal('0.0')
+        is_frozen = row.is_balance_frozen or False
         
-    current_balance = row.credits or Decimal('0.0')
-    is_frozen = row.is_balance_frozen or False
+        if is_frozen:
+            raise BalanceFrozenError(f"User {user_id} balance is frozen")
+        
+        if current_balance < cost_decimal:
+            return False
+        return True
+
+    # 2. 尝试查询管理员
+    from models import Admin
+    stmt_admin = select(Admin.credits).where(Admin.id == user_id)
+    result_admin = await session.execute(stmt_admin)
+    row_admin = result_admin.first()
     
-    if is_frozen:
-        raise BalanceFrozenError(f"User {user_id} balance is frozen")
-    
-    # 转换为 Decimal 进行比较
-    cost_decimal = Decimal(str(estimated_cost))
-    
-    if current_balance < cost_decimal:
-        return False
-    return True
+    if row_admin:
+        current_balance = row_admin.credits or Decimal('0.0')
+        # 管理员暂无冻结逻辑
+        # 转换为 Decimal 进行比较
+        if current_balance < cost_decimal:
+            return False
+        return True
+
+    return False
 
 async def refund_credits_atomic(
     user_id: str,
@@ -105,7 +120,7 @@ async def refund_credits_atomic(
 
     amount_decimal = Decimal(str(amount))
     
-    # 1. 原子增加余额
+    # 1. 原子增加余额 (User)
     # UPDATE users SET credits = credits + :amount WHERE id = :id
     stmt = (
         update(User)
@@ -117,9 +132,37 @@ async def refund_credits_atomic(
     result = await session.execute(stmt)
     
     if result.rowcount == 0:
-        raise ValueError(f"User {user_id} not found")
+        # 尝试增加 Admin 余额
+        from models import Admin
+        stmt_admin = (
+            update(Admin)
+            .where(Admin.id == user_id)
+            .values(credits=Admin.credits + amount_decimal)
+            .execution_options(synchronize_session="fetch")
+        )
+        result_admin = await session.execute(stmt_admin)
         
-    # 2. 获取更新后的余额
+        if result_admin.rowcount > 0:
+             balance_stmt = select(Admin.credits).where(Admin.id == user_id)
+             balance_result = await session.execute(balance_stmt)
+             current_balance = balance_result.scalar()
+             balance_before = current_balance - amount_decimal
+             
+             transaction = CreditTransaction(
+                admin_id=user_id,
+                amount=amount_decimal,
+                balance_before=balance_before,
+                balance_after=current_balance,
+                transaction_type="refund",
+                metadata_json=metadata or {},
+                description=description
+            )
+             session.add(transaction)
+             return transaction
+             
+        raise ValueError(f"User/Admin {user_id} not found")
+        
+    # 2. 获取更新后的余额 (User)
     balance_stmt = select(User.credits).where(User.id == user_id)
     balance_result = await session.execute(balance_stmt)
     current_balance = balance_result.scalar()
@@ -183,6 +226,12 @@ async def deduct_credits_atomic(
     
     # 1. 原子更新余额
     # UPDATE users SET credits = credits - :cost WHERE id = :id AND credits >= :cost AND is_balance_frozen = False
+    # Check if user is admin first (admins have unlimited credits or separate logic, but here we treat them as users for billing if they have credits)
+    # But wait, admins are in 'admins' table, users in 'users' table.
+    # The deduct_credits_atomic function currently only updates 'User' table.
+    # If the user_id belongs to an admin, this will fail with rowcount=0.
+    
+    # Try updating User table first
     stmt = (
         update(User)
         .where(User.id == user_id)
@@ -195,25 +244,67 @@ async def deduct_credits_atomic(
     result = await session.execute(stmt)
     
     if result.rowcount == 0:
-        # 更新失败，排查原因
+        # Check if it is an Admin
+        from models import Admin
+        stmt_admin = (
+            update(Admin)
+            .where(Admin.id == user_id)
+            .where(Admin.credits >= cost_decimal)
+            .values(credits=Admin.credits - cost_decimal)
+            .execution_options(synchronize_session="fetch")
+        )
+        result_admin = await session.execute(stmt_admin)
+        
+        if result_admin.rowcount > 0:
+             # It was an admin, and update succeeded
+             balance_stmt = select(Admin.credits).where(Admin.id == user_id)
+             balance_result = await session.execute(balance_stmt)
+             current_balance = balance_result.scalar()
+             balance_before = current_balance + cost_decimal
+             
+             transaction = CreditTransaction(
+                admin_id=user_id, # Use admin_id column
+                amount=-cost_decimal,
+                balance_before=balance_before,
+                balance_after=current_balance,
+                transaction_type=transaction_type,
+                metadata_json=metadata or {}
+            )
+             session.add(transaction)
+             return transaction
+
+        # Update failed, check reasons (User or Admin)
+        # Check User first
         stmt_check = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
         res_check = await session.execute(stmt_check)
         row = res_check.first()
         
-        if not row:
-            raise ValueError(f"User {user_id} not found")
-            
-        if row.is_balance_frozen:
-             raise BalanceFrozenError(f"User {user_id} balance is frozen")
-             
-        if row.credits < cost_decimal:
-            logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
-            raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+        if row:
+             if row.is_balance_frozen:
+                 raise BalanceFrozenError(f"User {user_id} balance is frozen")
+             if row.credits < cost_decimal:
+                logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
+                raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+        
+        # Check Admin
+        stmt_check_admin = select(Admin.credits).where(Admin.id == user_id)
+        res_check_admin = await session.execute(stmt_check_admin)
+        row_admin = res_check_admin.first()
+        
+        if row_admin:
+             if row_admin.credits < cost_decimal:
+                logger.warning(f"Insufficient credits for admin {user_id}. Cost: {cost}")
+                raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+             # Add check for update failure even with sufficient credits
+             raise Exception("Failed to deduct credits for admin (unknown reason)")
+        
+        if not row and not row_admin:
+            raise ValueError(f"User/Admin {user_id} not found")
             
         # 其他未知原因
         raise Exception("Failed to deduct credits (unknown reason)")
     
-    # 2. 获取更新后的余额（用于记录交易）
+    # 2. 获取更新后的余额（User）
     # 注意：在高并发下，再次查询的余额可能已经发生变化，
     # 但对于交易记录来说，我们更关心的是"这次扣除前的余额"和"扣除量"。
     # balance_after = balance_before - cost
@@ -222,6 +313,7 @@ async def deduct_credits_atomic(
     # 更严谨的做法是利用 RETURNING 子句 (PostgreSQL/Oracle)，但 SQLite/MySQL 旧版不支持。
     # 这里我们再查一次，虽然可能包含其他并发事务的影响，但在审计上是可以接受的。
     
+    # We only reach here if User update succeeded
     balance_stmt = select(User.credits).where(User.id == user_id)
     balance_result = await session.execute(balance_stmt)
     current_balance = balance_result.scalar()

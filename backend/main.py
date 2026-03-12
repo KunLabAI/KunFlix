@@ -58,8 +58,31 @@ async def lifespan(app: FastAPI):
             # Run Alembic migrations
             print("Running database migrations...")
             import subprocess
-            subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
-            print("Database migrations completed.")
+            try:
+                subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
+                print("Database migrations completed.")
+            except subprocess.CalledProcessError as e:
+                print(f"Migration failed: {e}")
+                print("Attempting to fix residual temp tables...")
+                # 尝试清理残留表后重试
+                try:
+                    import sqlite3
+                    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'infinite_game.db')
+                    conn = sqlite3.connect(db_path)
+                    cur = conn.cursor()
+                    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '_alembic_tmp_%'")
+                    temp_tables = [t[0] for t in cur.fetchall()]
+                    for table in temp_tables:
+                        print(f"  Dropping residual table: {table}")
+                        cur.execute(f'DROP TABLE IF EXISTS "{table}"')
+                    conn.commit()
+                    conn.close()
+                    # 重试迁移
+                    subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
+                    print("Database migrations completed after cleanup.")
+                except Exception as cleanup_error:
+                    print(f"Migration failed even after cleanup: {cleanup_error}")
+                    raise
             
             break
         except Exception as e:

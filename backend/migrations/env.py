@@ -64,7 +64,22 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _cleanup_alembic_temp_tables(connection: Connection):
+    """清理残留的 Alembic 临时表"""
+    from sqlalchemy import inspect, text
+    inspector = inspect(connection)
+    tables = inspector.get_table_names()
+    
+    for table in tables:
+        if table.startswith('_alembic_tmp_'):
+            print(f"Cleaning up residual temp table: {table}")
+            connection.execute(text(f'DROP TABLE IF EXISTS "{table}"'))
+    connection.commit()
+
 def do_run_migrations(connection: Connection) -> None:
+    # 首先清理残留的临时表
+    _cleanup_alembic_temp_tables(connection)
+    
     context.configure(connection=connection, target_metadata=target_metadata, render_as_batch=True)
 
     with context.begin_transaction():
