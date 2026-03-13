@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     STORY_GENERATION_MODEL: str = "gpt-4-turbo"
     IMAGE_GENERATION_MODEL: str = "dall-e-3"
     
+    # System
+    RUN_MIGRATIONS: bool = False  # Set to True to run migrations on startup
+
     class Config:
         env_file = ".env"
 

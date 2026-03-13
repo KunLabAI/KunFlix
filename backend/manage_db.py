@@ -51,6 +51,9 @@ def main():
     # Downgrade command
     subparsers.add_parser("downgrade", help="Revert the last applied migration")
 
+    # Seed command
+    subparsers.add_parser("seed", help="Seed the database with initial data")
+
     args = parser.parse_args()
 
     if args.command == "migrate":
@@ -59,6 +62,16 @@ def main():
         upgrade()
     elif args.command == "downgrade":
         downgrade()
+    elif args.command == "seed":
+        print("Running seed script...")
+        cmd = f"{sys.executable} seed_db.py"
+        print(f"Running: {cmd}")
+        try:
+            subprocess.check_call(cmd, shell=True)
+            print("Seed completed successfully!")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to seed database: {e}")
+            sys.exit(1)
     else:
         parser.print_help()
 
