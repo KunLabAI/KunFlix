@@ -204,7 +204,7 @@ export interface VideoTaskResponse {
   video_mode: 'text_to_video' | 'image_to_video' | 'edit';
   prompt: string;
   duration: number;
-  quality: '480p' | '720p';
+  quality: '480p' | '512p' | '720p' | '768p' | '1080p';
   aspect_ratio?: string;
   video_url?: string | null;
   credit_cost: number;
@@ -230,10 +230,13 @@ export interface VideoCreateRequest {
   model: string;
   video_mode: 'text_to_video' | 'image_to_video' | 'edit';
   prompt: string;
-  image_url?: string;
+  image_url?: string;  // 首帧图片
+  last_frame_image?: string;  // 尾帧图片 (MiniMax-Hailuo-02 支持)
   config?: {
     duration: number;
-    quality: '480p' | '720p';
+    quality: '480p' | '512p' | '720p' | '768p' | '1080p';
     aspect_ratio: string;
+    prompt_optimizer?: boolean;  // MiniMax: 自动优化提示词
+    fast_pretreatment?: boolean;  // MiniMax: 快速预处理
   };
 }

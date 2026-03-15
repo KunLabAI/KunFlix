@@ -551,10 +551,13 @@ class AIGenerateResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class VideoConfig(BaseModel):
     """视频生成配置"""
-    duration: int = Field(default=5, ge=1, le=15)
-    quality: Literal["480p", "720p"] = "720p"
+    duration: int = Field(default=6, ge=1, le=15)
+    quality: Literal["480p", "720p", "768p", "1080p"] = "720p"
     aspect_ratio: str = "16:9"
-    mode: str = "normal"  # 保留字段兼容前端，xAI API 不使用
+    mode: str = "normal"  # 保留字段兼容前端，部分 API 不使用
+    # MiniMax 特有配置
+    prompt_optimizer: bool = True  # 自动优化提示词
+    fast_pretreatment: bool = False  # 快速预处理
 
 
 class VideoGenerateRequest(BaseModel):
@@ -564,7 +567,8 @@ class VideoGenerateRequest(BaseModel):
     session_id: Optional[str] = None
     video_mode: Literal["text_to_video", "image_to_video", "edit"] = "text_to_video"
     prompt: str = Field(..., min_length=1, max_length=2000)
-    image_url: Optional[str] = None
+    image_url: Optional[str] = None  # 首帧图片 (image_to_video/edit)
+    last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 支持)
     config: Optional[VideoConfig] = None
 
 

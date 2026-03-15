@@ -13,7 +13,7 @@ from database import get_db
 from models import LLMProvider, VideoTask, ChatMessage
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
-from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES
+from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
 from services.media_utils import save_video_from_url, MEDIA_DIR
 
@@ -89,21 +89,29 @@ async def create_video_task(
 
     # 计算输入图片数量
     input_image_count = 1 if request.image_url and request.video_mode in ("image_to_video", "edit") else 0
+    input_image_count += 1 if request.last_frame_image else 0
 
+    # 推断供应商类型
+    provider_type = provider.provider_type or infer_provider_type(request.model)
+    
     # 构建视频上下文
     ctx = VideoContext(
         api_key=provider.api_key,
         model=request.model,
         prompt=request.prompt,
+        provider_type=provider_type,
         image_url=request.image_url,
+        last_frame_image=request.last_frame_image,
         duration=config.duration,
         quality=config.quality,
         aspect_ratio=config.aspect_ratio,
         mode=config.mode,
         video_mode=request.video_mode,
+        prompt_optimizer=config.prompt_optimizer,
+        fast_pretreatment=config.fast_pretreatment,
     )
 
-    # 提交到 xAI
+    # 提交到供应商 (根据 provider_type 自动路由)
     result = await submit_video_task(ctx)
 
     # 提交失败
@@ -113,7 +121,7 @@ async def create_video_task(
 
     # 创建 VideoTask 记录
     task = VideoTask(
-        xai_task_id=result.xai_task_id,
+        xai_task_id=result.task_id,
         session_id=request.session_id,
         provider_id=request.provider_id,
         model=request.model,
@@ -132,7 +140,7 @@ async def create_video_task(
     await db.commit()
     await db.refresh(task)
 
-    logger.info(f"Video task created: {task.id} (xai: {result.xai_task_id})")
+    logger.info(f"Video task created: {task.id} ({provider_type}: {result.task_id})")
 
     return _build_task_response(task, provider_name=provider.name)
 
@@ -163,8 +171,9 @@ async def get_video_task_status(
     provider = provider_result.scalar_one_or_none()
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Provider not found"))
 
-    # 轮询 xAI
-    poll_result = await poll_video_task(provider.api_key, task.xai_task_id)
+    # 轮询供应商 (根据 provider_type 自动选择适配器)
+    provider_type = provider.provider_type or infer_provider_type(task.model or "")
+    poll_result = await poll_video_task(provider.api_key, task.xai_task_id, provider_type)
 
     # 超时保护：pending 且有错误超过 5 分钟 → 判定失败
     poll_has_error = poll_result.error and poll_result.status == "pending"
