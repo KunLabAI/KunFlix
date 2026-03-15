@@ -42,6 +42,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return <>{children}<Toaster /></>;
   }
 
+
   const items = [
     {
       title: '仪表盘',
@@ -89,14 +90,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       icon: Shield,
     },
   ];
-
-  const isFullScreen = React.useMemo(() => {
-    return (
-      pathname === '/admin/llm/create' ||
-      (pathname.startsWith('/admin/llm/') && pathname !== '/admin/llm') ||
-      pathname.startsWith('/admin/agents/')
-    );
-  }, [pathname]);
 
   return (
     <div className="fixed inset-0 flex w-full h-full bg-muted/40 overflow-hidden">
@@ -179,10 +172,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       <div className="flex flex-col flex-1 min-w-0 w-full h-full overflow-hidden">
-        <main className={cn(
-          "flex-1 min-h-0 w-full h-full",
-          isFullScreen ? "overflow-hidden p-0 flex flex-col" : "overflow-auto p-4 sm:px-6 sm:py-6 md:gap-8"
-        )}>
+        <main className="flex-1 min-h-0 w-full h-full p-8 overflow-hidden">
           {children}
         </main>
       </div>
