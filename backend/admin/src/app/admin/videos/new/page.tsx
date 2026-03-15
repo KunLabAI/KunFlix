@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Loader2, Sparkles, Zap } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles, Zap, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -10,64 +10,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
 import { useCreateVideoTask } from '@/hooks/useVideoTasks';
+import { useModelCapabilities, useVideoFormVisibility } from '@/hooks/useModelCapabilities';
 import { LLMProvider } from '@/types';
 import { parseProviderModels } from '@/lib/api-utils';
-
-// ---------------------------------------------------------------------------
-// 配置映射表
-// ---------------------------------------------------------------------------
-const VIDEO_MODE_OPTIONS = [
-  { value: 'text_to_video', label: '文字生成视频', needsImage: false },
-  { value: 'image_to_video', label: '图片生成视频', needsImage: true },
-  { value: 'edit', label: '视频编辑', needsImage: true },
-] as const;
-
-const VIDEO_MODE_NEEDS_IMAGE: Record<string, boolean> = {
-  text_to_video: false,
-  image_to_video: true,
-  edit: true,
-};
-
-// 通用画质选项
-const QUALITY_OPTIONS = [
-  { value: '480p', label: '480p (流畅)' },
-  { value: '512p', label: '512p' },
-  { value: '720p', label: '720p (高清)' },
-  { value: '768p', label: '768p' },
-  { value: '1080p', label: '1080p (全高清)' },
-] as const;
-
-const ASPECT_OPTIONS = [
-  { value: '16:9', label: '16:9 (横屏)' },
-  { value: '9:16', label: '9:16 (竖屏)' },
-  { value: '1:1', label: '1:1 (方形)' },
-] as const;
-
-// MiniMax 支持首尾帧的模型
-const MINIMAX_FIRST_LAST_FRAME_MODELS = ['MiniMax-Hailuo-02'];
-
-// MiniMax 模型特征
-const MINIMAX_MODEL_PATTERNS = ['hailuo', 'minimax', 't2v-01', 'i2v-01', 's2v-01'];
-
-// ---------------------------------------------------------------------------
-// 辅助函数
-// ---------------------------------------------------------------------------
-function isMiniMaxProvider(provider: LLMProvider | undefined): boolean {
-  const providerType = provider?.provider_type?.toLowerCase() || '';
-  return providerType === 'minimax';
-}
-
-function isMiniMaxModel(model: string): boolean {
-  const modelLower = model.toLowerCase();
-  return MINIMAX_MODEL_PATTERNS.some(p => modelLower.includes(p));
-}
-
-function supportsFirstLastFrame(model: string): boolean {
-  return MINIMAX_FIRST_LAST_FRAME_MODELS.some(m => model.startsWith(m));
-}
+import { VIDEO_MODE_LABELS, RESOLUTION_LABELS, ASPECT_RATIO_LABELS } from '@/types/video';
 
 // ---------------------------------------------------------------------------
 // 页面组件
@@ -78,15 +28,17 @@ export default function CreateVideoPage() {
   const { providers, isLoading: providersLoading } = useLLMProviders();
   const { createVideoTask } = useCreateVideoTask();
 
+  // 基础状态
   const [providerId, setProviderId] = useState('');
   const [model, setModel] = useState('');
   
+  // 视频配置状态
   const [videoMode, setVideoMode] = useState('text_to_video');
   const [prompt, setPrompt] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [lastFrameImageUrl, setLastFrameImageUrl] = useState('');
   const [duration, setDuration] = useState(6);
-  const [quality, setQuality] = useState<'480p' | '512p' | '720p' | '768p' | '1080p'>('720p');
+  const [quality, setQuality] = useState<string>('720p');
   const [aspectRatio, setAspectRatio] = useState('16:9');
   
   // MiniMax 特有配置
@@ -95,35 +47,54 @@ export default function CreateVideoPage() {
   
   const [submitting, setSubmitting] = useState(false);
 
-  // Get selected provider
+  // 获取选中的供应商
   const selectedProvider = useMemo(() => {
     return providers?.find((p: LLMProvider) => p.id === providerId);
   }, [providerId, providers]);
 
-  // Get available models for selected provider
+  // 获取可用模型
   const availableModels = useMemo(() => {
     return selectedProvider ? parseProviderModels(selectedProvider.models) : [];
   }, [selectedProvider]);
 
-  // Detect if using MiniMax
-  const isMiniMax = useMemo(() => {
-    return isMiniMaxProvider(selectedProvider) || isMiniMaxModel(model);
-  }, [selectedProvider, model]);
+  // 获取模型能力配置
+  const { capabilities, isLoading: capabilitiesLoading } = useModelCapabilities(model || null);
+  
+  // 根据能力配置计算表单可见性
+  const visibility = useVideoFormVisibility(capabilities, videoMode);
 
-  // Check if model supports first+last frame
-  const canUseFirstLastFrame = useMemo(() => {
-    return isMiniMax && supportsFirstLastFrame(model);
-  }, [isMiniMax, model]);
+  // 当模型切换时，自动修正不兼容的参数
+  useEffect(() => {
+    if (!capabilities) return;
 
-  const showImageField = VIDEO_MODE_NEEDS_IMAGE[videoMode] ?? false;
+    // 如果当前模式不支持，切换到第一个支持的模式
+    if (!capabilities.modes.includes(videoMode as any)) {
+      setVideoMode(capabilities.modes[0]);
+    }
 
-  // Duration constraints based on provider
-  const durationConfig = useMemo(() => {
-    (isMiniMax) && null;  // MiniMax: 6 or 10 only
-    return isMiniMax 
-      ? { min: 6, max: 10, step: 4, options: [6, 10] }  // MiniMax only supports 6 or 10
-      : { min: 1, max: 15, step: 1, options: null };    // xAI: 1-15
-  }, [isMiniMax]);
+    // 如果当前分辨率不支持，切换到第一个支持的分辨率
+    if (!capabilities.resolutions.includes(quality)) {
+      setQuality(capabilities.resolutions[0]);
+    }
+
+    // 如果当前时长不支持，切换到第一个支持的时长
+    if (!capabilities.durations.includes(duration)) {
+      setDuration(capabilities.durations[0]);
+    }
+
+    // 如果当前画面比例不支持，切换到第一个支持的画面比例
+    if (!capabilities.aspect_ratios.includes(aspectRatio)) {
+      setAspectRatio(capabilities.aspect_ratios[0]);
+    }
+  }, [capabilities, model]);
+
+  // 当模式切换时，清空图片
+  useEffect(() => {
+    if (videoMode === 'text_to_video') {
+      setImageUrl('');
+      setLastFrameImageUrl('');
+    }
+  }, [videoMode]);
 
   const canSubmit = !!providerId && !!model && prompt.trim().length > 0 && !submitting;
 
@@ -135,14 +106,14 @@ export default function CreateVideoPage() {
         model,
         video_mode: videoMode as 'text_to_video' | 'image_to_video' | 'edit',
         prompt: prompt.trim(),
-        image_url: showImageField ? imageUrl || undefined : undefined,
-        last_frame_image: canUseFirstLastFrame && lastFrameImageUrl ? lastFrameImageUrl : undefined,
+        image_url: visibility.showFirstFrame ? imageUrl || undefined : undefined,
+        last_frame_image: visibility.showLastFrame ? lastFrameImageUrl || undefined : undefined,
         config: { 
-          duration: isMiniMax ? (duration <= 6 ? 6 : 10) : duration, 
-          quality, 
+          duration, 
+          quality: quality as any, 
           aspect_ratio: aspectRatio,
-          prompt_optimizer: isMiniMax ? promptOptimizer : undefined,
-          fast_pretreatment: isMiniMax ? fastPretreatment : undefined,
+          prompt_optimizer: visibility.showPromptOptimizer ? promptOptimizer : undefined,
+          fast_pretreatment: visibility.showFastPretreatment ? fastPretreatment : undefined,
         },
       });
       toast({ title: '视频任务已提交', description: '任务已进入队列，请等待生成完成' });
@@ -158,18 +129,31 @@ export default function CreateVideoPage() {
     }
   };
 
-  // Reset duration when provider changes
+  // 处理供应商切换
   const handleProviderChange = (v: string) => {
     setProviderId(v);
     setModel('');
-    setDuration(6);  // Reset to default
+    setVideoMode('text_to_video');
   };
 
-  (providersLoading) && (
-    <div className="flex h-[50vh] items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
-  );
+  // 处理模型切换
+  const handleModelChange = (v: string) => {
+    setModel(v);
+    // 重置为默认值
+    setVideoMode('text_to_video');
+    setDuration(6);
+    setQuality('720p');
+    setImageUrl('');
+    setLastFrameImageUrl('');
+  };
+
+  if (providersLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="container max-w-4xl py-6 animate-in fade-in duration-500">
@@ -206,7 +190,7 @@ export default function CreateVideoPage() {
             </div>
             <div className="grid gap-2">
               <Label>模型</Label>
-              <Select value={model} onValueChange={setModel} disabled={!providerId}>
+              <Select value={model} onValueChange={handleModelChange} disabled={!providerId}>
                 <SelectTrigger>
                   <SelectValue placeholder={providerId ? "选择模型" : "先选择供应商"} />
                 </SelectTrigger>
@@ -219,11 +203,12 @@ export default function CreateVideoPage() {
             </div>
           </div>
           
-          {/* Provider type hint */}
-          {isMiniMax && (
+          {/* 模型能力提示 */}
+          {capabilities && (
             <div className="rounded-lg bg-primary/5 p-3 text-sm text-muted-foreground">
               <Sparkles className="mr-2 inline h-4 w-4 text-primary" />
-              MiniMax 视频模型：时长支持 6秒 或 10秒，分辨率支持 512P/720P/768P/1080P
+              支持模式: {capabilities.modes.map(m => VIDEO_MODE_LABELS[m]).join('、')}
+              {capabilities.supports_last_frame && '、首尾帧生成'}
             </div>
           )}
         </section>
@@ -232,20 +217,36 @@ export default function CreateVideoPage() {
         <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
           <h3 className="text-lg font-semibold">视频设置</h3>
           
-          <div className="grid gap-2">
-            <Label>生成模式</Label>
-            <Select value={videoMode} onValueChange={setVideoMode}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VIDEO_MODE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* 生成模式 - 仅当支持多个模式时显示 */}
+          {visibility.showModeSelect && (
+            <div className="grid gap-2">
+              <Label>生成模式</Label>
+              <Select value={videoMode} onValueChange={setVideoMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {capabilities?.modes.map((mode) => (
+                    <SelectItem key={mode} value={mode}>
+                      {VIDEO_MODE_LABELS[mode]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
+          {/* 单模式提示 */}
+          {!visibility.showModeSelect && capabilities && (
+            <Alert variant="default" className="bg-muted">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                此模型仅支持{VIDEO_MODE_LABELS[capabilities.modes[0]]}模式
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* 提示词 */}
           <div className="grid gap-2">
             <Label>提示词</Label>
             <Textarea
@@ -261,20 +262,21 @@ export default function CreateVideoPage() {
           </div>
 
           {/* 首帧图片 */}
-          {showImageField && (
+          {visibility.showFirstFrame && (
             <div className="grid gap-2">
-              <Label>首帧图片 URL</Label>
+              <Label>首帧图片 URL <span className="text-destructive">*</span></Label>
               <Input
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="输入图片 URL 或 base64 data URL"
+                required
               />
-              <p className="text-xs text-muted-foreground">视频将从这张图片开始生成</p>
+              <p className="text-xs text-muted-foreground">此模型需要提供首帧图片才能生成视频</p>
             </div>
           )}
 
-          {/* 尾帧图片 (MiniMax-Hailuo-02 支持) */}
-          {canUseFirstLastFrame && showImageField && (
+          {/* 尾帧图片 */}
+          {visibility.showLastFrame && (
             <div className="grid gap-2">
               <Label>尾帧图片 URL (可选)</Label>
               <Input
@@ -291,19 +293,23 @@ export default function CreateVideoPage() {
             <div className="grid gap-4">
               <div className="flex items-center justify-between">
                 <Label>时长</Label>
-                <span className="text-sm font-medium">
-                  {isMiniMax 
-                    ? (duration <= 6 ? '6 秒' : '10 秒')
-                    : `${duration} 秒`
-                  }
-                </span>
+                <span className="text-sm font-medium">{duration} 秒</span>
               </div>
-              {isMiniMax ? (
+              {visibility.showDurationSlider ? (
+                <Slider
+                  value={[duration]}
+                  onValueChange={(v) => setDuration(v[0])}
+                  min={Math.min(...visibility.durationOptions)}
+                  max={Math.max(...visibility.durationOptions)}
+                  step={1}
+                  className="py-2"
+                />
+              ) : (
                 <div className="flex gap-2">
-                  {[6, 10].map(d => (
+                  {visibility.durationOptions.map(d => (
                     <Button
                       key={d}
-                      variant={(duration <= 6 ? 6 : 10) === d ? "default" : "outline"}
+                      variant={duration === d ? "default" : "outline"}
                       onClick={() => setDuration(d)}
                       className="flex-1"
                     >
@@ -311,32 +317,28 @@ export default function CreateVideoPage() {
                     </Button>
                   ))}
                 </div>
-              ) : (
-                <Slider
-                  value={[duration]}
-                  onValueChange={(v) => setDuration(v[0])}
-                  min={1}
-                  max={15}
-                  step={1}
-                  className="py-2"
-                />
               )}
             </div>
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              {/* 画质 */}
               <div className="grid gap-2">
                 <Label>画质</Label>
-                <Select value={quality} onValueChange={(v) => setQuality(v as typeof quality)}>
+                <Select value={quality} onValueChange={setQuality}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {QUALITY_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    {visibility.resolutionOptions.map((res) => (
+                      <SelectItem key={res} value={res}>
+                        {RESOLUTION_LABELS[res] || res}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              
+              {/* 画面比例 */}
               <div className="grid gap-2">
                 <Label>画面比例</Label>
                 <Select value={aspectRatio} onValueChange={setAspectRatio}>
@@ -344,8 +346,10 @@ export default function CreateVideoPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {ASPECT_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    {(visibility.aspectRatioOptions || ['16:9', '9:16', '1:1']).map((ratio) => (
+                      <SelectItem key={ratio} value={ratio}>
+                        {ASPECT_RATIO_LABELS[ratio] || ratio}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -354,39 +358,43 @@ export default function CreateVideoPage() {
           </div>
         </section>
 
-        {/* MiniMax 高级设置 */}
-        {isMiniMax && (
+        {/* 高级设置 */}
+        {(visibility.showPromptOptimizer || visibility.showFastPretreatment) && (
           <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
             <h3 className="text-lg font-semibold">高级设置</h3>
             
             <div className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    提示词优化
-                  </Label>
-                  <p className="text-xs text-muted-foreground">自动优化提示词以获得更好的生成效果</p>
+              {visibility.showPromptOptimizer && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      提示词优化
+                    </Label>
+                    <p className="text-xs text-muted-foreground">自动优化提示词以获得更好的生成效果</p>
+                  </div>
+                  <Switch
+                    checked={promptOptimizer}
+                    onCheckedChange={setPromptOptimizer}
+                  />
                 </div>
-                <Switch
-                  checked={promptOptimizer}
-                  onCheckedChange={setPromptOptimizer}
-                />
-              </div>
+              )}
               
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="flex items-center gap-2">
-                    <Zap className="h-4 w-4" />
-                    快速预处理
-                  </Label>
-                  <p className="text-xs text-muted-foreground">减少优化时间，加快生成速度</p>
+              {visibility.showFastPretreatment && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label className="flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      快速预处理
+                    </Label>
+                    <p className="text-xs text-muted-foreground">减少优化时间，加快生成速度</p>
+                  </div>
+                  <Switch
+                    checked={fastPretreatment}
+                    onCheckedChange={setFastPretreatment}
+                  />
                 </div>
-                <Switch
-                  checked={fastPretreatment}
-                  onCheckedChange={setFastPretreatment}
-                />
-              </div>
+              )}
             </div>
           </section>
         )}

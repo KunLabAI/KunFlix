@@ -14,6 +14,7 @@ from models import LLMProvider, VideoTask, ChatMessage
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
+from services.video_providers.model_capabilities import get_model_capabilities
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
 from services.media_utils import save_video_from_url, MEDIA_DIR
 
@@ -240,6 +241,17 @@ async def get_session_video_tasks(
     )
     tasks = result.scalars().all()
     return [_build_task_response(t) for t in tasks]
+
+
+@router.get("/model-capabilities/{model_name}")
+async def get_video_model_capabilities(
+    model_name: str,
+    current_user=Depends(get_current_active_user_or_admin),
+):
+    """获取指定视频模型的能力配置"""
+    capabilities = get_model_capabilities(model_name)
+    capabilities or (_ for _ in ()).throw(HTTPException(status_code=404, detail=f"Model {model_name} not found or not supported"))
+    return capabilities
 
 
 # 可删除的终态集合
