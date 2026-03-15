@@ -4,6 +4,7 @@
 **本文档中引用的文件**
 - [videos.py](file://backend/routers/videos.py)
 - [video_generation.py](file://backend/services/video_generation.py)
+- [model_capabilities.py](file://backend/services/video_providers/model_capabilities.py)
 - [models.py](file://backend/models.py)
 - [schemas.py](file://backend/schemas.py)
 - [billing.py](file://backend/services/billing.py)
@@ -15,19 +16,21 @@
 - [useVideoTasks.ts](file://backend/admin/src/hooks/useVideoTasks.ts)
 - [VideoPreviewModal.tsx](file://backend/admin/src/app/admin/videos/VideoPreviewModal.tsx)
 - [new_page.tsx](file://backend/admin/src/app/admin/videos/new/page.tsx)
+- [useModelCapabilities.ts](file://backend/admin/src/hooks/useModelCapabilities.ts)
+- [video.ts](file://backend/admin/src/types/video.ts)
 - [base.py](file://backend/services/video_providers/base.py)
 - [xai_provider.py](file://backend/services/video_providers/xai_provider.py)
 - [minimax_provider.py](file://backend/services/video_providers/minimax_provider.py)
-- [model_capabilities.py](file://backend/services/video_providers/model_capabilities.py)
 </cite>
 
 ## 更新摘要
 **变更内容**
 - 新增provider/model架构替代agent架构，包括API路由重构和计费系统更新
 - 新增视频任务删除功能，支持已完成和失败任务的清理
-- 后台管理界面增强，包括实时状态轮询和任务删除功能
+- 新增模型能力查询API，提供动态参数验证和表单控制
+- 后台管理界面增强，包括实时状态轮询、任务删除功能和模型能力配置
 - 计费系统更新，支持基于provider/model的成本计算
-- 供应商适配器重构，支持xAI和MiniMax多供应商架构
+- 供应商适配器重构，支持xAI、MiniMax和Gemini多供应商架构
 - 模型能力配置系统，提供动态参数验证和表单控制
 
 ## 目录
@@ -47,7 +50,7 @@
 
 视频生成API是Infinite Narrative Game项目的核心功能模块之一，提供基于多供应商平台的视频生成服务。该API支持多种视频生成模式，包括文本到视频、图片到视频和视频编辑，并集成了完整的计费系统、任务管理和状态轮询机制。
 
-**更新** 本API现已采用新的provider/model架构替代原有的agent架构，提供更灵活的供应商管理和模型选择功能。同时新增了视频任务删除功能，支持管理员清理已完成和失败的任务记录。系统现在支持xAI和MiniMax两个视频生成供应商，通过统一的适配器接口实现供应商无关的视频生成服务。
+**更新** 本API现已采用新的provider/model架构替代原有的agent架构，提供更灵活的供应商管理和模型选择功能。同时新增了视频任务删除功能，支持管理员清理已完成和失败的任务记录。系统现在支持xAI、MiniMax和Gemini三个视频生成供应商，通过统一的适配器接口实现供应商无关的视频生成服务。新增的模型能力查询API为后台管理界面提供了智能的表单控制和参数验证功能。
 
 本API文档详细介绍了视频生成服务的架构设计、接口规范、数据模型和实现细节，帮助开发者快速理解和集成视频生成功能。
 
@@ -67,33 +70,41 @@ B --> G[媒体工具]
 E --> H[供应商适配器]
 H --> I[xAI 适配器]
 H --> J[MiniMax 适配器]
-F --> K[积分计算]
-G --> L[文件存储]
-D --> M[数据模型]
-D --> N[会话管理]
-D --> O[LLM供应商管理]
-O --> P[模型成本配置]
+H --> K[Gemini 适配器]
+F --> L[积分计算]
+G --> M[文件存储]
+D --> N[数据模型]
+D --> O[会话管理]
+D --> P[LLM供应商管理]
+P --> Q[模型成本配置]
+B --> R[模型能力查询]
+R --> S[动态参数验证]
 end
 subgraph "后台管理界面"
-Q[视频管理页面] --> R[任务列表]
-Q --> S[视频预览]
-Q --> T[创建任务]
-R --> U[状态轮询]
-S --> V[实时播放]
-T --> W[配置表单]
-T --> X[供应商选择]
-T --> Y[模型选择]
-Q --> Z[任务删除]
-Z --> AA[终态检查]
-Z --> BB[文件清理]
+T[视频管理页面] --> U[任务列表]
+T --> V[视频预览]
+T --> W[创建任务]
+U --> X[状态轮询]
+V --> Y[实时播放]
+W --> Z[配置表单]
+W --> AA[供应商选择]
+W --> BB[模型选择]
+T --> CC[任务删除]
+CC --> DD[终态检查]
+CC --> EE[文件清理]
+T --> FF[模型能力配置]
+FF --> GG[动态表单控制]
 end
 subgraph "前端集成"
-CC[聊天界面] --> DD[视频任务提交]
-DD --> EE[状态轮询]
-EE --> FF[结果展示]
-U --> GG[后端轮询]
-GG --> HH[数据库更新]
-HH --> EE
+HH[聊天界面] --> II[视频任务提交]
+II --> JJ[状态轮询]
+JJ --> KK[结果展示]
+X --> LL[后端轮询]
+LL --> MM[数据库更新]
+MM --> JJ
+NN[模型能力查询] --> OO[表单验证]
+OO --> PP[参数修正]
+PP --> QQ[任务提交]
 end
 ```
 
@@ -121,14 +132,15 @@ end
 6. **认证模块** - 管理用户身份验证和授权，支持管理员访问
 7. **数据库层** - 提供数据持久化和查询，支持视频任务追踪
 8. **LLM供应商管理** - 管理供应商配置和模型成本
-9. **供应商适配器** - 提供xAI和MiniMax的统一接口
-10. **后台管理界面** - 提供可视化任务管理、状态监控和视频预览
+9. **供应商适配器** - 提供xAI、MiniMax和Gemini的统一接口
+10. **模型能力配置系统** - 提供动态参数验证和表单控制
+11. **后台管理界面** - 提供可视化任务管理、状态监控和视频预览
 
 **更新** 新增供应商适配器组件，支持多供应商和多模型的灵活配置。新增模型能力配置系统，提供动态参数验证和表单控制。
 
 **章节来源**
 - [videos.py:1-338](file://backend/routers/videos.py#L1-L338)
-- [video_generation.py:1-151](file://backend/services/video_generation.py#L1-L151)
+- [video_generation.py:1-160](file://backend/services/video_generation.py#L1-L160)
 - [page.tsx:1-268](file://backend/admin/src/app/admin/videos/page.tsx#L1-L268)
 
 ## 架构概览
@@ -174,14 +186,16 @@ AdminUI->>API : DELETE /api/videos/{task_id}
 API->>Media : 删除本地文件
 API->>DB : 删除任务记录
 API-->>AdminUI : 删除确认
+AdminUI->>API : GET /api/videos/model-capabilities/{model_name}
+API-->>AdminUI : VideoModelCapabilities
 ```
 
 **图表来源**
 - [videos.py:23-338](file://backend/routers/videos.py#L23-L338)
-- [video_generation.py:80-151](file://backend/services/video_generation.py#L80-L151)
+- [video_generation.py:80-160](file://backend/services/video_generation.py#L80-L160)
 - [useVideoTasks.ts:34-48](file://backend/admin/src/hooks/useVideoTasks.ts#L34-L48)
 
-**更新** 新增供应商适配器调用流程，支持基于provider/model的成本计算和任务删除功能。
+**更新** 新增供应商适配器调用流程，支持基于provider/model的成本计算、任务删除功能和模型能力查询API。
 
 ## 详细组件分析
 
@@ -249,15 +263,16 @@ VideoTask --> VideoResult : "存储状态"
 
 #### 视频模式注册表
 
-系统支持三种视频生成模式，通过注册表模式实现灵活扩展：
+系统支持四种视频生成模式，通过注册表模式实现灵活扩展：
 
 | 模式 | 描述 | 请求参数 |
 |------|------|----------|
 | text_to_video | 文本生成视频 | prompt, duration, quality, aspect_ratio |
 | image_to_video | 图片生成视频 | prompt, image_url, duration, quality, aspect_ratio |
 | edit | 视频编辑 | prompt, image_url, duration, quality, aspect_ratio |
+| subject_reference | 主题参考生成 | prompt, image_url, duration, quality, aspect_ratio |
 
-**更新** 新增供应商适配器模式，支持xAI和MiniMax的不同参数要求。
+**更新** 新增subject_reference模式，支持主题参考生成视频功能。
 
 **章节来源**
 - [video_generation.py:42-72](file://backend/services/video_generation.py#L42-L72)
@@ -272,20 +287,25 @@ graph TB
 subgraph "供应商适配器"
 A[VideoProviderAdapter] --> B[xAIVideoAdapter]
 A --> C[MiniMaxVideoAdapter]
-B --> D[提交任务]
-B --> E[轮询状态]
-B --> F[内容审核]
-C --> G[提交任务]
-C --> H[轮询状态]
-C --> I[文件下载]
+A --> D[GeminiVeoAdapter]
+B --> E[提交任务]
+B --> F[轮询状态]
+B --> G[内容审核]
+C --> H[提交任务]
+C --> I[轮询状态]
+C --> J[文件下载]
+D --> K[提交任务]
+D --> L[轮询状态]
+D --> M[视频URL获取]
 end
 subgraph "状态映射"
-J[xAI状态] --> K[内部状态]
-L[MiniMax状态] --> K
-M[Queued/Pending] --> N[pending]
-O[In Progress/Processing] --> P[processing]
-Q[Succeeded/Success] --> R[completed]
-S[Failed/Fail] --> T[failed]
+N[xAI状态] --> O[内部状态]
+P[MiniMax状态] --> O
+Q[Gemini状态] --> O
+R[Queued/Pending] --> S[pending]
+T[In Progress/Processing] --> U[processing]
+V[Succeeded/Success] --> W[completed]
+X[Failed/Fail] --> Y[failed]
 end
 ```
 
@@ -294,7 +314,7 @@ end
 - [xai_provider.py:22-164](file://backend/services/video_providers/xai_provider.py#L22-L164)
 - [minimax_provider.py:30-318](file://backend/services/video_providers/minimax_provider.py#L30-L318)
 
-**更新** 新增供应商适配器系统，支持xAI和MiniMax的统一接口。
+**更新** 新增Gemini Veo适配器，支持Google的视频生成服务。新增供应商适配器系统，支持xAI、MiniMax和Gemini的统一接口。
 
 **章节来源**
 - [base.py:1-114](file://backend/services/video_providers/base.py#L1-L114)
@@ -375,13 +395,13 @@ E --> F[提交任务]
 ```
 
 **图表来源**
-- [model_capabilities.py:22-180](file://backend/services/video_providers/model_capabilities.py#L22-L180)
+- [model_capabilities.py:22-223](file://backend/services/video_providers/model_capabilities.py#L22-L223)
 - [new_page.tsx:66-89](file://backend/admin/src/app/admin/videos/new/page.tsx#L66-L89)
 
 **更新** 新增模型能力配置系统，提供动态参数验证和表单控制。
 
 **章节来源**
-- [model_capabilities.py:1-180](file://backend/services/video_providers/model_capabilities.py#L1-L180)
+- [model_capabilities.py:1-223](file://backend/services/video_providers/model_capabilities.py#L1-L223)
 - [new_page.tsx:1-420](file://backend/admin/src/app/admin/videos/new/page.tsx#L1-L420)
 
 ## API规范
@@ -417,7 +437,7 @@ E --> F[提交任务]
 | 参数 | 类型 | 必需 | 默认值 | 描述 |
 |------|------|------|--------|------|
 | duration | integer | 否 | 6 | 视频时长(1-15秒) |
-| quality | string | 否 | "720p" | 视频质量(480p/720p/768p/1080p) |
+| quality | string | 否 | "720p" | 视频质量(480p/720p/768p/1080p/4k) |
 | aspect_ratio | string | 否 | "16:9" | 宽高比 |
 | mode | string | 否 | "normal" | 模式(保留字段) |
 | prompt_optimizer | boolean | 否 | true | 提示词优化 |
@@ -608,6 +628,9 @@ N --> T[比例选择]
 B --> U[删除按钮]
 U --> V[终态检查]
 U --> W[文件清理]
+K --> X[模型能力配置]
+X --> Y[动态表单控制]
+Y --> Z[参数验证]
 end
 ```
 
@@ -701,35 +724,40 @@ graph TB
 subgraph "外部依赖"
 A[xAI API]
 B[MiniMax API]
-C[SQLite数据库]
-D[Redis缓存]
+C[Gemini API]
+D[SQLite数据库]
+E[Redis缓存]
 end
 subgraph "内部模块"
-E[FastAPI应用]
-F[视频路由]
-G[视频服务]
-H[计费服务]
-I[媒体工具]
-J[认证模块]
-K[数据库层]
-L[LLM供应商管理]
-M[供应商适配器]
-N[模型能力配置]
+F[FastAPI应用]
+G[视频路由]
+H[视频服务]
+I[计费服务]
+J[媒体工具]
+K[认证模块]
+L[数据库层]
+M[LLM供应商管理]
+N[供应商适配器]
+O[模型能力配置]
+P[模型能力查询]
 end
-E --> F
 F --> G
-F --> H
-F --> I
-G --> M
-M --> A
-M --> B
-H --> K
-I --> C
-J --> K
-K --> C
+G --> H
+G --> I
+G --> J
+H --> N
+N --> A
+N --> B
+N --> C
+I --> L
+J --> D
 K --> L
-K --> N
-E --> D
+L --> D
+L --> M
+L --> O
+F --> E
+G --> P
+P --> O
 ```
 
 **图表来源**
@@ -738,13 +766,14 @@ E --> D
 
 ### 关键依赖关系
 
-1. **供应商API集成**: 通过HTTP客户端与xAI和MiniMax服务通信
+1. **供应商API集成**: 通过HTTP客户端与xAI、MiniMax和Gemini服务通信
 2. **数据库连接**: 使用SQLAlchemy ORM进行数据持久化
 3. **认证系统**: 基于JWT的用户身份验证
 4. **异步处理**: 使用async/await实现非阻塞操作
 5. **后台管理界面**: 基于Next.js的React应用，使用SWR进行数据同步
 6. **LLM供应商管理**: 支持多供应商和多模型的灵活配置
 7. **适配器模式**: 统一供应商接口，支持扩展新供应商
+8. **模型能力配置**: 提供动态参数验证和表单控制
 
 **更新** 新增供应商适配器依赖，支持基于provider/model的成本计算和多供应商架构。
 
@@ -780,13 +809,15 @@ K[供应商配置] --> L[内存缓存]
 L --> M[快速成本计算]
 N[模型能力] --> O[动态表单]
 O --> P[参数验证]
+Q[模型能力查询] --> R[SWR缓存]
+R --> O
 ```
 
 **图表来源**
 - [videos.py:121-124](file://backend/routers/videos.py#L121-L124)
 - [useVideoTasks.ts:30-32](file://backend/admin/src/hooks/useVideoTasks.ts#L30-L32)
 
-**更新** 新增供应商配置缓存、任务删除优化和模型能力动态控制机制。
+**更新** 新增供应商配置缓存、任务删除优化、模型能力动态控制机制和模型能力查询缓存。
 
 ### 并发处理
 
@@ -799,6 +830,7 @@ O --> P[参数验证]
 5. **状态轮询优化**: 智能轮询策略减少不必要的API调用
 6. **任务删除保护**: 终态检查确保数据一致性
 7. **适配器并发**: 供应商适配器独立处理，互不影响
+8. **模型能力缓存**: 减少重复的API调用和计算开销
 
 **更新** 新增任务删除的终态检查和文件清理保护机制，以及适配器并发处理能力。
 
@@ -896,6 +928,21 @@ O --> P[参数验证]
 4. 检查供应商服务状态
 5. 查看适配器日志
 
+#### 7. 模型能力查询失败
+
+**可能原因**:
+- 模型名称不正确
+- 模型未配置能力
+- 网络连接问题
+- 缓存失效
+
+**解决步骤**:
+1. 验证模型名称拼写
+2. 检查模型能力配置
+3. 确认网络连接
+4. 清除缓存重试
+5. 查看模型能力日志
+
 **章节来源**
 - [videos.py:138-145](file://backend/routers/videos.py#L138-L145)
 - [billing.py:197-214](file://backend/services/billing.py#L197-L214)
@@ -931,9 +978,11 @@ O --> P[参数验证]
 8. **供应商灵活**: 基于provider/model的架构支持多供应商配置
 9. **成本透明**: 基于provider/model的成本计算清晰明了
 10. **数据管理**: 支持任务删除和文件清理，维护数据整洁
-11. **多供应商支持**: 同时支持xAI和MiniMax两个视频生成供应商
+11. **多供应商支持**: 同时支持xAI、MiniMax和Gemini三个视频生成供应商
 12. **智能表单控制**: 基于模型能力的动态参数验证和表单控制
+13. **模型能力查询**: 提供实时的模型能力配置查询和验证
+14. **分页管理**: 支持大规模任务的分页查询和管理
 
-**更新** 新增供应商适配器架构、任务删除功能、模型能力配置系统和多供应商支持能力，显著提升了系统的灵活性和可管理性。
+**更新** 新增供应商适配器架构、任务删除功能、模型能力配置系统、多供应商支持能力和智能表单控制机制，显著提升了系统的灵活性和可管理性。
 
-该API为Infinite Narrative Game项目提供了强大的视频生成功能，为用户创造沉浸式的互动体验奠定了坚实的技术基础。新的供应商管理架构、后台管理界面和模型能力配置系统使得视频生成服务更加灵活和可控，为系统管理员提供了强大的管理工具，为用户提供了一致的视频生成体验。
+该API为Infinite Narrative Game项目提供了强大的视频生成功能，为用户创造沉浸式的互动体验奠定了坚实的技术基础。新的供应商管理架构、后台管理界面、模型能力配置系统和任务删除功能使得视频生成服务更加灵活和可控，为系统管理员提供了强大的管理工具，为用户提供了一致的视频生成体验。

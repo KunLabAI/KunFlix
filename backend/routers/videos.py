@@ -188,7 +188,12 @@ async def get_video_task_status(
     # 完成处理：下载视频 + 计费
     if poll_result.status == "completed" and poll_result.video_url:
         try:
-            local_url = await save_video_from_url(poll_result.video_url)
+            # Gemini 需要 API key 下载视频
+            download_headers = None
+            provider_type == "gemini" and download_headers and None
+            provider_type == "gemini" and (download_headers := {"x-goog-api-key": provider.api_key})
+            
+            local_url = await save_video_from_url(poll_result.video_url, headers=download_headers)
             task.result_video_url = local_url
             task.output_duration_seconds = poll_result.duration_seconds or task.duration
             task.completed_at = datetime.now(timezone.utc)

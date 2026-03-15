@@ -158,6 +158,49 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
     },
+    
+    # =========================================================================
+    # Gemini Veo 模型
+    # =========================================================================
+    
+    # Veo 3.1 Preview: 支持原生音频、首尾帧、参考图片、视频扩展
+    "veo-3.1-generate-preview": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [4, 6, 8],
+        "resolutions": ["720p", "1080p", "4k"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,  # Veo 3.1 支持首尾帧
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 3.1 Fast Preview: 快速版本
+    "veo-3.1-fast-generate-preview": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [4, 6, 8],
+        "resolutions": ["720p", "1080p", "4k"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 2.0: 基础版本，无声
+    "veo-2.0-generate-001": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [5, 6, 8],
+        "resolutions": ["720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": False,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
 }
 
 

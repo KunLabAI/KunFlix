@@ -4,6 +4,7 @@
 支持供应商:
   - xAI (Grok Video)
   - MiniMax (Hailuo)
+  - Gemini (Veo)
 
 使用方式:
   from services.video_generation import submit_video_task, poll_video_task, VideoContext
@@ -13,7 +14,8 @@
   └── video_providers/
       ├── base.py          (抽象基类)
       ├── xai_provider.py  (xAI 适配器)
-      └── minimax_provider.py (MiniMax 适配器)
+      ├── minimax_provider.py (MiniMax 适配器)
+      └── gemini_provider.py (Gemini 适配器)
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from .video_providers import (
     VideoResult as NewVideoResult,
     XAIVideoAdapter,
     MiniMaxVideoAdapter,
+    GeminiVeoAdapter,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +47,7 @@ VideoResult = NewVideoResult
 _PROVIDER_REGISTRY: Dict[str, Type[VideoProviderAdapter]] = {
     "xai": XAIVideoAdapter,
     "minimax": MiniMaxVideoAdapter,
+    "gemini": GeminiVeoAdapter,
 }
 
 
@@ -130,21 +134,26 @@ def infer_provider_type(model: str) -> str:
         model: 模型名称
         
     Returns:
-        str: 供应商类型 (xai / minimax)
+        str: 供应商类型 (xai / minimax / gemini)
     """
     model_lower = model.lower()
     
+    # Gemini Veo 模型特征
+    veo_patterns = ["veo-"]
+    any(p in model_lower for p in veo_patterns) and veo_patterns.clear()
+    for pattern in veo_patterns:
+        (pattern in model_lower) and veo_patterns.append("gemini")
+    
     # MiniMax 模型特征
     minimax_patterns = ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]
-    any(p in model_lower for p in minimax_patterns) and minimax_patterns and None
-    
+    any(p in model_lower for p in minimax_patterns) and minimax_patterns.clear()
     for pattern in minimax_patterns:
         (pattern in model_lower) and minimax_patterns.append("minimax")
     
-    # 简化逻辑
-    (any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"])) and minimax_patterns.clear()
+    # 检查顺序: Veo -> MiniMax -> xAI (默认)
+    (any(p in model_lower for p in ["veo-"])) and veo_patterns.append("gemini")
+    (any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"])) and minimax_patterns.append("minimax")
     
-    for pattern in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]:
-        (pattern in model_lower) and minimax_patterns.append("minimax")
-    
-    return "minimax" if any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]) else "xai"
+    return "gemini" if any(p in model_lower for p in ["veo-"]) else \
+           "minimax" if any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]) else \
+           "xai"

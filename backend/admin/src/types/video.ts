@@ -29,6 +29,7 @@ export const RESOLUTION_LABELS: Record<string, string> = {
   '720p': '720p (高清)',
   '768p': '768p',
   '1080p': '1080p (全高清)',
+  '4k': '4K (超高清)',
 };
 
 // 画面比例标签映射
