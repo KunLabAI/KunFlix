@@ -4,19 +4,38 @@
 **本文档引用的文件**
 - [backend/main.py](file://backend/main.py)
 - [backend/routers/agents.py](file://backend/routers/agents.py)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py)
+- [backend/routers/chats.py](file://backend/routers/chats.py)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py)
+- [backend/routers/videos.py](file://backend/routers/videos.py)
 - [backend/models.py](file://backend/models.py)
 - [backend/schemas.py](file://backend/schemas.py)
+- [backend/services/billing.py](file://backend/services/billing.py)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py)
 - [backend/agents.py](file://backend/agents.py)
 - [backend/database.py](file://backend/database.py)
-- [backend/routers/chats.py](file://backend/routers/chats.py)
-- [backend/routers/admin.py](file://backend/routers/admin.py)
-- [backend/services.py](file://backend/services.py)
-- [backend/tasks.py](file://backend/tasks.py)
-- [backend/config.py](file://backend/config.py)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py)
+- [backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py](file://backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py)
+- [backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py](file://backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py)
+- [backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py](file://backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py)
+- [backend/migrations/versions/7459f2d26782_add_video_tasks_and_video_agent_fields.py](file://backend/migrations/versions/7459f2d26782_add_video_tasks_and_video_agent_fields.py)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts)
+- [frontend/src/hooks/usePromptTemplates.ts](file://frontend/src/hooks/usePromptTemplates.ts)
+- [frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx](file://frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx)
+- [frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx](file://frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx)
 - [README.md](file://README.md)
 - [docs/wiki/Backend-Guide.md](file://docs/wiki/Backend-Guide.md)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增视频代理类型支持，扩展智能体类型为text、image、multimodal、video
+- 新增视频生成API路由，支持文本到视频、图片到视频、视频编辑三种模式
+- 新增视频任务管理系统，支持异步视频生成任务追踪
+- 新增视频计费系统，支持按输入图片数量和输出时长的积分计费
+- 新增视频生成服务，基于xAI平台实现视频生成和轮询
+- 新增视频配置管理，支持时长、画质、画面比例等参数配置
 
 ## 目录
 1. [简介](#简介)
@@ -24,28 +43,45 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
-10. [附录](#附录)
+6. [智能体执行服务](#智能体执行服务)
+7. [xAI兼容性增强](#xai兼容性增强)
+8. [错误处理与异常管理](#错误处理与异常管理)
+9. [提示词模板系统](#提示词模板系统)
+10. [智能体类型增强](#智能体类型增强)
+11. [视频代理类型支持](#视频代理类型支持)
+12. [视频生成API](#视频生成api)
+13. [视频计费系统](#视频计费系统)
+14. [视频生成服务](#视频生成服务)
+15. [计费系统增强](#计费系统增强)
+16. [订阅管理API](#订阅管理api)
+17. [依赖关系分析](#依赖关系分析)
+18. [性能考虑](#性能考虑)
+19. [故障排除指南](#故障排除指南)
+20. [结论](#结论)
+21. [附录](#附录)
 
 ## 简介
-本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。文档将从架构、组件、数据流、处理逻辑到最佳实践与故障排除进行系统化阐述。
+本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。**本次更新重点集成了视频代理类型支持、视频生成API、视频任务管理和视频计费系统，以及增强的智能体执行服务、xAI兼容性支持和改进的错误处理机制。**
 
 ## 项目结构
-后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。
+后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。**新增视频代理类型支持、视频生成API和视频计费系统。**
 
 ```mermaid
 graph TB
 subgraph "后端"
 MAIN["main.py<br/>应用入口与路由注册"]
 ROUTERS["routers/*<br/>REST API路由"]
+SUBSCRIPTIONS["routers/subscriptions.py<br/>订阅管理API"]
+PROMPT_TEMPLATES["routers/prompt_templates.py<br/>提示词模板API"]
+VIDEOS["routers/videos.py<br/>视频生成API"]
 SERVICES["services.py<br/>业务服务层"]
+AGENT_EXECUTOR["services/agent_executor.py<br/>智能体执行服务"]
+VIDEO_GEN["services/video_generation.py<br/>视频生成服务"]
+BILLING["services/billing.py<br/>计费计算器"]
+LLM_STREAM["services/llm_stream.py<br/>流式响应处理"]
 MODELS["models.py<br/>数据模型"]
 AGENTS["agents.py<br/>智能体与叙事引擎"]
 CHATS["routers/chats.py<br/>聊天与流式响应"]
-ADMIN["routers/admin.py<br/>后台管理接口"]
 DB["database.py<br/>数据库连接与会话"]
 CONFIG["config.py<br/>配置管理"]
 TASKS["tasks.py<br/>后台任务"]
@@ -53,94 +89,154 @@ end
 FRONT["frontend/src/hooks/useSocket.ts<br/>前端WebSocket客户端"]
 FRONT --> MAIN
 MAIN --> ROUTERS
+MAIN --> SUBSCRIPTIONS
+MAIN --> PROMPT_TEMPLATES
+MAIN --> VIDEOS
 ROUTERS --> SERVICES
 ROUTERS --> MODELS
 ROUTERS --> DB
+SUBSCRIPTIONS --> MODELS
+SUBSCRIPTIONS --> DB
+PROMPT_TEMPLATES --> MODELS
+PROMPT_TEMPLATES --> DB
+VIDEOS --> VIDEO_GEN
+VIDEOS --> BILLING
 SERVICES --> MODELS
 SERVICES --> AGENTS
+SERVICES --> BILLING
+SERVICES --> AGENT_EXECUTOR
+AGENT_EXECUTOR --> LLM_STREAM
 CHATS --> MODELS
 CHATS --> DB
-ADMIN --> MODELS
-ADMIN --> DB
+CHATS --> BILLING
+CHATS --> LLM_STREAM
 AGENTS --> DB
 TASKS --> AGENTS
 TASKS --> DB
 CONFIG --> DB
 ```
 
-图表来源
-- [backend/main.py](file://backend/main.py#L83-L98)
-- [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L275)
-- [backend/routers/admin.py](file://backend/routers/admin.py#L1-L112)
-- [backend/services.py](file://backend/services.py#L1-L66)
-- [backend/agents.py](file://backend/agents.py#L1-L196)
-- [backend/database.py](file://backend/database.py#L1-L31)
-- [backend/config.py](file://backend/config.py#L1-L34)
-- [backend/tasks.py](file://backend/tasks.py#L1-L62)
-- [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
+**图表来源**
+- [backend/main.py](file://backend/main.py#L41-L105)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
+- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
+- [backend/models.py](file://backend/models.py#L1-L382)
 
-章节来源
+**章节来源**
 - [README.md](file://README.md#L34-L51)
 - [docs/wiki/Backend-Guide.md](file://docs/wiki/Backend-Guide.md#L1-L21)
 
 ## 核心组件
 - 应用入口与生命周期：负责数据库迁移、Lifespan钩子、CORS配置、路由注册与WebSocket端点。
 - 智能体管理路由：提供智能体的增删改查、名称唯一性校验、提供商与模型可用性校验。
-- 数据模型与序列化：定义智能体、LLM提供商、聊天会话与消息的数据结构及Pydantic验证模型。
+- **智能体执行服务**：提供统一的智能体执行接口，支持消息格式化、xAI兼容处理和异常管理。
+- **xAI兼容性支持**：优化xAI平台的消息格式化，处理name字段的特殊要求，确保与其他LLM提供商的兼容性。
+- **错误处理与异常管理**：改进智能体创建和处理逻辑，增强异常捕获和错误恢复机制。
+- **提示词模板路由**：提供模板的创建、查询、更新、删除和AI生成功能，支持Jinja2模板渲染。
+- **计费服务层**：实现多维度积分计算、费率映射表驱动的计费算法和实时扣费逻辑。
+- **订阅管理路由**：提供套餐计划的创建、查询、更新和删除操作，支持管理员权限控制。
+- **视频生成API**：提供视频生成任务的提交、状态查询和结果获取，支持异步处理。
+- **视频计费系统**：实现视频任务的积分计费，支持按输入图片数量和输出时长的精确计费。
+- **视频生成服务**：基于xAI平台实现视频生成，支持文本到视频、图片到视频、视频编辑三种模式。
+- 数据模型与序列化：定义智能体、LLM提供商、聊天会话、消息、**CreditTransaction**、**SubscriptionPlan**、**PromptTemplate**、**VideoTask**和**VideoConfig**的数据结构及Pydantic验证模型。
 - 叙事引擎与AgentScope：封装多智能体协作（导演、旁白、NPC管理），支持动态配置加载与章节生成。
-- 聊天与流式响应：支持OpenAI/DashScope等提供商的流式对话，记录上下文与Token统计。
+- 聊天与流式响应：支持OpenAI/DashScope等提供商的流式对话，记录上下文与Token统计，并集成实时计费扣费。
 - 后台管理接口：提供统计、玩家与剧情管理等管理功能。
 - 任务调度：实现章节预生成与资源生成的后台任务。
 
-章节来源
+**章节来源**
 - [backend/main.py](file://backend/main.py#L45-L82)
 - [backend/routers/agents.py](file://backend/routers/agents.py#L15-L55)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+- [backend/agents.py](file://backend/agents.py#L71-L74)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
 - [backend/models.py](file://backend/models.py#L100-L122)
 - [backend/schemas.py](file://backend/schemas.py#L43-L73)
 - [backend/agents.py](file://backend/agents.py#L43-L196)
 - [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
-- [backend/routers/admin.py](file://backend/routers/admin.py#L16-L31)
 - [backend/tasks.py](file://backend/tasks.py#L7-L55)
 
 ## 架构总览
-系统采用“路由层-服务层-模型层-基础设施层”的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
+系统采用"路由层-服务层-模型层-基础设施层"的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。**新增视频代理类型支持、视频生成API和视频计费系统，扩展了智能体的功能边界。**WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
 
 ```mermaid
 graph TB
 CLIENT["客户端/管理端"]
 WS["WebSocket端点<br/>/ws/{player_id}"]
 API["REST API<br/>/api/agents/*"]
+SUBAPI["订阅管理API<br/>/api/admin/subscriptions/*"]
+PROMPTAPI["提示词模板API<br/>/api/prompt-templates/*"]
 CHAT["聊天流式接口<br/>/api/chats/*"]
+VIDEOAPI["视频生成API<br/>/api/videos/*"]
 ADMIN["后台管理接口<br/>/api/admin/*"]
 SERVICE["GameService<br/>业务逻辑"]
+BILLINGSVC["BillingService<br/>计费计算"]
+PROMPTSVR["PromptTemplateService<br/>模板服务"]
+AGENTEXEC["AgentExecutor<br/>智能体执行服务"]
+VIDEOGEN["VideoGenerationService<br/>视频生成服务"]
+LLMSTREAM["LLMStream<br/>流式响应处理"]
 AGENG["NarrativeEngine<br/>AgentScope编排"]
 DB["数据库<br/>PostgreSQL/SQLite"]
 PROVIDER["LLM提供商配置<br/>LLMProvider"]
 TASK["后台任务<br/>章节预生成"]
+CT["CreditTransaction<br/>积分交易记录"]
+SP["SubscriptionPlan<br/>套餐计划"]
+PT["PromptTemplate<br/>提示词模板"]
+VT["VideoTask<br/>视频任务记录"]
+VC["VideoConfig<br/>视频配置"]
 CLIENT --> WS
 CLIENT --> API
+CLIENT --> SUBAPI
+CLIENT --> PROMPTAPI
 CLIENT --> CHAT
+CLIENT --> VIDEOAPI
 CLIENT --> ADMIN
 API --> SERVICE
+SUBAPI --> SERVICE
+PROMPTAPI --> PROMPTSVR
 CHAT --> SERVICE
-ADMIN --> SERVICE
+CHAT --> AGENTEXEC
+CHAT --> LLMSTREAM
+VIDEOAPI --> VIDEOGEN
+VIDEOAPI --> BILLINGSVC
 SERVICE --> AGENG
+SERVICE --> BILLINGSVC
 SERVICE --> DB
+PROMPTSVR --> PT
+PROMPTSVR --> DB
+BILLINGSVC --> CT
+BILLINGSVC --> SP
+VIDEOGEN --> VT
+VIDEOGEN --> VC
 AGENG --> PROVIDER
 AGENG --> DB
+AGENTEXEC --> PROVIDER
+AGENTEXEC --> LLMSTREAM
 TASK --> AGENG
 TASK --> DB
 ```
 
-图表来源
+**图表来源**
 - [backend/main.py](file://backend/main.py#L157-L169)
 - [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L275)
-- [backend/routers/admin.py](file://backend/routers/admin.py#L1-L112)
-- [backend/services.py](file://backend/services.py#L8-L66)
-- [backend/agents.py](file://backend/agents.py#L43-L196)
-- [backend/tasks.py](file://backend/tasks.py#L7-L55)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
+- [backend/models.py](file://backend/models.py#L180-L382)
 
 ## 详细组件分析
 
@@ -157,7 +253,7 @@ TASK --> DB
 - 更新智能体
   - 接口：PUT /api/agents/{agent_id}
   - 校验：名称唯一性、提供商与模型有效性
-  - 支持字段：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思考模式
+  - 支持字段：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思考模式、**积分费率字段**、**智能体类型**
 - 删除智能体
   - 接口：DELETE /api/agents/{agent_id}
   - 行为：审计日志打印并删除
@@ -178,13 +274,13 @@ DB-->>R : "刷新并返回"
 R-->>C : "智能体对象"
 ```
 
-图表来源
+**图表来源**
 - [backend/routers/agents.py](file://backend/routers/agents.py#L15-L55)
 
-章节来源
+**章节来源**
 - [backend/routers/agents.py](file://backend/routers/agents.py#L15-L141)
 - [backend/schemas.py](file://backend/schemas.py#L54-L73)
-- [backend/models.py](file://backend/models.py#L100-L122)
+- [backend/models.py](file://backend/models.py#L134-L177)
 
 ### 智能体状态同步与事件通知
 - WebSocket端点
@@ -210,42 +306,46 @@ W-->>F : "回显消息"
 Note over W,S : "后台任务完成章节生成后可推送状态事件"
 ```
 
-图表来源
+**图表来源**
 - [backend/main.py](file://backend/main.py#L157-L169)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
 
-章节来源
+**章节来源**
 - [backend/main.py](file://backend/main.py#L157-L169)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
 
 ### 智能体配置管理与热切换
 - 配置来源
-  - 数据库：LLMProvider表存储提供商类型、API密钥、基础URL、模型列表、标签、启用状态、默认标记与额外配置
+  - 数据库：LLMProvider表存储提供商类型、API密钥、基础URL、模型列表、标签、启用状态、默认标记与**模型成本配置**与额外配置
   - 环境变量：作为回退配置（如OPENAI_API_KEY、STORY_GENERATION_MODEL）
 - 加载流程
   - 应用启动或首次使用时，NarrativeEngine从数据库加载活动提供商，解析模型列表并初始化AgentScope模型
   - 支持动态重载：通过reload_config触发配置刷新
 - 参数调整接口
   - 智能体更新接口支持调整温度、上下文窗口、系统提示、工具与思考模式
+  - **新增积分费率字段**：input_credit_per_1m、output_credit_per_1m、image_output_credit_per_1m、search_credit_per_query
+  - **新增智能体类型字段**：text、image、multimodal、**video**
   - LLM提供商接口支持增删改查与连接测试
 
 ```mermaid
 flowchart TD
 Start(["加载配置"]) --> CheckDB["查询活动提供商"]
 CheckDB --> Found{"找到提供商?"}
-Found --> |是| ParseModels["解析模型列表"]
+Found --> |是| ParseModels["解析模型列表和成本配置"]
 Found --> |否| Fallback["使用环境变量回退"]
 ParseModels --> InitModel["初始化AgentScope模型"]
 Fallback --> InitModel
 InitModel --> CreateAgents["创建智能体实例"]
-CreateAgents --> Ready(["配置就绪"])
+CreateAgents --> SetRates["设置积分费率"]
+SetRates --> SetType["设置智能体类型"]
+SetType --> Ready(["配置就绪"])
 ```
 
-图表来源
+**图表来源**
 - [backend/agents.py](file://backend/agents.py#L49-L99)
 - [backend/config.py](file://backend/config.py#L22-L28)
 
-章节来源
+**章节来源**
 - [backend/agents.py](file://backend/agents.py#L43-L196)
 - [backend/config.py](file://backend/config.py#L1-L34)
 - [backend/routers/admin.py](file://backend/routers/admin.py#L16-L31)
@@ -277,11 +377,11 @@ C-->>U : "流式文本"
 C->>D : "保存助手消息并更新会话时间"
 ```
 
-图表来源
+**图表来源**
 - [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
 - [backend/agents.py](file://backend/agents.py#L11-L42)
 
-章节来源
+**章节来源**
 - [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
 - [backend/agents.py](file://backend/agents.py#L11-L42)
 
@@ -305,25 +405,794 @@ SaveNext --> TriggerAssets["触发资源生成任务"]
 TriggerAssets --> Done
 ```
 
-图表来源
+**图表来源**
 - [backend/tasks.py](file://backend/tasks.py#L7-L55)
 - [backend/agents.py](file://backend/agents.py#L154-L191)
 
-章节来源
+**章节来源**
 - [backend/database.py](file://backend/database.py#L8-L23)
 - [backend/tasks.py](file://backend/tasks.py#L7-L55)
+
+## 智能体执行服务
+
+### 统一智能体执行接口
+智能体执行服务提供了统一的智能体处理接口，简化了智能体的创建、配置和执行流程。
+
+- **AgentExecutor类**
+  - 负责智能体的生命周期管理
+  - 提供标准化的消息处理接口
+  - 支持智能体配置的动态加载和缓存
+
+- **执行流程**
+  - 加载智能体配置
+  - 加载LLM提供商配置
+  - 获取或创建DialogAgent实例
+  - 准备输入消息
+  - 执行智能体回复
+  - 提取使用统计信息
+
+```mermaid
+sequenceDiagram
+participant API as "API调用者"
+participant AE as "AgentExecutor"
+participant DB as "数据库"
+participant AS as "AgentScope"
+API->>AE : "execute(agent_id, messages)"
+AE->>DB : "加载智能体配置"
+DB-->>AE : "返回配置"
+AE->>DB : "加载提供商配置"
+DB-->>AE : "返回提供商"
+AE->>AS : "获取/创建DialogAgent"
+AS-->>AE : "返回Agent实例"
+AE->>AS : "执行reply()"
+AS-->>AE : "返回响应消息"
+AE->>AE : "提取使用统计"
+AE-->>API : "返回执行结果"
+```
+
+**图表来源**
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+
+**章节来源**
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+
+### 智能体回复处理增强
+改进的智能体回复处理机制增强了xAI平台的兼容性，优化了消息格式化和异常处理。
+
+- **xAI兼容性处理**
+  - 特殊处理xAI平台的消息格式要求
+  - 仅在user角色消息中保留name字段
+  - 其他角色消息自动移除name字段
+
+- **消息格式化优化**
+  - 统一的消息角色映射
+  - 输入字符数计算优化
+  - 响应内容提取和标准化
+
+**章节来源**
+- [backend/agents.py](file://backend/agents.py#L71-L74)
+- [backend/agents.py](file://backend/agents.py#L106-L108)
+
+## xAI兼容性增强
+
+### 平台支持扩展
+系统现在支持xAI平台，通过专门的配置和消息格式化处理确保与xAI API的兼容性。
+
+- **xAI平台配置**
+  - 默认base_url：https://api.x.ai/v1
+  - 支持的供应商类型：xai
+  - 兼容OpenAI API格式
+
+- **消息格式化优化**
+  - xAI平台对消息格式有特殊要求
+  - 仅允许user角色消息包含name字段
+  - 其他角色消息需要移除name字段
+
+```mermaid
+flowchart TD
+xAI["xAI平台"] --> Check{"消息角色检查"}
+Check --> |user| KeepName["保留name字段"]
+Check --> |assistant/system| RemoveName["移除name字段"]
+KeepName --> Send["发送到xAI API"]
+RemoveName --> Send
+Send --> Response["接收响应"]
+Response --> Normalize["标准化处理"]
+Normalize --> Return["返回结果"]
+```
+
+**图表来源**
+- [backend/agents.py](file://backend/agents.py#L71-L74)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L41-L42)
+
+**章节来源**
+- [backend/agents.py](file://backend/agents.py#L71-L74)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L41-L42)
+- [backend/agents.py](file://backend/agents.py#L179-L187)
+
+### 流式响应处理优化
+改进的流式响应处理机制增强了xAI平台的兼容性和错误处理能力。
+
+- **xAI流式响应支持**
+  - 支持xAI平台的流式响应格式
+  - 正确处理xAI特有的响应结构
+  - 优化响应内容提取和拼接
+
+- **错误处理增强**
+  - 改进的异常捕获和处理
+  - 错误信息的标准化输出
+  - 响应内容的完整性检查
+
+**章节来源**
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L65-L109)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L544-L552)
+
+## 错误处理与异常管理
+
+### 智能体创建错误处理
+改进的智能体创建逻辑增强了错误处理和异常管理能力。
+
+- **增强的异常处理**
+  - 捕获HTTPException并重新抛出
+  - 捕获通用异常并记录详细错误信息
+  - 使用traceback打印堆栈跟踪
+
+- **错误恢复机制**
+  - 数据库事务的正确提交和回滚
+  - 错误状态码的标准化
+  - 用户友好的错误消息
+
+```mermaid
+flowchart TD
+Create["创建智能体"] --> Validate["验证输入"]
+Validate --> CheckName["检查名称唯一性"]
+CheckName --> CheckProvider["检查提供商"]
+CheckProvider --> CheckModel["检查模型可用性"]
+CheckModel --> Success["创建成功"]
+CheckName --> Error1["HTTPException: 名称已存在"]
+CheckProvider --> Error2["HTTPException: 提供商不存在"]
+CheckModel --> Error3["HTTPException: 模型不可用"]
+Success --> Commit["提交事务"]
+Error1 --> Catch1["捕获并重新抛出"]
+Error2 --> Catch2["捕获并重新抛出"]
+Error3 --> Catch3["捕获并重新抛出"]
+Catch1 --> Log1["记录错误并返回"]
+Catch2 --> Log2["记录错误并返回"]
+Catch3 --> Log3["记录错误并返回"]
+Commit --> Return["返回结果"]
+Log1 --> Return
+Log2 --> Return
+Log3 --> Return
+```
+
+**图表来源**
+- [backend/routers/agents.py](file://backend/routers/agents.py#L18-L64)
+
+**章节来源**
+- [backend/routers/agents.py](file://backend/routers/agents.py#L18-L64)
+
+### 流式响应异常处理
+改进的流式响应处理增强了异常捕获和错误恢复能力。
+
+- **异常捕获机制**
+  - 捕获流式响应过程中的所有异常
+  - 记录详细的错误信息和上下文
+  - 提供用户友好的错误消息
+
+- **错误恢复策略**
+  - 生成失败时不保存消息
+  - 不进行积分扣费
+  - 清晰的错误状态报告
+
+**章节来源**
+- [backend/routers/chats.py](file://backend/routers/chats.py#L378-L386)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L544-L552)
+
+### 计费系统异常处理
+增强的计费系统异常处理机制确保了积分扣费的可靠性和一致性。
+
+- **原子扣费机制**
+  - 使用UPDATE语句的原子性保证
+  - 多条件检查确保扣费安全性
+  - 详细的错误诊断信息
+
+- **异常分类处理**
+  - 余额不足异常
+  - 余额冻结异常
+  - 用户不存在异常
+  - 其他未知异常
+
+**章节来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L167-L200)
+
+## 提示词模板系统
+
+### 模板管理API
+系统提供了完整的提示词模板管理系统，支持模板的创建、查询、更新、删除和AI生成功能。
+
+- **API端点**
+  - POST /api/prompt-templates/：创建新的提示词模板
+  - GET /api/prompt-templates/：获取模板列表（支持过滤）
+  - GET /api/prompt-templates/{template_id}：获取模板详情
+  - PUT /api/prompt-templates/{template_id}：更新模板
+  - DELETE /api/prompt-templates/{template_id}：删除模板
+  - POST /api/prompt-templates/{template_id}/generate：基于模板生成AI内容
+
+- **模板类型**
+  - story_basic：故事基础设定
+  - character：角色设定
+  - scene：场景描述
+  - storyboard：分镜脚本
+  - custom：自定义
+
+- **智能体类型**
+  - text：文本处理智能体
+  - image：图像处理智能体
+  - multimodal：多模态智能体
+  - **video：视频处理智能体**
+
+```mermaid
+sequenceDiagram
+participant A as "管理员"
+participant PT as "提示词模板路由"
+participant DB as "数据库"
+A->>PT : "POST /api/prompt-templates/"
+PT->>DB : "检查模板名称唯一性"
+DB-->>PT : "验证通过"
+PT->>DB : "创建PromptTemplate记录"
+DB-->>PT : "返回新模板"
+PT-->>A : "模板详情"
+```
+
+**图表来源**
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L32-L58)
+
+### 模板变量系统
+模板支持Jinja2格式的变量替换，管理员可以定义输入变量及其类型。
+
+- **变量类型**
+  - string：单行文本
+  - textarea：多行文本
+  - number：数字
+  - boolean：布尔值
+  - select：下拉选择
+
+- **变量定义**
+  - name：变量名（英文）
+  - label：显示标签
+  - type：变量类型
+  - required：是否必填
+  - options：选项列表（select类型）
+  - default：默认值
+  - description：变量说明
+
+**章节来源**
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/models.py](file://backend/models.py#L287-L322)
+- [backend/schemas.py](file://backend/schemas.py#L468-L538)
+
+### AI内容生成流程
+系统提供基于模板的AI内容生成功能，支持流式响应和计费计算。
+
+```mermaid
+sequenceDiagram
+participant U as "用户"
+participant PT as "提示词模板路由"
+participant T as "模板引擎"
+participant A as "智能体"
+participant P as "LLM提供商"
+U->>PT : "POST /api/prompt-templates/{template_id}/generate"
+PT->>T : "渲染模板变量"
+T-->>PT : "生成提示词"
+PT->>A : "选择智能体"
+PT->>P : "调用LLM生成"
+P-->>PT : "流式响应"
+PT->>PT : "解析JSON响应"
+PT-->>U : "返回生成内容"
+Note over PT : "实时计算并记录积分交易"
+```
+
+**图表来源**
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L157-L275)
+
+**章节来源**
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L157-L275)
+
+### 前端模板管理界面
+前端提供了完整的模板管理界面，支持模板的创建、编辑、删除和导入。
+
+- **模板对话框**
+  - 基础信息：名称、描述、模板分类
+  - 智能体类型：text、image、multimodal、**video**选择
+  - 提示词内容：系统提示词和用户提示词（可选）
+  - 输入变量：动态变量定义和管理
+  - 状态设置：启用状态和默认模板设置
+
+- **模板导入功能**
+  - 支持从模板库导入系统提示词
+  - 智能体类型过滤和模板类型筛选
+  - 搜索和分页功能
+
+**章节来源**
+- [frontend/src/hooks/usePromptTemplates.ts](file://frontend/src/hooks/usePromptTemplates.ts#L1-L53)
+- [frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx](file://frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx#L1-L416)
+- [frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx](file://frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx#L49-L173)
+
+## 智能体类型增强
+
+### 多模态智能体支持
+系统现在支持四种智能体类型，满足不同的AI应用场景。
+
+- **文本智能体（text）**
+  - 适用于纯文本生成和对话
+  - 支持标准的system/user/assistant消息格式
+  - 适合故事创作、角色对话等场景
+
+- **图像智能体（image）**
+  - 专门用于图像生成和处理
+  - 支持图像生成、编辑和分析
+  - 适合游戏场景、角色设计等视觉内容
+
+- **多模态智能体（multimodal）**
+  - 支持文本和图像的综合处理
+  - 可以同时处理多种类型的内容
+  - 适合复杂的游戏创作场景
+
+- **视频智能体（video）**
+  - 专门用于视频生成和处理
+  - 支持文本到视频、图片到视频、视频编辑
+  - 适合动态内容创作和多媒体场景
+
+### 智能体类型与模板匹配
+模板系统会根据智能体类型自动匹配合适的模板，确保生成内容的质量。
+
+```mermaid
+flowchart TD
+AgentType["智能体类型"] --> Check{"模板类型匹配?"}
+Check --> |text| TextTemplate["选择文本模板"]
+Check --> |image| ImageTemplate["选择图像模板"]
+Check --> |multimodal| MultiTemplate["选择多模态模板"]
+Check --> |video| VideoTemplate["选择视频模板"]
+TextTemplate --> Render["渲染模板变量"]
+ImageTemplate --> Render
+MultiTemplate --> Render
+VideoTemplate --> Render
+Render --> Generate["生成内容"]
+```
+
+**图表来源**
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L182-L196)
+
+**章节来源**
+- [backend/models.py](file://backend/models.py#L178-L179)
+- [backend/models.py](file://backend/models.py#L298-L299)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L182-L196)
+
+## 视频代理类型支持
+
+### 视频智能体类型
+系统新增了视频智能体类型，专门处理视频相关的AI任务。
+
+- **视频智能体特征**
+  - 专用于视频生成和处理
+  - 支持多种视频生成模式
+  - 集成视频计费系统
+  - 与xAI平台深度集成
+
+- **视频智能体配置**
+  - 支持视频输入图片计费
+  - 支持视频输入时长计费
+  - 支持不同输出画质计费
+  - 集成视频生成参数配置
+
+**章节来源**
+- [backend/models.py](file://backend/models.py#L196-L200)
+- [backend/schemas.py](file://backend/schemas.py#L211-L215)
+
+### 视频智能体计费字段
+视频智能体支持四种计费维度，提供精确的成本控制。
+
+- **计费维度**
+  - video_input_image：按输入图片数量计费
+  - video_input_second：按输入视频时长计费
+  - video_output_480p：按480p输出时长计费
+  - video_output_720p：按720p输出时长计费
+
+- **计费字段**
+  - video_input_image_credit：每张输入图片积分
+  - video_input_second_credit：每秒输入视频积分
+  - video_output_480p_credit：每秒480p输出积分
+  - video_output_720p_credit：每秒720p输出积分
+
+**章节来源**
+- [backend/models.py](file://backend/models.py#L196-L200)
+- [backend/schemas.py](file://backend/schemas.py#L211-L215)
+
+## 视频生成API
+
+### 视频生成任务管理
+系统提供了完整的视频生成API，支持异步视频生成任务的提交、查询和管理。
+
+- **API端点**
+  - POST /api/videos/：提交视频生成任务
+  - GET /api/videos/{task_id}/status：查询任务状态
+  - GET /api/videos/session/{session_id}：获取会话视频任务列表
+
+- **视频生成模式**
+  - text_to_video：文本生成视频
+  - image_to_video：图片生成视频
+  - edit：视频编辑
+
+- **任务状态管理**
+  - pending：待处理
+  - processing：处理中
+  - completed：已完成
+  - failed：失败
+
+```mermaid
+sequenceDiagram
+participant C as "客户端"
+participant V as "视频API路由"
+participant VG as "视频生成服务"
+participant DB as "数据库"
+C->>V : "POST /api/videos/"
+V->>VG : "提交视频生成任务"
+VG-->>V : "返回任务ID"
+V->>DB : "创建VideoTask记录"
+DB-->>V : "保存成功"
+V-->>C : "返回任务状态"
+C->>V : "GET /api/videos/{task_id}/status"
+V->>DB : "查询任务状态"
+DB-->>V : "返回状态"
+V-->>C : "返回最新状态"
+```
+
+**图表来源**
+- [backend/routers/videos.py](file://backend/routers/videos.py#L23-L104)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L107-L185)
+
+### 视频生成请求处理
+视频生成API提供了完整的请求处理流程，包括配置合并、任务创建和状态轮询。
+
+- **请求处理流程**
+  - 验证智能体存在性
+  - 合并视频配置
+  - 构建视频上下文
+  - 提交到xAI平台
+  - 创建数据库记录
+  - 返回初始状态
+
+- **状态轮询机制**
+  - 终态直接返回缓存结果
+  - 非终态查询xAI状态
+  - 超时保护机制
+  - 自动失败处理
+
+**章节来源**
+- [backend/routers/videos.py](file://backend/routers/videos.py#L23-L104)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L107-L185)
+
+### 视频任务状态管理
+系统实现了完整的视频任务状态管理，支持异步处理和状态追踪。
+
+- **状态转换**
+  - created → pending → processing → completed/failed
+  - 支持超时检测和自动失败
+  - 内容审核失败自动标记失败
+
+- **任务完成处理**
+  - 下载视频到本地存储
+  - 计算视频时长和积分
+  - 扣费并记录交易
+  - 在聊天会话中插入消息
+
+**章节来源**
+- [backend/routers/videos.py](file://backend/routers/videos.py#L147-L185)
+
+## 视频计费系统
+
+### 视频计费算法
+系统实现了基于映射表驱动的视频计费算法，支持多种计费维度的精确计算。
+
+- **计费维度映射表**
+  - video_input_image：按输入图片数量计费
+  - video_input_second：按输入视频时长计费
+  - video_output_480p：按480p输出时长计费
+  - video_output_720p：按720p输出时长计费
+
+- **计费计算流程**
+  - 根据输出画质选择对应计费字段
+  - 计算各维度的数量和费率
+  - 应用scale因子进行转换
+  - 汇总得到总费用
+
+```mermaid
+flowchart TD
+Task["VideoTask对象"] --> GetQuality["获取输出画质"]
+GetQuality --> SelectField["选择计费字段"]
+SelectField --> CalcQuantities["计算各维度数量"]
+CalcQuantities --> CalcCosts["计算各维度费用"]
+CalcCosts --> SumTotal["汇总总费用"]
+SumTotal --> CreateMetadata["创建计费元数据"]
+CreateMetadata --> Return["返回(总费用, 元数据)"]
+```
+
+**图表来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L287-L324)
+
+### 计费元数据记录
+视频计费系统会详细记录每个计费维度的元数据，便于审计和分析。
+
+- **元数据字段**
+  - agent_name：智能体名称
+  - model：使用的模型
+  - video_mode：视频生成模式
+  - quality：输出画质
+  - video_input_image_quantity：输入图片数量
+  - video_input_image_rate：图片计费费率
+  - video_output_480p_quantity：480p输出时长
+  - video_output_480p_rate：480p计费费率
+  - video_output_720p_quantity：720p输出时长
+  - video_output_720p_rate：720p计费费率
+
+**章节来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L287-L324)
+
+### 视频计费字段映射
+系统通过映射表实现视频计费字段的动态选择，避免复杂的条件判断。
+
+- **质量到字段映射**
+  - 480p → video_output_480p
+  - 720p → video_output_720p
+
+- **维度到字段映射**
+  - video_input_image → video_input_image_credit
+  - video_input_second → video_input_second_credit
+  - video_output_480p → video_output_480p_credit
+  - video_output_720p → video_output_720p_credit
+
+**章节来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L22-L35)
+
+## 视频生成服务
+
+### xAI视频生成集成
+系统基于xAI平台实现了完整的视频生成服务，支持多种视频生成模式。
+
+- **支持的视频模式**
+  - text_to_video：文本生成视频
+  - image_to_video：图片生成视频
+  - edit：视频编辑
+
+- **API集成**
+  - 提交接口：POST /v1/videos/generations
+  - 轮询接口：GET /v1/videos/{request_id}
+  - 状态映射：队列/待处理/处理中/完成/失败
+
+```mermaid
+flowchart TD
+Mode["视频模式"] --> Check{"模式检查"}
+Check --> |text_to_video| TextHandler["文本生成处理器"]
+Check --> |image_to_video| ImageHandler["图片生成处理器"]
+Check --> |edit| EditHandler["视频编辑处理器"]
+TextHandler --> Submit["提交到xAI"]
+ImageHandler --> Submit
+EditHandler --> Submit
+Submit --> Wait["等待状态轮询"]
+Wait --> Poll["轮询任务状态"]
+Poll --> Complete["处理完成结果"]
+Complete --> Download["下载视频文件"]
+Download --> Deduct["扣减积分"]
+Deduct --> InsertMsg["插入聊天消息"]
+```
+
+**图表来源**
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L62-L138)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L147-L181)
+
+### 视频生成上下文
+视频生成服务使用VideoContext封装生成所需的全部参数。
+
+- **上下文参数**
+  - api_key：xAI API密钥
+  - model：使用的模型（默认grok-imagine-video）
+  - prompt：生成提示词
+  - image_url：输入图片URL（可选）
+  - duration：视频时长（1-15秒）
+  - quality：输出画质（480p/720p）
+  - aspect_ratio：画面比例（默认16:9）
+  - video_mode：视频生成模式
+
+- **模式处理器注册**
+  - 使用装饰器注册不同模式的处理器
+  - 通过模式名称路由到对应处理器
+  - 支持扩展新的视频生成模式
+
+**章节来源**
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L37-L138)
+
+### 视频状态轮询与处理
+视频生成服务实现了完整的状态轮询和结果处理机制。
+
+- **轮询机制**
+  - 支持最大轮询失败次数限制
+  - 自动超时检测（5分钟）
+  - 状态映射表处理xAI状态
+
+- **结果处理**
+  - 完成时提取视频URL和时长
+  - 内容审核检查
+  - 失败状态处理和错误记录
+
+**章节来源**
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L147-L203)
+
+## 计费系统增强
+
+### 多维度积分计费模型
+系统实现了基于积分的多维度计费模型，支持文本输入、文本输出、图像输出、搜索查询和视频生成五种计费维度。计费算法采用映射表驱动，避免复杂的if分支判断。
+
+- **计费维度映射表**
+  - input：输入tokens计费，每1M tokens计费
+  - text_output：文本输出tokens计费，每1M tokens计费  
+  - image_output：图像输出tokens计费，每1M tokens计费
+  - search：搜索查询计费，每次查询计费
+  - **video_input_image：输入图片计费，每张计费**
+  - **video_input_second：输入视频时长计费，每秒计费**
+  - **video_output_480p：480p输出时长计费，每秒计费**
+  - **video_output_720p：720p输出时长计费，每秒计费**
+
+- **费率字段**
+  - input_credit_per_1m：每1M输入tokens的积分费率
+  - output_credit_per_1m：每1M输出tokens的积分费率
+  - image_output_credit_per_1m：每1M图像输出tokens的积分费率
+  - search_credit_per_query：每次搜索查询的积分费率
+  - **video_input_image_credit：每张输入图片的积分费率**
+  - **video_input_second_credit：每秒输入视频的积分费率**
+  - **video_output_480p_credit：每秒480p输出的积分费率**
+  - **video_output_720p_credit：每秒720p输出的积分费率**
+
+```mermaid
+flowchart TD
+Input["输入tokens统计"] --> Calc1["input维度计算<br/>input_tokens / 1,000,000 * input_credit_per_1m"]
+TextOut["文本输出tokens统计"] --> Calc2["text_output维度计算<br/>text_output_tokens / 1,000,000 * output_credit_per_1m"]
+ImageOut["图像输出tokens统计"] --> Calc3["image_output维度计算<br/>image_output_tokens / 1,000,000 * image_output_credit_per_1m"]
+Search["搜索查询次数"] --> Calc4["search维度计算<br/>search_query_count * search_credit_per_query"]
+VideoImg["输入图片数量"] --> Calc5["video_input_image维度计算<br/>input_image_count * video_input_image_credit"]
+VideoSec["输入视频时长"] --> Calc6["video_input_second维度计算<br/>input_duration_seconds * video_input_second_credit"]
+Video480["480p输出时长"] --> Calc7["video_output_480p维度计算<br/>output_duration_seconds * video_output_480p_credit"]
+Video720["720p输出时长"] --> Calc8["video_output_720p维度计算<br/>output_duration_seconds * video_output_720p_credit"]
+Calc1 --> Sum["总积分费用"]
+Calc2 --> Sum
+Calc3 --> Sum
+Calc4 --> Sum
+Calc5 --> Sum
+Calc6 --> Sum
+Calc7 --> Sum
+Calc8 --> Sum
+Sum --> Record["记录CreditTransaction"]
+```
+
+**图表来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L13-L35)
+
+### CreditTransaction积分交易记录
+系统自动记录所有积分交易，包括扣费、充值和管理员调整。每笔交易都包含详细的元数据信息。
+
+- **交易类型**
+  - deduction：扣费交易
+  - recharge：充值交易  
+  - admin_adjust：管理员调整
+
+- **交易记录字段**
+  - user_id：用户标识
+  - agent_id：关联的智能体
+  - session_id：关联的聊天会话
+  - transaction_type：交易类型
+  - amount：交易金额（负数表示扣费，正数表示充值）
+  - balance_before：交易前余额
+  - balance_after：交易后余额
+  - input_tokens/output_tokens：关联的tokens统计
+  - metadata_json：费率快照和扩展信息
+  - description：交易描述
+
+**章节来源**
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L56)
+- [backend/models.py](file://backend/models.py#L222-L242)
+- [backend/routers/chats.py](file://backend/routers/chats.py#L351-L368)
+
+### 聊天流式响应的计费集成
+聊天接口集成了实时计费功能，在对话过程中动态计算并扣除积分费用。
+
+```mermaid
+sequenceDiagram
+participant U as "用户"
+participant C as "聊天路由"
+participant B as "计费服务"
+participant DB as "数据库"
+U->>C : "发送消息"
+C->>B : "calculate_credit_cost(result, agent)"
+B-->>C : "返回(总费用, 费率快照)"
+C->>DB : "查询用户积分余额"
+C->>DB : "扣减积分并创建CreditTransaction"
+DB-->>C : "更新成功"
+C-->>U : "流式响应"
+Note over C,B : "实时计算并记录积分交易"
+```
+
+**图表来源**
+- [backend/routers/chats.py](file://backend/routers/chats.py#L351-L368)
+- [backend/services/billing.py](file://backend/services/billing.py#L16-L56)
+
+**章节来源**
+- [backend/routers/chats.py](file://backend/routers/chats.py#L340-L373)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L56)
+
+## 订阅管理API
+
+### 套餐计划管理
+系统提供了完整的订阅管理API，允许管理员创建、查询、更新和删除套餐计划。
+
+- **API端点**
+  - POST /api/admin/subscriptions/：创建新的套餐计划
+  - GET /api/admin/subscriptions/：获取所有套餐计划列表
+  - GET /api/admin/subscriptions/{plan_id}：获取指定套餐计划详情
+  - PUT /api/admin/subscriptions/{plan_id}：更新套餐计划
+  - DELETE /api/admin/subscriptions/{plan_id}：删除套餐计划
+
+- **套餐计划字段**
+  - name：套餐名称（唯一）
+  - description：套餐描述
+  - price_usd：套餐价格（美元）
+  - credits：包含的积分数
+  - billing_period：计费周期（monthly/yearly/lifetime）
+  - features：套餐特性列表
+  - is_active：是否激活
+  - sort_order：显示排序
+
+```mermaid
+sequenceDiagram
+participant A as "管理员"
+participant S as "订阅路由"
+participant DB as "数据库"
+A->>S : "POST /api/admin/subscriptions/"
+S->>DB : "检查名称唯一性"
+DB-->>S : "验证通过"
+S->>DB : "创建SubscriptionPlan记录"
+DB-->>S : "返回新套餐"
+S-->>A : "套餐计划详情"
+```
+
+**图表来源**
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L21-L37)
+
+### 权限控制与数据验证
+- 所有订阅管理操作都需要管理员权限
+- 套餐名称必须唯一，防止重复
+- 计费周期仅允许指定的枚举值
+- 价格和积分数必须大于0
+
+**章节来源**
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/schemas.py](file://backend/schemas.py#L320-L352)
 
 ## 依赖关系分析
 - 组件耦合
   - 路由层依赖数据库会话与模型定义
   - 服务层依赖模型与AgentScope引擎
-  - 聊天路由依赖提供商类型分支与数据库会话
+  - **智能体执行服务依赖LLM流式处理和xAI兼容性支持**
+  - **计费服务层依赖聊天路由、智能体模型和视频计费系统**
+  - **订阅路由依赖数据库会话和管理员权限验证**
+  - **提示词模板路由依赖数据库会话、模板引擎和智能体模型**
+  - **视频生成路由依赖视频生成服务和计费服务**
+  - 聊天路由依赖提供商类型分支、数据库会话和计费服务
   - 后台任务依赖引擎与数据库
 - 外部依赖
   - AgentScope：多智能体编排与模型初始化
   - OpenAI/DashScope：流式对话与增量输出
+  - **xAI：视频生成平台API兼容性支持**
   - SQLAlchemy异步ORM：数据库访问
   - FastAPI：路由与WebSocket
+  - **Jinja2：模板渲染引擎**
 
 ```mermaid
 graph LR
@@ -331,24 +1200,48 @@ ROUTERS["路由层"] --> MODELS["模型层"]
 ROUTERS --> DB["数据库"]
 ROUTERS --> SERVICES["服务层"]
 SERVICES --> AGENTS["AgentScope引擎"]
-SERVICES --> DB
+SERVICES --> BILLING["计费服务"]
+SERVICES --> AGENT_EXEC["智能体执行服务"]
+AGENT_EXEC --> LLM_STREAM["LLM流式处理"]
+PROMPT_TEMPLATES["提示词模板路由"] --> MODELS
+PROMPT_TEMPLATES --> DB
+PROMPT_TEMPLATES --> TEMPLATES["Jinja2模板引擎"]
+SUBSCRIPTIONS["订阅路由"] --> MODELS
+SUBSCRIPTIONS --> DB
+VIDEOS["视频生成路由"] --> VIDEO_GEN["视频生成服务"]
+VIDEOS --> BILLING
 CHATS["聊天路由"] --> PROVIDERS["LLM提供商"]
 CHATS --> DB
+CHATS --> BILLING
+CHATS --> LLM_STREAM
+BILLING --> MODELS
 TASKS["后台任务"] --> AGENTS
 TASKS --> DB
 ```
 
-图表来源
+**图表来源**
 - [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L275)
-- [backend/services.py](file://backend/services.py#L1-L66)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
 - [backend/agents.py](file://backend/agents.py#L1-L196)
 - [backend/database.py](file://backend/database.py#L1-L31)
 
-章节来源
+**章节来源**
 - [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L275)
-- [backend/services.py](file://backend/services.py#L1-L66)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
+- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
 - [backend/agents.py](file://backend/agents.py#L1-L196)
 - [backend/database.py](file://backend/database.py#L1-L31)
 
@@ -358,6 +1251,16 @@ TASKS --> DB
 - 上下文裁剪：合理设置上下文窗口与温度，控制Token消耗
 - 预生成策略：提前生成下一章内容，降低用户等待
 - 缓存与去重：资源表使用内容哈希去重，减少重复生成
+- **计费计算优化**：使用映射表驱动的计算方式，避免复杂条件判断
+- **实时扣费**：在聊天流式响应中实时计算和扣费，提升用户体验
+- **模板渲染优化**：Jinja2模板渲染使用缓存机制，避免重复编译
+- **智能体类型匹配**：模板系统自动匹配智能体类型，减少人工配置错误
+- **xAI兼容性优化**：专门的消息格式化处理，减少不必要的数据转换
+- **异常处理优化**：改进的错误捕获和恢复机制，提升系统稳定性
+- **智能体执行缓存**：智能体实例的缓存和重用，减少初始化开销
+- **视频生成异步处理**：视频任务异步处理，避免阻塞主请求线程
+- **视频计费精确计算**：基于映射表的计费算法，提升计算效率
+- **视频状态轮询优化**：智能轮询策略，减少API调用频率
 
 ## 故障排除指南
 - 数据库连接失败
@@ -375,25 +1278,86 @@ TASKS --> DB
 - 智能体更新失败
   - 现象：更新名称或提供商/模型时报错
   - 处理：确保名称唯一、提供商存在且模型在提供商模型列表中
+- **智能体执行异常**
+  - 现象：智能体回复处理失败或响应异常
+  - 处理：检查智能体配置、提供商连接和xAI兼容性设置
+- **xAI平台兼容性问题**
+  - 现象：xAI平台响应格式异常或消息丢失
+  - 处理：确认xAI API密钥有效、检查消息格式化逻辑、验证base_url配置
+- **智能体类型不匹配**
+  - 现象：模板无法正确匹配智能体类型
+  - 处理：确认模板的agent_type与智能体类型一致
+- **计费计算错误**
+  - 现象：积分扣费不准确或交易记录异常
+  - 处理：检查智能体的积分费率配置；验证计费维度映射表；查看CreditTransaction记录
+- **订阅管理权限问题**
+  - 现象：无法访问订阅管理API或操作被拒绝
+  - 处理：确认用户具有管理员角色；检查权限验证逻辑
+- **智能体创建异常**
+  - 现象：智能体创建失败或返回500错误
+  - 处理：检查提供商配置、模型可用性、数据库连接和异常处理逻辑
+- **视频生成任务失败**
+  - 现象：视频生成任务长时间处于pending状态
+  - 处理：检查xAI API密钥有效性；验证视频配置参数；查看轮询状态
+- **视频计费不准确**
+  - 现象：视频生成费用计算错误
+  - 处理：检查智能体的视频计费费率；验证视频任务的输入输出参数；查看计费元数据
+- **视频状态轮询异常**
+  - 现象：视频任务状态无法正常轮询
+  - 处理：检查xAI API连接；验证任务ID有效性；查看轮询超时设置
 
-章节来源
+**章节来源**
 - [backend/main.py](file://backend/main.py#L45-L82)
 - [backend/agents.py](file://backend/agents.py#L49-L99)
 - [backend/routers/chats.py](file://backend/routers/chats.py#L145-L209)
 - [backend/routers/agents.py](file://backend/routers/agents.py#L96-L119)
+- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+- [backend/agents.py](file://backend/agents.py#L71-L74)
+- [backend/services/billing.py](file://backend/services/billing.py#L16-L56)
+- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
+- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
 
 ## 结论
-本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本。
+本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。**本次更新显著增强了系统功能，新增了视频代理类型支持、视频生成API、视频任务管理和视频计费系统，扩展了智能体的功能边界。**通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。**新增的智能体执行服务为智能体管理提供了统一的接口，xAI兼容性支持确保了与xAI平台的无缝集成，改进的错误处理机制提升了系统的稳定性和可靠性。**建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本，加强视频生成任务的监控与优化。
 
 ## 附录
 - API端点概览
   - 智能体管理：/api/agents/*
   - 聊天与流式响应：/api/chats/*
   - 后台管理：/api/admin/*
+  - **智能体执行**：/api/agents/execute/*
+  - **提示词模板管理**：/api/prompt-templates/*
+  - **订阅管理**：/api/admin/subscriptions/*
+  - **视频生成**：/api/videos/*
   - 实时通信：/ws/{player_id}
+- **计费相关字段**
+  - 智能体：input_credit_per_1m、output_credit_per_1m、image_output_credit_per_1m、search_credit_per_query、**video_input_image_credit、video_input_second_credit、video_output_480p_credit、video_output_720p_credit**
+  - 用户：credits（积分余额）
+  - **视频任务**：video_mode、prompt、image_url、duration、quality、aspect_ratio、status、result_video_url、error_message、input_image_count、output_duration_seconds、credit_cost
+  - **视频配置**：duration、quality、aspect_ratio、mode
+  - **模板**：name、description、template_type、agent_type、system_prompt_template、variables_schema
+  - **套餐计划**：name、price_usd、credits、billing_period、features
+- **xAI兼容性字段**
+  - provider_type：xai
+  - base_url：https://api.x.ai/v1
+  - 消息格式：仅user角色包含name字段
+- **视频生成模式**
+  - text_to_video：文本生成视频
+  - image_to_video：图片生成视频
+  - edit：视频编辑
 - 最佳实践
   - 使用后台任务进行章节预生成
   - 通过WebSocket推送状态事件
   - 合理设置上下文窗口与温度
   - 使用提供商模型列表进行严格校验
   - 记录流式响应的Usage统计用于成本控制
+  - **配置合理的积分费率和套餐计划**
+  - **定期审查CreditTransaction记录确保计费准确性**
+  - **利用提示词模板系统提升内容生成效率**
+  - **根据智能体类型选择合适的模板**
+  - **监控xAI平台的响应质量和成本控制**
+  - **实施完善的异常处理和错误恢复机制**
+  - **合理设置视频生成参数，控制成本和质量**
+  - **监控视频任务状态，及时处理失败任务**
+  - **优化视频计费策略，平衡成本与质量**
