@@ -90,11 +90,19 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     },
   ];
 
+  const isFullScreen = React.useMemo(() => {
+    return (
+      pathname === '/admin/llm/create' ||
+      (pathname.startsWith('/admin/llm/') && pathname !== '/admin/llm') ||
+      pathname.startsWith('/admin/agents/')
+    );
+  }, [pathname]);
+
   return (
-    <div className="flex h-screen w-full bg-muted/40 overflow-hidden">
+    <div className="fixed inset-0 flex w-full h-full bg-muted/40 overflow-hidden">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-10 hidden flex-col border-r bg-background sm:flex transition-all duration-300",
+          "hidden border-r bg-background sm:flex flex-col transition-all duration-300",
           collapsed ? "w-14" : "w-64"
         )}
       >
@@ -170,8 +178,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </div>
       </aside>
 
-      <div className={cn("flex flex-col sm:pl-64 transition-all duration-300 w-full h-full overflow-hidden", collapsed && "sm:pl-14")}>
-        <main className="flex-1 min-h-0 p-4 sm:px-6 sm:py-6 md:gap-8 overflow-auto">
+      <div className="flex flex-col flex-1 min-w-0 w-full h-full overflow-hidden">
+        <main className={cn(
+          "flex-1 min-h-0 w-full h-full",
+          isFullScreen ? "overflow-hidden p-0 flex flex-col" : "overflow-auto p-4 sm:px-6 sm:py-6 md:gap-8"
+        )}>
           {children}
         </main>
       </div>
