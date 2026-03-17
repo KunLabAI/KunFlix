@@ -529,7 +529,7 @@ class PromptTemplateResponse(PromptTemplateBase):
 
 
 # ---------------------------------------------------------------------------
-# AI Generation schemas (for game creation)
+# AI Generation schemas (for theater creation)
 # ---------------------------------------------------------------------------
 class AIGenerateRequest(BaseModel):
     """AI 生成请求"""

@@ -37,7 +37,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
-from services import GameService
+from services import TheaterService
 from models import User, StoryChapter
 from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos
 from routers import auth as auth_router
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     
     yield
 
-app = FastAPI(title="Infinite Narrative Game", lifespan=lifespan)
+app = FastAPI(title="Infinite Narrative Theater", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -134,7 +134,7 @@ app.include_router(videos.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Infinite Narrative Game API"}
+    return {"message": "Welcome to the Infinite Narrative Theater API"}
 
 
 @app.websocket("/ws/{user_id}")

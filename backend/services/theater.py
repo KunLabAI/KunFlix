@@ -5,7 +5,7 @@ from agentscope.message import Msg
 import json
 import asyncio
 
-class GameService:
+class TheaterService:
     def __init__(self, db: AsyncSession):
         self.db = db
 

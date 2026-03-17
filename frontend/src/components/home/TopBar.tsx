@@ -16,17 +16,17 @@ export default function TopBar() {
   const menuItems = [
     {
       key: "profile",
-      label: "Profile",
+      label: "个人资料",
       onClick: () => console.log("Profile clicked"),
     },
     {
       key: "settings",
-      label: "Settings",
+      label: "设置",
       onClick: () => console.log("Settings clicked"),
     },
     {
       key: "logout",
-      label: "Logout",
+      label: "退出登录",
       onClick: logout,
     },
   ];
@@ -50,7 +50,7 @@ export default function TopBar() {
             transition={{ duration: 0.3 }}
             className="absolute right-10 top-1/2 -translate-y-1/2 overflow-hidden"
           >
-            <Input placeholder="Search games..." className="w-[200px]" />
+            <Input placeholder="搜索剧场..." className="w-[200px]" />
           </motion.div>
           <Button
             type="text"
@@ -76,7 +76,7 @@ export default function TopBar() {
         <Dropdown menu={{ items: menuItems }} placement="bottomRight">
           <div className="flex items-center gap-2 cursor-pointer">
             <span className="hidden md:block text-foreground font-medium">
-              {user?.nickname || "Guest"}
+              {user?.nickname || "游客"}
             </span>
             <Avatar icon={<User />} className="bg-primary text-primary-foreground" />
           </div>
@@ -85,7 +85,7 @@ export default function TopBar() {
 
       {/* Menu Drawer */}
       <Drawer
-        title="Menu"
+        title="菜单"
         placement="left"
         onClose={() => setMenuVisible(false)}
         open={menuVisible}
@@ -93,13 +93,13 @@ export default function TopBar() {
       >
         <div className="flex flex-col p-4 gap-2">
           <Button type="text" block className="text-left justify-start">
-            Home
+            首页
           </Button>
           <Button type="text" block className="text-left justify-start">
-            Library
+            我的库
           </Button>
           <Button type="text" block className="text-left justify-start">
-            Community
+            社区
           </Button>
         </div>
       </Drawer>

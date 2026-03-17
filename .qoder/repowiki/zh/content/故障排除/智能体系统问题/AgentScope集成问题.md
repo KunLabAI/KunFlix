@@ -96,7 +96,7 @@ A --> B
 sequenceDiagram
 participant U as "客户端"
 participant API as "FastAPI 应用<br/>backend/main.py"
-participant Svc as "GameService<br/>backend/services.py"
+participant Svc as "TheaterService<br/>backend/services.py"
 participant Eng as "NarrativeEngine<br/>backend/agents.py"
 participant DB as "数据库<br/>backend/models.py"
 participant Prov as "LLM 提供商<br/>LLMProvider"

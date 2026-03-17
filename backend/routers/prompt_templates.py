@@ -1,6 +1,6 @@
 """
 提示词模板管理 API
-用于管理游戏创建等场景的 AI 生成提示词模板
+用于管理剧场创建等场景的 AI 生成提示词模板
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.future import select

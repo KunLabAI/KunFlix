@@ -43,17 +43,17 @@
 ```mermaid
 graph TB
 subgraph "前端"
-FE_Game["游戏前端(Next.js)"]
+FE_Theater["剧场前端(Next.js)"]
 FE_Admin["后台管理(Next.js)"]
 end
 subgraph "后端(Python)"
 API["FastAPI 应用(main.py)"]
 NS["叙事引擎(NarrativeEngine)<br/>agents.py"]
-DS["游戏服务(GameService)<br/>services.py"]
+DS["剧场服务(TheaterService)<br/>services.py"]
 DB["PostgreSQL 数据库(models.py)"]
 RD["Redis 任务队列(tasks.py)"]
 end
-FE_Game --> API
+FE_Theater --> API
 FE_Admin --> API
 API --> NS
 API --> DS
@@ -78,7 +78,7 @@ NS --> DB
 - 旁白Agent：基于导演的大纲生成沉浸式文本，强调感官细节与角色情感
 - NPC管理器Agent：跟踪玩家与NPC的关系变化，决定NPC反应与后续互动
 - 叙事引擎(NarrativeEngine)：统一管理模型初始化、Agent实例化与章节生成流水线
-- 游戏服务(GameService)：对外提供世界构建、章节初始化与选择处理等业务能力
+- 剧场服务(TheaterService)：对外提供世界构建、章节初始化与选择处理等业务能力
 - 数据模型：Player、StoryChapter、LLMProvider等，支撑玩家状态、章节内容与LLM配置
 
 章节来源
@@ -93,7 +93,7 @@ NS --> DB
 sequenceDiagram
 participant Client as "客户端"
 participant API as "FastAPI(main.py)"
-participant GS as "GameService(services.py)"
+participant GS as "TheaterService(services.py)"
 participant NE as "NarrativeEngine(agents.py)"
 participant Dir as "导演Agent(DialogAgent)"
 participant Nar as "旁白Agent(DialogAgent)"
@@ -206,7 +206,7 @@ PLAYER ||--o{ STORYCHAPTER : "拥有"
 
 ### 玩家上下文分析与章节生成
 - 上下文注入：导演Agent在系统提示词中明确要求“结合玩家上下文”生成大纲
-- 世界构建：游戏服务通过导演Agent生成世界观，再生成初始章节
+- 世界构建：剧场服务通过导演Agent生成世界观，再生成初始章节
 - 预生成策略：后台任务按N+2策略预生成下一章，提升响应速度
 
 ```mermaid
@@ -286,7 +286,7 @@ DialogAgent <.. NarrativeEngine : "被创建与管理"
 ## 依赖关系分析
 - 导演Agent依赖NarrativeEngine完成模型初始化与消息编排
 - NarrativeEngine依赖LLM提供商配置，支持OpenAI与DashScope等
-- GameService依赖NarrativeEngine进行世界构建与章节生成
+- TheaterService依赖NarrativeEngine进行世界构建与章节生成
 - 数据模型支撑玩家状态、章节内容与LLM配置
 
 ```mermaid
@@ -295,7 +295,7 @@ NE["NarrativeEngine"] --> Dir["DialogAgent(Director)"]
 NE --> Nar["DialogAgent(Narrator)"]
 NE --> NPC["DialogAgent(NPC_Manager)"]
 NE --> LLM["LLM Provider"]
-GS["GameService"] --> NE
+GS["TheaterService"] --> NE
 GS --> DB["PostgreSQL"]
 API["FastAPI"] --> GS
 ```

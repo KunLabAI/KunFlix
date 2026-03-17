@@ -85,7 +85,7 @@ def upgrade() -> None:
             )
         """).bindparams(
             id=admin_id,
-            email='admin@infinite.game',
+            email='admin@infinite.theater',
             nickname='System Admin',
             password_hash=ADMIN_HASH,
         )

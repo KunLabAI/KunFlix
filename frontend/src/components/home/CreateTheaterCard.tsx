@@ -3,11 +3,11 @@
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
 
-interface CreateGameCardProps {
+interface CreateTheaterCardProps {
   onClick?: () => void;
 }
 
-export default function CreateGameCard({ onClick }: CreateGameCardProps) {
+export default function CreateTheaterCard({ onClick }: CreateTheaterCardProps) {
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}

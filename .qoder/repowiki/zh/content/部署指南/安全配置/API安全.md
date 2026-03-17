@@ -101,7 +101,7 @@ K["前端鉴权上下文<br/>backend/admin/src/context/AuthContext.tsx"] --> D
 graph TB
 subgraph "客户端"
 FE["前端应用<br/>Next.js Admin"]
-WS["WebSocket客户端<br/>游戏/聊天"]
+WS["WebSocket客户端<br/>剧场/聊天"]
 end
 subgraph "后端"
 APP["FastAPI应用<br/>main.py"]

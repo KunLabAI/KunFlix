@@ -2,10 +2,10 @@ import os
 from pydantic_settings import BaseSettings
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "infinite_game.db")
+DB_PATH = os.path.join(BASE_DIR, "infinite_theater.db")
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Infinite Narrative Game"
+    PROJECT_NAME: str = "Infinite Narrative Theater"
     VERSION: str = "1.0.0"
     
     # Database
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     # Fallback to SQLite if not configured (better for local dev)
     # Use absolute path to ensure we always use the same DB file regardless of CWD
     DATABASE_URL: str = f"sqlite+aiosqlite:///{DB_PATH}"
-    # DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/infinite_game_db"
+    # DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/infinite_theater_db"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

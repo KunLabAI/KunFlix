@@ -61,7 +61,7 @@ export default function LoginPage() {
         <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <div style={{ textAlign: "center" }}>
             <Title level={3} style={{ margin: 0 }}>
-              Infinite Narrative Game
+              Infinite Narrative Theater
             </Title>
             <Text type="secondary">
               {mode === "login" ? "登录你的账号" : "创建新账号"}

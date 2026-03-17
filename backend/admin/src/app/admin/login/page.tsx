@@ -244,7 +244,7 @@ export default function LoginPage() {
           </Form>
 
           <div className="mt-4 text-center text-xs text-muted-foreground">
-            Infinite Game 管理后台
+            Infinite Theater 管理后台
           </div>
         </CardContent>
       </Card>

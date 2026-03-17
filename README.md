@@ -1,6 +1,6 @@
-# 无限剧情游戏系统 (Infinite Narrative Game System)
+# 无限剧情剧场系统 (Infinite Narrative Theater System)
 
-这是一个基于 **AgentScope** 多智能体框架、**Next.js 16** 前端、**FastAPI** 后端和 **PostgreSQL** 数据库构建的无限剧情游戏平台。利用 LLM 驱动的叙事引擎和多模态生成技术，为玩家提供沉浸式的动态游戏体验。
+这是一个基于 **AgentScope** 多智能体框架、**Next.js 16** 前端、**FastAPI** 后端和 **PostgreSQL** 数据库构建的无限剧情剧场平台。利用 LLM 驱动的叙事引擎和多模态生成技术，为玩家提供沉浸式的动态剧场体验。
 
 ## 核心特性
 
@@ -31,13 +31,13 @@
 - **框架**: Next.js 16
 - **功能**: 系统监控、用户管理、LLM 供应商配置
 
-管理员: admin@infinite.game / admin123
+管理员: admin@infinite.theater / admin123
 
 
 ## 目录结构
 
 ```bash
-Infinite Game/
+Infinite Theater/
 ├── backend/                # Python 后端代码
 │   ├── admin/              # 后台管理系统前端代码 (Next.js)
 │   ├── routers/            # API 路由定义 (Admin, LLM Config 等)
@@ -47,7 +47,7 @@ Infinite Game/
 │   ├── services.py         # 业务逻辑层
 │   ├── schemas.py          # Pydantic 数据验证模型
 │   └── ...
-├── frontend/               # 游戏客户端前端代码 (Next.js)
+├── frontend/               # 剧场客户端前端代码 (Next.js)
 ├── docs/                   # 项目文档
 │   └── wiki/               # 详细开发文档
 └── README.md               # 项目说明
@@ -58,7 +58,7 @@ Infinite Game/
 ### 前置要求
 - Python 3.10+
 - Node.js 18+
-- PostgreSQL (需创建数据库 `infinite_game_db`)
+- PostgreSQL (需创建数据库 `infinite_theater_db`)
 - Redis
 
 ### 1. 后端设置
@@ -103,7 +103,7 @@ python manage_db.py downgrade
 
 详细说明请参考 [Wiki: 数据库迁移指南](docs/wiki/Database-Migration.md)。
 
-### 2. 游戏前端设置
+### 2. 剧场前端设置
 
 ```bash
 cd frontend

@@ -272,7 +272,7 @@ export default function PromptTemplateDialog({
                   </Label>
                   <Textarea
                     id="system_prompt_template"
-                    placeholder="你是一个专业的游戏剧情设计师..."
+                    placeholder="你是一个专业的剧场剧情设计师..."
                     rows={8}
                     className={`font-mono text-sm resize-y ${errors.system_prompt_template ? 'border-destructive' : ''}`}
                     {...register('system_prompt_template', { required: true })}
@@ -290,7 +290,7 @@ export default function PromptTemplateDialog({
                   </button>
                   {showUserPrompt && (
                     <Textarea
-                      placeholder="请根据以下信息生成内容...\n\n游戏名称：{{ game_name }}"
+                      placeholder="请根据以下信息生成内容...\n\n剧场名称：{{ theater_name }}"
                       rows={4}
                       className="font-mono text-sm resize-y"
                       {...register('user_prompt_template')}
@@ -327,7 +327,7 @@ export default function PromptTemplateDialog({
                         <div className="space-y-1.5">
                           <Label className="text-xs">变量名（英文）</Label>
                           <Input
-                            placeholder="game_name"
+                            placeholder="theater_name"
                             className="h-8 text-sm font-mono"
                             {...register(`variables.${index}.name`)}
                           />
@@ -335,7 +335,7 @@ export default function PromptTemplateDialog({
                         <div className="space-y-1.5">
                           <Label className="text-xs">显示标签</Label>
                           <Input
-                            placeholder="游戏名称"
+                            placeholder="剧场名称"
                             className="h-8 text-sm"
                             {...register(`variables.${index}.label`)}
                           />

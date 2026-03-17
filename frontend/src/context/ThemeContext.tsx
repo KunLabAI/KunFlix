@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
+import zhCN from 'antd/locale/zh_CN';
 
 type Theme = "light" | "dark";
 
@@ -44,6 +45,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <ConfigProvider
+        locale={zhCN}
         theme={{
           algorithm:
             theme === "dark"

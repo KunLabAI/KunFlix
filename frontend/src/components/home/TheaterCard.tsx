@@ -4,14 +4,14 @@ import { motion } from "framer-motion";
 import { Play } from "lucide-react";
 import Image from "next/image";
 
-interface GameCardProps {
+interface TheaterCardProps {
   id: string;
   title: string;
   image?: string;
   onClick?: () => void;
 }
 
-export default function GameCard({ id, title, image, onClick }: GameCardProps) {
+export default function TheaterCard({ id, title, image, onClick }: TheaterCardProps) {
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}
@@ -46,7 +46,7 @@ export default function GameCard({ id, title, image, onClick }: GameCardProps) {
           <div className="p-1.5 bg-primary rounded-full text-primary-foreground">
             <Play className="w-3 h-3 fill-current" />
           </div>
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Play Now</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">立即播放</span>
         </div>
       </div>
     </motion.div>

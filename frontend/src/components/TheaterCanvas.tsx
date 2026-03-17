@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-interface GameCanvasProps {
+interface TheaterCanvasProps {
   width?: number;
   height?: number;
 }
 
-const GameCanvas: React.FC<GameCanvasProps> = ({ width = 800, height = 600 }) => {
+const TheaterCanvas: React.FC<TheaterCanvasProps> = ({ width = 800, height = 600 }) => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [pixiApp, setPixiApp] = useState<any>(null);
 
@@ -28,7 +28,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width = 800, height = 600 }) =>
       setPixiApp(app);
       
       // Basic text to confirm rendering
-      const text = new PIXI.Text({ text: 'Infinite Narrative Game', style: { fill: 0xffffff } });
+      const text = new PIXI.Text({ text: 'Infinite Narrative Theater', style: { fill: 0xffffff } });
       text.x = 50;
       text.y = 50;
       app.stage.addChild(text);
@@ -46,4 +46,4 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ width = 800, height = 600 }) =>
   return <div ref={canvasRef} className="rounded-lg shadow-lg overflow-hidden" />;
 };
 
-export default GameCanvas;
+export default TheaterCanvas;

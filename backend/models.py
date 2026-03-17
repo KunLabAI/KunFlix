@@ -67,7 +67,7 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
 
-    # Game state (migrated from Player)
+    # Theater state (migrated from Player)
     current_chapter = Column(Integer, default=1)
     personality_profile = Column(JSON, default={})
     inventory = Column(JSON, default=[])
@@ -291,7 +291,7 @@ class SubTask(Base):
 
 
 class PromptTemplate(Base):
-    """提示词模板 - 用于游戏创建等场景的 AI 生成任务"""
+    """提示词模板 - 用于剧场创建等场景的 AI 生成任务"""
     __tablename__ = "prompt_templates"
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)

@@ -94,12 +94,12 @@ A --> K["backend/agents.py<br/>AgentScope智能体与叙事引擎"]
 - [backend/agents.py](file://backend/agents.py#L1-L196)
 
 ## 架构总览
-系统采用前后端分离架构，后端以FastAPI为核心，提供HTTP与WebSocket接口；管理员与游戏客户端分别通过不同路由访问；AgentScope作为叙事引擎驱动内容生成；PostgreSQL与Redis支撑数据持久化与任务队列。
+系统采用前后端分离架构，后端以FastAPI为核心，提供HTTP与WebSocket接口；管理员与剧场客户端分别通过不同路由访问；AgentScope作为叙事引擎驱动内容生成；PostgreSQL与Redis支撑数据持久化与任务队列。
 
 ```mermaid
 graph TB
 subgraph "前端"
-U["游戏客户端"]
+U["剧场客户端"]
 A["后台管理系统"]
 end
 subgraph "后端(FastAPI)"

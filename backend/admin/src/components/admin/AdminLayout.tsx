@@ -102,7 +102,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className={cn("flex h-14 items-center border-b px-3 lg:h-[60px]", collapsed ? "justify-center" : "justify-between")}>
           {!collapsed && (
             <div className="flex items-center gap-2 font-semibold truncate">
-              <span className="text-lg ml-2">Infinite Game</span>
+              <span className="text-lg ml-2">Infinite Theater</span>
             </div>
           )}
           
@@ -152,7 +152,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                    {!collapsed && (
                      <div className="flex flex-col items-start text-xs flex-1 min-w-0">
                        <span className="font-medium truncate w-full text-left">{user?.nickname || '管理员'}</span>
-                       <span className="text-muted-foreground truncate w-full text-left">{user?.email || 'admin@infinitegame.com'}</span>
+                       <span className="text-muted-foreground truncate w-full text-left">{user?.email || 'admin@infinitetheater.com'}</span>
                      </div>
                    )}
                    {!collapsed && <MoreHorizontal className="h-4 w-4 text-muted-foreground ml-auto" />}

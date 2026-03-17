@@ -3,7 +3,7 @@ import Providers from '@/components/Providers';
 import './globals.css';
 
 export const metadata = {
-  title: '无限游戏后台管理',
+  title: '无限剧场后台管理',
   description: '后台管理系统',
 };
 

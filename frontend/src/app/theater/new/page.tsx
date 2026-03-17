@@ -181,7 +181,7 @@ function InfiniteCanvas() {
   );
 }
 
-export default function GameCreationPage() {
+export default function TheaterCreationPage() {
   return (
     <ReactFlowProvider>
       <InfiniteCanvas />

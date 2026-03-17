@@ -1,8 +1,8 @@
 "use client";
 
 import TopBar from "@/components/home/TopBar";
-import RecentGames from "@/components/home/RecentGames";
-import SharedGames from "@/components/home/SharedGames";
+import RecentTheaters from "@/components/home/RecentTheaters";
+import SharedTheaters from "@/components/home/SharedTheaters";
 
 export default function Home() {
   return (
@@ -10,8 +10,8 @@ export default function Home() {
       <TopBar />
       
       <div className="flex-1 flex flex-col pt-20 pb-10 gap-8 overflow-y-auto">
-        <RecentGames />
-        <SharedGames />
+        <RecentTheaters />
+        <SharedTheaters />
       </div>
     </main>
   );
