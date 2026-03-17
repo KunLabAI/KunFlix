@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { VideoTaskResponse } from '@/types';
+import { formatDateTime, formatDuration } from '@/lib/date-utils';
 
 const MODE_LABELS: Record<string, string> = {
   text_to_video: '文字生成',
@@ -90,9 +91,14 @@ export default function VideoPreviewModal({ task, open, onOpenChange, onDelete }
             </div>
 
             {/* 时间信息 */}
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <span>创建: {new Date(task.created_at).toLocaleString()}</span>
-              {task.completed_at && <span>完成: {new Date(task.completed_at).toLocaleString()}</span>}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>创建: {formatDateTime(task.created_at)}</span>
+              {task.completed_at && (
+                <>
+                  <span>完成: {formatDateTime(task.completed_at)}</span>
+                  <span>耗时: {formatDuration(task.created_at, task.completed_at)}</span>
+                </>
+              )}
             </div>
           </div>
         )}

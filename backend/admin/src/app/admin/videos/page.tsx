@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useVideoTasks, useDeleteVideoTask } from '@/hooks/useVideoTasks';
 import { VideoTaskResponse } from '@/types';
@@ -24,6 +24,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { Plus, Play, AlertCircle, ChevronLeft, ChevronRight, Loader2, Video, Clock, Trash2 } from 'lucide-react';
 import VideoPreviewModal from './VideoPreviewModal';
+import { formatRelativeTime } from '@/lib/date-utils';
 
 // ---------------------------------------------------------------------------
 // 映射表（无 if-else）
@@ -44,20 +45,6 @@ const MODE_LABELS: Record<string, string> = {
 const DELETABLE_STATUSES = new Set(['completed', 'failed']);
 
 // ---------------------------------------------------------------------------
-// 工具函数
-// ---------------------------------------------------------------------------
-function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  const UNITS: [number, string][] = [[days, '天'], [hours, '小时'], [minutes, '分钟']];
-  const match = UNITS.find(([v]) => v > 0);
-  return match ? `${match[0]}${match[1]}前` : '刚刚';
-}
-
-// ---------------------------------------------------------------------------
 // Page component
 // ---------------------------------------------------------------------------
 export default function VideosPage() {
@@ -74,6 +61,21 @@ export default function VideosPage() {
   const { deleteVideoTask } = useDeleteVideoTask();
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  // 自动轮询：当有进行中的任务时，每 5 秒刷新一次
+  const hasActiveTasks = tasks.some((t: VideoTaskResponse) => 
+    t.status === 'pending' || t.status === 'processing'
+  );
+
+  const refreshTasks = useCallback(() => {
+    mutate();
+  }, [mutate]);
+
+  useEffect(() => {
+    if (!hasActiveTasks) return;
+    const interval = setInterval(refreshTasks, 5000);
+    return () => clearInterval(interval);
+  }, [hasActiveTasks, refreshTasks]);
 
   const handleDelete = async () => {
     const task = deleteTarget;

@@ -197,6 +197,9 @@ class GeminiVeoAdapter(VideoProviderAdapter):
             is_done = data.get("done", False)
             mapped_status = "completed" if is_done else "processing"
             
+            # 调试: 打印完成时的响应结构
+            is_done and logger.info(f"Gemini Veo completed, response keys: {list(data.keys())}")
+            
             result = VideoResult(
                 task_id=operation_name,
                 status=mapped_status,
@@ -221,17 +224,25 @@ class GeminiVeoAdapter(VideoProviderAdapter):
     def _extract_video_info(self, data: dict, result: VideoResult) -> None:
         """从响应中提取视频信息"""
         response_data = data.get("response", {})
+        logger.info(f"Gemini response keys: {list(response_data.keys())}")
+        
         video_response = response_data.get("generateVideoResponse", {})
+        logger.info(f"generateVideoResponse keys: {list(video_response.keys())}")
+        
         generated_samples = video_response.get("generatedSamples", [])
+        logger.info(f"generatedSamples count: {len(generated_samples)}")
         
         generated_samples and self._process_first_sample(generated_samples[0], result)
     
     def _process_first_sample(self, sample: dict, result: VideoResult) -> None:
         """处理第一个生成的视频样本"""
+        logger.info(f"Sample keys: {list(sample.keys())}")
         video_info = sample.get("video", {})
+        logger.info(f"Video info keys: {list(video_info.keys()) if isinstance(video_info, dict) else 'not a dict'}")
         
         # 视频 URI (需要下载)
-        video_uri = video_info.get("uri", "")
+        video_uri = video_info.get("uri", "") if isinstance(video_info, dict) else ""
+        logger.info(f"Video URI: {video_uri[:80] if video_uri else 'N/A'}...")
         video_uri and setattr(result, "video_url", video_uri)
         
         # 视频字节 (如果有)
