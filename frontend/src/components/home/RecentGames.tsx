@@ -50,7 +50,7 @@ export default function RecentGames() {
           className="flex gap-6"
         >
           {/* Create Game Card - Always First */}
-          <CreateGameCard onClick={() => router.push('/create-game')} />
+          <CreateGameCard onClick={() => router.push('/game/new')} />
 
           {/* User's Created Games */}
           {CREATED_GAMES.map((game) => (

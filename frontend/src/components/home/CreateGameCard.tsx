@@ -19,7 +19,7 @@ export default function CreateGameCard({ onClick }: CreateGameCardProps) {
         <Plus className="w-8 h-8 text-primary" />
       </div>
       <span className="text-muted-foreground font-medium group-hover:text-foreground transition-colors">
-        Create New Game
+        创建新剧场
       </span>
     </motion.div>
   );
