@@ -37,7 +37,7 @@ class StreamResult:
 # 供应商默认 base_url 配置
 DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
-    "minimax": "https://api.minimax.chat/v1",
+    "minimax": "https://api.minimax.io/anthropic",
     "xai": "https://api.x.ai/v1",
 }
 

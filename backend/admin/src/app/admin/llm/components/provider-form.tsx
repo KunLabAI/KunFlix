@@ -55,12 +55,8 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       provider_type: initialData?.provider_type || "",
       tags: initialData?.tags || [],
       models: initialData?.models.map(m => {
-        // 从 config_json 中恢复 model_tags
-        let type = '';
-        if (initialData.config_json && typeof initialData.config_json === 'object' && initialData.config_json.model_tags) {
-           type = initialData.config_json.model_tags[m] || '';
-        }
-        return { value: m, type };
+        // 不再从 config_json 恢复 model_tags
+        return { value: m, type: "" };
       }) || [{ value: "", type: "" }],
       base_url: initialData?.base_url || "",
       api_key: initialData?.api_key || "",
@@ -137,20 +133,21 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
         }
       });
 
-      // 提取 model tags 并存入 config_json
-      const modelTags: Record<string, string> = {};
-      values.models.forEach(m => {
-        if (m.value && m.type) {
-          modelTags[m.value] = m.type;
-        }
-      });
+      // 提取 model tags 并存入 config_json (已移除)
+      // const modelTags: Record<string, string> = {};
+      // values.models.forEach(m => {
+      //   if (m.value && m.type) {
+      //     modelTags[m.value] = m.type;
+      //   }
+      // });
 
       const configJsonObj = JSON.parse(values.config_json || '{}');
-      if (Object.keys(modelTags).length > 0) {
-        configJsonObj.model_tags = modelTags;
-      } else {
-        delete configJsonObj.model_tags;
-      }
+      // 移除自动添加 model_tags 的逻辑，避免干扰测试连接
+      // if (Object.keys(modelTags).length > 0) {
+      //   configJsonObj.model_tags = modelTags;
+      // } else {
+      //   delete configJsonObj.model_tags;
+      // }
 
       const submitValues = {
         ...values,
@@ -350,7 +347,8 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                               </FormItem>
                             )}
                           />
-                          <FormField
+                          {/* 移除了模型类型下拉框，因为不再将 type 存入 config_json */}
+                          {/* <FormField
                             control={form.control}
                             name={`models.${index}.type`}
                             render={({ field }) => (
@@ -370,7 +368,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                                 <FormMessage />
                               </FormItem>
                             )}
-                          />
+                          /> */}
                           <Button
                             type="button"
                             variant="ghost"
@@ -599,6 +597,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                         <FormItem>
                           <FormLabel>高级配置 (JSON)</FormLabel>
                           <FormControl>
+                            {/* 移除了自动注入 model_tags 的行为，避免连接测试报错 */}
                             <Textarea 
                               rows={5} 
                               placeholder='{"timeout": 30, "max_retries": 3}' 

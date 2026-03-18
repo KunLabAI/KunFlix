@@ -21,6 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    tables = inspector.get_table_names()
 
     # --- Step 1: Read all existing data and build UUID mappings ---
     player_map = {}  # old_int_id -> new_uuid_str
@@ -29,50 +31,56 @@ def upgrade() -> None:
 
     # Read players
     players_data = []
-    for row in conn.execute(sa.text("SELECT id, username, created_at, current_chapter, personality_profile, inventory, relationships FROM players")).fetchall():
-        new_uuid = str(uuid.uuid4())
-        player_map[row[0]] = new_uuid
-        players_data.append((new_uuid, row[1], row[2], row[3], row[4], row[5], row[6]))
+    if 'players' in tables:
+        for row in conn.execute(sa.text("SELECT id, username, created_at, current_chapter, personality_profile, inventory, relationships FROM players")).fetchall():
+            new_uuid = str(uuid.uuid4())
+            player_map[row[0]] = new_uuid
+            players_data.append((new_uuid, row[1], row[2], row[3], row[4], row[5], row[6]))
 
     # Read llm_providers
     providers_data = []
-    for row in conn.execute(sa.text("SELECT id, name, provider_type, api_key, base_url, models, tags, is_active, is_default, config_json, created_at, updated_at FROM llm_providers")).fetchall():
-        new_uuid = str(uuid.uuid4())
-        provider_map[row[0]] = new_uuid
-        providers_data.append((new_uuid, row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11]))
+    if 'llm_providers' in tables:
+        for row in conn.execute(sa.text("SELECT id, name, provider_type, api_key, base_url, models, tags, is_active, is_default, config_json, created_at, updated_at FROM llm_providers")).fetchall():
+            new_uuid = str(uuid.uuid4())
+            provider_map[row[0]] = new_uuid
+            providers_data.append((new_uuid, row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11]))
 
     # Read agents
     agents_data = []
-    for row in conn.execute(sa.text("SELECT id, name, description, provider_id, model, temperature, context_window, system_prompt, tools, thinking_mode, created_at, updated_at FROM agents")).fetchall():
-        new_uuid = str(uuid.uuid4())
-        agent_map[row[0]] = new_uuid
-        new_provider_id = provider_map.get(row[3])
-        agents_data.append((new_uuid, row[1], row[2], new_provider_id, row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11]))
+    if 'agents' in tables:
+        for row in conn.execute(sa.text("SELECT id, name, description, provider_id, model, temperature, context_window, system_prompt, tools, thinking_mode, created_at, updated_at FROM agents")).fetchall():
+            new_uuid = str(uuid.uuid4())
+            agent_map[row[0]] = new_uuid
+            new_provider_id = provider_map.get(row[3])
+            agents_data.append((new_uuid, row[1], row[2], new_provider_id, row[4], row[5], row[6], row[7], row[8], row[9], row[10], row[11]))
 
     # Read story_chapters
     chapters_data = []
-    for row in conn.execute(sa.text("SELECT id, player_id, chapter_number, title, content, status, choices, summary_embedding, world_state_snapshot, created_at FROM story_chapters")).fetchall():
-        new_player_id = player_map.get(row[1])
-        chapters_data.append((row[0], new_player_id, row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
+    if 'story_chapters' in tables:
+        for row in conn.execute(sa.text("SELECT id, player_id, chapter_number, title, content, status, choices, summary_embedding, world_state_snapshot, created_at FROM story_chapters")).fetchall():
+            new_player_id = player_map.get(row[1])
+            chapters_data.append((row[0], new_player_id, row[2], row[3], row[4], row[5], row[6], row[7], row[8], row[9]))
 
     # Read chat_sessions
     sessions_data = []
-    for row in conn.execute(sa.text("SELECT id, title, agent_id, created_at, updated_at FROM chat_sessions")).fetchall():
-        new_agent_id = agent_map.get(row[2])
-        sessions_data.append((row[0], row[1], new_agent_id, row[3], row[4]))
+    if 'chat_sessions' in tables:
+        for row in conn.execute(sa.text("SELECT id, title, agent_id, created_at, updated_at FROM chat_sessions")).fetchall():
+            new_agent_id = agent_map.get(row[2])
+            sessions_data.append((row[0], row[1], new_agent_id, row[3], row[4]))
 
     # Read chat_messages
     messages_data = []
-    for row in conn.execute(sa.text("SELECT id, session_id, role, content, created_at FROM chat_messages")).fetchall():
-        messages_data.append((row[0], row[1], row[2], row[3], row[4]))
+    if 'chat_messages' in tables:
+        for row in conn.execute(sa.text("SELECT id, session_id, role, content, created_at FROM chat_messages")).fetchall():
+            messages_data.append((row[0], row[1], row[2], row[3], row[4]))
 
     # --- Step 2: Drop all affected tables (leaf-first order) ---
-    op.drop_table('chat_messages')
-    op.drop_table('chat_sessions')
-    op.drop_table('story_chapters')
-    op.drop_table('agents')
-    op.drop_table('llm_providers')
-    op.drop_table('players')
+    if 'chat_messages' in tables: op.drop_table('chat_messages')
+    if 'chat_sessions' in tables: op.drop_table('chat_sessions')
+    if 'story_chapters' in tables: op.drop_table('story_chapters')
+    if 'agents' in tables: op.drop_table('agents')
+    if 'llm_providers' in tables: op.drop_table('llm_providers')
+    if 'players' in tables: op.drop_table('players')
 
     # --- Step 3: Recreate all tables with UUID columns ---
     op.create_table('players',

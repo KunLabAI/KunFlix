@@ -55,7 +55,7 @@ ANTHROPIC_COMPATIBLE = ["anthropic", "minimax"]
 
 DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
-    "minimax": "https://api.minimax.chat/v1",
+    "minimax": "https://api.minimax.io/anthropic",
     "xai": "https://api.x.ai/v1",
 }
 

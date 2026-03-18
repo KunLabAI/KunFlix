@@ -182,7 +182,7 @@ class NarrativeEngine:
             # 默认 base_url 配置
             default_base_urls = {
                 "deepseek": "https://api.deepseek.com",
-                "minimax": "https://api.minimax.chat/v1",
+                "minimax": "https://api.minimax.io/anthropic",
                 "xai": "https://api.x.ai/v1",
             }
             
