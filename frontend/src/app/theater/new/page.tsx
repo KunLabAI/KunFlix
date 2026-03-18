@@ -25,6 +25,7 @@ import { Sidebar } from '@/components/canvas/Sidebar';
 import ScriptNode from '@/components/canvas/ScriptNode';
 import CharacterNode from '@/components/canvas/CharacterNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
+import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
 import { Save, Undo, Redo, Trash2, MousePointer2, ArrowLeft } from 'lucide-react';
 
@@ -50,21 +51,15 @@ function InfiniteCanvas() {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
     addNode,
-    undo, redo, takeSnapshot
+    undo, redo, takeSnapshot,
+    reset
   } = useCanvasStore();
 
-  // Initialize with Script Node if empty
+  // Initialize: Reset to initial state on entry
   useEffect(() => {
-    if (nodes.length === 0) {
-      addNode({
-        id: 'script-root', 
-        type: 'script',
-        position: { x: 100, y: 100 },
-        data: { title: '我的剧本', description: '开始编写你的故事...', tags: [] },
-      });
-    }
+    reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length, addNode]);
+  }, []);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -141,6 +136,7 @@ function InfiniteCanvas() {
           onDragOver={onDragOver}
           onDrop={onDrop}
           fitView={nodes.length < 2} // Fit view only initially or if few nodes
+          fitViewOptions={{ maxZoom: 1 }}
           minZoom={0.1}
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
@@ -148,32 +144,40 @@ function InfiniteCanvas() {
           snapGrid={[20, 20]}
         >
           <Background gap={20} color="#333" variant={BackgroundVariant.Dots} className="opacity-20" />
-          <Controls />
+          
           <MiniMap 
             nodeColor={(n) => {
               if (n.type === 'script') return '#6366F1';
               if (n.type === 'character') return '#10B981';
               return '#F59E0B';
             }} 
-            className="bg-card border rounded-lg shadow-lg"
+            className="bg-card border rounded-lg shadow-lg !left-4 !bottom-4 !right-auto !top-auto"
+            position="bottom-left"
           />
           
-          <Panel position="top-left" className="flex gap-2">
-            <Button variant="ghost" size="icon" onClick={() => router.push('/')} title="返回">
-              <ArrowLeft className="w-4 h-4" />
+          <Controls 
+             className="!left-[240px] !bottom-4 !right-auto !top-auto flex-row"
+             position="bottom-left"
+          />
+          
+          <Panel position="top-left" className="flex gap-2 items-center p-2">
+            <Button variant="ghost" size="icon" onClick={() => router.push('/')} title="返回" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
+              <ArrowLeft className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+            </Button>
+            <div className="w-px h-4 bg-border/50 mx-1" />
+            <Button variant="ghost" size="icon" onClick={undo} title="撤销 (Ctrl+Z)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
+              <Undo className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={redo} title="重做 (Ctrl+Y)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
+              <Redo className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={takeSnapshot} title="保存 (Ctrl+S)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
+              <Save className="w-4 h-4 text-muted-foreground hover:text-foreground" />
             </Button>
           </Panel>
-          
-          <Panel position="top-right" className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={undo} title="撤销 (Ctrl+Z)">
-              <Undo className="w-4 h-4 mr-1" /> 撤销
-            </Button>
-            <Button variant="secondary" size="sm" onClick={redo} title="重做 (Ctrl+Y)">
-              <Redo className="w-4 h-4 mr-1" /> 重做
-            </Button>
-            <Button variant="default" size="sm" onClick={takeSnapshot} title="保存 (Ctrl+S)">
-              <Save className="w-4 h-4 mr-1" /> 保存
-            </Button>
+
+          <Panel position="top-right" className="flex gap-2 items-center pointer-events-none">
+             <AIAssistantPanel />
           </Panel>
         </ReactFlow>
       </div>

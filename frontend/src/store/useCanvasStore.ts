@@ -22,6 +22,8 @@ export type ScriptNodeData = {
   title: string;
   description: string;
   tags: string[];
+  characters?: string[];
+  scenes?: string;
 };
 
 export type CharacterNodeData = {
@@ -57,6 +59,8 @@ interface CanvasState {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   addNode: (node: CanvasNode) => void;
+  deleteNode: (id: string) => void;
+  reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData>) => void;
   setViewport: (viewport: Viewport) => void;
   
@@ -119,6 +123,32 @@ export const useCanvasStore = create<CanvasState>()(
         }
         set({ nodes: [...nodes, node] });
         get().takeSnapshot();
+      },
+
+      deleteNode: (id: string) => {
+        const { nodes, edges } = get();
+        const newNodes = nodes.filter((node) => node.id !== id);
+        const newEdges = edges.filter(
+          (edge) => edge.source !== id && edge.target !== id
+        );
+        set({ nodes: newNodes, edges: newEdges });
+        get().takeSnapshot();
+      },
+
+      reset: () => {
+        const initialNode: CanvasNode = {
+          id: 'script-root', 
+          type: 'script',
+          position: { x: 100, y: 100 },
+          data: { title: '我的剧本', description: '开始编写你的故事...', tags: [] },
+        };
+        set({
+          nodes: [initialNode],
+          edges: [],
+          history: [],
+          historyIndex: -1,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        });
       },
 
       updateNodeData: (id: string, data: any) => {
