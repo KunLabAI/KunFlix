@@ -14,15 +14,17 @@
 - [api-utils.ts](file://backend/admin/src/lib/api-utils.ts)
 - [login page.tsx](file://backend/admin/src/app/admin/login/page.tsx)
 - [types/index.ts](file://backend/admin/src/types/index.ts)
+- [b5d7e2f8a1c3_player_to_user_auth.py](file://backend/migrations/versions/b5d7e2f8a1c3_player_to_user_auth.py)
+- [users page.tsx](file://backend/admin/src/app/admin/players/page.tsx)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 新增完整的管理员认证系统章节，包括独立的登录路由和JWT令牌管理
-- 添加管理员登录/刷新/信息获取接口的详细说明
-- 更新前端AuthContext集成和令牌刷新机制
-- 新增管理员认证流程图和架构图
-- 补充JWT令牌处理、密码加密存储和会话管理的安全策略
+- 更新术语从"player"到"user"的完整转换，反映数据库模型和API的现代化
+- 更新管理员用户CRUD操作的实现细节，包括用户创建、角色分配和权限验证
+- 更新后台管理界面的数据接口设计，涵盖用户监控、系统配置和资源管理的API实现
+- 新增用户管理相关的积分调整、订阅管理和故事管理功能
+- 更新前端管理界面的用户管理页面，提供完整的用户操作界面
 
 ## 目录
 1. [简介](#简介)
@@ -31,10 +33,11 @@
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
 6. [管理员认证系统](#管理员认证系统)
-7. [依赖关系分析](#依赖关系分析)
-8. [性能考虑](#性能考虑)
-9. [故障排除指南](#故障排除指南)
-10. [结论](#结论)
+7. [用户管理功能](#用户管理功能)
+8. [依赖关系分析](#依赖关系分析)
+9. [性能考虑](#性能考虑)
+10. [故障排除指南](#故障排除指南)
+11. [结论](#结论)
 
 ## 简介
 本文件为管理员管理API的全面技术文档，重点覆盖以下方面：
@@ -42,11 +45,12 @@
 - 管理员账户的认证与会话管理机制
 - 权限控制与访问限制策略
 - 管理员用户CRUD操作的实现细节（创建、删除、查询等）
-- 后台管理界面的数据接口设计（玩家监控、统计信息、故事管理等）
+- 用户管理功能，包括积分调整、订阅管理和故事管理
+- 后台管理界面的数据接口设计（用户监控、统计信息、资源管理等）
 - 安全策略：JWT令牌处理、密码加密存储、会话管理
 - 管理员操作的完整工作流程与错误处理机制
 
-**更新** 新增完整的管理员认证系统，包括独立的登录路由、JWT令牌管理、管理员登录/刷新/信息获取接口，以及前端AuthContext集成。
+**更新** 完成从"player"到"user"的术语转换，新增用户管理功能模块，包括积分管理、订阅管理和用户操作界面。
 
 ## 项目结构
 后端采用FastAPI + SQLAlchemy异步ORM架构，数据库使用SQLite（默认）或PostgreSQL（可配置）。管理员功能通过独立的路由模块提供REST接口，前端使用Next.js构建管理界面。新增的管理员认证系统提供独立的认证流程，与用户认证系统完全分离。
@@ -69,6 +73,7 @@ J[axios.ts API客户端]
 K[api-utils.ts 工具函数]
 L[login page.tsx 登录页面]
 M[types/index.ts 类型定义]
+N[users page.tsx 用户管理页面]
 end
 A --> B
 A --> C
@@ -84,6 +89,7 @@ I --> J
 J --> A
 L --> I
 M --> I
+N --> I
 ```
 
 **图表来源**
@@ -98,6 +104,7 @@ M --> I
 - [axios.ts:1-100](file://backend/admin/src/lib/axios.ts#L1-L100)
 - [login page.tsx:51-118](file://backend/admin/src/app/admin/login/page.tsx#L51-L118)
 - [types/index.ts:93-123](file://backend/admin/src/types/index.ts#L93-L123)
+- [users page.tsx:87-450](file://backend/admin/src/app/admin/players/page.tsx#L87-L450)
 
 **章节来源**
 - [main.py:121-132](file://backend/main.py#L121-L132)
@@ -108,29 +115,29 @@ M --> I
 ## 核心组件
 - 应用入口与生命周期管理：负责数据库迁移、CORS配置、路由注册与静态文件挂载
 - 管理员认证路由模块：提供独立的管理员登录、令牌刷新和信息获取接口
-- 管理路由模块：提供统计信息、玩家列表、玩家删除、故事列表等接口
+- 管理路由模块：提供统计信息、用户列表、用户删除、故事列表等接口
 - 认证工具模块：包含JWT令牌创建、验证和解码功能
-- 数据模型层：定义管理员、玩家、故事章节、资产、LLM供应商、聊天会话与消息等实体
+- 数据模型层：定义管理员、用户、故事章节、资产、LLM供应商、聊天会话与消息等实体
 - 模式定义层：Pydantic模式用于请求/响应校验与序列化
-- 业务服务层：封装玩家创建、世界初始化等业务逻辑
+- 业务服务层：封装用户创建、世界初始化等业务逻辑
 - 数据库与配置：异步引擎、会话工厂、连接池参数与环境变量配置
 - 前端认证与API：本地存储令牌、路由守卫、Axios拦截器与SWR数据拉取
 
 **章节来源**
 - [main.py:121-132](file://backend/main.py#L121-L132)
 - [admin_auth.py:36-136](file://backend/routers/admin_auth.py#L36-L136)
-- [admin.py:16-112](file://backend/routers/admin.py#L16-L112)
+- [admin.py:16-498](file://backend/routers/admin.py#L16-L498)
 - [auth.py:30-229](file://backend/auth.py#L30-L229)
-- [models.py:10-32](file://backend/models.py#L10-L32)
+- [models.py:10-383](file://backend/models.py#L10-L383)
 - [schemas.py:65-107](file://backend/schemas.py#L65-L107)
 - [AuthContext.tsx:39-116](file://backend/admin/src/context/AuthContext.tsx#L39-L116)
 - [axios.ts:1-100](file://backend/admin/src/lib/axios.ts#L1-L100)
 
 ## 架构总览
-管理员管理API采用分层架构，新增了独立的管理员认证系统：
+管理员管理API采用分层架构，新增了独立的管理员认证系统和用户管理功能：
 - 表现层：FastAPI路由与Next.js管理界面
 - 认证层：独立的管理员认证路由和JWT令牌管理
-- 业务层：TheaterService封装核心业务流程
+- 业务层：GameService封装核心业务流程
 - 数据访问层：SQLAlchemy异步ORM与数据库配置
 - 安全层：JWT令牌验证、密码哈希存储和前端路由守卫
 
@@ -141,9 +148,11 @@ FE --> API[FastAPI后端]
 API --> AdminAuthRouter[管理员认证路由]
 API --> AdminRouter[管理路由模块]
 AdminAuthRouter --> AuthService[认证服务]
-AdminRouter --> Service[业务服务层]
+AdminRouter --> UserService[用户管理服务]
+AdminRouter --> StoryService[故事管理服务]
 AuthService --> ORM[SQLAlchemy异步ORM]
-Service --> ORM
+UserService --> ORM
+StoryService --> ORM
 ORM --> DB[(数据库)]
 subgraph "安全策略"
 FE --> LocalStorage[localStorage 存储令牌]
@@ -157,7 +166,7 @@ end
 **图表来源**
 - [main.py:121-132](file://backend/main.py#L121-L132)
 - [admin_auth.py:36-136](file://backend/routers/admin_auth.py#L36-L136)
-- [admin.py:16-112](file://backend/routers/admin.py#L16-L112)
+- [admin.py:16-498](file://backend/routers/admin.py#L16-L498)
 - [auth.py:30-75](file://backend/auth.py#L30-L75)
 - [AuthContext.tsx:47-104](file://backend/admin/src/context/AuthContext.tsx#L47-L104)
 - [axios.ts:12-97](file://backend/admin/src/lib/axios.ts#L12-L97)
@@ -213,10 +222,12 @@ AuthRouter-->>Client : 返回管理员信息
 - [admin_auth.py:36-136](file://backend/routers/admin_auth.py#L36-L136)
 
 ### 管理路由模块（/api/admin）
-- 统计信息接口：返回玩家、故事、资产、供应商数量
-- 玩家列表接口：支持分页与排序
-- 玩家删除接口：删除指定玩家及其关联数据
-- 故事列表接口：支持按玩家过滤与分页
+- 统计信息接口：返回用户、故事、资产、供应商数量
+- 用户列表接口：支持分页与排序
+- 用户删除接口：删除指定用户及其关联数据
+- 故事列表接口：支持按用户过滤与分页
+- 用户积分管理：管理员手动调整用户积分
+- 用户订阅管理：管理员设置用户订阅计划
 
 ```mermaid
 sequenceDiagram
@@ -228,32 +239,40 @@ Client->>Router : GET /api/admin/stats
 Router->>DB : 查询统计
 DB-->>Router : 数量统计
 Router-->>Client : JSON统计结果
-Client->>Router : GET /api/admin/players?skip&limit
-Router->>DB : 分页查询玩家
-DB-->>Router : 玩家列表
-Router-->>Client : 玩家数组
-Client->>Router : DELETE /api/admin/players/{player_id}
-Router->>DB : 删除玩家
+Client->>Router : GET /api/admin/users?skip&limit
+Router->>DB : 分页查询用户
+DB-->>Router : 用户列表
+Router-->>Client : 用户数组
+Client->>Router : DELETE /api/admin/users/{user_id}
+Router->>DB : 删除用户
 DB-->>Router : 删除成功
 Router-->>Client : {"ok" : true}
-Client->>Router : GET /api/admin/stories?player_id&skip&limit
+Client->>Router : GET /api/admin/stories?user_id&skip&limit
 Router->>DB : 条件查询故事
 DB-->>Router : 故事列表
 Router-->>Client : 故事数组
+Client->>Router : POST /api/admin/users/{user_id}/credits/adjust
+Router->>DB : 调整用户积分
+DB-->>Router : 更新成功
+Router-->>Client : {"ok" : true}
+Client->>Router : PUT /api/admin/users/{user_id}/subscription
+Router->>DB : 设置用户订阅
+DB-->>Router : 更新成功
+Router-->>Client : {"ok" : true}
 ```
 
 **图表来源**
-- [admin.py:16-112](file://backend/routers/admin.py#L16-L112)
-- [models.py:9-44](file://backend/models.py#L9-L44)
+- [admin.py:16-498](file://backend/routers/admin.py#L16-L498)
+- [models.py:35-83](file://backend/models.py#L35-L83)
 
 **章节来源**
-- [admin.py:16-112](file://backend/routers/admin.py#L16-L112)
+- [admin.py:16-498](file://backend/routers/admin.py#L16-L498)
 
 ### 数据模型与关系
 - Admin：管理员基本信息与认证数据
-- Player：玩家基本信息与状态
-- StoryChapter：故事章节内容与元数据
-- Asset：生成资源（图片/音频等）
+- User：用户基本信息与状态（替代之前的Player）
+- StoryChapter：故事章节内容与元数据（外键从player_id改为user_id）
+- Asset：生成资源（图片/音频等）（外键从player_id改为user_id）
 - LLMProvider：AI供应商配置
 - Agent/ChatSession/ChatMessage：聊天与代理相关实体
 
@@ -275,18 +294,34 @@ datetime last_login_at
 datetime created_at
 datetime updated_at
 }
-PLAYER {
+USER {
 string id PK
-string username UK
-datetime created_at
-integer current_chapter
+string email UK
+string nickname
+string password_hash
+string google_id
+string github_id
+string role
+boolean is_active
+boolean is_balance_frozen
+string subscription_plan_id FK
+string subscription_status
+datetime subscription_start_at
+datetime subscription_end_at
+float credits
+string register_ip
+datetime last_login_at
+datetime last_login_ip
+int current_chapter
 json personality_profile
 json inventory
 json relationships
+datetime created_at
+datetime updated_at
 }
 STORYCHAPTER {
 integer id PK
-string player_id FK
+string user_id FK
 integer chapter_number
 string title
 text content
@@ -298,6 +333,7 @@ datetime created_at
 }
 ASSET {
 integer id PK
+string user_id FK
 string type
 string content_hash
 string url
@@ -337,6 +373,7 @@ CHATSESSION {
 integer id PK
 string title
 string agent_id FK
+string user_id FK
 datetime created_at
 datetime updated_at
 }
@@ -348,7 +385,10 @@ text content
 datetime created_at
 }
 ADMIN ||--o{ CREDITTRANSACTION : "管理"
-PLAYER ||--o{ STORYCHAPTER : "拥有"
+USER ||--o{ STORYCHAPTER : "拥有"
+USER ||--o{ ASSET : "拥有"
+USER ||--o{ CHATSESSION : "拥有"
+USER ||--o{ CREDITTRANSACTION : "产生"
 LLMPROVIDER ||--o{ AGENT : "提供"
 AGENT ||--o{ CHATSESSION : "拥有"
 CHATSESSION ||--o{ CHATMESSAGE : "包含"
@@ -356,20 +396,23 @@ CHATSESSION ||--o{ CHATMESSAGE : "包含"
 
 **图表来源**
 - [models.py:10-32](file://backend/models.py#L10-L32)
+- [models.py:35-83](file://backend/models.py#L35-L83)
 - [models.py:81-122](file://backend/models.py#L81-L122)
 - [models.py:167-221](file://backend/models.py#L167-L221)
 
 **章节来源**
 - [models.py:10-32](file://backend/models.py#L10-L32)
+- [models.py:35-83](file://backend/models.py#L35-L83)
 - [models.py:81-122](file://backend/models.py#L81-L122)
 - [models.py:167-221](file://backend/models.py#L167-L221)
 
 ### 前端认证与会话管理
-- 使用localStorage存储管理员令牌（access_token、refresh_token、user）
+- 使用localStorage存储管理员令牌（access_token、refresh_token、admin）
 - 路由守卫：访问/admin路径且未登录时自动跳转至登录页
 - Axios拦截器统一处理错误和令牌刷新
 - 管理员登录页面提供表单验证和错误处理
 - SWR用于仪表盘统计数据的获取与缓存
+- 用户管理页面提供完整的用户操作界面
 
 ```mermaid
 sequenceDiagram
@@ -456,7 +499,7 @@ UpdateStore --> RefreshSuccess([刷新成功])
 **章节来源**
 - [admin_auth.py:58-64](file://backend/routers/admin_auth.py#L58-L64)
 - [auth.py:19-25](file://backend/auth.py#L19-L25)
-- [models.py](file://backend/models.py#L17)
+- [models.py:17](file://backend/models.py#L17)
 
 ### 会话管理
 前端采用localStorage进行会话管理，提供完整的会话生命周期：
@@ -481,10 +524,108 @@ UpdateStore --> RefreshSuccess([刷新成功])
 - [auth.py:147-157](file://backend/auth.py#L147-L157)
 - [admin.py:421-440](file://backend/routers/admin.py#L421-L440)
 
+## 用户管理功能
+
+### 用户CRUD操作
+管理员现在可以管理用户账户，包括创建、更新、删除和查询用户信息：
+
+- 用户列表接口：支持分页与排序，返回用户基本信息
+- 用户详情接口：获取单个用户的完整信息
+- 用户删除接口：删除指定用户及其关联数据
+- 用户搜索过滤：支持按邮箱、昵称等条件过滤
+
+```mermaid
+sequenceDiagram
+participant Admin as "管理员"
+participant Router as "管理路由"
+participant DB as "数据库"
+Admin->>Router : GET /api/admin/users?skip&limit
+Router->>DB : 分页查询用户
+DB-->>Router : 用户列表
+Router-->>Admin : 用户数组
+Admin->>Router : GET /api/admin/users/{user_id}
+Router->>DB : 查询用户详情
+DB-->>Router : 用户详情
+Router-->>Admin : 用户详情
+Admin->>Router : DELETE /api/admin/users/{user_id}
+Router->>DB : 删除用户
+DB-->>Router : 删除成功
+Router-->>Admin : {"ok" : true}
+```
+
+**图表来源**
+- [admin.py:53-136](file://backend/routers/admin.py#L53-L136)
+
+### 用户积分管理
+管理员可以手动调整用户的积分余额，支持充值和扣除操作：
+
+- 积分调整接口：管理员手动调整用户积分
+- 交易记录：自动记录积分变动历史
+- 余额验证：确保积分余额不低于0
+
+```mermaid
+sequenceDiagram
+participant Admin as "管理员"
+participant Router as "管理路由"
+participant DB as "数据库"
+Admin->>Router : POST /api/admin/users/{user_id}/credits/adjust
+Router->>DB : 查询用户
+DB-->>Router : 用户信息
+Router->>DB : 更新用户积分
+DB-->>Router : 更新成功
+Router->>DB : 创建交易记录
+DB-->>Router : 交易记录创建成功
+Router-->>Admin : {"ok" : true}
+```
+
+**图表来源**
+- [admin.py:141-188](file://backend/routers/admin.py#L141-L188)
+
+### 用户订阅管理
+管理员可以为用户设置订阅计划，包括自动发放积分等功能：
+
+- 订阅设置接口：管理员设置用户订阅计划
+- 订阅取消接口：取消用户的订阅状态
+- 自动积分发放：根据订阅套餐自动发放积分
+- 订阅状态跟踪：实时跟踪订阅状态变化
+
+```mermaid
+sequenceDiagram
+participant Admin as "管理员"
+participant Router as "管理路由"
+participant DB as "数据库"
+Admin->>Router : PUT /api/admin/users/{user_id}/subscription
+Router->>DB : 查询用户
+DB-->>Router : 用户信息
+Router->>DB : 查询订阅套餐
+DB-->>Router : 套餐信息
+Router->>DB : 更新用户订阅
+DB-->>Router : 更新成功
+Router->>DB : 可选：创建积分交易
+DB-->>Router : 交易记录创建成功
+Router-->>Admin : {"ok" : true}
+```
+
+**图表来源**
+- [admin.py:220-302](file://backend/routers/admin.py#L220-L302)
+
+### 前端用户管理界面
+用户管理页面提供完整的用户操作界面，包括积分调整、订阅管理和用户删除功能：
+
+- 用户列表展示：显示用户的基本信息和状态
+- 积分管理对话框：支持充值和扣除操作
+- 订阅管理对话框：设置用户订阅计划
+- 用户删除确认：防止误删用户数据
+- 实时数据更新：使用SWR进行数据缓存和刷新
+
+**章节来源**
+- [admin.py:53-498](file://backend/routers/admin.py#L53-L498)
+- [users page.tsx:87-450](file://backend/admin/src/app/admin/players/page.tsx#L87-L450)
+
 ## 依赖关系分析
 - 应用入口依赖数据库与配置模块，注册管理员认证路由和其他子路由
 - 管理员认证路由依赖数据库会话、数据模型和认证工具
-- 管理路由依赖数据库会话与数据模型
+- 管理路由依赖数据库会话与数据模型，支持用户管理、积分管理和订阅管理
 - 认证工具提供JWT令牌创建、验证和密码哈希功能
 - 前端依赖Axios与SWR进行数据交互，集成AuthContext进行认证管理
 
@@ -503,6 +644,7 @@ routers_admin_py --> schemas_py
 frontend_auth_tsx[AuthContext.tsx] --> frontend_axios_ts[axios.ts]
 frontend_login_tsx[login page.tsx] --> frontend_auth_tsx
 frontend_types_ts[index.ts] --> frontend_auth_tsx
+frontend_users_tsx[users page.tsx] --> frontend_auth_tsx
 frontend_axios_ts --> main_py
 ```
 
@@ -517,6 +659,7 @@ frontend_axios_ts --> main_py
 - [axios.ts:1-20](file://backend/admin/src/lib/axios.ts#L1-L20)
 - [login page.tsx:1-50](file://backend/admin/src/app/admin/login/page.tsx#L1-L50)
 - [types/index.ts:1-50](file://backend/admin/src/types/index.ts#L1-L50)
+- [users page.tsx:1-50](file://backend/admin/src/app/admin/players/page.tsx#L1-L50)
 
 **章节来源**
 - [main.py:121-132](file://backend/main.py#L121-L132)
@@ -550,6 +693,7 @@ frontend_axios_ts --> main_py
 - 前端路由跳转：未登录访问/admin将被重定向至/login
 - Axios错误拦截：全局错误会在控制台打印，便于定位问题
 - 密码哈希问题：确认bcrypt库版本兼容性
+- 用户管理错误：检查用户ID格式，确认用户存在且状态正常
 
 **章节来源**
 - [main.py:50-98](file://backend/main.py#L50-L98)
@@ -560,7 +704,7 @@ frontend_axios_ts --> main_py
 - [config.py:26-30](file://backend/config.py#L26-L30)
 
 ## 结论
-管理员管理API现已具备完整的认证系统，包括独立的管理员认证路由、JWT令牌管理和前端AuthContext集成。系统提供了安全可靠的后台管理功能，支持管理员登录、令牌刷新和权限验证。为满足生产环境需求，建议补充以下能力：
+管理员管理API现已具备完整的认证系统和用户管理功能，包括独立的管理员认证路由、JWT令牌管理、用户CRUD操作和积分管理。系统提供了安全可靠的后台管理功能，支持管理员登录、令牌刷新、用户管理、积分调整和订阅管理。为满足生产环境需求，建议补充以下能力：
 
 - 完善的权限管理：实现更细粒度的管理员权限控制
 - 审计日志：记录管理员关键操作与异常事件

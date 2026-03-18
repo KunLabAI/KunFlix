@@ -4,7 +4,7 @@
 **本文引用的文件**
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts)
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx)
 - [backend/main.py](file://backend/main.py)
 - [backend/services.py](file://backend/services.py)
 - [backend/models.py](file://backend/models.py)
@@ -36,11 +36,11 @@ graph TB
 subgraph "前端"
 FE_Page["页面组件<br/>page.tsx"]
 FE_Hook["自定义Hook<br/>useSocket.ts"]
-FE_Canvas["剧场画布组件<br/>TheaterCanvas.tsx"]
+FE_Canvas["游戏画布组件<br/>GameCanvas.tsx"]
 end
 subgraph "后端"
 BE_Main["应用入口与路由<br/>main.py"]
-BE_Svc["剧场服务<br/>services.py"]
+BE_Svc["游戏服务<br/>services.py"]
 BE_Models["数据模型<br/>models.py"]
 BE_RouterChats["聊天流式接口<br/>routers/chats.py"]
 BE_Agents["叙事引擎与代理<br/>agents.py"]
@@ -59,7 +59,7 @@ BE_Svc --> |"触发章节预生成"| BE_Tasks
 图表来源
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L1-L85)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L1-L50)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L1-L50)
 - [backend/main.py](file://backend/main.py#L157-L170)
 - [backend/services.py](file://backend/services.py#L1-L66)
 - [backend/models.py](file://backend/models.py#L1-L122)
@@ -70,7 +70,7 @@ BE_Svc --> |"触发章节预生成"| BE_Tasks
 章节来源
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L1-L85)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L1-L50)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L1-L50)
 - [backend/main.py](file://backend/main.py#L157-L170)
 - [backend/services.py](file://backend/services.py#L1-L66)
 - [backend/models.py](file://backend/models.py#L1-L122)
@@ -82,8 +82,8 @@ BE_Svc --> |"触发章节预生成"| BE_Tasks
 - 前端自定义 Hook useSocket：负责 WebSocket 连接生命周期、消息接收与发送、连接状态管理。
 - 页面组件 page.tsx：负责用户交互、玩家创建与故事初始化、展示消息列表与连接状态。
 - 后端 WebSocket 路由：接受连接、循环读取消息并回显，当前未实现心跳与断线重连。
-- 剧场画布组件 TheaterCanvas：用于渲染基础场景，与 WebSocket 无直接耦合。
-- 服务层 TheaterService：封装玩家创建、世界初始化、章节生成等业务逻辑。
+- 游戏画布组件 GameCanvas：用于渲染基础场景，与 WebSocket 无直接耦合。
+- 服务层 GameService：封装玩家创建、世界初始化、章节生成等业务逻辑。
 - 数据模型：定义玩家、章节、聊天会话与消息、LLM 提供商、资产等实体。
 - 聊天流式接口：支持按会话拉取消息历史、向 LLM 推送消息并流式返回响应。
 - 代理与叙事引擎：封装对话代理与章节生成流程，支持多提供商模型。
@@ -92,7 +92,7 @@ BE_Svc --> |"触发章节预生成"| BE_Tasks
 章节来源
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L1-L85)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L1-L50)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L1-L50)
 - [backend/main.py](file://backend/main.py#L157-L170)
 - [backend/services.py](file://backend/services.py#L1-L66)
 - [backend/models.py](file://backend/models.py#L1-L122)
@@ -193,14 +193,14 @@ WS-->>Client : "finally close()"
 章节来源
 - [backend/main.py](file://backend/main.py#L157-L170)
 
-### 服务层：TheaterService
+### 服务层：GameService
 - 封装玩家创建、世界初始化、章节生成等业务。
 - 与数据库会话交互，保存章节内容与状态。
 - 支持异步任务触发章节预生成与资源生成。
 
 ```mermaid
 classDiagram
-class TheaterService {
+class GameService {
 +create_player(username)
 +init_world(player_id)
 +process_player_choice(player_id, choice_text)
@@ -224,8 +224,8 @@ class StoryChapter {
 +summary_embedding
 +world_state_snapshot
 }
-TheaterService --> Player : "创建/查询"
-TheaterService --> StoryChapter : "保存/查询"
+GameService --> Player : "创建/查询"
+GameService --> StoryChapter : "保存/查询"
 ```
 
 图表来源
@@ -397,7 +397,7 @@ NarrativeEngine --> LLMProvider : "读取配置"
 
 ## 依赖关系分析
 - 前端 page.tsx 依赖 useSocket，间接依赖后端 WebSocket。
-- 后端 main.py 注册 WebSocket 路由，依赖 TheaterService 与数据库。
+- 后端 main.py 注册 WebSocket 路由，依赖 GameService 与数据库。
 - 聊天路由依赖数据库与代理引擎，生成器内部按提供商类型选择实现。
 - 服务层依赖模型与代理引擎，支撑世界初始化与章节生成。
 - 后台任务依赖代理引擎与数据库，异步生成章节与资源。

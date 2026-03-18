@@ -30,7 +30,7 @@
 
 ## 简介
 
-Infinite Narrative Theater 是一个基于FastAPI构建的叙事剧场平台，提供LLM配置管理、智能体管理和聊天交互功能。该系统支持多种AI模型提供商，包括OpenAI、Azure、DashScope等，并通过WebSocket实现实时交互。
+Infinite Narrative Game 是一个基于FastAPI构建的叙事游戏平台，提供LLM配置管理、智能体管理和聊天交互功能。该系统支持多种AI模型提供商，包括OpenAI、Azure、DashScope等，并通过WebSocket实现实时交互。
 
 ## 项目结构
 
@@ -44,7 +44,7 @@ B --> E[LLM配置路由]
 B --> F[管理员路由]
 B --> G[智能体路由]
 B --> H[聊天路由]
-D --> I[剧场服务]
+D --> I[游戏服务]
 D --> J[代理引擎]
 end
 subgraph "前端应用"
@@ -437,13 +437,13 @@ Fix --> Verify[验证修复]
 
 ## 结论
 
-Infinite Narrative Theater提供了一个完整的AI叙事剧场API生态系统，支持多种AI提供商、智能体管理和实时聊天功能。系统采用模块化设计，具有良好的扩展性和维护性。通过WebSocket实现实时交互，通过流式响应提升用户体验。
+Infinite Narrative Game提供了一个完整的AI叙事游戏API生态系统，支持多种AI提供商、智能体管理和实时聊天功能。系统采用模块化设计，具有良好的扩展性和维护性。通过WebSocket实现实时交互，通过流式响应提升用户体验。
 
 ## 附录
 
 ### 版本信息
 
-- **项目名称**: Infinite Narrative Theater
+- **项目名称**: Infinite Narrative Game
 - **当前版本**: 1.0.0
 - **数据库版本**: 1.0.0
 

@@ -27,7 +27,7 @@
 
 ## 简介
 
-本项目是一个基于FastAPI的无限叙事剧场后端系统，支持多种LLM提供商的动态配置和管理。系统通过统一的LLM提供商配置接口，实现了对OpenAI、DashScope、Anthropic、Gemini等主流大语言模型服务的无缝集成。
+本项目是一个基于FastAPI的无限叙事游戏后端系统，支持多种LLM提供商的动态配置和管理。系统通过统一的LLM提供商配置接口，实现了对OpenAI、DashScope、Anthropic、Gemini等主流大语言模型服务的无缝集成。
 
 该系统的核心特性包括：
 - 多提供商统一配置管理
@@ -187,7 +187,7 @@ end
 subgraph "应用层"
 LLMConfig[LLM配置管理]
 ChatService[聊天服务]
-TheaterService[剧场服务]
+GameService[游戏服务]
 end
 subgraph "业务逻辑层"
 AgentEngine[智能体引擎]

@@ -178,7 +178,7 @@ PROMPTAPI["提示词模板API<br/>/api/prompt-templates/*"]
 CHAT["聊天流式接口<br/>/api/chats/*"]
 VIDEOAPI["视频生成API<br/>/api/videos/*"]
 ADMIN["后台管理接口<br/>/api/admin/*"]
-SERVICE["TheaterService<br/>业务逻辑"]
+SERVICE["GameService<br/>业务逻辑"]
 BILLINGSVC["BillingService<br/>计费计算"]
 PROMPTSVR["PromptTemplateService<br/>模板服务"]
 AGENTEXEC["AgentExecutor<br/>智能体执行服务"]
@@ -730,12 +730,12 @@ Note over PT : "实时计算并记录积分交易"
 - **图像智能体（image）**
   - 专门用于图像生成和处理
   - 支持图像生成、编辑和分析
-  - 适合剧场场景、角色设计等视觉内容
+  - 适合游戏场景、角色设计等视觉内容
 
 - **多模态智能体（multimodal）**
   - 支持文本和图像的综合处理
   - 可以同时处理多种类型的内容
-  - 适合复杂的剧场创作场景
+  - 适合复杂的游戏创作场景
 
 - **视频智能体（video）**
   - 专门用于视频生成和处理

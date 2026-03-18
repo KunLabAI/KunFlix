@@ -39,7 +39,7 @@
 graph TB
 FE["前端 (Next.js)"] --> WS["WebSocket端点<br/>/ws/{player_id}"]
 FE --> API["REST API<br/>/api/chats/*"]
-WS --> SVC["剧场服务(TheaterService)"]
+WS --> SVC["游戏服务(GameService)"]
 API --> DB["数据库(PostgreSQL)"]
 SVC --> DB
 SVC --> AG["叙事引擎(AgentScope)"]
@@ -63,7 +63,7 @@ T --> DB
 - WebSocket端点：负责与前端建立长连接，接收文本消息并回显，预留处理玩家输入与触发后续流程的空间。
 - useSocket Hook：前端侧的WebSocket封装，负责连接生命周期管理、消息收发与连接状态维护。
 - REST聊天路由：提供会话创建、消息查询、消息发送（含流式响应）等能力，支撑对话与内容生成。
-- 剧场服务：封装玩家创建、世界初始化、章节生成与一致性检查等业务逻辑。
+- 游戏服务：封装玩家创建、世界初始化、章节生成与一致性检查等业务逻辑。
 - 数据模型与Schema：定义玩家、章节、聊天会话与消息、LLM提供商与Agent等实体及请求/响应结构。
 - 后台任务：负责章节预生成与多模态资产生成的异步处理。
 
@@ -77,14 +77,14 @@ T --> DB
 - [backend/tasks.py](file://backend/tasks.py#L1-L62)
 
 ## 架构总览
-WebSocket通信在整体架构中承担“实时双向通道”的职责，与REST API、叙事引擎、数据库与后台任务形成闭环。前端通过useSocket建立连接，后端通过WebSocket端点与剧场服务协作，必要时触发后台任务以生成下一章内容或多媒体资源。
+WebSocket通信在整体架构中承担“实时双向通道”的职责，与REST API、叙事引擎、数据库与后台任务形成闭环。前端通过useSocket建立连接，后端通过WebSocket端点与游戏服务协作，必要时触发后台任务以生成下一章内容或多媒体资源。
 
 ```mermaid
 sequenceDiagram
 participant FE as "前端页面"
 participant Hook as "useSocket Hook"
 participant WS as "WebSocket端点"
-participant GS as "TheaterService"
+participant GS as "GameService"
 participant DB as "数据库"
 FE->>Hook : "初始化并传入playerId"
 Hook->>WS : "建立ws : //localhost : 8000/ws/{playerId}"
@@ -106,7 +106,7 @@ Hook-->>FE : "更新messages/isConnected"
 
 ### WebSocket端点与连接管理
 - 连接建立：后端在WebSocket端点接受连接，进入循环等待消息。
-- 消息处理：当前实现为回显收到的消息；预留位置用于调用剧场服务处理玩家输入。
+- 消息处理：当前实现为回显收到的消息；预留位置用于调用游戏服务处理玩家输入。
 - 异常处理：捕获异常并打印日志，最终关闭连接，避免资源泄漏。
 - 生命周期：前端通过useSocket在组件卸载时主动关闭连接。
 
@@ -114,7 +114,7 @@ Hook-->>FE : "更新messages/isConnected"
 flowchart TD
 Start(["WebSocket端点入口"]) --> Accept["接受连接"]
 Accept --> Loop{"循环等待消息"}
-Loop --> |收到文本| Handle["处理消息(预留调用TheaterService)"]
+Loop --> |收到文本| Handle["处理消息(预留调用GameService)"]
 Handle --> Echo["回显消息"]
 Echo --> Loop
 Loop --> |异常| Catch["捕获异常并记录"]
@@ -187,7 +187,7 @@ API->>DB : "保存助手消息并更新会话时间"
 章节来源
 - [backend/routers/chats.py](file://backend/routers/chats.py#L1-L275)
 
-### 剧场服务与章节生成
+### 游戏服务与章节生成
 - 玩家创建：插入玩家并返回标识。
 - 世界初始化：通过叙事引擎生成世界观与初始章节，并预生成下一章。
 - 章节状态：使用状态字段区分生成阶段，配合后台任务实现N+2预生成策略。
@@ -322,12 +322,12 @@ Remove --> GoLogin["跳转到 /admin/login"]
 - WebSocket端点依赖FastAPI的WebSocket类，使用异步会话与数据库依赖注入。
 - useSocket Hook依赖浏览器原生WebSocket API，React状态管理驱动UI更新。
 - REST聊天路由依赖SQLAlchemy异步会话、LLM提供商SDK与流式响应。
-- 剧场服务依赖叙事引擎与数据库会话，负责业务编排。
+- 游戏服务依赖叙事引擎与数据库会话，负责业务编排。
 - 后台任务依赖叙事引擎与数据库，实现章节预生成与资产生成。
 
 ```mermaid
 graph LR
-WS["WebSocket端点"] --> SVC["TheaterService"]
+WS["WebSocket端点"] --> SVC["GameService"]
 SVC --> DB["数据库"]
 SVC --> AG["NarrativeEngine"]
 API["REST聊天路由"] --> DB
@@ -368,7 +368,7 @@ Tasks --> AG
   - 查看后端日志中的异常信息，定位具体错误来源。
   - 前端确认onerror与onclose回调是否被触发，结合isConnected状态判断。
 - 消息未送达或重复
-  - 确认前端发送时机（仅在OPEN状态下），后端处理逻辑是否正确调用剧场服务。
+  - 确认前端发送时机（仅在OPEN状态下），后端处理逻辑是否正确调用游戏服务。
   - 在WebSocket端点增加消息去重与幂等处理（建议）。
 - 断线重连
   - 前端可在onclose中实现指数退避重连策略，并在重连成功后同步客户端状态。
@@ -382,7 +382,7 @@ Tasks --> AG
 - [backend/admin/src/context/AuthContext.tsx](file://backend/admin/src/context/AuthContext.tsx#L1-L54)
 
 ## 结论
-本项目的WebSocket通信已具备基础的连接建立、消息收发与连接管理能力。结合REST聊天路由的流式响应、剧场服务的业务编排与后台任务的异步生成，形成了较为完整的实时叙事系统。后续可在协议标准化、消息格式规范化、断线重连与认证授权完善等方面持续演进，以提升可靠性与可维护性。
+本项目的WebSocket通信已具备基础的连接建立、消息收发与连接管理能力。结合REST聊天路由的流式响应、游戏服务的业务编排与后台任务的异步生成，形成了较为完整的实时叙事系统。后续可在协议标准化、消息格式规范化、断线重连与认证授权完善等方面持续演进，以提升可靠性与可维护性。
 
 ## 附录
 
@@ -398,7 +398,7 @@ Tasks --> AG
 - 错误消息：统一错误码与错误描述，便于前端提示与日志归档。
 
 ### 事件处理流程
-- 输入事件：前端将用户输入封装为消息并发送，后端解析并调用剧场服务处理。
+- 输入事件：前端将用户输入封装为消息并发送，后端解析并调用游戏服务处理。
 - 状态事件：后端推送章节状态变更、新章节就绪等事件，前端更新UI。
 - 错误事件：后端上报异常并触发前端提示，必要时发起重连。
 

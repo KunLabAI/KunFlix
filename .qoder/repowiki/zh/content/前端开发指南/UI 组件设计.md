@@ -16,7 +16,7 @@
 - [frontend/src/lib/utils.ts](file://frontend/src/lib/utils.ts)
 - [frontend/package.json](file://frontend/package.json)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx)
 - [backend/admin/src/components/admin/AdminLayout.tsx](file://backend/admin/src/components/admin/AdminLayout.tsx)
 - [backend/admin/src/components/Providers.tsx](file://backend/admin/src/components/Providers.tsx)
 - [backend/admin/src/app/layout.tsx](file://backend/admin/src/app/layout.tsx)
@@ -50,7 +50,7 @@
 
 ## 项目结构
 本仓库包含两个主要前端应用，均采用现代化的 UI 组件库架构：
-- 前端剧场页面：基于 Radix UI 和 Tailwind CSS 的组件库，负责玩家交互、画布渲染与实时消息展示
+- 前端游戏页面：基于 Radix UI 和 Tailwind CSS 的组件库，负责玩家交互、画布渲染与实时消息展示
 - 后台管理系统：Next.js 应用（admin），提供管理界面、布局与认证上下文
 
 ```mermaid

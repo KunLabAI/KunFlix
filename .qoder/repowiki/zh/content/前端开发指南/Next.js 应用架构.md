@@ -5,7 +5,7 @@
 - [frontend/next.config.ts](file://frontend/next.config.ts)
 - [frontend/src/app/layout.tsx](file://frontend/src/app/layout.tsx)
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts)
 - [frontend/src/app/globals.css](file://frontend/src/app/globals.css)
 - [frontend/package.json](file://frontend/package.json)
@@ -31,7 +31,7 @@
 10. [附录](#附录)
 
 ## 简介
-本技术文档面向一个基于 Next.js 的叙事驱动型剧场前端与 FastAPI 后端的全栈项目，系统性梳理了以下主题：App Router 目录结构与页面组件设计模式、服务端渲染（SSR）与静态生成（SSG）策略、动态导入（dynamic imports）的使用场景与性能优化、全局样式配置与 Tailwind CSS 集成、中间件与 API 路由设计、数据获取模式、构建优化与代码分割、错误边界与容错机制、SEO 优化与 PWA 支持建议等。文档在保证技术深度的同时，力求对非专业读者也具备可读性。
+本技术文档面向一个基于 Next.js 的叙事驱动型游戏前端与 FastAPI 后端的全栈项目，系统性梳理了以下主题：App Router 目录结构与页面组件设计模式、服务端渲染（SSR）与静态生成（SSG）策略、动态导入（dynamic imports）的使用场景与性能优化、全局样式配置与 Tailwind CSS 集成、中间件与 API 路由设计、数据获取模式、构建优化与代码分割、错误边界与容错机制、SEO 优化与 PWA 支持建议等。文档在保证技术深度的同时，力求对非专业读者也具备可读性。
 
 ## 项目结构
 该项目采用前后端分离的双仓库结构：
@@ -93,7 +93,7 @@ BE_Schemas --> BE_API
 章节来源
 - [frontend/src/app/layout.tsx](file://frontend/src/app/layout.tsx#L1-L35)
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L1-L85)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L1-L50)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L1-L50)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
 - [frontend/src/app/globals.css](file://frontend/src/app/globals.css#L1-L27)
 - [frontend/package.json](file://frontend/package.json#L1-L35)
@@ -109,7 +109,7 @@ sequenceDiagram
 participant U as "用户"
 participant P as "Next.js 页面<br/>src/app/page.tsx"
 participant S as "WebSocket Hook<br/>src/hooks/useSocket.ts"
-participant F as "前端动态组件<br/>src/components/TheaterCanvas.tsx"
+participant F as "前端动态组件<br/>src/components/GameCanvas.tsx"
 participant B as "FastAPI 应用<br/>backend/main.py"
 U->>P : "输入用户名并点击开始"
 P->>B : "POST /players/"
@@ -119,13 +119,13 @@ B-->>P : "返回初始化已启动"
 P->>S : "建立 WebSocket /ws/{player_id}"
 S-->>P : "连接状态与消息流"
 P->>F : "渲染画布组件动态导入"
-F-->>U : "显示剧场画布"
+F-->>U : "显示游戏画布"
 ```
 
 图表来源
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L14-L35)
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L3-L33)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L14-L37)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L14-L37)
 - [backend/main.py](file://backend/main.py#L138-L156)
 - [backend/main.py](file://backend/main.py#L157-L169)
 
@@ -138,7 +138,7 @@ F-->>U : "显示剧场画布"
   - 包裹子树，确保字体与主题在整站生效。
 - 根页面：
   - 使用客户端标记，启用状态与副作用。
-  - 通过动态导入屏蔽 SSR 的浏览器依赖，渲染剧场画布。
+  - 通过动态导入屏蔽 SSR 的浏览器依赖，渲染游戏画布。
   - 通过自定义 Hook 管理 WebSocket 连接与消息展示。
   - 与后端交互完成玩家创建与故事初始化。
 
@@ -146,7 +146,7 @@ F-->>U : "显示剧场画布"
 - [frontend/src/app/layout.tsx](file://frontend/src/app/layout.tsx#L1-L35)
 - [frontend/src/app/page.tsx](file://frontend/src/app/page.tsx#L1-L85)
 
-### 动态导入与客户端渲染（TheaterCanvas）
+### 动态导入与客户端渲染（GameCanvas）
 - 设计要点：
   - 使用 Next.js 动态导入禁用 SSR，确保仅在客户端执行。
   - 在组件内部异步加载 Pixi.js 并初始化 Application，随后挂载到 DOM。
@@ -157,7 +157,7 @@ F-->>U : "显示剧场画布"
 
 ```mermaid
 flowchart TD
-Start(["进入 TheaterCanvas 组件"]) --> CheckSSR["检测是否在客户端运行"]
+Start(["进入 GameCanvas 组件"]) --> CheckSSR["检测是否在客户端运行"]
 CheckSSR --> |否| Skip["跳过初始化"]
 CheckSSR --> |是| DynamicImport["动态导入 Pixi.js"]
 DynamicImport --> InitApp["初始化 PIXI.Application"]
@@ -169,10 +169,10 @@ Cleanup --> End
 ```
 
 图表来源
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L14-L44)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L14-L44)
 
 章节来源
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L1-L50)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L1-L50)
 
 ### WebSocket 客户端钩子（useSocket）
 - 功能概述：
@@ -231,8 +231,8 @@ graph LR
 A["src/app/page.tsx"] --> B["POST /players/"]
 A --> C["POST /story/init/{player_id}"]
 A --> D["WebSocket /ws/{player_id}"]
-B --> E["services.py: TheaterService.create_player"]
-C --> F["services.py: TheaterService.init_world"]
+B --> E["services.py: GameService.create_player"]
+C --> F["services.py: GameService.init_world"]
 E --> G["models.py: Player"]
 F --> H["models.py: StoryChapter"]
 ```
@@ -321,7 +321,7 @@ U --> F
 
 章节来源
 - [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L3-L33)
-- [frontend/src/components/TheaterCanvas.tsx](file://frontend/src/components/TheaterCanvas.tsx#L14-L37)
+- [frontend/src/components/GameCanvas.tsx](file://frontend/src/components/GameCanvas.tsx#L14-L37)
 - [frontend/src/app/globals.css](file://frontend/src/app/globals.css#L1-L27)
 - [backend/main.py](file://backend/main.py#L85-L91)
 - [backend/schemas.py](file://backend/schemas.py#L1-L102)

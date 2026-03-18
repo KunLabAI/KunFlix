@@ -32,7 +32,7 @@
 10. [附录](#附录)
 
 ## 简介
-本项目是一个基于FastAPI的无限叙事剧场后端服务，采用异步SQLAlchemy ORM进行数据持久化，支持多AI模型提供商（OpenAI、Azure、DashScope等），并通过NarrativeEngine实现故事生成与对话管理。系统通过生命周期钩子完成数据库连接重试、自动迁移和AI引擎初始化，并提供完善的CORS配置、日志配置与错误处理机制。
+本项目是一个基于FastAPI的无限叙事游戏后端服务，采用异步SQLAlchemy ORM进行数据持久化，支持多AI模型提供商（OpenAI、Azure、DashScope等），并通过NarrativeEngine实现故事生成与对话管理。系统通过生命周期钩子完成数据库连接重试、自动迁移和AI引擎初始化，并提供完善的CORS配置、日志配置与错误处理机制。
 
 ## 项目结构
 后端采用分层与功能模块化组织：
@@ -41,7 +41,7 @@
 - 数据访问层：异步引擎、会话工厂与ORM基类
 - 模型层：数据库表结构定义
 - 路由层：按功能划分的API路由（管理员、代理、聊天、LLM配置）
-- 业务服务层：剧场业务逻辑封装
+- 业务服务层：游戏业务逻辑封装
 - AI引擎：NarrativeEngine与对话代理
 - 迁移工具：Alembic与自定义迁移管理脚本
 
@@ -339,7 +339,7 @@ NarrativeEngine --> DialogAgent : "创建多个代理"
 sequenceDiagram
 participant Client as "客户端"
 participant Router as "路由 : create_player"
-participant Service as "TheaterService"
+participant Service as "GameService"
 participant DB as "AsyncSession"
 Client->>Router : POST /players/
 Router->>Service : create_player(username)
@@ -359,7 +359,7 @@ sequenceDiagram
 participant Client as "客户端"
 participant Router as "路由 : start_story"
 participant BG as "后台任务"
-participant Service as "TheaterService"
+participant Service as "GameService"
 participant NE as "NarrativeEngine"
 participant DB as "AsyncSession"
 Client->>Router : POST /story/init/{player_id}

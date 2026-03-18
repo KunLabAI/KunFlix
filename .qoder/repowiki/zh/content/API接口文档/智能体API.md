@@ -30,12 +30,12 @@
 10. [附录](#附录)
 
 ## 简介
-本文件为“无限剧情剧场”后端的智能体API文档，聚焦于多智能体系统的管理接口，覆盖智能体的创建、配置、启动、停止与监控；同时记录智能体间通信接口、任务分配与协调机制；并提供智能体配置参数的详细说明，包括角色定义、行为模式、交互规则等。文档还包含部署与扩展指导，以及实际API调用示例与响应数据格式说明。
+本文件为“无限剧情游戏”后端的智能体API文档，聚焦于多智能体系统的管理接口，覆盖智能体的创建、配置、启动、停止与监控；同时记录智能体间通信接口、任务分配与协调机制；并提供智能体配置参数的详细说明，包括角色定义、行为模式、交互规则等。文档还包含部署与扩展指导，以及实际API调用示例与响应数据格式说明。
 
 ## 项目结构
 后端采用FastAPI + SQLAlchemy异步ORM + AgentScope多智能体框架，主要模块如下：
 - 路由层：agents（智能体）、chats（聊天会话与消息）、llm_config（LLM提供商配置）、admin（管理员面板）
-- 业务层：services（剧场服务）
+- 业务层：services（游戏服务）
 - 模型层：models（数据库模型）
 - 配置层：config（环境配置）
 - 代理层：agents（智能体与叙事引擎）
@@ -48,7 +48,7 @@ B["routers/agents.py<br/>智能体管理"]
 C["routers/chats.py<br/>聊天会话与消息流"]
 D["routers/llm_config.py<br/>LLM提供商配置"]
 E["routers/admin.py<br/>管理员面板"]
-F["services.py<br/>剧场服务"]
+F["services.py<br/>游戏服务"]
 G["models.py<br/>数据库模型"]
 H["schemas.py<br/>Pydantic数据模型"]
 I["database.py<br/>数据库连接与会话"]
@@ -101,7 +101,7 @@ L --> J
 - 数据验证（schemas）：定义LLMProvider与Agent的创建、更新、响应模型。
 - 数据库连接（database）：异步引擎与会话工厂。
 - 智能体与叙事引擎（agents）：定义对话智能体与叙事引擎，负责加载配置、生成章节、管理角色。
-- 剧场服务（services）：封装玩家创建、世界初始化、选择处理等业务逻辑。
+- 游戏服务（services）：封装玩家创建、世界初始化、选择处理等业务逻辑。
 - 环境配置（config）：数据库URL、Redis、API Key、模型名称等。
 - 后台任务（tasks）：预生成下一章、触发资产生成等。
 
@@ -293,7 +293,7 @@ MaybeReload --> End(["结束"])
 
 ## 依赖关系分析
 - 路由依赖：各路由模块依赖数据库会话工厂与模型/Schema定义
-- 业务依赖：TheaterService依赖AgentScope叙事引擎与数据库
+- 业务依赖：GameService依赖AgentScope叙事引擎与数据库
 - 智能体依赖：NarrativeEngine依赖LLMProvider配置与AgentScope模型
 - 配置依赖：数据库引擎依赖环境配置
 
@@ -349,7 +349,7 @@ D["database.py"] --> M
 - [backend/routers/chats.py](file://backend/routers/chats.py#L109-L111)
 
 ## 结论
-该智能体API围绕AgentScope多智能体框架与FastAPI实现了完整的智能体生命周期管理与聊天交互能力，支持动态LLM提供商配置与流式响应，具备良好的扩展性与运维友好性。通过完善的校验与日志体系，能够稳定支撑无限剧情剧场的动态叙事需求。
+该智能体API围绕AgentScope多智能体框架与FastAPI实现了完整的智能体生命周期管理与聊天交互能力，支持动态LLM提供商配置与流式响应，具备良好的扩展性与运维友好性。通过完善的校验与日志体系，能够稳定支撑无限剧情游戏的动态叙事需求。
 
 ## 附录
 

@@ -59,7 +59,7 @@ BG --> NE
 - NPC管理Agent（NPC_Manager）：跟踪玩家与NPC的关系变化，为后续章节提供状态更新。
 - DialogAgent：通用对话代理基类，封装消息记忆、系统提示词与模型调用。
 - 数据模型：Player、StoryChapter、LLMProvider等，支撑世界设定、章节内容与LLM提供商配置。
-- 服务层（TheaterService）：封装初始化世界、生成章节等业务流程。
+- 服务层（GameService）：封装初始化世界、生成章节等业务流程。
 - 任务层（tasks）：实现章节预生成与异步资产生成触发。
 
 章节来源
@@ -161,7 +161,7 @@ NarrativeEngine --> DialogAgent : "创建并编排"
 
 ```mermaid
 sequenceDiagram
-participant GS as "TheaterService"
+participant GS as "GameService"
 participant NE as "NarrativeEngine"
 participant DB as "数据库"
 participant TK as "后台任务"
@@ -235,7 +235,7 @@ end
 ## 依赖分析
 - 组件耦合
   - NarrativeEngine依赖LLM提供商配置，通过数据库动态加载；
-  - TheaterService与NarrativeEngine协作完成世界初始化与章节生成；
+  - GameService与NarrativeEngine协作完成世界初始化与章节生成；
   - 后台任务通过NarrativeEngine实现章节预生成；
   - 前端通过WebSocket与后端交互，接收实时消息。
 - 外部依赖
@@ -248,7 +248,7 @@ graph LR
 NE["NarrativeEngine"] --> DA["导演Agent"]
 NE --> NA["叙述Agent"]
 NE --> NAM["NPC管理Agent"]
-GS["TheaterService"] --> NE
+GS["GameService"] --> NE
 TK["后台任务"] --> NE
 FE["前端WebSocket"] --> API["FastAPI路由"]
 API --> GS

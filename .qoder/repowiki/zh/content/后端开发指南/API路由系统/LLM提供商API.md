@@ -51,7 +51,7 @@ B["路由：LLM提供商<br/>backend/routers/llm_config.py"]
 C["模型：LLMProvider 等<br/>backend/models.py"]
 D["模式：Pydantic Schema<br/>backend/schemas.py"]
 E["数据库：异步引擎/会话<br/>backend/database.py"]
-F["服务：剧场/叙事逻辑<br/>backend/services.py, backend/agents.py"]
+F["服务：游戏/叙事逻辑<br/>backend/services.py, backend/agents.py"]
 G["配置：Settings/DATABASE_URL<br/>backend/config.py"]
 H["路由：通用管理接口<br/>backend/routers/admin.py"]
 end
