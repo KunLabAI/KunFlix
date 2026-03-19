@@ -137,8 +137,7 @@
   }
 
   .script-editor-content {
-    user-select: none;
-
+    // 移除 user-select: none; 和 pointer-events 的限制，让其在预览时仍可滚动
     .tiptap.ProseMirror {
       cursor: pointer;
     }
@@ -158,13 +157,14 @@
 .script-node-wrapper[data-editing="false"] {
   .script-node__title {
     // 标题在非编辑模式下也显示
-    display: block;
+    display: flex;
     padding: 0.5rem 0.75rem;
-    background: linear-gradient(to bottom, rgba(var(--card-rgb, 255, 255, 255), 0.9), transparent);
+    background: transparent;
+    transition: none;
     
     h3 {
-      font-size: 0.875rem;
-      font-weight: 600;
+      font-size: 1.125rem; /* text-lg */
+      font-weight: 700;    /* font-bold */
       color: var(--foreground);
       opacity: 0.9;
     }
@@ -203,6 +203,9 @@
 .script-editor-root .tiptap.ProseMirror {
   p.is-editor-empty:first-child::before,
   p.is-empty::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
     color: var(--tt-gray-light-300, rgba(0, 0, 0, 0.35));
     pointer-events: none;
   }

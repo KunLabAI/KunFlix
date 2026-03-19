@@ -1,6 +1,7 @@
 import { useEditor, EditorContent, EditorContext, JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import CharacterCount from '@tiptap/extension-character-count';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
@@ -34,7 +35,7 @@ import './script-editor.scss';
 interface ScriptEditorProps {
   initialContent?: JSONContent;
   isEditable: boolean;
-  onUpdate: (content: JSONContent) => void;
+  onUpdate: (content: JSONContent, charCount: number) => void;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -55,12 +56,9 @@ function SaveStatusIndicator({ status }: { status: SaveStatus }) {
 }
 
 export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEditorProps) {
-  const [isEditingLocal, setIsEditingLocal] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const isActuallyEditable = isEditable || isEditingLocal;
 
   // Sync to backend and update store
   const syncToBackend = useCallback(async (content: JSONContent) => {
@@ -96,20 +94,6 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
     return () => window.removeEventListener('online', handleOnline);
   }, [syncToBackend]);
 
-  // Click outside to exit local edit mode
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const nodeEl = containerRef.current?.closest('.react-flow__node');
-      const isInsideNode = nodeEl?.contains(target);
-      const isInsidePortal = target.closest('[data-radix-popper-content-wrapper], [data-radix-portal]');
-      const isOutside = isEditingLocal && nodeEl && !isInsideNode && !isInsidePortal;
-      isOutside && setIsEditingLocal(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isEditingLocal]);
-
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -129,20 +113,30 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
       TextStyle,
       Color,
       Placeholder.configure({
-        placeholder: '双击编辑剧本内容...',
+        showOnlyWhenEditable: false,
+        placeholder: ({ editor }) => {
+          return editor.isEditable ? '请输入剧本内容...' : '双击进入编辑模式...';
+        },
       }),
+      CharacterCount,
     ],
-    content: initialContent || { type: 'doc', content: [] },
-    editable: isActuallyEditable,
+    content: initialContent || { type: 'doc', content: [{ type: 'paragraph' }] },
+    editable: isEditable,
     immediatelyRender: false,
     onUpdate: ({ editor: ed }) => {
       const content = ed.getJSON();
-      onUpdate(content);
+      const chars = ed.storage.characterCount.characters();
+      onUpdate(content, chars);
 
       saveTimeoutRef.current && clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
         syncToBackend(content);
       }, 800);
+    },
+    onCreate: ({ editor: ed }) => {
+      // Calculate initial char count when editor is created
+      const chars = ed.storage.characterCount.characters();
+      onUpdate(ed.getJSON(), chars);
     },
     editorProps: {
       attributes: {
@@ -153,31 +147,38 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
 
   // Sync editable state
   useEffect(() => {
-    editor && editor.isEditable !== isActuallyEditable && editor.setEditable(isActuallyEditable);
-  }, [isActuallyEditable, editor]);
+    if (editor && editor.isEditable !== isEditable) {
+      editor.setEditable(isEditable);
+      // Ensure character count stays synced when toggling modes
+      const chars = editor.storage.characterCount.characters();
+      onUpdate(editor.getJSON(), chars);
+    }
+  }, [isEditable, editor, onUpdate]);
 
-  const stopPropagation = useCallback((e: React.SyntheticEvent) => {
-    isActuallyEditable && e.stopPropagation();
-  }, [isActuallyEditable]);
+  const stopPointerPropagation = useCallback((e: React.SyntheticEvent) => {
+    isEditable && e.stopPropagation();
+  }, [isEditable]);
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditingLocal(true);
-  }, []);
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!isEditable) return;
+    // Don't stop propagation for ESC so the parent can handle exiting edit mode
+    if (e.key !== 'Escape') {
+      e.stopPropagation();
+    }
+  }, [isEditable]);
 
   return editor ? (
     <div
       ref={containerRef}
       className="script-editor-root"
-      data-editing={isActuallyEditable}
-      onDoubleClick={handleDoubleClick}
+      data-editing={isEditable}
     >
       <EditorContext.Provider value={{ editor }}>
         <Toolbar
           variant="floating"
           className="nodrag nowheel"
-          onPointerDown={stopPropagation}
-          onKeyDown={stopPropagation}
+          onPointerDown={stopPointerPropagation}
+          onKeyDown={handleKeyDown}
         >
           <ToolbarGroup>
             <UndoRedoButton action="undo" />
@@ -222,9 +223,9 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
         </Toolbar>
 
         <div
-          className={`script-editor-content ${isActuallyEditable ? 'nodrag nowheel' : ''}`}
-          onPointerDownCapture={stopPropagation}
-          onKeyDown={stopPropagation}
+          className={`script-editor-content ${isEditable ? 'nodrag' : ''} nowheel`}
+          onPointerDownCapture={stopPointerPropagation}
+          onKeyDown={handleKeyDown}
         >
           <EditorContent editor={editor} />
         </div>

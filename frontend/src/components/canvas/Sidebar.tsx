@@ -33,7 +33,7 @@ export const Sidebar = () => {
             "flex items-center gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing",
             isCollapsed && "hidden"
           )}
-        onDragStart={(event) => onDragStart(event, 'script', { title: '新剧本', description: '', tags: [] })}
+        onDragStart={(event) => onDragStart(event, 'script', { title: '新剧本', description: '', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] })}
         draggable
         title="拖拽添加剧本卡"
       >

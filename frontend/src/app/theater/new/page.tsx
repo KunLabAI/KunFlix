@@ -1,12 +1,11 @@
 
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ReactFlow, 
   Background, 
-  Controls, 
   MiniMap, 
   ReactFlowProvider, 
   useReactFlow, 
@@ -22,6 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { useCanvasStore, CanvasNode } from '@/store/useCanvasStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
+import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/ScriptNode';
 import CharacterNode from '@/components/canvas/CharacterNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
@@ -45,6 +45,7 @@ function InfiniteCanvas() {
   const router = useRouter();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+  const [showMap, setShowMap] = useState(false);
   
   // Store selectors
   const { 
@@ -140,40 +141,42 @@ function InfiniteCanvas() {
           minZoom={0.1}
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
-          snapToGrid={true}
-          snapGrid={[20, 20]}
+          snapToGrid={false}
         >
           <Background gap={20} color="#333" variant={BackgroundVariant.Dots} className="opacity-20" />
           
-          <MiniMap 
-            nodeColor={(n) => {
-              if (n.type === 'script') return '#6366F1';
-              if (n.type === 'character') return '#10B981';
-              return '#F59E0B';
-            }} 
-            className="bg-card border rounded-lg shadow-lg !left-4 !bottom-4 !right-auto !top-auto"
-            position="bottom-left"
-          />
+          {showMap && (
+            <MiniMap 
+              nodeColor={(n) => {
+                if (n.type === 'script') return '#6366F1';
+                if (n.type === 'character') return '#10B981';
+                return '#F59E0B';
+              }} 
+              className="bg-card border border-border/50 rounded-lg shadow-lg !left-4 !bottom-16 !right-auto !top-auto"
+              position="bottom-left"
+            />
+          )}
           
-          <Controls 
-             className="!left-[240px] !bottom-4 !right-auto !top-auto flex-row"
-             position="bottom-left"
-          />
+          <Panel position="bottom-left" className="m-4 z-50">
+            <ZoomControls showMap={showMap} onToggleMap={() => setShowMap(!showMap)} />
+          </Panel>
           
-          <Panel position="top-left" className="flex gap-2 items-center p-2">
-            <Button variant="ghost" size="icon" onClick={() => router.push('/')} title="返回" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
-              <ArrowLeft className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-            </Button>
-            <div className="w-px h-4 bg-border/50 mx-1" />
-            <Button variant="ghost" size="icon" onClick={undo} title="撤销 (Ctrl+Z)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
-              <Undo className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={redo} title="重做 (Ctrl+Y)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
-              <Redo className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={takeSnapshot} title="保存 (Ctrl+S)" className="bg-background/50 hover:bg-background/80 border border-transparent hover:border-border transition-all">
-              <Save className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-            </Button>
+          <Panel position="top-left" className="m-4 z-50">
+            <div className="flex items-center bg-card border border-border/50 shadow-sm rounded-lg p-1 gap-1 pointer-events-auto">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => router.push('/')} title="返回">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div className="w-px h-4 bg-border/50 mx-1" />
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={undo} title="撤销 (Ctrl+Z)">
+                <Undo className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={redo} title="重做 (Ctrl+Y)">
+                <Redo className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={takeSnapshot} title="保存 (Ctrl+S)">
+                <Save className="w-4 h-4" />
+              </Button>
+            </div>
           </Panel>
 
           <Panel position="top-right" className="flex gap-2 items-center pointer-events-none">
