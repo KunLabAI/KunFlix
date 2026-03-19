@@ -1,64 +1,87 @@
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, EditorContext, JSONContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useState, useRef, useCallback, useId } from 'react';
-import { Button } from '@/components/ui/button';
-import { Bold, Italic, Strikethrough, List, ListOrdered, Loader2, CheckCircle2, AlertCircle, Heading1, Heading2, Heading3, Quote, Code } from 'lucide-react';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
+import TextAlign from '@tiptap/extension-text-align';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import Highlight from '@tiptap/extension-highlight';
+import Color from '@tiptap/extension-color';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useCanvasStore } from '@/store/useCanvasStore';
 
+// --- Tiptap UI Primitives ---
+import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
+
+// --- Tiptap UI Components ---
+import { HeadingDropdownMenu } from '@/components/tiptap-ui/heading-dropdown-menu';
+import { ListDropdownMenu } from '@/components/tiptap-ui/list-dropdown-menu';
+import { BlockquoteButton } from '@/components/tiptap-ui/blockquote-button';
+import { CodeBlockButton } from '@/components/tiptap-ui/code-block-button';
+import { MarkButton } from '@/components/tiptap-ui/mark-button';
+import { ColorHighlightPopover } from '@/components/tiptap-ui/color-highlight-popover';
+import { LinkPopover } from '@/components/tiptap-ui/link-popover';
+import { TextAlignButton } from '@/components/tiptap-ui/text-align-button';
+import { UndoRedoButton } from '@/components/tiptap-ui/undo-redo-button';
+
+// --- Styles ---
+import './script-editor.scss';
+
 interface ScriptEditorProps {
-  initialContent?: any;
+  initialContent?: JSONContent;
   isEditable: boolean;
-  onUpdate: (content: any) => void;
+  onUpdate: (content: JSONContent) => void;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+const SAVE_STATUS_CONFIG: Record<Exclude<SaveStatus, 'idle'>, { icon: React.ElementType; className: string; label: string }> = {
+  saving: { icon: Loader2, className: 'text-muted-foreground animate-spin', label: '保存...' },
+  saved: { icon: CheckCircle2, className: 'text-green-500/80', label: '已存' },
+  error: { icon: AlertCircle, className: 'text-destructive/80', label: '失败' },
+};
+
+function SaveStatusIndicator({ status }: { status: SaveStatus }) {
+  const config = SAVE_STATUS_CONFIG[status as keyof typeof SAVE_STATUS_CONFIG];
+  return config ? (
+    <span className={`script-editor-save-status ${config.className}`} title={status === 'error' ? '保存失败(已缓存)' : undefined}>
+      <config.icon className="w-3 h-3" /> {config.label}
+    </span>
+  ) : null;
+}
 
 export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEditorProps) {
   const [isEditingLocal, setIsEditingLocal] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const editorId = useId().replace(/:/g, '');
-  
-  // Actually edit mode is true if either parent says so OR local says so.
+
   const isActuallyEditable = isEditable || isEditingLocal;
 
   // Sync to backend and update store
-  const syncToBackend = useCallback(async (content: any) => {
+  const syncToBackend = useCallback(async (content: JSONContent) => {
     setSaveStatus('saving');
     try {
-      // Mock network request
       await new Promise((resolve, reject) => {
-        if (!navigator.onLine) {
-          reject(new Error('Offline'));
-          return;
-        }
-        // Randomly fail sometimes for testing, but mostly succeed
-        setTimeout(() => resolve({ success: true }), 500);
+        navigator.onLine ? setTimeout(() => resolve({ success: true }), 500) : reject(new Error('Offline'));
       });
-      
-      // Update store
-      if (containerRef.current) {
-        const nodeEl = containerRef.current.closest('.react-flow__node');
-        if (nodeEl) {
-          const nodeId = nodeEl.getAttribute('data-id');
-          if (nodeId) {
-            useCanvasStore.getState().updateNodeData(nodeId, { content });
-          }
-        }
-      }
-      
+
+      const nodeEl = containerRef.current?.closest('.react-flow__node');
+      const nodeId = nodeEl?.getAttribute('data-id');
+      nodeId && useCanvasStore.getState().updateNodeData(nodeId, { content });
+
       setSaveStatus('saved');
       setTimeout(() => {
         setSaveStatus((prev) => (prev === 'saved' ? 'idle' : prev));
       }, 1500);
-      
-      // Clear offline cache if any
+
       localStorage.removeItem('script_offline_cache');
-    } catch (err) {
+    } catch {
       setSaveStatus('error');
-      // Cache locally
       localStorage.setItem('script_offline_cache', JSON.stringify(content));
     }
   }, []);
@@ -67,24 +90,21 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
   useEffect(() => {
     const handleOnline = () => {
       const cached = localStorage.getItem('script_offline_cache');
-      if (cached) {
-        syncToBackend(JSON.parse(cached));
-      }
+      cached && syncToBackend(JSON.parse(cached));
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
   }, [syncToBackend]);
 
-  // Handle clicking outside to exit local edit mode
+  // Click outside to exit local edit mode
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (isEditingLocal && containerRef.current) {
-        // If clicking outside the node entirely, exit edit mode
-        const nodeEl = containerRef.current.closest('.react-flow__node');
-        if (nodeEl && !nodeEl.contains(e.target as Node)) {
-          setIsEditingLocal(false);
-        }
-      }
+      const target = e.target as HTMLElement;
+      const nodeEl = containerRef.current?.closest('.react-flow__node');
+      const isInsideNode = nodeEl?.contains(target);
+      const isInsidePortal = target.closest('[data-radix-popper-content-wrapper], [data-radix-portal]');
+      const isOutside = isEditingLocal && nodeEl && !isInsideNode && !isInsidePortal;
+      isOutside && setIsEditingLocal(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -92,182 +112,123 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        bulletList: { keepMarks: true, keepAttributes: false },
+        orderedList: { keepMarks: true, keepAttributes: false },
+        codeBlock: { languageClassPrefix: 'language-' },
+        blockquote: {},
+      }),
+      Underline,
+      Link.configure({ openOnClick: false }),
+      Image,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Highlight.configure({ multicolor: true }),
+      TextStyle,
+      Color,
       Placeholder.configure({
-        placeholder: '在此输入剧本内容...',
+        placeholder: '双击编辑剧本内容...',
       }),
     ],
-    content: initialContent || '',
+    content: initialContent || { type: 'doc', content: [] },
     editable: isActuallyEditable,
     immediatelyRender: false,
-    onUpdate: ({ editor }) => {
-      const content = editor.getJSON();
+    onUpdate: ({ editor: ed }) => {
+      const content = ed.getJSON();
       onUpdate(content);
-      
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+
+      saveTimeoutRef.current && clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
         syncToBackend(content);
       }, 800);
     },
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert focus:outline-none w-full h-full',
+        class: 'tiptap',
       },
     },
   });
 
+  // Sync editable state
   useEffect(() => {
-    if (editor && editor.isEditable !== isActuallyEditable) {
-      editor.setEditable(isActuallyEditable);
-    }
+    editor && editor.isEditable !== isActuallyEditable && editor.setEditable(isActuallyEditable);
   }, [isActuallyEditable, editor]);
 
-  if (!editor) {
-    return null;
-  }
+  const stopPropagation = useCallback((e: React.SyntheticEvent) => {
+    isActuallyEditable && e.stopPropagation();
+  }, [isActuallyEditable]);
 
-  return (
-    <div id={`editor-${editorId}`} ref={containerRef} className="w-full">
-      <style>{`
-        /* 1. 拖入画板时的默认形态: 初始尺寸 420x520 */
-        /* 移除 !important 允许 NodeResizer 调整大小 */
-        .react-flow__node:has(#editor-${editorId}) {
-          width: 420px;
-          height: 520px;
-        }
-        
-        /* 强制 ScriptNode 根容器充满 */
-        .react-flow__node:has(#editor-${editorId}) > .script-node-wrapper {
-          width: 100%;
-          height: 100%;
-          transition: all 0.2s ease-in-out;
-        }
-        
-        /* 强制 Card 组件充满 */
-        .react-flow__node:has(#editor-${editorId}) .bg-card {
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-        }
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingLocal(true);
+  }, []);
 
-        ${!isActuallyEditable ? `
-          /* 非编辑模式: 隐藏标题和 Footer，内容居中 */
-          .react-flow__node:has(#editor-${editorId}) .mb-2 {
-            display: none;
-          }
-          .react-flow__node:has(#editor-${editorId}) .border-t {
-            display: none;
-          }
-          .react-flow__node:has(#editor-${editorId}) .p-4 {
-            padding: 24px;
-            flex: 1;
-            height: auto;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-          }
-          .react-flow__node:has(#editor-${editorId}) .p-4 > div {
-            flex: 1;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-          }
-        ` : `
-          {/* 编辑模式: 隐藏 Footer (实时保存)，调整内容区域布局 */}
-          .react-flow__node:has(#editor-${editorId}) .border-t {
-            display: none;
-          }
-          .react-flow__node:has(#editor-${editorId}) .p-0 {
-            flex: 1;
-            height: auto;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden; /* 防止撑开 */
-          }
-          .react-flow__node:has(#editor-${editorId}) .p-0 > div {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-          }
-        `}
-      `}</style>
-
-      {!isActuallyEditable ? (
-        <div 
-          className="h-full w-full flex items-center justify-center cursor-pointer select-none overflow-hidden"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setIsEditingLocal(true);
-          }}
-          title="双击进入编辑"
+  return editor ? (
+    <div
+      ref={containerRef}
+      className="script-editor-root"
+      data-editing={isActuallyEditable}
+      onDoubleClick={handleDoubleClick}
+    >
+      <EditorContext.Provider value={{ editor }}>
+        <Toolbar
+          variant="floating"
+          className="nodrag nowheel"
+          onPointerDown={stopPropagation}
+          onKeyDown={stopPropagation}
         >
-          <span className="text-lg font-medium text-foreground/80 text-center line-clamp-[12] px-4 whitespace-pre-wrap">
-            {editor.getText() || '双击编辑剧本...'}
-          </span>
-        </div>
-      ) : (
-        <div className="flex flex-col animate-in fade-in duration-200 h-full relative">
-          {/* 工具栏紧贴在内容上方，也就是标题下方 */}
-          <div className="flex flex-wrap gap-1 py-1 px-2 border-b border-border/50 items-center justify-between shrink-0 bg-background/50 backdrop-blur-sm sticky top-0 z-10">
-            <div className="flex gap-0.5">
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('bold') ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleBold().run(); }} title="加粗">
-                <Bold className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('italic') ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleItalic().run(); }} title="斜体">
-                <Italic className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('strike') ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleStrike().run(); }} title="删除线">
-                <Strikethrough className="h-3.5 w-3.5" />
-              </Button>
-              <div className="w-px h-4 bg-border mx-1 self-center" />
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('heading', { level: 1 }) ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleHeading({ level: 1 }).run(); }} title="大标题">
-                <Heading1 className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('heading', { level: 2 }) ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleHeading({ level: 2 }).run(); }} title="中标题">
-                <Heading2 className="h-3.5 w-3.5" />
-              </Button>
-              <div className="w-px h-4 bg-border mx-1 self-center" />
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('bulletList') ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleBulletList().run(); }} title="无序列表">
-                <List className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" className={`h-7 w-7 p-0 hover:bg-secondary ${editor.isActive('orderedList') ? 'bg-secondary text-primary' : 'text-muted-foreground'}`} onClick={(e) => { e.stopPropagation(); editor.chain().focus().toggleOrderedList().run(); }} title="有序列表">
-                <ListOrdered className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            
-            <div className="flex items-center text-[10px] h-7 min-w-[60px] justify-end">
-              {saveStatus === 'saving' && (
-                <span className="text-muted-foreground flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" /> 保存...
-                </span>
-              )}
-              {saveStatus === 'saved' && (
-                <span className="text-green-500/80 flex items-center gap-1 animate-in fade-in">
-                  <CheckCircle2 className="w-3 h-3" /> 已存
-                </span>
-              )}
-              {saveStatus === 'error' && (
-                <span className="text-destructive/80 flex items-center gap-1" title="保存失败(已缓存)">
-                  <AlertCircle className="w-3 h-3" /> 失败
-                </span>
-              )}
-            </div>
-          </div>
+          <ToolbarGroup>
+            <UndoRedoButton action="undo" />
+            <UndoRedoButton action="redo" />
+          </ToolbarGroup>
 
-          <div 
-            className="py-2 px-4 transition-colors overflow-y-auto flex-1 nodrag cursor-text outline-none"
-            onPointerDownCapture={(e) => { e.stopPropagation(); }}
-            onKeyDown={(e) => { e.stopPropagation(); }}
-          >
-            <EditorContent editor={editor} className="h-full [&>.ProseMirror]:min-h-full [&>.ProseMirror]:outline-none [&>.ProseMirror_p.is-editor-empty:first-child::before]:text-muted-foreground/50 [&>.ProseMirror_p.is-empty::before]:text-muted-foreground/50" />
-          </div>
+          <ToolbarSeparator />
+
+          <ToolbarGroup>
+            <HeadingDropdownMenu modal={false} levels={[1, 2, 3]} />
+            <ListDropdownMenu modal={false} types={['bulletList', 'orderedList', 'taskList']} />
+            <BlockquoteButton />
+            <CodeBlockButton />
+          </ToolbarGroup>
+
+          <ToolbarSeparator />
+
+          <ToolbarGroup>
+            <MarkButton type="bold" />
+            <MarkButton type="italic" />
+            <MarkButton type="strike" />
+            <MarkButton type="underline" />
+            <MarkButton type="code" />
+          </ToolbarGroup>
+
+          <ToolbarSeparator />
+
+          <ToolbarGroup>
+            <ColorHighlightPopover />
+            <LinkPopover />
+          </ToolbarGroup>
+
+          <ToolbarSeparator />
+
+          <ToolbarGroup>
+            <TextAlignButton align="left" />
+            <TextAlignButton align="center" />
+            <TextAlignButton align="right" />
+          </ToolbarGroup>
+
+          <SaveStatusIndicator status={saveStatus} />
+        </Toolbar>
+
+        <div
+          className={`script-editor-content ${isActuallyEditable ? 'nodrag nowheel' : ''}`}
+          onPointerDownCapture={stopPropagation}
+          onKeyDown={stopPropagation}
+        >
+          <EditorContent editor={editor} />
         </div>
-      )}
+      </EditorContext.Provider>
     </div>
-  );
+  ) : null;
 }

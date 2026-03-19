@@ -52,9 +52,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         minWidth={300} 
         minHeight={300} 
       />
-      <div className={`script-node-wrapper w-full h-full flex flex-col transition-all ${isEditing ? 'z-50 shadow-2xl scale-[1.02]' : 'z-0'}`}>
+      <div className={`script-node-wrapper w-full h-full flex flex-col transition-all ${isEditing ? 'z-50 shadow-2xl scale-[1.02]' : 'z-0'}`} data-editing={isEditing}>
         {/* 标题移到卡片外部 */}
-        <div className="mb-1 px-1 flex-shrink-0">
+        <div className="script-node__title mb-1 px-1 flex-shrink-0">
         {isEditing ? (
           <Input
             value={editData.title}
@@ -71,7 +71,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       </div>
 
       <Card className={`flex-1 flex flex-col shadow-md transition-shadow hover:shadow-lg bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden`}>
-        <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
+        <CardContent className="script-node__content p-0 flex-1 overflow-hidden flex flex-col">
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor
               initialContent={editData.content || (editData.description ? { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: editData.description }] }] } : undefined)}
@@ -80,7 +80,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
             />
           </div>
         </CardContent>
-        <CardFooter className="p-2 bg-secondary/10 flex justify-end gap-2 border-t">
+        <CardFooter className="script-node__footer p-2 bg-secondary/10 flex justify-end gap-2 border-t">
           {isEditing ? (
             <>
               <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleCancel}>

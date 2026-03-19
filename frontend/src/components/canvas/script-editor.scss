@@ -1,0 +1,230 @@
+// Tiptap node styles for WYSIWYG rendering
+@use "../tiptap-node/blockquote-node/blockquote-node";
+@use "../tiptap-node/code-block-node/code-block-node";
+@use "../tiptap-node/horizontal-rule-node/horizontal-rule-node";
+@use "../tiptap-node/list-node/list-node";
+@use "../tiptap-node/image-node/image-node";
+@use "../tiptap-node/heading-node/heading-node";
+@use "../tiptap-node/paragraph-node/paragraph-node";
+
+// ── Default node sizing ──
+.react-flow__node:has(.script-editor-root) {
+  width: 420px;
+  height: 520px;
+
+  > .script-node-wrapper {
+    width: 100%;
+    height: 100%;
+    transition: all 0.2s ease-in-out;
+  }
+
+  .bg-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+// ── Script editor root ──
+.script-editor-root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+// ── Toolbar inside editor ──
+.script-editor-root .tiptap-toolbar {
+  flex-shrink: 0;
+  box-shadow: none;
+  border-radius: 0;
+  border: none;
+  border-bottom: 1px solid var(--tt-toolbar-border-color, rgba(0, 0, 0, 0.08));
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  padding: 0.125rem 0.125rem;
+  gap: 0.125rem;
+  min-height: 1.75rem;
+
+  // Thin scrollbar, visible only on hover
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+
+  &::-webkit-scrollbar {
+    height: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 3px;
+  }
+
+  &:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+  }
+
+  // Override floating variant's overflow: hidden
+  &[data-variant="floating"] {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  // Prevent toolbar groups/separators from shrinking, tighter spacing
+  .tiptap-toolbar-group {
+    flex: 0 0 auto;
+    gap: 0;
+  }
+
+  .tiptap-separator {
+    flex: 0 0 auto;
+    margin: 0 0.0625rem;
+  }
+}
+
+// ── Editor content area ──
+.script-editor-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+
+  .tiptap.ProseMirror {
+    padding: 0.375rem 0.75rem;
+    min-height: 100%;
+    outline: none;
+    font-size: 0.875rem;
+    line-height: 1.5;
+
+    // Override paragraph-node.scss: ensure ALL paragraphs share the same font-size
+    // Use higher specificity selector to override p:not(:first-child) in paragraph-node.scss
+    p,
+    p:not(:first-child) {
+      font-size: 0.875rem !important;
+      line-height: 1.5 !important;
+      font-weight: normal;
+      margin-top: 0.5em;
+    }
+
+    h1 { margin-top: 1em; font-size: 1.25em; }
+    h2 { margin-top: 0.85em; font-size: 1.125em; }
+    h3 { margin-top: 0.7em; font-size: 1em; }
+
+    blockquote,
+    pre,
+    ul,
+    ol {
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
+    }
+
+    hr {
+      margin: 0.5em 0;
+    }
+  }
+}
+
+// ── View mode (not editing) ──
+.script-editor-root[data-editing="false"] {
+  cursor: pointer;
+
+  .tiptap-toolbar {
+    display: none;
+  }
+
+  .script-editor-content {
+    user-select: none;
+
+    .tiptap.ProseMirror {
+      cursor: pointer;
+    }
+  }
+}
+
+// ── Edit mode ──
+.script-editor-root[data-editing="true"] {
+  .script-editor-content {
+    .tiptap.ProseMirror {
+      cursor: text;
+    }
+  }
+}
+
+// ── Node wrapper state-based layout ──
+.script-node-wrapper[data-editing="false"] {
+  .script-node__title {
+    // 标题在非编辑模式下也显示
+    display: block;
+    padding: 0.5rem 0.75rem;
+    background: linear-gradient(to bottom, rgba(var(--card-rgb, 255, 255, 255), 0.9), transparent);
+    
+    h3 {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--foreground);
+      opacity: 0.9;
+    }
+  }
+
+  .script-node__footer {
+    display: none;
+  }
+
+  .script-node__content {
+    padding: 0;
+    flex: 1;
+    height: auto;
+    overflow: hidden;
+  }
+}
+
+.script-node-wrapper[data-editing="true"] {
+  z-index: 50;
+
+  .script-node__footer {
+    display: none;
+  }
+
+  .script-node__content {
+    flex: 1;
+    height: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+  }
+}
+
+// ── Placeholder styling ──
+.script-editor-root .tiptap.ProseMirror {
+  p.is-editor-empty:first-child::before,
+  p.is-empty::before {
+    color: var(--tt-gray-light-300, rgba(0, 0, 0, 0.35));
+    pointer-events: none;
+  }
+}
+
+.dark .script-editor-root .tiptap.ProseMirror {
+  p.is-editor-empty:first-child::before,
+  p.is-empty::before {
+    color: var(--tt-gray-dark-300, rgba(255, 255, 255, 0.35));
+  }
+}
+
+// ── Save status indicator ──
+.script-editor-save-status {
+  display: flex;
+  align-items: center;
+  font-size: 0.625rem;
+  height: 1.75rem;
+  min-width: 3.75rem;
+  justify-content: flex-end;
+  margin-left: auto;
+  padding-right: 0.25rem;
+  gap: 0.25rem;
+  white-space: nowrap;
+}

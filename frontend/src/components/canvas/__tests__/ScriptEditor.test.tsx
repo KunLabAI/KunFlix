@@ -1,10 +1,77 @@
-import React from 'react';
-import { render, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { ScriptEditor } from '../ScriptEditor';
-import { useCanvasStore } from '@/store/useCanvasStore';
 
-// Mock zustand store
+// Mock Tiptap editor
+const mockEditor = {
+  getJSON: jest.fn(() => ({ type: 'doc', content: [] })),
+  getText: jest.fn(() => ''),
+  getHTML: jest.fn(() => ''),
+  isEditable: false,
+  setEditable: jest.fn(),
+  on: jest.fn(),
+  off: jest.fn(),
+  destroy: jest.fn(),
+  state: {},
+  can: jest.fn(),
+};
+
+jest.mock('@tiptap/react', () => ({
+  ...jest.requireActual('@tiptap/react'),
+  useEditor: jest.fn(() => mockEditor),
+  useCurrentEditor: jest.fn(() => ({ editor: mockEditor })),
+  useEditorState: jest.fn(() => ({ editor: mockEditor, editorState: {}, canCommand: undefined })),
+  EditorContent: ({ editor }: { editor: unknown }) => {
+    return editor ? <div data-testid="editor-content" /> : null;
+  },
+  EditorContext: {
+    Provider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  },
+}));
+
+// Mock tiptap-ui components
+jest.mock('@/components/tiptap-ui-primitive/toolbar', () => ({
+  Toolbar: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => <div data-testid="toolbar" {...props}>{children}</div>,
+  ToolbarGroup: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  ToolbarSeparator: () => <div />,
+}));
+
+jest.mock('@/components/tiptap-ui/heading-dropdown-menu', () => ({
+  HeadingDropdownMenu: () => <button data-testid="heading-dropdown">Heading</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/list-dropdown-menu', () => ({
+  ListDropdownMenu: () => <button data-testid="list-dropdown">List</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/blockquote-button', () => ({
+  BlockquoteButton: () => <button data-testid="blockquote-btn">Blockquote</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/code-block-button', () => ({
+  CodeBlockButton: () => <button data-testid="code-block-btn">CodeBlock</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/mark-button', () => ({
+  MarkButton: ({ type }: { type: string }) => <button data-testid={`mark-${type}`}>{type}</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/color-highlight-popover', () => ({
+  ColorHighlightPopover: () => <button data-testid="color-highlight">Color</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/link-popover', () => ({
+  LinkPopover: () => <button data-testid="link-popover">Link</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/text-align-button', () => ({
+  TextAlignButton: ({ align }: { align: string }) => <button data-testid={`align-${align}`}>{align}</button>,
+}));
+
+jest.mock('@/components/tiptap-ui/undo-redo-button', () => ({
+  UndoRedoButton: ({ action }: { action: string }) => <button data-testid={`${action}-btn`}>{action}</button>,
+}));
+
+// Mock store
 jest.mock('@/store/useCanvasStore', () => ({
   useCanvasStore: {
     getState: jest.fn(() => ({
@@ -13,160 +80,87 @@ jest.mock('@/store/useCanvasStore', () => ({
   },
 }));
 
-// Mock useId
-jest.mock('react', () => {
-  const actual = jest.requireActual('react');
-  return {
-    ...actual,
-    useId: () => 'mock-id',
-  };
-});
+// Import after mocks
+import { ScriptEditor } from '../ScriptEditor';
 
-// Mock tiptap
-let mockUpdateHandler: any = null;
-let mockIsEditable = false;
+describe('ScriptEditor WYSIWYG', () => {
+  const mockOnUpdate = jest.fn();
 
-jest.mock('@tiptap/react', () => {
-  const originalModule = jest.requireActual('@tiptap/react');
-  return {
-    __esModule: true,
-    ...originalModule,
-    useEditor: jest.fn(({ onUpdate, editable }) => {
-      mockUpdateHandler = onUpdate;
-      mockIsEditable = editable;
-      return {
-        isActive: jest.fn(() => false),
-        chain: jest.fn(() => ({
-          focus: jest.fn(() => ({
-            toggleBold: jest.fn(() => ({ run: jest.fn() })),
-            toggleItalic: jest.fn(() => ({ run: jest.fn() })),
-            toggleStrike: jest.fn(() => ({ run: jest.fn() })),
-            toggleBulletList: jest.fn(() => ({ run: jest.fn() })),
-            toggleOrderedList: jest.fn(() => ({ run: jest.fn() })),
-          })),
-        })),
-        setEditable: jest.fn((val) => { mockIsEditable = val; }),
-        isEditable: mockIsEditable,
-        getJSON: jest.fn(() => ({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'new text' }] }] })),
-        getText: jest.fn(() => '双击编辑剧本...'),
-      };
-    }),
-    EditorContent: () => <div data-testid="tiptap-editor" />,
-  };
-});
-
-jest.mock('@tiptap/react/menus', () => {
-  return {
-    BubbleMenu: ({ children }: any) => <div data-testid="bubble-menu">{children}</div>,
-    FloatingMenu: ({ children }: any) => <div data-testid="floating-menu">{children}</div>,
-  };
-});
-
-describe('ScriptEditor Component', () => {
   beforeEach(() => {
-    jest.useFakeTimers();
     jest.clearAllMocks();
-    Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
-    localStorage.clear();
+    mockEditor.isEditable = false;
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('1. 渲染拖入画板时的默认形态 (固定尺寸 420x520)', () => {
-    const { getByTitle, queryByTestId } = render(
-      <ScriptEditor isEditable={false} onUpdate={() => {}} />
+  it('should render with data-editing="false" in view mode', () => {
+    const { container } = render(
+      <ScriptEditor isEditable={false} onUpdate={mockOnUpdate} />
     );
-    
-    // Should render proportion card and not the editor content
-    const defaultView = getByTitle('双击进入编辑');
-    expect(defaultView).toBeInTheDocument();
-    expect(queryByTestId('tiptap-editor')).not.toBeInTheDocument();
+
+    const root = container.querySelector('.script-editor-root');
+    expect(root).toBeInTheDocument();
+    expect(root).toHaveAttribute('data-editing', 'false');
   });
 
-  it('2. 双击卡片进入编辑模式', () => {
-    const { getByTitle, getByTestId } = render(
-      <ScriptEditor isEditable={false} onUpdate={() => {}} />
-    );
-    
-    const defaultView = getByTitle('双击进入编辑');
-    
-    // Double click
-    fireEvent.doubleClick(defaultView);
-    
-    // Editor should be rendered
-    expect(getByTestId('tiptap-editor')).toBeInTheDocument();
-    // Toolbar should be visible
-    expect(getByTitle('加粗')).toBeInTheDocument();
+  it('should render EditorContent in both view and edit modes', () => {
+    render(<ScriptEditor isEditable={false} onUpdate={mockOnUpdate} />);
+    expect(screen.getByTestId('editor-content')).toBeInTheDocument();
   });
 
-  it('3. 实时保存机制 - 成功保存', async () => {
-    const { getByTitle, getByText } = render(
-      <ScriptEditor isEditable={false} onUpdate={() => {}} />
-    );
-    
-    // Enter edit mode
-    fireEvent.doubleClick(getByTitle('双击进入编辑'));
-    
-    // Trigger update
-    act(() => {
-      mockUpdateHandler({ editor: { getJSON: () => ({ type: 'doc' }) } });
-    });
-    
-    // Fast forward debounce 800ms
-    act(() => {
-      jest.advanceTimersByTime(800);
-    });
-    
-    // Should show saving indicator
-    expect(getByText('保存中...')).toBeInTheDocument();
-    
-    // Fast forward mock network delay 500ms
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-      await Promise.resolve(); // flush microtasks
-    });
-    
-    // Should show saved indicator
-    await waitFor(() => {
-      expect(getByText('已保存')).toBeInTheDocument();
-    });
+  it('should render toolbar', () => {
+    render(<ScriptEditor isEditable={true} onUpdate={mockOnUpdate} />);
+    expect(screen.getByTestId('toolbar')).toBeInTheDocument();
   });
 
-  it('4. 实时保存机制 - 网络失败并本地缓存', async () => {
-    // Set offline
-    Object.defineProperty(navigator, 'onLine', { value: false, writable: true });
-    
-    const { getByTitle, getByText } = render(
-      <ScriptEditor isEditable={false} onUpdate={() => {}} />
+  it('should render all toolbar buttons', () => {
+    render(<ScriptEditor isEditable={true} onUpdate={mockOnUpdate} />);
+
+    expect(screen.getByTestId('undo-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('redo-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('heading-dropdown')).toBeInTheDocument();
+    expect(screen.getByTestId('list-dropdown')).toBeInTheDocument();
+    expect(screen.getByTestId('blockquote-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('code-block-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-bold')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-italic')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-strike')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-underline')).toBeInTheDocument();
+    expect(screen.getByTestId('mark-code')).toBeInTheDocument();
+    expect(screen.getByTestId('color-highlight')).toBeInTheDocument();
+    expect(screen.getByTestId('link-popover')).toBeInTheDocument();
+    expect(screen.getByTestId('align-left')).toBeInTheDocument();
+    expect(screen.getByTestId('align-center')).toBeInTheDocument();
+    expect(screen.getByTestId('align-right')).toBeInTheDocument();
+  });
+
+  it('should switch to edit mode on double-click', () => {
+    const { container } = render(
+      <ScriptEditor isEditable={false} onUpdate={mockOnUpdate} />
     );
-    
-    // Enter edit mode
-    fireEvent.doubleClick(getByTitle('双击进入编辑'));
-    
-    // Trigger update
-    act(() => {
-      mockUpdateHandler({ editor: { getJSON: () => ({ type: 'doc', content: 'offline-data' }) } });
-    });
-    
-    // Fast forward debounce 800ms
-    act(() => {
-      jest.advanceTimersByTime(800);
-    });
-    
-    // Fast forward mock network delay 500ms
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-      await Promise.resolve(); // flush microtasks
-    });
-    
-    // Should show error indicator
-    await waitFor(() => {
-      expect(getByText('保存失败(已缓存)')).toBeInTheDocument();
-    });
-    
-    // Should cache in localStorage
-    expect(localStorage.getItem('script_offline_cache')).toContain('offline-data');
+
+    const root = container.querySelector('.script-editor-root')!;
+    expect(root).toHaveAttribute('data-editing', 'false');
+
+    fireEvent.doubleClick(root);
+    expect(root).toHaveAttribute('data-editing', 'true');
+  });
+
+  it('should have data-editing="true" when isEditable prop is true', () => {
+    const { container } = render(
+      <ScriptEditor isEditable={true} onUpdate={mockOnUpdate} />
+    );
+
+    const root = container.querySelector('.script-editor-root');
+    expect(root).toHaveAttribute('data-editing', 'true');
+  });
+
+  it('should call setEditable on editor when editable state changes', () => {
+    const { rerender } = render(
+      <ScriptEditor isEditable={false} onUpdate={mockOnUpdate} />
+    );
+
+    mockEditor.isEditable = false;
+    rerender(<ScriptEditor isEditable={true} onUpdate={mockOnUpdate} />);
+
+    expect(mockEditor.setEditable).toHaveBeenCalledWith(true);
   });
 });

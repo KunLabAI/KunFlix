@@ -13,6 +13,26 @@ jest.mock('@/store/useCanvasStore', () => ({
 jest.mock('@xyflow/react', () => ({
   Handle: () => <div data-testid="mock-handle" />,
   Position: { Left: 'left', Right: 'right' },
+  NodeResizer: () => <div data-testid="mock-resizer" />,
+}));
+
+// Mock ScriptEditor
+jest.mock('../ScriptEditor', () => ({
+  ScriptEditor: ({ initialContent, isEditable, onUpdate }: any) => (
+    <div data-testid="mock-script-editor">
+      {isEditable ? (
+        <textarea 
+          data-testid="editor-textarea"
+          defaultValue={initialContent ? JSON.stringify(initialContent) : ''}
+          onChange={(e) => onUpdate?.({ type: 'doc', content: [{ type: 'text', text: e.target.value }] })}
+        />
+      ) : (
+        <div data-testid="editor-preview">
+          {initialContent ? '编辑器内容' : '双击编辑剧本...'}
+        </div>
+      )}
+    </div>
+  ),
 }));
 
 describe('ScriptNode Component', () => {
