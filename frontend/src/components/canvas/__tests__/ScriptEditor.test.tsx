@@ -55,6 +55,13 @@ jest.mock('@tiptap/react', () => {
   };
 });
 
+jest.mock('@tiptap/react/menus', () => {
+  return {
+    BubbleMenu: ({ children }: any) => <div data-testid="bubble-menu">{children}</div>,
+    FloatingMenu: ({ children }: any) => <div data-testid="floating-menu">{children}</div>,
+  };
+});
+
 describe('ScriptEditor Component', () => {
   beforeEach(() => {
     jest.useFakeTimers();

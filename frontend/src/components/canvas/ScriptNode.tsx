@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, NodeResizer } from '@xyflow/react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,14 +45,21 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   };
 
   return (
-    <div className={`w-[350px] transition-all ${isEditing ? 'z-50 shadow-xl scale-[1.02]' : 'z-0'}`}>
-      {/* 标题移到卡片外部 */}
-      <div className="mb-2 px-1">
+    <>
+      <NodeResizer 
+        color="#8b5cf6" 
+        isVisible={selected} 
+        minWidth={300} 
+        minHeight={300} 
+      />
+      <div className={`script-node-wrapper w-full h-full flex flex-col transition-all ${isEditing ? 'z-50 shadow-2xl scale-[1.02]' : 'z-0'}`}>
+        {/* 标题移到卡片外部 */}
+        <div className="mb-1 px-1 flex-shrink-0">
         {isEditing ? (
           <Input
             value={editData.title}
             onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-            className="font-bold text-lg h-8 bg-background/50 backdrop-blur-sm border-border/50"
+            className="font-bold text-lg h-8 bg-transparent border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-0 shadow-none"
             placeholder="无标题剧本"
             onClick={(e) => e.stopPropagation()}
           />
@@ -63,9 +70,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         )}
       </div>
 
-      <Card className={`shadow-md transition-shadow hover:shadow-lg bg-card ${selected ? 'ring-2 ring-primary' : ''}`}>
-        <CardContent className="p-4 space-y-3">
-          <div className="text-sm text-foreground min-h-[40px]">
+      <Card className={`flex-1 flex flex-col shadow-md transition-shadow hover:shadow-lg bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden`}>
+        <CardContent className="p-0 flex-1 overflow-hidden flex flex-col">
+          <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor
               initialContent={editData.content || (editData.description ? { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: editData.description }] }] } : undefined)}
               isEditable={isEditing}
@@ -101,7 +108,8 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-primary" />
       <Handle type="source" position={Position.Right} className="w-3 h-3 bg-primary" />
-    </div>
+      </div>
+    </>
   );
 };
 
