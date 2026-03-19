@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { ConfigProvider, theme as antdTheme } from "antd";
+import { ConfigProvider, theme as antdTheme, App } from "antd";
 import zhCN from 'antd/locale/zh_CN';
 
 type Theme = "light" | "dark";
@@ -58,7 +58,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           },
         }}
       >
-        {children}
+        <App>{children}</App>
       </ConfigProvider>
     </ThemeContext.Provider>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Form, Input, Button, Typography, message, Card, Space } from "antd";
+import { Form, Input, Button, Typography, Card, Space, App } from "antd";
 import { MailOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
 import { useAuth } from "@/context/AuthContext";
 import type { TokenResponse } from "@/context/AuthContext";
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const { message } = App.useApp();
 
   const onLogin = async (values: { email: string; password: string }) => {
     setLoading(true);
@@ -56,7 +57,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background transition-colors duration-300">
       <Card
         className="w-[400px] border-border shadow-lg"
-        bordered={false}
+        variant="borderless"
       >
         <Space orientation="vertical" size="large" style={{ width: "100%" }}>
           <div style={{ textAlign: "center" }}>

@@ -21,6 +21,7 @@ import { hasCycle } from '@/lib/graphUtils';
 export type ScriptNodeData = {
   title: string;
   description: string;
+  content?: any; // tiptap JSON content
   tags: string[];
   characters?: string[];
   scenes?: string;
