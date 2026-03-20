@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { ScrollText, User, Clapperboard, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { ScrollText, User, Clapperboard, Video, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -62,6 +62,25 @@ export const Sidebar = () => {
         <div className="flex flex-col min-w-0 flex-1">
           <span className="font-medium text-sm text-foreground">图片卡</span>
           <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-snug">用于展示角色、场景、海报等</span>
+        </div>
+        <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
+      </div>
+
+      <div 
+        className={cn(
+          "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
+          isCollapsed && "hidden"
+        )}
+        onDragStart={(event) => onDragStart(event, 'video', { name: '新视频卡', description: '' })}
+        draggable
+        title="拖拽添加视频卡"
+      >
+        <div className="p-2 rounded-md bg-purple-500/10 shrink-0 mt-0.5">
+          <Video className="w-5 h-5 text-purple-600" />
+        </div>
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm text-foreground">视频卡</span>
+          <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-snug">用于展示动画、短片等</span>
         </div>
         <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
       </div>

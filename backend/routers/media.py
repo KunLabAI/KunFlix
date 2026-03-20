@@ -1,9 +1,10 @@
 """媒体文件服务路由"""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import FileResponse
 from pathlib import Path
 import re
 import logging
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,14 +29,18 @@ _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|m
 
 # 扩展名 -> MIME
 _EXT_MIME = {
-    "png": "image/png",
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
-    "webp": "image/webp",
+    "png": "image/png",
     "gif": "image/gif",
+    "webp": "image/webp",
+    "svg": "image/svg+xml",
+    "mp3": "audio/mpeg",
     "mp4": "video/mp4",
     "webm": "video/webm",
+    "ogg": "video/ogg",
     "mov": "video/quicktime",
+    "wav": "audio/wav"
 }
 
 
@@ -56,6 +61,31 @@ async def serve_media(filename: str):
         media_type=_EXT_MIME.get(ext, "application/octet-stream"),
         headers={"Cache-Control": "public, max-age=31536000"},
     )
+
+
+@router.post("/upload")
+async def upload_media(file: UploadFile = File(...)):
+    """上传媒体文件（支持图片等），返回文件 URL"""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in _EXT_MIME:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+        
+    MEDIA_DIR.mkdir(exist_ok=True)
+    new_filename = f"{uuid.uuid4()}.{ext}"
+    filepath = MEDIA_DIR / new_filename
+    
+    try:
+        contents = await file.read()
+        filepath.write_bytes(contents)
+        logger.info(f"Uploaded file saved: {new_filename} ({len(contents)} bytes)")
+    except Exception as e:
+        logger.error(f"Error saving uploaded file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save file")
+        
+    return {"url": f"/api/media/{new_filename}"}
 
 
 @router.post("/batch-generate", response_model=BatchImageGenerateResponse)

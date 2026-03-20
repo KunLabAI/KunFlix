@@ -125,16 +125,6 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >
-        {/* 悬浮操作按钮，增加透明区域连接卡片，防止鼠标移出丢失hover状态 */}
-        <div className="absolute -right-12 top-8 w-12 h-full flex flex-col items-start pl-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 z-30">
-          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" onClick={handleDuplicate} title="创建副本">
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" onClick={handleDelete} title="删除">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-
         {/* 标题移到卡片外部 */}
         <div className="script-node__title mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
           <div className="flex-1 min-w-0 nodrag flex items-center">
@@ -201,6 +191,32 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           )}
         </CardFooter>
       </Card>
+
+      {/* 悬浮操作按钮，底部外侧 */}
+      <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
+        <Button 
+          variant="secondary" 
+          size="icon" 
+          className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
+          onClick={handleDuplicate} 
+          title="创建副本" 
+          aria-label="创建副本"
+          role="button"
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
+        <Button 
+          variant="secondary" 
+          size="icon" 
+          className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" 
+          onClick={handleDelete} 
+          title="删除" 
+          aria-label="删除"
+          role="button"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* 优化后的节点边缘拖拽热区 */}
       <style>{`

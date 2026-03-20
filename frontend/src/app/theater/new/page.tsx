@@ -24,6 +24,7 @@ import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/ScriptNode';
 import CharacterNode from '@/components/canvas/CharacterNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
+import VideoNode from '@/components/canvas/VideoNode';
 import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
@@ -34,6 +35,7 @@ const nodeTypes = {
   script: ScriptNode,
   character: CharacterNode,
   storyboard: StoryboardNode,
+  video: VideoNode,
 } as unknown as NodeTypes;
 
 const edgeTypes = {
@@ -267,6 +269,8 @@ function InfiniteCanvas() {
         type,
         position,
         data: dataStr ? JSON.parse(dataStr) : { label: `${type} node` },
+        width: (type === 'character' || type === 'video') ? 512 : undefined,
+        height: (type === 'character' || type === 'video') ? 384 : undefined,
       };
 
       addNode(newNode);

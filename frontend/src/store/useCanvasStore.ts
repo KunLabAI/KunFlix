@@ -31,6 +31,9 @@ export type CharacterNodeData = {
   name: string;
   description: string;
   avatar?: string;
+  imageUrl?: string | null;
+  uploading?: boolean;
+  fitMode?: 'cover' | 'contain';
 };
 
 export type StoryboardNodeData = {
@@ -39,7 +42,15 @@ export type StoryboardNodeData = {
   duration: number; // in seconds
 };
 
-export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData>;
+export type VideoNodeData = {
+  name: string;
+  description: string;
+  videoUrl?: string | null;
+  uploading?: boolean;
+  fitMode?: 'cover' | 'contain';
+};
+
+export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>;
 
 interface HistoryState {
   nodes: CanvasNode[];
