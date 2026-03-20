@@ -64,22 +64,22 @@ export function CharacterEditModal({ open, onOpenChange, data, onSave }: Charact
         onEscapeKeyDown={handleInteractOutside}
       >
         <DialogHeader>
-          <DialogTitle>编辑角色卡</DialogTitle>
+          <DialogTitle>编辑图片卡</DialogTitle>
           <DialogDescription>
-            在此编辑角色的基本信息。
+            在此编辑图片的相关信息。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid grid-cols-4 items-center gap-4">
             <label htmlFor="name" className="text-right text-sm font-medium">
-              姓名
+              名称
             </label>
             <Input
               id="name"
               value={formData.name || ''}
               onChange={(e) => handleChange("name", e.target.value)}
               className="col-span-3"
-              placeholder="角色姓名"
+              placeholder="图片名称"
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">

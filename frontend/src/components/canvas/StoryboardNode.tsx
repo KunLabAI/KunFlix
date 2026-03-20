@@ -19,7 +19,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张分镜卡吗？")) {
+    if (confirm("确定要删除这张多维表格卡吗？")) {
       deleteNode(id);
     }
   };

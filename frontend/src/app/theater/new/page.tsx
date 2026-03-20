@@ -136,10 +136,10 @@ function InfiniteCanvas() {
     
     switch (type) {
       case 'script':
-        data = { title: '新剧本', description: '', tags: [] };
+        data = { title: '新文本卡', description: '', tags: [] };
         break;
       case 'character':
-        data = { name: '新角色', description: '' };
+        data = { name: '新图片卡', description: '' };
         break;
       case 'storyboard':
         data = { shotNumber: '001', description: '', duration: 5 };
@@ -275,7 +275,7 @@ function InfiniteCanvas() {
   );
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <Sidebar />
       <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
         <ReactFlow
@@ -300,7 +300,7 @@ function InfiniteCanvas() {
           proOptions={{ hideAttribution: true }}
           snapToGrid={false}
         >
-          <Background gap={20} color="#333" variant={BackgroundVariant.Dots} className="opacity-20" />
+          <Background gap={80} size={1} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           
           {showMap && (
             <MiniMap 
@@ -355,15 +355,15 @@ function InfiniteCanvas() {
             </div>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('script')}>
               <ScrollText className="w-4 h-4 mr-2 text-indigo-500" />
-              剧本节点
+              文本卡
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('character')}>
               <User className="w-4 h-4 mr-2 text-emerald-500" />
-              角色节点
+              图片卡
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('storyboard')}>
               <Clapperboard className="w-4 h-4 mr-2 text-amber-500" />
-              分镜节点
+              多维表格卡
             </Button>
           </Card>
         )}

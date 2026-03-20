@@ -20,7 +20,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张角色卡吗？")) {
+    if (confirm("确定要删除这张图片卡吗？")) {
       deleteNode(id);
     }
   };
@@ -41,7 +41,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </Avatar>
           <div className="flex-1 min-w-0">
              <CardTitle className="text-base font-bold truncate" title={data.name}>
-               {data.name || '未命名角色'}
+               {data.name || '未命名图片卡'}
              </CardTitle>
           </div>
         </CardHeader>

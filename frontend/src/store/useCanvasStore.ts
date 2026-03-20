@@ -157,7 +157,7 @@ export const useCanvasStore = create<CanvasState>()(
           id: 'script-root', 
           type: 'script',
           position: { x: 100, y: 100 },
-          data: { title: '我的剧本', description: '', tags: [] },
+          data: { title: '我的文本卡', description: '', tags: [] },
         };
         set({
           nodes: [initialNode],

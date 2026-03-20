@@ -115,7 +115,7 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
       Placeholder.configure({
         showOnlyWhenEditable: false,
         placeholder: ({ editor }) => {
-          return editor.isEditable ? '请输入剧本内容...' : '双击进入编辑模式...';
+          return editor.isEditable ? '请输入内容...' : '双击进入编辑模式...';
         },
       }),
       CharacterCount,

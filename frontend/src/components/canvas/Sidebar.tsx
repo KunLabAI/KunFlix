@@ -30,50 +30,59 @@ export const Sidebar = () => {
         
         <div 
           className={cn(
-            "flex items-center gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing",
+            "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
             isCollapsed && "hidden"
           )}
-        onDragStart={(event) => onDragStart(event, 'script', { title: '新剧本', description: '', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] })}
+        onDragStart={(event) => onDragStart(event, 'script', { title: '新文本卡', description: '', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] })}
         draggable
-        title="拖拽添加剧本卡"
+        title="拖拽添加文本卡"
       >
-        <div className="p-2 rounded-md bg-primary/10">
+        <div className="p-2 rounded-md bg-primary/10 shrink-0 mt-0.5">
           <ScrollText className="w-5 h-5 text-primary" />
         </div>
-        <span className="font-medium text-sm whitespace-nowrap">剧本卡</span>
-        <GripVertical className="w-4 h-4 text-muted-foreground ml-auto opacity-50" />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm text-foreground">文本卡</span>
+          <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-snug">用于编写剧本、文案等用途</span>
+        </div>
+        <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
       </div>
 
       <div 
         className={cn(
-          "flex items-center gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing",
+          "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
           isCollapsed && "hidden"
         )}
-        onDragStart={(event) => onDragStart(event, 'character', { name: '新角色', description: '' })}
+        onDragStart={(event) => onDragStart(event, 'character', { name: '新图片卡', description: '' })}
         draggable
-        title="拖拽添加角色卡"
+        title="拖拽添加图片卡"
       >
-        <div className="p-2 rounded-md bg-green-500/10">
+        <div className="p-2 rounded-md bg-green-500/10 shrink-0 mt-0.5">
           <User className="w-5 h-5 text-green-600" />
         </div>
-        <span className="font-medium text-sm whitespace-nowrap">角色卡</span>
-        <GripVertical className="w-4 h-4 text-muted-foreground ml-auto opacity-50" />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm text-foreground">图片卡</span>
+          <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-snug">用于展示角色、场景、海报等</span>
+        </div>
+        <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
       </div>
 
       <div 
         className={cn(
-          "flex items-center gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing",
+          "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
           isCollapsed && "hidden"
         )}
         onDragStart={(event) => onDragStart(event, 'storyboard', { shotNumber: '01', duration: 3, description: '' })}
         draggable
-        title="拖拽添加分镜卡"
+        title="拖拽添加多维表格卡"
       >
-        <div className="p-2 rounded-md bg-amber-500/10">
+        <div className="p-2 rounded-md bg-amber-500/10 shrink-0 mt-0.5">
           <Clapperboard className="w-5 h-5 text-amber-600" />
         </div>
-        <span className="font-medium text-sm whitespace-nowrap">分镜卡</span>
-        <GripVertical className="w-4 h-4 text-muted-foreground ml-auto opacity-50" />
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="font-medium text-sm text-foreground">多维表格卡</span>
+          <span className="text-xs text-muted-foreground line-clamp-2 mt-0.5 leading-snug">用于管理分镜、脚本等数据</span>
+        </div>
+        <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
       </div>
 
       {!isCollapsed && (

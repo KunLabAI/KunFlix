@@ -1,15 +1,18 @@
 import { memo, useState, useRef, useEffect } from 'react';
-import { Handle, Position, NodeProps, Node, NodeResizer } from '@xyflow/react';
+import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Wand2, Check } from 'lucide-react';
-import { useCanvasStore, ScriptNodeData } from '@/store/useCanvasStore';
+import { Pencil, Trash2, Wand2, Check, Copy } from 'lucide-react';
+import { useCanvasStore, ScriptNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { ScriptEditor } from './ScriptEditor';
+import { v4 as uuidv4 } from 'uuid';
 
 const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
+  const addNode = useCanvasStore((state) => state.addNode);
+  const { getNode } = useReactFlow();
   
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<ScriptNodeData>(data);
@@ -70,8 +73,30 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张剧本卡吗？")) {
+    if (confirm("确定要删除这张文本卡吗？")) {
       deleteNode(id);
+    }
+  };
+
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const node = getNode(id);
+    if (node) {
+      const currentData = isEditing ? editData : node.data as ScriptNodeData;
+      const newNode: CanvasNode = {
+        ...(node as CanvasNode),
+        id: `script-${uuidv4()}`,
+        position: {
+          x: node.position.x + 50,
+          y: node.position.y + 50,
+        },
+        selected: false,
+        data: {
+          ...currentData,
+          title: currentData.title ? `${currentData.title} (副本)` : '无标题文本卡 (副本)',
+        },
+      };
+      addNode(newNode);
     }
   };
 
@@ -96,10 +121,20 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       />
       <div 
         ref={nodeRef}
-        className={`script-node-wrapper w-full h-full flex flex-col`} 
+        className={`script-node-wrapper w-full h-full flex flex-col group relative`} 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >
+        {/* 悬浮操作按钮，增加透明区域连接卡片，防止鼠标移出丢失hover状态 */}
+        <div className="absolute -right-12 top-8 w-12 h-full flex flex-col items-start pl-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 z-30">
+          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" onClick={handleDuplicate} title="创建副本">
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" onClick={handleDelete} title="删除">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+
         {/* 标题移到卡片外部 */}
         <div className="script-node__title mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
           <div className="flex-1 min-w-0 nodrag flex items-center">
@@ -108,7 +143,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
             value={editData.title}
             onChange={(e) => setEditData({ ...editData, title: e.target.value })}
             className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-            placeholder="无标题剧本"
+            placeholder="无标题文本卡"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
@@ -126,7 +161,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={handleEdit}
           >
-            {data.title || '无标题剧本'}
+            {data.title || '无标题文本卡'}
           </h3>
         )}
           </div>
@@ -162,9 +197,6 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
               <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={handleEdit} title="编辑">
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleDelete} title="删除">
-                <Trash2 className="h-4 w-4" />
-              </Button>
             </>
           )}
         </CardFooter>
@@ -174,8 +206,8 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       <style>{`
         .edge-handle-wrapper {
           position: absolute;
-          z-index: 1;
-          pointer-events: stroke;
+          z-index: 60;
+          pointer-events: none; /* 让包装器本身不阻挡鼠标事件 */
           display: flex;
           align-items: center;
           justify-content: center;
@@ -183,20 +215,22 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         }
         
         .edge-handle-wrapper.left {
-          left: -6px; top: 10%; bottom: 10%; width: 12px;
+          left: -10px; top: 10%; bottom: 10%; width: 20px;
         }
         .edge-handle-wrapper.right {
-          right: -6px; top: 10%; bottom: 10%; width: 12px;
+          right: -10px; top: 10%; bottom: 10%; width: 20px;
+          z-index: 50; /* 确保拖拽手柄在操作按钮上层 */
         }
 
         .edge-handle-inner {
           position: absolute;
-          opacity: 0;
-          transition: opacity 0.2s;
           display: flex;
           align-items: center;
           justify-content: center;
           pointer-events: none;
+          z-index: 10;
+          opacity: 0;
+          transition: opacity 0.2s;
         }
 
         .edge-handle-wrapper.left .edge-handle-inner,
@@ -213,6 +247,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         .edge-handle-wrapper.left .edge-handle-line,
         .edge-handle-wrapper.right .edge-handle-line {
           width: 2px; height: 100%;
+          background: #1890FF;
         }
 
         .edge-handle-dot {
@@ -222,34 +257,45 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           border-radius: 50%;
           box-shadow: 0 0 4px #1890FF40;
           position: absolute;
+          z-index: 25;
         }
 
+        .script-node-wrapper:hover .edge-handle-inner,
         .edge-handle-wrapper:hover .edge-handle-inner {
-          opacity: 1;
+          opacity: 1 !important;
         }
+
 
         /* 隐藏原生的 handle，将事件代理给外部包装器 */
         .edge-handle-wrapper .react-flow__handle {
-          width: 100%;
-          height: 100%;
-          background: transparent;
-          border: none;
-          min-width: unset;
-          min-height: unset;
-          border-radius: 0;
-          transform: none;
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          width: 100% !important;
+          height: 100% !important;
+          background: transparent !important;
+          border: none !important;
+          min-width: unset !important;
+          min-height: unset !important;
+          border-radius: 0 !important;
+          transform: none !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          pointer-events: auto !important; /* 确保原生的 handle 能够响应拖拽事件 */
+          z-index: 30 !important;
+        }
+
+        .edge-handle-wrapper:hover .react-flow__handle,
+        .edge-handle-wrapper .react-flow__handle:hover,
+        .group:hover .react-flow__handle {
+          background: transparent !important;
         }
       `}</style>
 
       {/* Right Edge */}
-      <div className="edge-handle-wrapper right">
-        <Handle type="target" position={Position.Right} id="right-target" className="opacity-0 z-[-1]" />
-        <Handle type="source" position={Position.Right} id="right-source" className="opacity-0 z-[-1]" />
+      <div className="edge-handle-wrapper right group/handle pointer-events-auto">
+        <Handle type="target" position={Position.Right} id="right-target" />
+        <Handle type="source" position={Position.Right} id="right-source" />
         <div className="edge-handle-inner">
           <div className="edge-handle-line" />
           <div className="edge-handle-dot" />
@@ -257,9 +303,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       </div>
 
       {/* Left Edge */}
-      <div className="edge-handle-wrapper left">
-        <Handle type="target" position={Position.Left} id="left-target" className="opacity-0 z-[-1]" />
-        <Handle type="source" position={Position.Left} id="left-source" className="opacity-0 z-[-1]" />
+      <div className="edge-handle-wrapper left group/handle pointer-events-auto">
+        <Handle type="target" position={Position.Left} id="left-target" />
+        <Handle type="source" position={Position.Left} id="left-source" />
         <div className="edge-handle-inner">
           <div className="edge-handle-line" />
           <div className="edge-handle-dot" />

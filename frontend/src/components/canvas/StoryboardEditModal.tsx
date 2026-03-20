@@ -64,9 +64,9 @@ export function StoryboardEditModal({ open, onOpenChange, data, onSave }: Storyb
         onEscapeKeyDown={handleInteractOutside}
       >
         <DialogHeader>
-          <DialogTitle>编辑分镜卡</DialogTitle>
+          <DialogTitle>编辑多维表格卡</DialogTitle>
           <DialogDescription>
-            在此编辑分镜的镜头信息。
+            在此编辑相关的分镜或脚本信息。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
