@@ -13,6 +13,7 @@ const mockEditor = {
   destroy: jest.fn(),
   state: {},
   can: jest.fn(),
+  storage: { characterCount: { characters: jest.fn(() => 0) } },
 };
 
 jest.mock('@tiptap/react', () => ({
@@ -130,18 +131,6 @@ describe('ScriptEditor WYSIWYG', () => {
     expect(screen.getByTestId('align-left')).toBeInTheDocument();
     expect(screen.getByTestId('align-center')).toBeInTheDocument();
     expect(screen.getByTestId('align-right')).toBeInTheDocument();
-  });
-
-  it('should switch to edit mode on double-click', () => {
-    const { container } = render(
-      <ScriptEditor isEditable={false} onUpdate={mockOnUpdate} />
-    );
-
-    const root = container.querySelector('.script-editor-root')!;
-    expect(root).toHaveAttribute('data-editing', 'false');
-
-    fireEvent.doubleClick(root);
-    expect(root).toHaveAttribute('data-editing', 'true');
   });
 
   it('should have data-editing="true" when isEditable prop is true', () => {

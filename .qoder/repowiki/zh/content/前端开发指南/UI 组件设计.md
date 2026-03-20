@@ -28,13 +28,21 @@
 - [backend/admin/src/lib/utils.ts](file://backend/admin/src/lib/utils.ts)
 - [backend/admin/src/components/ui/alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
 - [backend/admin/src/components/ui/dialog.tsx](file://backend/admin/src/components/ui/dialog.tsx)
+- [frontend/src/components/tiptap-ui-primitive/badge/badge.tsx](file://frontend/src/components/tiptap-ui-primitive/badge/badge.tsx)
+- [frontend/src/components/tiptap-ui-primitive/button/button.tsx](file://frontend/src/components/tiptap-ui-primitive/button/button.tsx)
+- [frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx](file://frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx)
+- [frontend/src/components/tiptap-ui-primitive/card/card.tsx](file://frontend/src/components/tiptap-ui-primitive/card/card.tsx)
+- [frontend/src/components/tiptap-ui-primitive/input/input.tsx](file://frontend/src/components/tiptap-ui-primitive/input/input.tsx)
+- [frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx](file://frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx)
+- [frontend/src/components/tiptap-ui-primitive/separator/separator.tsx](file://frontend/src/components/tiptap-ui-primitive/separator/separator.tsx)
+- [frontend/src/components/tiptap-ui-primitive/popover/popover.tsx](file://frontend/src/components/tiptap-ui-primitive/popover/popover.tsx)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 新增 Dialog 组件和 AlertDialog 组件的详细分析
-- 扩展 UI 组件库至 12 个核心组件，新增 Badge、Form、Table 组件
-- 更新组件架构分析，反映 Dialog 组件的完整对话框系统
+- 新增 Tiptap UI Primitive 组件库的详细分析，包含 Badge、Button、Card、Input、ButtonGroup、Spacer、Separator、Popover 等组件
+- 扩展 UI 组件库至 19 个核心组件，新增 7 个 Tiptap 原语组件
+- 更新组件架构分析，反映完整的组件生态系统
 - 增强响应式设计和无障碍访问支持的详细说明
 - 完善主题系统和动画过渡效果的技术实现
 
@@ -51,14 +59,15 @@
 10. [附录](#附录)
 
 ## 简介
-本指南面向全新的基于 Radix UI 和 Tailwind CSS 构建的 UI 组件库，系统性地给出组件架构设计、Props 接口定义、状态管理模式、响应式与移动端适配、Tailwind 类名规范与主题定制、动画与过渡、无障碍访问、组件复用与组合式 API 使用、测试与文档、版本管理与性能优化等最佳实践。该组件库包含 Avatar、Badge、Button、Card、Dialog、DropdownMenu、Form、Input、Sheet、Table、Tabs、Textarea 等核心组件，支持完整的主题切换和暗模式功能。
+本指南面向全新的基于 Radix UI 和 Tailwind CSS 构建的 UI 组件库，系统性地给出组件架构设计、Props 接口定义、状态管理模式、响应式与移动端适配、Tailwind 类名规范与主题定制、动画与过渡、无障碍访问、组件复用与组合式 API 使用、测试与文档、版本管理与性能优化等最佳实践。该组件库包含 Avatar、Badge、Button、Card、Dialog、DropdownMenu、Form、Input、Sheet、Table、Tabs、Textarea 等核心组件，以及新增的 Tiptap UI Primitive 组件库，支持完整的主题切换和暗模式功能。
 
-**更新** 新增 Dialog 和 AlertDialog 组件，完善了模态对话框系统；扩展了 UI 组件库至 12 个核心组件，增强了表单处理能力和数据展示功能。
+**更新** 新增完整的 Tiptap UI Primitive 组件库，包含 8 个原语组件，扩展了 UI 组件库至 19 个核心组件，增强了富文本编辑器的组件生态和布局组件系统。
 
 ## 项目结构
-本仓库包含两个主要前端应用，均采用现代化的 UI 组件库架构：
+本仓库包含三个主要前端应用，均采用现代化的 UI 组件库架构：
 - 前端游戏页面：基于 Radix UI 和 Tailwind CSS 的组件库，负责玩家交互、画布渲染与实时消息展示
 - 后台管理系统：Next.js 应用（admin），提供管理界面、布局与认证上下文
+- Tiptap UI Primitive：富文本编辑器专用的原语组件库
 
 ```mermaid
 graph TB
@@ -89,6 +98,17 @@ AUtil["utils.ts"]
 ADialog["dialog.tsx"]
 AAlert["alert-dialog.tsx"]
 end
+subgraph "Tiptap UI Primitive - 富文本组件库"
+TRoot["tiptap-ui-primitive 根目录"]
+TBadge["badge.tsx"]
+TButton["button.tsx"]
+TButtonGroup["button-group.tsx"]
+TCard["card.tsx"]
+TInput["input.tsx"]
+TSpacer["spacer.tsx"]
+TSeparator["separator.tsx"]
+TPopover["popover.tsx"]
+end
 FRoot --> FAvatar
 FRoot --> FBadge
 FRoot --> FButton
@@ -110,6 +130,14 @@ AAL --> AAuth
 AAL --> AUtil
 AAL --> ADialog
 AAL --> AAlert
+TRoot --> TBadge
+TRoot --> TButton
+TRoot --> TButtonGroup
+TRoot --> TCard
+TRoot --> TInput
+TRoot --> TSpacer
+TRoot --> TSeparator
+TRoot --> TPopover
 ```
 
 **图表来源**
@@ -133,6 +161,14 @@ AAL --> AAlert
 - [backend/admin/src/components/admin/AdminLayout.tsx:1-185](file://backend/admin/src/components/admin/AdminLayout.tsx#L1-L185)
 - [backend/admin/src/components/ui/alert-dialog.tsx:1-140](file://backend/admin/src/components/ui/alert-dialog.tsx#L1-L140)
 - [backend/admin/src/components/ui/dialog.tsx:1-121](file://backend/admin/src/components/ui/dialog.tsx#L1-L121)
+- [frontend/src/components/tiptap-ui-primitive/badge/badge.tsx:1-47](file://frontend/src/components/tiptap-ui-primitive/badge/badge.tsx#L1-L47)
+- [frontend/src/components/tiptap-ui-primitive/button/button.tsx:1-104](file://frontend/src/components/tiptap-ui-primitive/button/button.tsx#L1-L104)
+- [frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx:1-73](file://frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx#L1-L73)
+- [frontend/src/components/tiptap-ui-primitive/card/card.tsx:1-80](file://frontend/src/components/tiptap-ui-primitive/card/card.tsx#L1-L80)
+- [frontend/src/components/tiptap-ui-primitive/input/input.tsx:1-18](file://frontend/src/components/tiptap-ui-primitive/input/input.tsx#L1-L18)
+- [frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx:1-25](file://frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx#L1-L25)
+- [frontend/src/components/tiptap-ui-primitive/separator/separator.tsx:1-31](file://frontend/src/components/tiptap-ui-primitive/separator/separator.tsx#L1-L31)
+- [frontend/src/components/tiptap-ui-primitive/popover/popover.tsx:1-38](file://frontend/src/components/tiptap-ui-primitive/popover/popover.tsx#L1-L38)
 
 **章节来源**
 - [frontend/src/app/layout.tsx:1-42](file://frontend/src/app/layout.tsx#L1-L42)
@@ -154,6 +190,19 @@ AAL --> AAlert
 - **Table 组件**：数据表格组件，支持排序、筛选和分页
 - **Tabs 组件**：响应式选项卡系统，支持受控和非受控模式
 
+### Tiptap UI Primitive 组件库
+**更新** 新增完整的 Tiptap UI Primitive 组件库，专为富文本编辑器设计：
+
+- **原语组件系统**：基于 Radix UI primitives 构建，确保可访问性
+- **Badge 组件**：富文本编辑器专用徽章，支持多种样式和外观
+- **Button 组件**：富文本工具栏按钮，支持快捷键提示和工具提示
+- **ButtonGroup 组件**：按钮组容器，支持水平和垂直排列
+- **Card 组件**：富文本卡片布局，支持项目组和分组标签
+- **Input 组件**：富文本输入框，专为编辑器优化
+- **Spacer 组件**：弹性间距组件，支持水平和垂直方向
+- **Separator 组件**：分隔符组件，支持装饰性和语义化用途
+- **Popover 组件**：弹出层组件，支持富文本编辑器的下拉菜单
+
 ### 主题系统
 - **暗模式支持**：完整的 CSS 自定义属性主题系统
 - **Ant Design 集成**：通过 AntdRegistry 提供主题算法切换
@@ -173,9 +222,17 @@ AAL --> AAlert
 - [frontend/src/components/ui/dialog.tsx:7-52](file://frontend/src/components/ui/dialog.tsx#L7-L52)
 - [frontend/src/context/ThemeContext.tsx:15-62](file://frontend/src/context/ThemeContext.tsx#L15-L62)
 - [backend/admin/src/components/admin/AdminLayout.tsx:35-185](file://backend/admin/src/components/admin/AdminLayout.tsx#L35-L185)
+- [frontend/src/components/tiptap-ui-primitive/badge/badge.tsx:8-13](file://frontend/src/components/tiptap-ui-primitive/badge/badge.tsx#L8-L13)
+- [frontend/src/components/tiptap-ui-primitive/button/button.tsx:18-27](file://frontend/src/components/tiptap-ui-primitive/button/button.tsx#L18-L27)
+- [frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx:8-18](file://frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx#L8-L18)
+- [frontend/src/components/tiptap-ui-primitive/card/card.tsx:7-51](file://frontend/src/components/tiptap-ui-primitive/card/card.tsx#L7-L51)
+- [frontend/src/components/tiptap-ui-primitive/input/input.tsx:6](file://frontend/src/components/tiptap-ui-primitive/input/input.tsx#L6)
+- [frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx:3](file://frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx#L3)
+- [frontend/src/components/tiptap-ui-primitive/separator/separator.tsx:6](file://frontend/src/components/tiptap-ui-primitive/separator/separator.tsx#L6)
+- [frontend/src/components/tiptap-ui-primitive/popover/popover.tsx:7-11](file://frontend/src/components/tiptap-ui-primitive/popover/popover.tsx#L7-L11)
 
 ## 架构总览
-全新的 UI 组件库采用分层架构设计，从底层的 Radix UI primitives 到高层的业务组件：
+全新的 UI 组件库采用分层架构设计，从底层的 Radix UI primitives 到高层的业务组件，包含两个主要组件库：
 
 ```mermaid
 graph TB
@@ -183,6 +240,7 @@ subgraph "组件库架构"
 PRIMITIVE["Radix UI Primitives"]
 VARIANTS["class-variance-authority"]
 COMPONENTS["UI Components"]
+TIPTAP_PRIMITIVE["Tiptap UI Primitive"]
 THEME["Theme System"]
 ANIMATION["Tailwind CSS Animation"]
 end
@@ -195,9 +253,13 @@ PRIMITIVE --> VARIANTS
 VARIANTS --> COMPONENTS
 COMPONENTS --> THEME
 THEME --> ANIMATION
+TIPTAP_PRIMITIVE --> PRIMITIVE
+TIPTAP_PRIMITIVE --> VARIANTS
+TIPTAP_PRIMITIVE --> THEME
 APP --> CONTEXT
 CONTEXT --> UTILS
 UTILS --> COMPONENTS
+UTILS --> TIPTAP_PRIMITIVE
 ```
 
 **更新** 后台应用采用了简化的架构模式，通过 Providers 组件统一管理认证和布局：
@@ -231,6 +293,102 @@ LAYOUT --> ALEDIALOG
 - [backend/admin/src/components/Providers.tsx:7-14](file://backend/admin/src/components/Providers.tsx#L7-L14)
 
 ## 详细组件分析
+
+### Tiptap UI Primitive 组件系统
+**更新** 新增完整的 Tiptap UI Primitive 组件库，专为富文本编辑器设计：
+
+#### Badge 组件系统
+**组件特性**：
+- 支持多种变体：ghost、white、gray、green、yellow、default
+- 支持多种尺寸：default、small
+- 支持多种外观：default、subdued、emphasized
+- 支持文本裁剪功能
+
+**应用场景**：富文本编辑器中的标签、状态指示、工具提示等
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/badge/badge.tsx:1-47](file://frontend/src/components/tiptap-ui-primitive/badge/badge.tsx#L1-L47)
+
+#### Button 组件系统
+**组件特性**：
+- 支持多种变体：ghost、primary
+- 支持多种尺寸：small、default、large
+- 内置工具提示系统
+- 支持快捷键显示和解析
+
+**工具提示系统**：集成 Tooltip 组件，支持延迟显示和快捷键提示
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/button/button.tsx:1-104](file://frontend/src/components/tiptap-ui-primitive/button/button.tsx#L1-L104)
+
+#### ButtonGroup 组件系统
+**组件特性**：
+- 支持水平和垂直两种排列方式
+- 集成 Separator 分隔符组件
+- 支持文本组和分隔符渲染
+
+**变体系统**：使用 class-variance-authority 实现样式变体
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx:1-73](file://frontend/src/components/tiptap-ui-primitive/button-group/button-group.tsx#L1-L73)
+
+#### Card 组件系统
+**组件层次**：
+- Card：主容器
+- CardHeader：头部区域
+- CardBody：主体内容
+- CardFooter：底部区域
+- CardItemGroup：项目组容器
+- CardGroupLabel：分组标签
+
+**布局系统**：支持水平和垂直方向的项目组排列
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/card/card.tsx:1-80](file://frontend/src/components/tiptap-ui-primitive/card/card.tsx#L1-L80)
+
+#### Input 组件系统
+**组件特性**：
+- 专为富文本编辑器优化
+- 支持标准 HTML 输入属性
+- 内置样式类名系统
+
+**应用场景**：富文本编辑器中的输入框、搜索框等
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/input/input.tsx:1-18](file://frontend/src/components/tiptap-ui-primitive/input/input.tsx#L1-L18)
+
+#### Spacer 组件系统
+**组件特性**：
+- 支持水平和垂直两种方向
+- 支持弹性增长和固定尺寸
+- 智能样式计算
+
+**布局用途**：富文本编辑器工具栏中的弹性间距
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx:1-25](file://frontend/src/components/tiptap-ui-primitive/spacer/spacer.tsx#L1-L25)
+
+#### Separator 组件系统
+**组件特性**：
+- 支持水平和垂直两种方向
+- 支持装饰性和语义化用途
+- 完整的无障碍支持
+
+**无障碍支持**：根据方向设置合适的 ARIA 属性
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/separator/separator.tsx:1-31](file://frontend/src/components/tiptap-ui-primitive/separator/separator.tsx#L1-L31)
+
+#### Popover 组件系统
+**组件特性**：
+- 基于 Radix UI Popover 构建
+- 支持 Portal 渲染
+- 内置样式类名系统
+
+**应用场景**：富文本编辑器中的下拉菜单、设置面板等
+
+**章节来源**
+- [frontend/src/components/tiptap-ui-primitive/popover/popover.tsx:1-38](file://frontend/src/components/tiptap-ui-primitive/popover/popover.tsx#L1-L38)
 
 ### Dialog 组件系统
 **更新** 新增完整的 Dialog 组件系统，提供模态对话框功能：
@@ -274,18 +432,6 @@ LAYOUT --> ALEDIALOG
 
 **章节来源**
 - [backend/admin/src/components/ui/alert-dialog.tsx:1-140](file://backend/admin/src/components/ui/alert-dialog.tsx#L1-L140)
-
-### Badge 组件系统
-**更新** 新增 Badge 组件，提供标签徽章功能：
-
-**变体系统**：支持 default、secondary、destructive、outline 四种视觉风格
-
-**尺寸系统**：使用紧凑的内边距和字体大小，适合徽章场景
-
-**应用场景**：状态标识、计数显示、标签分类等
-
-**章节来源**
-- [frontend/src/components/ui/badge.tsx:1-38](file://frontend/src/components/ui/badge.tsx#L1-L38)
 
 ### Form 组件系统
 **更新** 新增 Form 组件，提供完整的表单处理能力：
@@ -528,6 +674,8 @@ Tabs 组件支持受控和非受控两种模式：
 - lucide-react：SVG 图标库
 - tailwindcss-animate：动画插件
 - antd + @ant-design/nextjs-registry：主题系统
+- @base-ui/react-*：Tiptap UI Primitive 原语组件
+- @radix-ui/react-popover：弹出层组件
 
 ```mermaid
 graph LR
@@ -546,6 +694,8 @@ Table["@radix-ui/react-visually-hidden"] --> Table
 Badge["class-variance-authority"] --> Badge
 Antd["antd"] --> Theme
 Registry["@ant-design/nextjs-registry"] --> Theme
+BaseUI["@base-ui/react-*"] --> TiptapComponents
+Popover["@radix-ui/react-popover"] --> Popover
 ```
 
 **图表来源**
@@ -560,6 +710,12 @@ Registry["@ant-design/nextjs-registry"] --> Theme
 - 基于 CSS 变量的颜色系统减少样式计算
 - Radix UI primitives 提供高效的可访问性实现
 - 按需加载动画和图标资源
+
+**Tiptap UI Primitive 组件优化**：
+- **原语组件优化**：基于 Radix UI primitives，确保最小化开销
+- **样式隔离**：每个组件独立的样式文件，避免全局样式污染
+- **条件渲染**：工具提示等组件仅在需要时渲染
+- **内存优化**：使用 useMemo 优化快捷键解析等计算
 
 **主题性能**：
 - CSS 自定义属性避免重新计算样式
@@ -582,6 +738,12 @@ Registry["@ant-design/nextjs-registry"] --> Theme
 - 动画异常：确认 tailwindcss-animate 插件已安装
 - 可访问性问题：检查 Radix UI 组件的语义化标签
 
+**Tiptap UI Primitive 组件问题**：
+- **样式不生效**：检查组件的样式文件导入
+- **工具提示不显示**：确认 Tooltip 组件正确嵌套
+- **按钮组布局异常**：验证 orientation 属性设置
+- **分隔符方向错误**：检查 orientation 和 decorative 属性
+
 **Dialog 组件问题**：
 - 对话框无法关闭：检查 DialogTrigger 和 DialogClose 的绑定
 - 动画效果异常：确认 Portal 正确渲染到文档末尾
@@ -601,11 +763,12 @@ Registry["@ant-design/nextjs-registry"] --> Theme
 - [frontend/src/context/ThemeContext.tsx:30-35](file://frontend/src/context/ThemeContext.tsx#L30-L35)
 - [frontend/src/components/ui/dialog.tsx:30-52](file://frontend/src/components/ui/dialog.tsx#L30-L52)
 - [backend/admin/src/components/admin/AdminLayout.tsx:95-100](file://backend/admin/src/components/admin/AdminLayout.tsx#L95-L100)
+- [frontend/src/components/tiptap-ui-primitive/button/button.tsx:65-98](file://frontend/src/components/tiptap-ui-primitive/button/button.tsx#L65-L98)
 
 ## 结论
 全新的 UI 组件库基于 Radix UI 和 Tailwind CSS 构建，提供了完整的组件生态系统和强大的主题系统。通过原子化组件设计、变体系统、可访问性支持和性能优化，为现代 Web 应用提供了坚实的基础。
 
-**更新** 新增 Dialog 和 AlertDialog 组件完善了模态对话框系统，扩展了 UI 组件库至 12 个核心组件，增强了表单处理能力和数据展示功能。后台管理系统采用了简化的布局架构，AdminLayout 组件移除了复杂的全屏逻辑判断，采用统一的现代化设计模式。这种架构改进提升了用户体验，减少了代码复杂性，同时保持了完整的功能完整性。建议在后续开发中充分利用这些组件的可定制性，同时保持一致的设计语言和用户体验。
+**更新** 新增完整的 Tiptap UI Primitive 组件库，包含 8 个原语组件，扩展了 UI 组件库至 19 个核心组件，增强了富文本编辑器的组件生态和布局组件系统。新增的组件包括 Badge、Button、Card、Input、ButtonGroup、Spacer、Separator、Popover 等，为富文本编辑器提供了完整的组件支持。后台管理系统采用了简化的布局架构，AdminLayout 组件移除了复杂的全屏逻辑判断，采用统一的现代化设计模式。这种架构改进提升了用户体验，减少了代码复杂性，同时保持了完整的功能完整性。建议在后续开发中充分利用这些组件的可定制性，特别是 Tiptap UI Primitive 组件库，同时保持一致的设计语言和用户体验。
 
 ## 附录
 **组件开发最佳实践**：
@@ -614,6 +777,13 @@ Registry["@ant-design/nextjs-registry"] --> Theme
 - 提供适当的 TypeScript 类型定义
 - 确保完整的可访问性支持
 - 使用 CSS 自定义属性而非硬编码颜色
+
+**Tiptap UI Primitive 组件开发指南**：
+- **原语组件使用**：基于 Radix UI primitives 构建，确保可访问性
+- **样式隔离**：每个组件独立的样式文件，避免全局样式污染
+- **工具提示集成**：Button 组件的工具提示系统提供一致的用户体验
+- **快捷键支持**：parseShortcutKeys 函数提供便捷的快捷键解析
+- **布局组件**：Spacer 和 Separator 提供灵活的布局控制
 
 **Dialog 组件开发指南**：
 - **Portal 使用**：始终使用 DialogPortal 确保正确的 DOM 结构
@@ -641,5 +811,6 @@ Registry["@ant-design/nextjs-registry"] --> Theme
 - 减少不必要的 re-render
 - 使用 CSS 变量而非内联样式
 - 实现组件的 memo 化
+- **Tiptap UI Primitive 优化**：利用原语组件的轻量化特性
 - **后台布局优化**：利用简化的架构减少状态管理开销
 - **Dialog 组件优化**：使用 Portal 和条件渲染提升性能

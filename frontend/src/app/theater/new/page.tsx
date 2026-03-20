@@ -9,12 +9,11 @@ import {
   MiniMap, 
   ReactFlowProvider, 
   useReactFlow, 
-  Node, 
   Panel,
   ConnectionMode,
-  Edge,
   BackgroundVariant,
-  NodeTypes
+  NodeTypes,
+  FinalConnectionState
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
@@ -25,9 +24,11 @@ import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/ScriptNode';
 import CharacterNode from '@/components/canvas/CharacterNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
+import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
-import { Save, Undo, Redo, Trash2, MousePointer2, ArrowLeft } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard } from 'lucide-react';
 
 const nodeTypes = {
   script: ScriptNode,
@@ -35,8 +36,12 @@ const nodeTypes = {
   storyboard: StoryboardNode,
 } as unknown as NodeTypes;
 
+const edgeTypes = {
+  custom: CustomEdge,
+};
+
 const defaultEdgeOptions = {
-  type: 'default', // Bezier
+  type: 'custom', // Use custom edge
   animated: true,
   style: { stroke: '#6366F1', strokeWidth: 2 },
 };
@@ -47,6 +52,21 @@ function InfiniteCanvas() {
   const { screenToFlowPosition } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
   
+  // State for node selection menu when dropping edge on empty canvas
+  const [menuState, setMenuState] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    sourceNodeId: string | null;
+    sourceHandleId: string | null;
+  }>({
+    show: false,
+    x: 0,
+    y: 0,
+    sourceNodeId: null,
+    sourceHandleId: null,
+  });
+
   // Store selectors
   const { 
     nodes, edges,
@@ -55,6 +75,139 @@ function InfiniteCanvas() {
     undo, redo, takeSnapshot,
     reset
   } = useCanvasStore();
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
+      // If the connection is valid, it will be handled by onConnect
+      if (connectionState.isValid) return;
+
+      // Ensure we have a valid starting point
+      if (!connectionState.fromNode) return;
+
+      // Ensure we drop on the canvas and not on another node
+      const target = event.target as Element;
+      const isPane = target.classList.contains('react-flow__pane') || 
+                     target.classList.contains('react-flow__background') || 
+                     !!target.closest('.react-flow__pane') ||
+                     !!target.closest('.react-flow__background');
+                     
+      if (!isPane) return;
+
+      // Extract client coordinates based on event type
+      let clientX: number | undefined;
+      let clientY: number | undefined;
+      
+      if ('clientX' in event) {
+        clientX = event.clientX;
+        clientY = event.clientY;
+      } else if (event.changedTouches && event.changedTouches.length > 0) {
+        clientX = event.changedTouches[0].clientX;
+        clientY = event.changedTouches[0].clientY;
+      }
+
+      if (clientX !== undefined && clientY !== undefined) {
+        // Prevent click-outside from closing it immediately
+        setTimeout(() => {
+          setMenuState({
+            show: true,
+            x: clientX as number,
+            y: clientY as number,
+            sourceNodeId: connectionState.fromNode?.id || null,
+            sourceHandleId: connectionState.fromHandle?.id || null,
+          });
+        }, 50);
+      }
+    },
+    []
+  );
+
+  const handleAddNodeFromMenu = (type: string) => {
+    if (!menuState.sourceNodeId) return;
+
+    // Determine the position
+    // screenToFlowPosition works reliably for clientX/clientY
+    const position = screenToFlowPosition({
+      x: menuState.x,
+      y: menuState.y,
+    });
+
+    const newNodeId = uuidv4();
+    let data: Record<string, any> = {};
+    
+    switch (type) {
+      case 'script':
+        data = { title: '新剧本', description: '', tags: [] };
+        break;
+      case 'character':
+        data = { name: '新角色', description: '' };
+        break;
+      case 'storyboard':
+        data = { shotNumber: '001', description: '', duration: 5 };
+        break;
+    }
+
+    const newNode = {
+      id: newNodeId,
+      type,
+      position,
+      data,
+    } as CanvasNode;
+
+    addNode(newNode);
+
+    // Connect the new node based on where the line came from
+    // If the line came from a left handle (sourceHandleId ending with 'left-source'), we connect to the right target of the new node.
+    // If the line came from a right handle (sourceHandleId ending with 'right-source'), we connect to the left target of the new node.
+    let targetHandle = null;
+    let sourceHandle = menuState.sourceHandleId;
+    let connectionSource = menuState.sourceNodeId;
+    let connectionTarget = newNodeId;
+
+    if (menuState.sourceHandleId === 'left-source') {
+      targetHandle = 'right-target';
+      // In React Flow, if we dragged from a left source, it means this new node should be placed BEFORE the current node.
+      // However, usually we drag from source -> target. If they dragged from left-source, it's still source -> target.
+      // But typically left side is input (target), right side is output (source).
+      // Let's connect them visually correctly.
+    } else if (menuState.sourceHandleId === 'right-source') {
+      targetHandle = 'left-target';
+    } else if (menuState.sourceHandleId === 'left-target') {
+      // If they dragged from a target handle backwards, the new node is the source!
+      connectionSource = newNodeId;
+      connectionTarget = menuState.sourceNodeId;
+      sourceHandle = 'right-source';
+      targetHandle = 'left-target';
+    } else if (menuState.sourceHandleId === 'right-target') {
+      connectionSource = newNodeId;
+      connectionTarget = menuState.sourceNodeId;
+      sourceHandle = 'left-source';
+      targetHandle = 'right-target';
+    }
+
+    onConnect({
+      source: connectionSource,
+      sourceHandle: sourceHandle,
+      target: connectionTarget,
+      targetHandle: targetHandle,
+    });
+
+    setMenuState((prev) => ({ ...prev, show: false }));
+  };
+
+  // Close menu when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      // Don't close if we're clicking inside the menu
+      const target = e.target as Element;
+      if (target.closest('.quick-add-menu')) return;
+      
+      if (menuState.show) {
+        setMenuState((prev) => ({ ...prev, show: false }));
+      }
+    };
+    window.addEventListener('click', handleClickOutside);
+    return () => window.removeEventListener('click', handleClickOutside);
+  }, [menuState.show]);
 
   // Initialize: Reset to initial state on entry
   useEffect(() => {
@@ -131,15 +284,19 @@ function InfiniteCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectEnd={onConnectEnd}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
           connectionMode={ConnectionMode.Loose}
+          connectionRadius={20}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          deleteKeyCode={['Backspace', 'Delete']}
           fitView={nodes.length < 2} // Fit view only initially or if few nodes
           fitViewOptions={{ maxZoom: 1 }}
-          minZoom={0.1}
-          maxZoom={4}
+          minZoom={0.25}
+          maxZoom={3}
           proOptions={{ hideAttribution: true }}
           snapToGrid={false}
         >
@@ -183,6 +340,33 @@ function InfiniteCanvas() {
              <AIAssistantPanel />
           </Panel>
         </ReactFlow>
+
+        {menuState.show && (
+          <Card 
+            className="quick-add-menu fixed z-[100] p-2 shadow-xl border-border/50 flex flex-col gap-1 w-48 bg-card"
+            style={{ 
+              left: menuState.x, 
+              top: menuState.y,
+              transform: 'translate(-50%, 10px)' // Center horizontally relative to cursor, slight offset below
+            }}
+          >
+            <div className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
+              创建连接的节点
+            </div>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('script')}>
+              <ScrollText className="w-4 h-4 mr-2 text-indigo-500" />
+              剧本节点
+            </Button>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('character')}>
+              <User className="w-4 h-4 mr-2 text-emerald-500" />
+              角色节点
+            </Button>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('storyboard')}>
+              <Clapperboard className="w-4 h-4 mr-2 text-amber-500" />
+              分镜节点
+            </Button>
+          </Card>
+        )}
       </div>
     </div>
   );

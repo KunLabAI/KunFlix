@@ -21,7 +21,7 @@ import { hasCycle } from '@/lib/graphUtils';
 export type ScriptNodeData = {
   title: string;
   description: string;
-  content?: any; // tiptap JSON content
+  content?: unknown; // tiptap JSON content
   tags: string[];
   characters?: string[];
   scenes?: string;
@@ -61,6 +61,7 @@ interface CanvasState {
   onConnect: OnConnect;
   addNode: (node: CanvasNode) => void;
   deleteNode: (id: string) => void;
+  deleteEdge: (id: string) => void;
   reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData>) => void;
   setViewport: (viewport: Viewport) => void;
@@ -99,7 +100,7 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       onConnect: (connection: Connection) => {
-        const { edges, nodes } = get();
+        const { edges } = get();
         
         // Prevent self-loops
         if (connection.source === connection.target) return;
@@ -136,6 +137,21 @@ export const useCanvasStore = create<CanvasState>()(
         get().takeSnapshot();
       },
 
+      deleteEdge: (id: string) => {
+        const { edges } = get();
+        const edgeToDelete = edges.find((edge) => edge.id === id);
+        const newEdges = edges.filter((edge) => edge.id !== id);
+        set({ edges: newEdges });
+        get().takeSnapshot();
+        
+        if (edgeToDelete) {
+          // Dispatch custom event for external listeners
+          window.dispatchEvent(new CustomEvent('canvas:edge:deleted', { 
+            detail: { edge: edgeToDelete, edgeId: id } 
+          }));
+        }
+      },
+
       reset: () => {
         const initialNode: CanvasNode = {
           id: 'script-root', 
@@ -152,7 +168,7 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      updateNodeData: (id: string, data: any) => {
+      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData>) => {
         set({
           nodes: get().nodes.map((node) => {
             if (node.id === id) {
@@ -217,7 +233,7 @@ export const useCanvasStore = create<CanvasState>()(
         edges: state.edges,
         viewport: state.viewport,
       }), // Don't persist history to avoid storage limits or complexities
-      merge: (persistedState: any, currentState: CanvasState) => {
+      merge: (persistedState: unknown, currentState: CanvasState) => {
         // Merge persisted state with current state
         const merged = { ...currentState, ...(persistedState as Partial<CanvasState>) };
         

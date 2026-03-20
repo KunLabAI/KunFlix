@@ -1,9 +1,9 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer } from '@xyflow/react';
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Wand2, Check, X } from 'lucide-react';
+import { Pencil, Trash2, Wand2, Check } from 'lucide-react';
 import { useCanvasStore, ScriptNodeData } from '@/store/useCanvasStore';
 import { ScriptEditor } from './ScriptEditor';
 
@@ -19,6 +19,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   // Sync external data changes to local state if not editing
   useEffect(() => {
     if (!isEditing) {
+      // eslint-disable-next-line
       setEditData(data);
     }
   }, [data, isEditing]);
@@ -113,7 +114,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === 'Enter' || e.key === 'Escape') {
-                handleSave(e as any);
+                handleSave(e as unknown as React.MouseEvent);
               }
             }}
             autoFocus
@@ -135,7 +136,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           </div>
         </div>
 
-      <Card className={`flex-1 flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden`}>
+      <Card className={`flex-1 flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
         <CardContent className="script-node__content p-0 flex-1 overflow-hidden flex flex-col">
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor
@@ -169,8 +170,102 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         </CardFooter>
       </Card>
 
-      <Handle type="target" position={Position.Left} className="w-3 h-3 bg-primary" />
-      <Handle type="source" position={Position.Right} className="w-3 h-3 bg-primary" />
+      {/* 优化后的节点边缘拖拽热区 */}
+      <style>{`
+        .edge-handle-wrapper {
+          position: absolute;
+          z-index: 1;
+          pointer-events: stroke;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        
+        .edge-handle-wrapper.left {
+          left: -6px; top: 10%; bottom: 10%; width: 12px;
+        }
+        .edge-handle-wrapper.right {
+          right: -6px; top: 10%; bottom: 10%; width: 12px;
+        }
+
+        .edge-handle-inner {
+          position: absolute;
+          opacity: 0;
+          transition: opacity 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          pointer-events: none;
+        }
+
+        .edge-handle-wrapper.left .edge-handle-inner,
+        .edge-handle-wrapper.right .edge-handle-inner {
+          width: 6px; height: 24px;
+        }
+
+        .edge-handle-line {
+          position: absolute;
+          background: #1890FF;
+          border-radius: 2px;
+        }
+
+        .edge-handle-wrapper.left .edge-handle-line,
+        .edge-handle-wrapper.right .edge-handle-line {
+          width: 2px; height: 100%;
+        }
+
+        .edge-handle-dot {
+          width: 8px;
+          height: 8px;
+          background: #1890FF;
+          border-radius: 50%;
+          box-shadow: 0 0 4px #1890FF40;
+          position: absolute;
+        }
+
+        .edge-handle-wrapper:hover .edge-handle-inner {
+          opacity: 1;
+        }
+
+        /* 隐藏原生的 handle，将事件代理给外部包装器 */
+        .edge-handle-wrapper .react-flow__handle {
+          width: 100%;
+          height: 100%;
+          background: transparent;
+          border: none;
+          min-width: unset;
+          min-height: unset;
+          border-radius: 0;
+          transform: none;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+        }
+      `}</style>
+
+      {/* Right Edge */}
+      <div className="edge-handle-wrapper right">
+        <Handle type="target" position={Position.Right} id="right-target" className="opacity-0 z-[-1]" />
+        <Handle type="source" position={Position.Right} id="right-source" className="opacity-0 z-[-1]" />
+        <div className="edge-handle-inner">
+          <div className="edge-handle-line" />
+          <div className="edge-handle-dot" />
+        </div>
+      </div>
+
+      {/* Left Edge */}
+      <div className="edge-handle-wrapper left">
+        <Handle type="target" position={Position.Left} id="left-target" className="opacity-0 z-[-1]" />
+        <Handle type="source" position={Position.Left} id="left-source" className="opacity-0 z-[-1]" />
+        <div className="edge-handle-inner">
+          <div className="edge-handle-line" />
+          <div className="edge-handle-dot" />
+        </div>
+      </div>
+
       </div>
     </>
   );

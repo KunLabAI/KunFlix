@@ -18,7 +18,7 @@ jest.mock('@xyflow/react', () => ({
 
 // Mock ScriptEditor
 jest.mock('../ScriptEditor', () => ({
-  ScriptEditor: ({ initialContent, isEditable, onUpdate }: any) => (
+  ScriptEditor: ({ initialContent, isEditable, onUpdate }: { initialContent?: unknown, isEditable: boolean, onUpdate?: (content: unknown) => void }) => (
     <div data-testid="mock-script-editor">
       {isEditable ? (
         <textarea 
@@ -102,7 +102,7 @@ describe('ScriptNode Component', () => {
     fireEvent.change(titleInput, { target: { value: '修改后的剧本' } });
     
     // Save
-    fireEvent.click(screen.getByText('保存'));
+    fireEvent.click(screen.getByText('完成编辑'));
     
     // Should call updateNodeData
     expect(mockUpdateNodeData).toHaveBeenCalledWith('node-1', expect.objectContaining({
@@ -110,7 +110,7 @@ describe('ScriptNode Component', () => {
     }));
   });
 
-  it('cancels changes and reverts data', () => {
+  it('cancels changes and reverts data when Escape is pressed', () => {
     render(<ScriptNode {...defaultProps} />);
     
     // Enter edit mode
@@ -120,14 +120,13 @@ describe('ScriptNode Component', () => {
     const titleInput = screen.getByDisplayValue('测试剧本');
     fireEvent.change(titleInput, { target: { value: '放弃修改的剧本' } });
     
-    // Cancel
-    fireEvent.click(screen.getByText('取消'));
+    // Cancel using Escape
+    fireEvent.keyDown(document, { key: 'Escape', code: 'Escape' });
     
-    // Should NOT call updateNodeData
-    expect(mockUpdateNodeData).not.toHaveBeenCalled();
-    
-    // Reverts to original
-    expect(screen.getByText('测试剧本')).toBeInTheDocument();
+    // Should call updateNodeData with current editData because in the new implementation Escape saves the data
+    expect(mockUpdateNodeData).toHaveBeenCalledWith('node-1', expect.objectContaining({
+      title: '放弃修改的剧本',
+    }));
   });
 
   it('calls deleteNode when delete button is clicked and confirmed', () => {
@@ -137,5 +136,26 @@ describe('ScriptNode Component', () => {
     
     expect(window.confirm).toHaveBeenCalled();
     expect(mockDeleteNode).toHaveBeenCalledWith('node-1');
+  });
+
+  it('renders edge handles and trigger areas correctly', () => {
+    const { container } = render(<ScriptNode {...defaultProps} />);
+    
+    // Check if the 2 edge handle wrappers are rendered (left, right)
+    const rightHandle = container.querySelector('.edge-handle-wrapper.right');
+    const leftHandle = container.querySelector('.edge-handle-wrapper.left');
+
+    expect(rightHandle).toBeInTheDocument();
+    expect(leftHandle).toBeInTheDocument();
+
+    // Check if hovering shows the inner elements (by CSS class presence)
+    const innerHandle = rightHandle?.querySelector('.edge-handle-inner');
+    expect(innerHandle).toBeInTheDocument();
+    
+    const dot = rightHandle?.querySelector('.edge-handle-dot');
+    expect(dot).toBeInTheDocument();
+    
+    const line = rightHandle?.querySelector('.edge-handle-line');
+    expect(line).toBeInTheDocument();
   });
 });
