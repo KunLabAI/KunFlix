@@ -92,6 +92,7 @@ interface CanvasState {
   deleteEdge: (id: string) => void;
   reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => void;
+  updateNodeDimensions: (id: string, width: number, height: number) => void;
   setViewport: (viewport: Viewport) => void;
   
   // Undo/Redo
@@ -313,6 +314,17 @@ export const useCanvasStore = create<CanvasState>()(
             isDirty: true,
           });
           get().takeSnapshot();
+          get().debouncedSave();
+        },
+
+        updateNodeDimensions: (id: string, width: number, height: number) => {
+          set({
+            nodes: get().nodes.map((node) =>
+              node.id === id ? { ...node, width, height } : node
+            ),
+            isDirty: true,
+          });
+          // Do not take snapshot here to avoid spamming history on resize/load, but save to backend
           get().debouncedSave();
         },
 

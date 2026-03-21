@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
+  const updateNodeDimensions = useCanvasStore((state) => state.updateNodeDimensions);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
   const { getNode } = useReactFlow();
@@ -107,14 +108,14 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate type and size (50MB max for video)
+    // Validate type and size (500MB max for video)
     const validTypes = ['video/mp4', 'video/webm', 'video/ogg'];
     if (!validTypes.includes(file.type)) {
       setUploadError('仅支持 mp4、webm、ogg 格式');
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('视频大小不能超过 50MB');
+    if (file.size > 500 * 1024 * 1024) {
+      setUploadError('视频大小不能超过 500MB');
       return;
     }
 
@@ -127,7 +128,14 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/media/upload');
+      // Use direct backend URL to bypass Next.js 10MB middleware proxy limit
+      xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
+      
+      // Attach Auth token if available
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
       
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
@@ -142,17 +150,20 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
       const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
         xhr.onload = () => {
           try {
-            const res = JSON.parse(xhr.responseText);
+            let res;
+            if (xhr.responseText) {
+              res = JSON.parse(xhr.responseText);
+            }
             if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(res);
+              resolve(res || {});
             } else {
-              resolve({ error: res.error || '上传失败' });
+              resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
             }
           } catch (err) {
-            resolve({ error: '解析响应失败' });
+            resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
           }
         };
-        xhr.onerror = () => reject(new Error('网络请求失败'));
+        xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
         xhr.send(formData);
       });
 
@@ -175,6 +186,40 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   };
 
   const isUploading = data.uploading;
+
+  const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = e.currentTarget;
+    if (video.videoWidth && video.videoHeight) {
+      // Calculate new dimensions while keeping a reasonable max size (e.g. 512px max width/height)
+      const MAX_SIZE = 512;
+      const aspectRatio = video.videoWidth / video.videoHeight;
+      
+      let newWidth, newHeight;
+      if (aspectRatio > 1) {
+        // Landscape
+        newWidth = Math.min(video.videoWidth, MAX_SIZE);
+        newHeight = newWidth / aspectRatio;
+      } else {
+        // Portrait or Square
+        newHeight = Math.min(video.videoHeight, MAX_SIZE);
+        newWidth = newHeight * aspectRatio;
+      }
+      
+      // Ensure minimum dimensions (e.g., min width 200px to fit UI controls)
+      newWidth = Math.max(newWidth, 256);
+      newHeight = Math.max(newHeight, 192);
+
+      // Only update if dimensions differ significantly to avoid loops
+      const currentNode = getNode(id);
+      if (currentNode) {
+        const currentWidth = currentNode.width ?? 0;
+        const currentHeight = currentNode.height ?? 0;
+        if (Math.abs(currentWidth - newWidth) > 5 || Math.abs(currentHeight - newHeight) > 5) {
+          updateNodeDimensions(id, Math.round(newWidth), Math.round(newHeight));
+        }
+      }
+    }
+  };
 
   return (
     <>
@@ -266,6 +311,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   controls
                   className={`w-full h-full rounded-sm nodrag ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`} 
                   onPointerDown={(e) => e.stopPropagation()} 
+                  onLoadedMetadata={handleLoadedMetadata}
                 />
                 
                 {/* 顶部/中部拖拽遮罩：不含 nodrag，透明，鼠标移入时不影响视觉但能被拖拽 */}

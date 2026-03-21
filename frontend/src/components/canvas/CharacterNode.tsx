@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>>) => {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
+  const updateNodeDimensions = useCanvasStore((state) => state.updateNodeDimensions);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
   const { getNode } = useReactFlow();
@@ -128,8 +129,15 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
     try {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/media/upload');
+      // Use direct backend URL to bypass Next.js 10MB middleware proxy limit
+      xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
       
+      // Attach Auth token if available
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           const percentComplete = (event.loaded / event.total) * 100;
@@ -143,17 +151,20 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
       const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
         xhr.onload = () => {
           try {
-            const res = JSON.parse(xhr.responseText);
+            let res;
+            if (xhr.responseText) {
+              res = JSON.parse(xhr.responseText);
+            }
             if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(res);
+              resolve(res || {});
             } else {
-              resolve({ error: res.error || '上传失败' });
+              resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
             }
           } catch (err) {
-            resolve({ error: '解析响应失败' });
+            resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
           }
         };
-        xhr.onerror = () => reject(new Error('网络请求失败'));
+        xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
         xhr.send(formData);
       });
 
@@ -177,13 +188,47 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   const isUploading = data.uploading;
 
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    if (img.naturalWidth && img.naturalHeight) {
+      // Calculate new dimensions while keeping a reasonable max size (e.g. 512px max width/height)
+      const MAX_SIZE = 512;
+      const aspectRatio = img.naturalWidth / img.naturalHeight;
+      
+      let newWidth, newHeight;
+      if (aspectRatio > 1) {
+        // Landscape
+        newWidth = Math.min(img.naturalWidth, MAX_SIZE);
+        newHeight = newWidth / aspectRatio;
+      } else {
+        // Portrait or Square
+        newHeight = Math.min(img.naturalHeight, MAX_SIZE);
+        newWidth = newHeight * aspectRatio;
+      }
+      
+      // Ensure minimum dimensions (e.g., min width 200px to fit UI controls)
+      newWidth = Math.max(newWidth, 256);
+      newHeight = Math.max(newHeight, 192);
+
+      // Only update if dimensions differ significantly to avoid loops
+      const currentNode = getNode(id);
+      if (currentNode) {
+        const currentWidth = currentNode.width ?? 0;
+        const currentHeight = currentNode.height ?? 0;
+        if (Math.abs(currentWidth - newWidth) > 5 || Math.abs(currentHeight - newHeight) > 5) {
+          updateNodeDimensions(id, Math.round(newWidth), Math.round(newHeight));
+        }
+      }
+    }
+  };
+
   return (
     <>
       <NodeResizer 
-        color="#251d38ff" 
+        color="#1890FF" 
         isVisible={selected} 
-        minWidth={256}
-        minHeight={200}
+        minWidth={256} 
+        minHeight={192}
       />
       
       {/* 隐藏的文件输入 */}
@@ -257,10 +302,11 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
             {data.imageUrl && (
               <div className="w-full h-full flex flex-col items-center justify-center">
                 <img 
-                  src={data.imageUrl} 
-                  alt={data.name || "图片卡"} 
-                  className={`w-full h-full rounded-sm ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`} 
-                />
+                    src={data.imageUrl} 
+                    alt={data.name} 
+                    className={`w-full h-full rounded-sm nodrag ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
+                    onLoad={handleImageLoad}
+                  />
               </div>
             )}
 

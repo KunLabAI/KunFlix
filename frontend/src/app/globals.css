@@ -23,6 +23,12 @@
   --input: #e4e4e7;
   --ring: #18181b;
   --radius: 0.5rem;
+  
+  /* Canvas Node Colors */
+  --node-blue: #3b82f6;
+  --node-green: #10b981;
+  --node-yellow: #f59e0b;
+  --node-purple: #8b5cf6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,6 +52,12 @@
     --border: #27272a;
     --input: #27272a;
     --ring: #d4d4d8;
+
+    /* Canvas Node Colors */
+    --node-blue: #60a5fa;
+    --node-green: #34d399;
+    --node-yellow: #fbbf24;
+    --node-purple: #a78bfa;
   }
 }
 
@@ -69,6 +81,12 @@
   --border: #27272a;
   --input: #27272a;
   --ring: #d4d4d8;
+
+  /* Canvas Node Colors */
+  --node-blue: #60a5fa;
+  --node-green: #34d399;
+  --node-yellow: #fbbf24;
+  --node-purple: #a78bfa;
 }
 
 :root.light {
@@ -91,6 +109,12 @@
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #18181b;
+
+  /* Canvas Node Colors */
+  --node-blue: #3b82f6;
+  --node-green: #10b981;
+  --node-yellow: #f59e0b;
+  --node-purple: #8b5cf6;
 }
 
 @theme inline {
@@ -113,6 +137,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  
+  --color-node-blue: var(--node-blue);
+  --color-node-green: var(--node-green);
+  --color-node-yellow: var(--node-yellow);
+  --color-node-purple: var(--node-purple);
+
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: calc(var(--radius) - 1px);
   --radius-lg: var(--radius);

@@ -9,7 +9,7 @@ export default function Home() {
     <main className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
       <TopBar />
       
-      <div className="flex-1 flex flex-col pt-20 pb-10 gap-8 overflow-y-auto">
+      <div className="flex-1 flex flex-col pt-24 pb-10 gap-8 w-full max-w-[1440px] mx-auto overflow-y-auto">
         <RecentTheaters />
         <SharedTheaters />
       </div>
