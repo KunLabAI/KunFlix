@@ -5,7 +5,7 @@ from sqlalchemy import func, delete
 from typing import List, Dict, Any, Optional
 
 from database import get_db
-from models import User, StoryChapter, LLMProvider, Asset, Admin, CreditTransaction, SubscriptionPlan, ChatSession
+from models import User, LLMProvider, Asset, Admin, CreditTransaction, SubscriptionPlan, ChatSession, Theater
 from auth import require_admin, hash_password
 from schemas import (
     CreditAdjustRequest,
@@ -33,14 +33,14 @@ async def get_stats(
 ):
     """Get dashboard statistics."""
     user_count = await db.scalar(select(func.count(User.id)))
-    story_count = await db.scalar(select(func.count(StoryChapter.id)))
+    theater_count = await db.scalar(select(func.count(Theater.id)))
     asset_count = await db.scalar(select(func.count(Asset.id)))
     provider_count = await db.scalar(select(func.count(LLMProvider.id)))
     admin_count = await db.scalar(select(func.count(Admin.id)))
 
     return {
         "users": user_count or 0,
-        "stories": story_count or 0,
+        "theaters": theater_count or 0,
         "assets": asset_count or 0,
         "providers": provider_count or 0,
         "admins": admin_count or 0,
@@ -128,7 +128,7 @@ async def delete_user(
     # 级联删除关联数据
     await db.execute(delete(CreditTransaction).where(CreditTransaction.user_id == user_id))
     await db.execute(delete(ChatSession).where(ChatSession.user_id == user_id))
-    await db.execute(delete(StoryChapter).where(StoryChapter.user_id == user_id))
+    await db.execute(delete(Theater).where(Theater.user_id == user_id))
 
     await db.delete(user)
     await db.commit()
@@ -465,33 +465,36 @@ async def adjust_admin_credits(
 
 
 # ---------------------------------------------------------------------------
-# Story management
+# Theater management
 # ---------------------------------------------------------------------------
-@router.get("/stories", response_model=List[Dict[str, Any]])
-async def get_stories(
+@router.get("/theaters", response_model=List[Dict[str, Any]])
+async def get_theaters(
     skip: int = 0,
     limit: int = 50,
     user_id: Optional[str] = None,
     _current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List stories (admin only)."""
-    query = select(StoryChapter).order_by(StoryChapter.created_at.desc())
+    """List theaters (admin only)."""
+    query = select(Theater).order_by(Theater.created_at.desc())
 
-    if user_id:
-        query = query.filter(StoryChapter.user_id == user_id)
+    filter_map = {
+        True: lambda q: q.filter(Theater.user_id == user_id),
+        False: lambda q: q,
+    }
+    query = filter_map[user_id is not None](query)
 
     result = await db.execute(query.offset(skip).limit(limit))
-    stories = result.scalars().all()
+    theaters = result.scalars().all()
 
     return [
         {
-            "id": s.id,
-            "user_id": s.user_id,
-            "chapter_number": s.chapter_number,
-            "title": s.title,
-            "status": s.status,
-            "created_at": s.created_at,
+            "id": t.id,
+            "user_id": t.user_id,
+            "title": t.title,
+            "status": t.status,
+            "node_count": t.node_count,
+            "created_at": t.created_at,
         }
-        for s in stories
+        for t in theaters
     ]

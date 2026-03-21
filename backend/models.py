@@ -67,35 +67,60 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
 
-    # Theater state (migrated from Player)
-    current_chapter = Column(Integer, default=1)
-    personality_profile = Column(JSON, default={})
-    inventory = Column(JSON, default=[])
-    relationships = Column(JSON, default={})  # {npc_id: {affinity, trust, hidden}}
-
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
-class StoryChapter(Base):
-    __tablename__ = "story_chapters"
+class Theater(Base):
+    """剧场表 - 用户创建的创意项目"""
+    __tablename__ = "theaters"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(36), ForeignKey("users.id"))
-    chapter_number = Column(Integer)
-    title = Column(String)
-    content = Column(Text)  # The main text content
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False, default="未命名剧场")
+    description = Column(Text, nullable=True)
+    thumbnail_url = Column(String, nullable=True)
+    status = Column(String(20), default="draft", index=True)  # draft | published | archived
+    canvas_viewport = Column(JSON, default=dict)  # {x, y, zoom}
+    settings = Column(JSON, default=dict)  # 剧场级别扩展配置
+    node_count = Column(Integer, default=0)
 
-    # Status: pending, generating, ready, completed
-    status = Column(String, default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Choices leading to next branches
-    choices = Column(JSON, default=[])
 
-    # Metadata for consistency check
-    summary_embedding = Column(JSON)  # Vector for consistency check
-    world_state_snapshot = Column(JSON)  # Snapshot of variables
+class TheaterNode(Base):
+    """剧场节点表 - 画布上的节点"""
+    __tablename__ = "theater_nodes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="CASCADE"), nullable=False, index=True)
+    node_type = Column(String(20), nullable=False)  # script | character | storyboard | video
+    position_x = Column(Float, default=0)
+    position_y = Column(Float, default=0)
+    width = Column(Float, nullable=True)
+    height = Column(Float, nullable=True)
+    z_index = Column(Integer, default=0)
+    data = Column(JSON, default=dict)  # 节点业务数据（title, content, imageUrl 等）
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class TheaterEdge(Base):
+    """剧场边表 - 节点之间的连接"""
+    __tablename__ = "theater_edges"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_node_id = Column(String(36), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
+    target_node_id = Column(String(36), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
+    source_handle = Column(String(50), nullable=True)
+    target_handle = Column(String(50), nullable=True)
+    edge_type = Column(String(20), default="custom")
+    animated = Column(Boolean, default=True)
+    style = Column(JSON, default=dict)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

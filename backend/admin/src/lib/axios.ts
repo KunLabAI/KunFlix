@@ -12,9 +12,11 @@ const api = axios.create({
 // Request interceptor: attach Authorization header
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem('access_token');
+      if (token) {
+        config.headers.set("Authorization", `Bearer ${token}`);
+      }
     }
     return config;
   },
@@ -42,6 +44,9 @@ const processQueue = (error: unknown, token: string | null = null) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    if (typeof window === "undefined") {
+      return Promise.reject(error);
+    }
     const originalRequest = error.config;
 
     // Skip refresh for auth endpoints and already-retried requests
@@ -56,7 +61,7 @@ api.interceptors.response.use(
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       }).then((token) => {
-        originalRequest.headers.Authorization = `Bearer ${token}`;
+        originalRequest.headers.set("Authorization", `Bearer ${token}`);
         return api(originalRequest);
       });
     }
@@ -80,7 +85,7 @@ api.interceptors.response.use(
       });
       const newToken = data.access_token;
       localStorage.setItem('access_token', newToken);
-      originalRequest.headers.Authorization = `Bearer ${newToken}`;
+      originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
       processQueue(null, newToken);
       return api(originalRequest);
     } catch (refreshError) {

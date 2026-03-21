@@ -3,13 +3,20 @@
 import { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import TheaterCard from "./TheaterCard";
 import CreateTheaterCard from "./CreateTheaterCard";
+import { useAuth } from "@/context/AuthContext";
+import { theaterApi, type TheaterResponse } from "@/lib/theaterApi";
 
 export default function RecentTheaters() {
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const carouselRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [theaters, setTheaters] = useState<TheaterResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const fetched = useRef(false);
 
   useEffect(() => {
     const updateWidth = () => {
@@ -21,7 +28,17 @@ export default function RecentTheaters() {
     updateWidth();
     window.addEventListener("resize", updateWidth);
     return () => window.removeEventListener("resize", updateWidth);
-  }, []);
+  }, [theaters]);
+
+  useEffect(() => {
+    if (!isAuthenticated || fetched.current) return;
+    fetched.current = true;
+    theaterApi
+      .listTheaters(1, 20)
+      .then((res) => setTheaters(res.items))
+      .catch(() => setTheaters([]))
+      .finally(() => setLoading(false));
+  }, [isAuthenticated]);
 
   return (
     <div className="w-full py-8">
@@ -41,7 +58,24 @@ export default function RecentTheaters() {
           {/* Create Theater Card - Always First */}
           <CreateTheaterCard onClick={() => router.push('/theater/new')} />
 
-          {/* User's Created Theaters - Empty for now */}
+          {loading && (
+            <div className="flex items-center justify-center w-[200px] h-[300px]">
+              <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" />
+            </div>
+          )}
+
+          {theaters.map((t) => (
+            <TheaterCard
+              key={t.id}
+              id={t.id}
+              title={t.title}
+              image={t.thumbnail_url}
+              status={t.status}
+              nodeCount={t.node_count}
+              updatedAt={t.updated_at}
+              onClick={() => router.push(`/theater/${t.id}`)}
+            />
+          ))}
         </motion.div>
       </motion.div>
     </div>

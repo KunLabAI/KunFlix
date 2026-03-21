@@ -37,9 +37,8 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
-from services import TheaterService
-from models import User, StoryChapter
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos
+from models import User
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, theaters
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -110,6 +109,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Infinite Narrative Theater", lifespan=lifespan)
 
+# DEBUG: Log Authorization header for /api/theaters requests
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+
+class DebugAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        path = request.url.path
+        auth_header = request.headers.get("authorization", "<MISSING>")
+        origin = request.headers.get("origin", "<no-origin>")
+        logger.info(f"[DEBUG-AUTH] {request.method} {path} | Origin: {origin} | Auth: {auth_header[:40]}...")
+        response = await call_next(request)
+        return response
+
+app.add_middleware(DebugAuthMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
@@ -130,6 +144,7 @@ app.include_router(media.router)
 app.include_router(subscriptions.router)
 app.include_router(prompt_templates.router)
 app.include_router(videos.router)
+app.include_router(theaters.router)
 
 
 @app.get("/")

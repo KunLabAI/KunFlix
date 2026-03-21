@@ -27,7 +27,6 @@ class UserResponse(BaseModel):
     nickname: str
     role: str = "user"  # 已废弃，保留向后兼容
     is_active: bool = True
-    current_chapter: int = 1
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_input_chars: int = 0
@@ -608,4 +607,133 @@ class VideoTaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ---------------------------------------------------------------------------
+# Theater schemas (剧场系统)
+# ---------------------------------------------------------------------------
+class TheaterNodeCreate(BaseModel):
+    """创建/保存画布节点"""
+    id: Optional[str] = None
+    node_type: str
+    position_x: float = 0
+    position_y: float = 0
+    width: Optional[float] = None
+    height: Optional[float] = None
+    z_index: int = 0
+    data: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TheaterNodeUpdate(BaseModel):
+    """更新节点（所有字段可选）"""
+    node_type: Optional[str] = None
+    position_x: Optional[float] = None
+    position_y: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    z_index: Optional[int] = None
+    data: Optional[Dict[str, Any]] = None
+
+
+class TheaterNodeResponse(BaseModel):
+    """节点响应"""
+    id: str
+    theater_id: str
+    node_type: str
+    position_x: float = 0
+    position_y: float = 0
+    width: Optional[float] = None
+    height: Optional[float] = None
+    z_index: int = 0
+    data: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TheaterEdgeCreate(BaseModel):
+    """创建/保存画布边"""
+    id: Optional[str] = None
+    source_node_id: str
+    target_node_id: str
+    source_handle: Optional[str] = None
+    target_handle: Optional[str] = None
+    edge_type: str = "custom"
+    animated: bool = True
+    style: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TheaterEdgeResponse(BaseModel):
+    """边响应"""
+    id: str
+    theater_id: str
+    source_node_id: str
+    target_node_id: str
+    source_handle: Optional[str] = None
+    target_handle: Optional[str] = None
+    edge_type: str = "custom"
+    animated: bool = True
+    style: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Any
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TheaterCreate(BaseModel):
+    """创建剧场"""
+    title: str = Field(default="未命名剧场", max_length=200)
+    description: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    status: Literal["draft", "published", "archived"] = "draft"
+    canvas_viewport: Dict[str, Any] = Field(default_factory=dict)
+    settings: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TheaterUpdate(BaseModel):
+    """更新剧场（所有字段可选）"""
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    status: Optional[Literal["draft", "published", "archived"]] = None
+    canvas_viewport: Optional[Dict[str, Any]] = None
+    settings: Optional[Dict[str, Any]] = None
+
+
+class TheaterResponse(BaseModel):
+    """剧场响应"""
+    id: str
+    user_id: str
+    title: str
+    description: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    status: str = "draft"
+    canvas_viewport: Dict[str, Any] = Field(default_factory=dict)
+    settings: Dict[str, Any] = Field(default_factory=dict)
+    node_count: int = 0
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TheaterDetailResponse(TheaterResponse):
+    """剧场详情响应（含节点和边）"""
+    nodes: List[TheaterNodeResponse] = Field(default_factory=list)
+    edges: List[TheaterEdgeResponse] = Field(default_factory=list)
+
+
+class TheaterListResponse(BaseModel):
+    """剧场分页列表响应"""
+    items: List[TheaterResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class TheaterSaveRequest(BaseModel):
+    """画布保存请求（全量同步）"""
+    nodes: List[TheaterNodeCreate] = Field(default_factory=list)
+    edges: List[TheaterEdgeCreate] = Field(default_factory=list)
+    canvas_viewport: Optional[Dict[str, Any]] = None
 

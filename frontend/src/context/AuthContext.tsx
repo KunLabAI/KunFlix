@@ -15,7 +15,7 @@ export interface User {
   nickname: string;
   role: "user" | "admin";
   is_active: boolean;
-  current_chapter: number;
+  credits: number;
   total_input_tokens: number;
   total_output_tokens: number;
 }

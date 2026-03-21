@@ -7,9 +7,11 @@ const api = axios.create({
 
 // Attach Authorization header
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      config.headers.set("Authorization", `Bearer ${token}`);
+    }
   }
   return config;
 });
@@ -29,6 +31,9 @@ const processQueue = (err: unknown, token: string | null = null) => {
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
+    if (typeof window === "undefined") {
+      return Promise.reject(error);
+    }
     const original = error.config;
     const isAuthRoute = original?.url?.startsWith("/auth/");
 
@@ -40,7 +45,7 @@ api.interceptors.response.use(
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject });
       }).then((token) => {
-        original.headers.Authorization = `Bearer ${token}`;
+        original.headers.set("Authorization", `Bearer ${token}`);
         return api(original);
       });
     }
@@ -61,7 +66,7 @@ api.interceptors.response.use(
         refresh_token: refreshToken,
       });
       localStorage.setItem("access_token", data.access_token);
-      original.headers.Authorization = `Bearer ${data.access_token}`;
+      original.headers.set("Authorization", `Bearer ${data.access_token}`);
       processQueue(null, data.access_token);
       return api(original);
     } catch (refreshErr) {

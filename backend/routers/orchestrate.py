@@ -23,7 +23,7 @@ router = APIRouter(
 )
 
 
-@router.post("/")
+@router.post("")
 async def execute_orchestration(
     request: OrchestrationRequest,
     current_user: User = Depends(get_current_active_user),
