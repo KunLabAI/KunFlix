@@ -256,6 +256,7 @@ function InfiniteCanvas() {
 
       const type = event.dataTransfer.getData('application/reactflow');
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
+      const dimensionsStr = event.dataTransfer.getData('application/reactflow-dimensions');
       
       if (!type) return;
 
@@ -264,13 +265,28 @@ function InfiniteCanvas() {
         y: event.clientY,
       });
 
+      let width = undefined;
+      let height = undefined;
+
+      if (dimensionsStr) {
+          const dims = JSON.parse(dimensionsStr);
+          width = dims.width;
+          height = dims.height;
+      } else if (type === 'character' || type === 'video') {
+          width = 512;
+          height = 384;
+      } else if (type === 'storyboard') {
+          width = 398;
+          height = 256;
+      }
+
       const newNode: CanvasNode = {
         id: uuidv4(),
         type,
         position,
         data: dataStr ? JSON.parse(dataStr) : { label: `${type} node` },
-        width: (type === 'character' || type === 'video') ? 512 : undefined,
-        height: (type === 'character' || type === 'video') ? 384 : undefined,
+        width,
+        height,
       };
 
       addNode(newNode);

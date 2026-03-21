@@ -4,14 +4,18 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ScrollText, User, Clapperboard, Video, ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useCanvasStore } from '@/store/useCanvasStore';
 
 export const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const onDragStart = (event: React.DragEvent, nodeType: string, data?: any) => {
+  const onDragStart = (event: React.DragEvent, nodeType: string, data?: any, initialDimensions?: {width: number, height: number}) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
     if (data) {
         event.dataTransfer.setData('application/reactflow-data', JSON.stringify(data));
+    }
+    if (initialDimensions) {
+        event.dataTransfer.setData('application/reactflow-dimensions', JSON.stringify(initialDimensions));
     }
     event.dataTransfer.effectAllowed = 'move';
   };
@@ -86,11 +90,11 @@ export const Sidebar = () => {
       </div>
 
       <div 
-        className={cn(
-          "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
-          isCollapsed && "hidden"
-        )}
-        onDragStart={(event) => onDragStart(event, 'storyboard', { shotNumber: '01', duration: 3, description: '' })}
+          className={cn(
+            "flex items-start gap-3 p-3 border rounded-md cursor-grab hover:bg-accent transition-all bg-card hover:shadow-md active:cursor-grabbing group",
+            isCollapsed && "hidden"
+          )}
+        onDragStart={(event) => onDragStart(event, 'storyboard', { shotNumber: '01', duration: 3, description: '', pivotConfig: { rows: [], cols: [], values: [] } }, { width: 768, height: 512 })}
         draggable
         title="拖拽添加多维表格卡"
       >

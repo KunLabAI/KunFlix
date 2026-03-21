@@ -40,6 +40,8 @@ export type StoryboardNodeData = {
   shotNumber: string;
   description: string;
   duration: number; // in seconds
+  pivotConfig?: any; // From PivotConfig in types.ts
+  pivotData?: any; // Cached or computed data
 };
 
 export type VideoNodeData = {
