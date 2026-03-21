@@ -109,21 +109,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Infinite Narrative Theater", lifespan=lifespan)
 
-# DEBUG: Log Authorization header for /api/theaters requests
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request as StarletteRequest
-
-class DebugAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: StarletteRequest, call_next):
-        path = request.url.path
-        auth_header = request.headers.get("authorization", "<MISSING>")
-        origin = request.headers.get("origin", "<no-origin>")
-        logger.info(f"[DEBUG-AUTH] {request.method} {path} | Origin: {origin} | Auth: {auth_header[:40]}...")
-        response = await call_next(request)
-        return response
-
-app.add_middleware(DebugAuthMiddleware)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],

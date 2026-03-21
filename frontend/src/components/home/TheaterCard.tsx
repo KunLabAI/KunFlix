@@ -42,7 +42,7 @@ export default function TheaterCard({
     <motion.div
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      className="relative flex-shrink-0 w-[200px] h-[300px] rounded-xl overflow-hidden cursor-pointer group shadow-lg border border-border/50 bg-card"
+      className="relative flex-shrink-0 w-[200px] h-[300px] rounded-xl overflow-hidden cursor-pointer group bg-card"
       onClick={onClick}
     >
       {/* Background / Image */}
@@ -72,7 +72,7 @@ export default function TheaterCard({
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-300" />
       
       {/* Content Area - Glassmorphism */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t border-white/10 dark:border-white/5 transition-all duration-300 group-hover:bg-background/90">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md  transition-all duration-300 group-hover:bg-background/90">
         <h3 className="font-bold text-lg truncate text-foreground transition-colors duration-300">
           {title}
         </h3>

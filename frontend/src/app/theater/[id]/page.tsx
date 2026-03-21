@@ -96,6 +96,17 @@ function InfiniteCanvas() {
     setTheaterId(theaterId);
   }, [theaterId, setTheaterId]);
 
+  // Offline retry queue logic
+  useEffect(() => {
+    const handleOnline = () => {
+      if (useCanvasStore.getState().isDirty) {
+        saveToBackend().catch(console.error);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [saveToBackend]);
+
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       if (connectionState.isValid) return;
@@ -216,12 +227,6 @@ function InfiniteCanvas() {
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Save: Ctrl + S
-      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault();
-        saveToBackend().catch(console.error);
-      }
-      
       // Undo: Ctrl + Z
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key === 'z') {
         event.preventDefault();
@@ -376,19 +381,22 @@ function InfiniteCanvas() {
               <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={redo} title="重做 (Ctrl+Y)">
                 <Redo className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 ${isDirty ? 'text-amber-500 hover:text-amber-600' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => saveToBackend().catch(console.error)}
-                disabled={isSaving}
-                title={`保存 (Ctrl+S) ${saveStatusText}`}
-              >
-                <SaveIcon className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
-              </Button>
-              {saveStatusText && (
-                <span className="text-xs text-muted-foreground px-1 whitespace-nowrap">{saveStatusText}</span>
-              )}
+              <div className="flex items-center gap-1 px-2">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {saveStatusText}
+                </span>
+                {isSaving ? (
+                  <div title="保存中...">
+                    <Loader2 className="w-3 h-3 text-muted-foreground animate-spin" />
+                  </div>
+                ) : isDirty ? (
+                  <div className="w-2 h-2 rounded-full bg-amber-500" title="未保存" />
+                ) : (
+                  <div title="已保存">
+                    <Check className="w-3 h-3 text-emerald-500" />
+                  </div>
+                )}
+              </div>
             </div>
           </Panel>
 

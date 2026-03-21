@@ -48,11 +48,10 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     };
   }, [isEditing, editData, id, updateNodeData]);
 
-  // ESC to exit edit mode and save
+  // ESC to exit edit mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditing && e.key === 'Escape') {
-        updateNodeData(id, editData);
         setIsEditing(false);
       }
     };
@@ -63,7 +62,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isEditing, editData, id, updateNodeData]);
+  }, [isEditing]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,9 +104,8 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     alert("AI 辅助功能正在开发中...");
   };
 
-  const handleSave = (e?: React.MouseEvent) => {
+  const handleFinishEdit = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    updateNodeData(id, editData);
     setIsEditing(false);
   };
 
@@ -131,7 +129,11 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           {isEditing ? (
             <Input
             value={editData.title}
-            onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+            onChange={(e) => {
+              const newData = { ...editData, title: e.target.value };
+              setEditData(newData);
+              updateNodeData(id, newData);
+            }}
             className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
             placeholder="无标题文本卡"
             onClick={(e) => e.stopPropagation()}
@@ -139,7 +141,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
             onKeyDown={(e) => {
               e.stopPropagation();
               if (e.key === 'Enter' || e.key === 'Escape') {
-                handleSave(e as unknown as React.MouseEvent);
+                handleFinishEdit(e as unknown as React.MouseEvent);
               }
             }}
             autoFocus
@@ -168,7 +170,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
               initialContent={editData.content || undefined}
               isEditable={isEditing}
               onUpdate={(content, chars) => {
-                setEditData({ ...editData, content });
+                const newData = { ...editData, content };
+                setEditData(newData);
+                updateNodeData(id, newData);
                 setCharCount(chars);
               }}
             />
@@ -176,7 +180,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         </CardContent>
         <CardFooter className="script-node__footer p-2 bg-secondary/10 flex justify-end gap-2 border-t">
           {isEditing ? (
-            <Button variant="default" size="sm" className="h-8" onClick={handleSave}>
+            <Button variant="default" size="sm" className="h-8" onClick={handleFinishEdit}>
               <Check className="h-4 w-4 mr-1" /> 完成编辑
             </Button>
           ) : (

@@ -52,15 +52,14 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     setEditTitle(data.name || '');
   };
 
-  const handleTitleSave = () => {
-    updateNodeData(id, { name: editTitle });
+  const handleTitleFinishEdit = () => {
     setIsEditingTitle(false);
   };
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
     if (e.key === 'Enter' || e.key === 'Escape') {
-      handleTitleSave();
+      handleTitleFinishEdit();
     }
   };
 
@@ -209,7 +208,10 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               <Input
                 ref={inputRef}
                 value={editTitle}
-                onChange={(e) => setEditTitle(e.target.value)}
+                onChange={(e) => {
+                  setEditTitle(e.target.value);
+                  updateNodeData(id, { name: e.target.value });
+                }}
                 className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
                 placeholder="未命名图片卡"
                 onClick={(e) => e.stopPropagation()}
