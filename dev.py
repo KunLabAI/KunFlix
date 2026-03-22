@@ -64,17 +64,20 @@ def run_process(command, cwd, prefix):
     """运行一个子进程并实时打印输出"""
     process = None
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            shell=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            encoding='utf-8',
-            errors='replace'
-        )
+        # Use shell=True for node commands, but for uvicorn/python it's better to pass it as a list 
+        # or use CREATE_NEW_PROCESS_GROUP on windows to avoid signal propagation issues during reload.
+        kwargs = {
+            "cwd": cwd,
+            "shell": True,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "bufsize": 1,
+            "encoding": 'utf-8',
+            "errors": 'replace'
+        }
+        
+        process = subprocess.Popen(command, **kwargs)
         PROCESSES.append(process)
         
         # 实时读取输出
@@ -108,7 +111,10 @@ def main():
     # 2. Start Phase (Parallel)
     # Backend Command
     # Use asyncio loop for Windows compatibility with asyncpg
-    backend_cmd = f'"{python_exec}" -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 --loop asyncio'
+    # Exclude skills/active_skills from watchfiles to prevent reload loop when toggling skills
+    # Must use absolute path: uvicorn FileFilter compares exclude_dir against absolute paths from watchfiles
+    active_skills_abs = os.path.join(BACKEND_DIR, "skills", "active_skills")
+    backend_cmd = f'"{python_exec}" -m uvicorn main:app --reload --reload-exclude "{active_skills_abs}" --host 127.0.0.1 --port 8000 --loop asyncio'
     
     # Frontend Command
     frontend_cmd = "npm run dev"
@@ -131,7 +137,20 @@ def main():
     t3.start()
 
     try:
+        # Give processes a moment to start and be added to the PROCESSES list
+        time.sleep(2)
+        
+        # Keep the main thread alive.
+        # Check if all processes have exited instead of just threads.
+        # In Windows, Uvicorn reload might cause the thread to finish or the process to restart.
         while True:
+            # Re-fetch the length to ensure we don't prematurely exit 
+            # if processes are still initializing.
+            if len(PROCESSES) > 0:
+                active_processes = [p for p in PROCESSES if p.poll() is None]
+                if not active_processes:
+                    log("All processes exited. Stopping dev environment.", "[SYSTEM]")
+                    break
             time.sleep(1)
     except KeyboardInterrupt:
         log("Stopping servers...", "[SYSTEM]")

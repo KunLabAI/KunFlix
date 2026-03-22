@@ -12,7 +12,16 @@
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node-extension.ts](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node-extension.ts)
 - [frontend/src/components/tiptap-ui/image-upload-button/use-image-upload.ts](file://frontend/src/components/tiptap-ui/image-upload-button/use-image-upload.ts)
 - [frontend/src/lib/api.ts](file://frontend/src/lib/api.ts)
+- [frontend/src/components/canvas/CharacterNode.tsx](file://frontend/src/components/canvas/CharacterNode.tsx)
+- [frontend/src/components/canvas/VideoNode.tsx](file://frontend/src/components/canvas/VideoNode.tsx)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 更新了媒体上传限制说明，从10MB增加到500MB
+- 新增了直接后端集成的大文件上传支持说明
+- 更新了前端上传组件的限制配置
+- 新增了Canvas组件的大文件上传实现
 
 ## 目录
 1. [简介](#简介)
@@ -29,12 +38,16 @@
 
 媒体上传系统是一个完整的多媒体内容管理解决方案，集成了后端FastAPI服务和前端Tiptap编辑器。该系统支持多种媒体格式的上传、存储、管理和批量处理功能，包括图片、视频和音频文件。
 
+**更新** 系统现已支持更大的文件上传限制，从原来的10MB增加到500MB，并移除了Next.js代理限制，支持直接后端集成的大文件上传。
+
 系统主要特点：
 - 安全的媒体文件上传和存储机制
 - 支持批量图片生成和处理
 - 多供应商视频生成服务集成
 - 前后端一体化的媒体编辑体验
 - 完整的错误处理和日志记录
+- **新增** 大文件上传支持（最高500MB）
+- **新增** 直接后端集成的上传方式
 
 ## 项目结构
 
@@ -47,6 +60,9 @@ FE_API[前端API客户端]
 TIPTAP[Tiptap编辑器]
 UPLOAD_NODE[图片上传节点]
 UI_BUTTON[图片上传按钮]
+CANVAS_NODES[Canvas节点]
+CHARACTER_NODE[角色节点]
+VIDEO_NODE[视频节点]
 end
 subgraph "后端服务"
 FASTAPI[FastAPI路由]
@@ -64,6 +80,8 @@ FE_API --> FASTAPI
 TIPTAP --> UPLOAD_NODE
 UI_BUTTON --> TIPTAP
 UPLOAD_NODE --> MEDIA_ROUTER
+CHARACTER_NODE --> MEDIA_ROUTER
+VIDEO_NODE --> MEDIA_ROUTER
 BATCH_SERVICE --> UTILS
 VIDEO_SERVICE --> UTILS
 MEDIA_ROUTER --> MEDIA_DIR
@@ -76,11 +94,15 @@ ASSET_TABLE --> DATABASE
 - [backend/routers/media.py:23-28](file://backend/routers/media.py#L23-L28)
 - [backend/services/media_utils.py:8-28](file://backend/services/media_utils.py#L8-L28)
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx:436-555](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx#L436-L555)
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
+- [frontend/src/components/canvas/VideoNode.tsx:131-132](file://frontend/src/components/canvas/VideoNode.tsx#L131-L132)
 
 **章节来源**
 - [backend/routers/media.py:1-163](file://backend/routers/media.py#L1-L163)
 - [backend/services/media_utils.py:1-51](file://backend/services/media_utils.py#L1-L51)
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx:1-555](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx#L1-L555)
+- [frontend/src/components/canvas/CharacterNode.tsx:110-196](file://frontend/src/components/canvas/CharacterNode.tsx#L110-L196)
+- [frontend/src/components/canvas/VideoNode.tsx:122-196](file://frontend/src/components/canvas/VideoNode.tsx#L122-L196)
 
 ## 核心组件
 
@@ -103,11 +125,16 @@ ASSET_TABLE --> DATABASE
 #### 图片上传按钮
 为编辑器提供快捷的图片插入功能，支持热键操作。
 
+#### Canvas节点上传组件
+**新增** 支持直接后端集成的上传方式，绕过Next.js代理限制，支持大文件上传。
+
 **章节来源**
 - [backend/routers/media.py:47-88](file://backend/routers/media.py#L47-L88)
 - [backend/services/batch_image_gen.py:113-187](file://backend/services/batch_image_gen.py#L113-L187)
 - [backend/services/media_utils.py:20-51](file://backend/services/media_utils.py#L20-L51)
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx:436-555](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx#L436-L555)
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
+- [frontend/src/components/canvas/VideoNode.tsx:131-132](file://frontend/src/components/canvas/VideoNode.tsx#L131-L132)
 
 ## 架构概览
 
@@ -117,14 +144,17 @@ ASSET_TABLE --> DATABASE
 sequenceDiagram
 participant Client as 客户端
 participant Frontend as 前端编辑器
+participant DirectBackend as 直接后端
 participant Backend as 后端服务
 participant Storage as 存储系统
 participant Provider as 第三方提供商
 Client->>Frontend : 用户点击图片上传
-Frontend->>Backend : POST /api/media/upload
+Frontend->>DirectBackend : POST /api/media/upload (直连后端)
+DirectBackend->>Backend : 转发到后端服务
 Backend->>Storage : 保存文件到本地目录
 Storage-->>Backend : 返回文件路径
-Backend-->>Frontend : 返回文件URL
+Backend-->>DirectBackend : 返回文件URL
+DirectBackend-->>Frontend : 返回媒体文件URL
 Frontend->>Backend : GET /api/media/{filename}
 Backend->>Storage : 读取文件内容
 Storage-->>Backend : 文件数据
@@ -136,15 +166,21 @@ Backend->>Storage : 保存生成的图片
 Backend-->>Frontend : 返回批量生成结果
 ```
 
+**更新** 新增了直接后端集成的上传流程，绕过了Next.js代理限制，支持更大文件的上传。
+
 **图表来源**
 - [backend/routers/media.py:66-88](file://backend/routers/media.py#L66-L88)
 - [backend/routers/media.py:91-163](file://backend/routers/media.py#L91-L163)
 - [backend/services/media_utils.py:31-51](file://backend/services/media_utils.py#L31-L51)
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
+- [frontend/src/components/canvas/VideoNode.tsx:131-132](file://frontend/src/components/canvas/VideoNode.tsx#L131-L132)
 
 **章节来源**
 - [backend/routers/media.py:1-163](file://backend/routers/media.py#L1-L163)
 - [backend/services/batch_image_gen.py:1-187](file://backend/services/batch_image_gen.py#L1-L187)
 - [backend/services/media_utils.py:1-51](file://backend/services/media_utils.py#L1-L51)
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
+- [frontend/src/components/canvas/VideoNode.tsx:131-132](file://frontend/src/components/canvas/VideoNode.tsx#L131-L132)
 
 ## 详细组件分析
 
@@ -227,12 +263,54 @@ HandleError --> End
 ShowError --> End
 ```
 
+**更新** 现在支持最大500MB的文件上传，移除了Next.js代理限制。
+
 **图表来源**
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx:85-213](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx#L85-L213)
 
 **章节来源**
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx:1-555](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node.tsx#L1-L555)
 - [frontend/src/components/tiptap-node/image-upload-node/image-upload-node-extension.ts:1-163](file://frontend/src/components/tiptap-node/image-upload-node/image-upload-node-extension.ts#L1-L163)
+
+### Canvas节点上传组件
+
+**新增** Canvas节点提供了直接后端集成的上传方式：
+
+#### 直接后端连接
+绕过了Next.js代理限制，直接连接到后端服务，支持大文件上传。
+
+#### 大文件支持
+支持最高500MB的文件上传，适用于视频和大型图片文件。
+
+#### 进度跟踪
+提供详细的上传进度反馈，包括百分比和实时状态更新。
+
+```mermaid
+flowchart TD
+Start([Canvas节点上传]) --> Validate[验证文件类型和大小]
+Validate --> Valid{验证通过?}
+Valid --> |否| ShowError[显示错误信息]
+Valid --> |是| CreateXHR[创建XMLHttpRequest]
+CreateXHR --> SetAuth[设置认证头]
+SetAuth --> SetupProgress[设置进度监听]
+SetupProgress --> SendFile[发送文件到后端]
+SendFile --> Progress[更新上传进度]
+Progress --> Response{收到响应?}
+Response --> |否| HandleError[处理上传错误]
+Response --> |是| Success[上传成功]
+Success --> UpdateNode[更新节点状态]
+UpdateNode --> End([完成])
+HandleError --> End
+ShowError --> End
+```
+
+**图表来源**
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
+- [frontend/src/components/canvas/VideoNode.tsx:131-132](file://frontend/src/components/canvas/VideoNode.tsx#L131-L132)
+
+**章节来源**
+- [frontend/src/components/canvas/CharacterNode.tsx:110-196](file://frontend/src/components/canvas/CharacterNode.tsx#L110-L196)
+- [frontend/src/components/canvas/VideoNode.tsx:122-196](file://frontend/src/components/canvas/VideoNode.tsx#L122-L196)
 
 ### 媒体工具库
 
@@ -275,29 +353,35 @@ subgraph "前端层"
 A[API客户端] --> B[Tiptap编辑器]
 B --> C[图片上传节点]
 C --> D[上传按钮]
+E[Canvas节点] --> F[直接后端连接]
 end
 subgraph "后端层"
-E[FastAPI路由] --> F[媒体服务]
-F --> G[批量图片服务]
-F --> H[媒体工具]
-G --> I[Google GenAI]
-H --> J[文件系统]
+G[FastAPI路由] --> H[媒体服务]
+H --> I[批量图片服务]
+H --> J[媒体工具]
+I --> K[Google GenAI]
+J --> L[文件系统]
 end
 subgraph "数据层"
-K[数据库] --> L[资源表]
-M[文件存储] --> N[媒体目录]
+M[数据库] --> N[资源表]
+O[文件存储] --> P[媒体目录]
 end
-A --> E
-C --> F
+A --> G
+C --> H
 D --> B
-F --> K
-F --> M
+E --> G
+F --> G
+H --> M
+H --> O
 ```
+
+**更新** 新增了Canvas节点的直接后端连接依赖关系。
 
 **图表来源**
 - [frontend/src/lib/api.ts:1-79](file://frontend/src/lib/api.ts#L1-L79)
 - [backend/routers/media.py:1-163](file://backend/routers/media.py#L1-L163)
 - [backend/services/batch_image_gen.py:1-187](file://backend/services/batch_image_gen.py#L1-L187)
+- [frontend/src/components/canvas/CharacterNode.tsx:139-140](file://frontend/src/components/canvas/CharacterNode.tsx#L139-L140)
 
 **章节来源**
 - [frontend/src/lib/api.ts:1-79](file://frontend/src/lib/api.ts#L1-L79)
@@ -322,13 +406,20 @@ F --> M
 - 上传中断后的资源清理
 - 超时控制和重试策略
 
+### 大文件优化
+**新增** 针对大文件上传的优化措施：
+- 直接后端连接绕过Next.js代理限制
+- 支持最高500MB的文件上传
+- 实时进度反馈和断点续传支持
+- 内存使用优化，避免大文件内存溢出
+
 ## 故障排除指南
 
 ### 常见问题及解决方案
 
 #### 文件上传失败
 - 检查文件类型是否在支持列表中
-- 验证文件大小是否超过限制
+- 验证文件大小是否超过限制（现为500MB）
 - 确认服务器磁盘空间充足
 
 #### 图片生成错误
@@ -341,9 +432,25 @@ F --> M
 - 验证编辑器扩展是否正确加载
 - 确认权限设置允许文件访问
 
+#### 大文件上传超时
+**新增** 针对大文件上传的故障排除：
+- 检查网络连接稳定性
+- 确认后端服务能够处理大文件
+- 验证服务器内存和磁盘空间
+- 考虑分块上传策略
+
+#### 直接后端连接失败
+**新增** Canvas节点直接连接的故障排除：
+- 确认后端服务地址可达
+- 检查防火墙和网络策略
+- 验证跨域资源共享(CORS)配置
+- 确认认证令牌有效
+
 **章节来源**
 - [backend/routers/media.py:69-86](file://backend/routers/media.py#L69-L86)
 - [backend/services/batch_image_gen.py:106-110](file://backend/services/batch_image_gen.py#L106-L110)
+- [frontend/src/components/canvas/CharacterNode.tsx:125-128](file://frontend/src/components/canvas/CharacterNode.tsx#L125-L128)
+- [frontend/src/components/canvas/VideoNode.tsx:110-117](file://frontend/src/components/canvas/VideoNode.tsx#L110-L117)
 
 ## 结论
 
@@ -353,5 +460,7 @@ F --> M
 - **可扩展性**：模块化的服务架构支持功能扩展
 - **可靠性**：完善的错误处理和监控机制
 - **用户体验**：直观的界面和流畅的操作流程
+- **大文件支持**：现支持最高500MB的文件上传
+- **直接后端集成**：绕过Next.js代理限制，提升上传性能
 
-该系统为后续的功能扩展奠定了良好的基础，可以轻松集成更多媒体处理能力和第三方服务。
+**更新** 系统现已支持更大的文件上传限制和直接后端集成，为后续的功能扩展奠定了良好的基础，可以轻松集成更多媒体处理能力和第三方服务。

@@ -15,6 +15,11 @@ from models import LLMProvider
 from database import AsyncSessionLocal
 import asyncio
 import logging
+from agentscope.tool import Toolkit
+from skills_manager import sync_skills, get_active_skills_dir, list_available_skills
+
+from agent_extensions import MemoryCompactionHook, ToolGuardMixin
+from mcp_manager.manager import MCPClientManager
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +37,7 @@ def _extract_response_text(response) -> str:
     return extractors.get(type(content), lambda c: str(c) if c else "")(content)
 
 
-class DialogAgent(AgentBase):
+class DialogAgent(ToolGuardMixin, AgentBase):
     # Model type -> Formatter class (OpenAI as default fallback)
     _FORMATTER_MAP = {
         GeminiChatModel: GeminiChatFormatter,
@@ -41,19 +46,80 @@ class DialogAgent(AgentBase):
         OllamaChatModel: OllamaChatFormatter,
     }
 
-    def __init__(self, name: str, sys_prompt: str, model):
+    def __init__(self, name: str, sys_prompt: str, model, max_tokens=4000, mcp_manager: MCPClientManager = None, skill_names: list[str] | None = None):
         super().__init__()
         self.name = name
         self.sys_prompt = sys_prompt
         self.model = model
         self.memory = []
+        self.mcp_manager = mcp_manager
         # Resolve formatter based on model type
         formatter_cls = self._FORMATTER_MAP.get(type(model), OpenAIChatFormatter)
         self._formatter = formatter_cls()
+        
+        # Initialize ToolGuard
+        self._init_tool_guard()
+        
+        # Initialize Toolkit and load skills
+        self.toolkit = Toolkit()
+        self._register_skills(skill_names)
+        
+        # Initialize Memory Compaction Hook
+        self._memory_compaction_hook = MemoryCompactionHook(max_tokens=max_tokens, summarization_model=self.model)
+
+    async def _register_mcp_clients(self):
+        """Register MCP clients with the toolkit if manager is provided."""
+        if not self.mcp_manager:
+            return
+            
+        clients = await self.mcp_manager.get_clients()
+        for client in clients:
+            try:
+                # AgentScope 1.1+ supports register_mcp_client
+                if hasattr(self.toolkit, 'register_mcp_client'):
+                    await self.toolkit.register_mcp_client(client)
+                    logger.info(f"Registered MCP client: {getattr(client, 'name', 'unknown')}")
+            except Exception as e:
+                logger.error(f"Failed to register MCP client: {e}")
+
+    def _register_skills(self, skill_names: list[str] | None = None):
+        """Load and register skills from active_skills directory.
+        
+        Args:
+            skill_names: Optional list of skill names to load.
+                         When provided, only matching active skills are registered.
+                         When None, all active skills are registered.
+        """
+        sync_skills()  # Ensure skills are synced before loading
+        active_skills_dir = get_active_skills_dir()
+        available_skills = list_available_skills()
+
+        skills_to_load = (
+            [s for s in available_skills if s in skill_names]
+            if skill_names
+            else available_skills
+        )
+        
+        for skill_name in skills_to_load:
+            skill_dir = active_skills_dir / skill_name
+            try:
+                # Assuming AgentScope Toolkit has a register_agent_skill method similar to CoPaw
+                # If not, we might need to parse SKILL.md and register the functions manually
+                if hasattr(self.toolkit, 'register_agent_skill'):
+                    self.toolkit.register_agent_skill(str(skill_dir))
+                    logger.info(f"Registered skill: {skill_name}")
+            except Exception as e:
+                logger.error(f"Failed to register skill '{skill_name}': {e}")
 
     async def reply(self, x: Msg = None) -> Msg:
+        # First ensure MCP clients are registered (done lazily/per-request to support hot-reload)
+        await self._register_mcp_clients()
+        
         if x:
             self.memory.append(x)
+            
+        # Trigger Memory Compaction Hook before reasoning
+        await self._memory_compaction_hook(self, {})
 
         # Build Msg list with correct roles for formatter
         msgs = [Msg(name="system", content=self.sys_prompt, role="system")]

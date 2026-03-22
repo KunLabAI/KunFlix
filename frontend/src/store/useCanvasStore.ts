@@ -1,7 +1,6 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import debounce from 'lodash.debounce';
 import {
   Connection,
   Edge,
@@ -76,7 +75,7 @@ interface CanvasState {
   theaterTitle: string;
   isSaving: boolean;
   isLoading: boolean;
-  lastSavedAt: string | null;
+  lastSavedAt: number | null;
   isDirty: boolean;
   
   // History
@@ -92,7 +91,6 @@ interface CanvasState {
   deleteEdge: (id: string) => void;
   reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => void;
-  updateNodeDimensions: (id: string, width: number, height: number) => void;
   setViewport: (viewport: Viewport) => void;
   
   // Undo/Redo
@@ -105,7 +103,6 @@ interface CanvasState {
   setTheaterTitle: (title: string) => void;
   loadTheater: (theaterId: string) => Promise<void>;
   saveToBackend: () => Promise<void>;
-  debouncedSave: () => void;
   markDirty: () => void;
 }
 
@@ -172,7 +169,7 @@ function applyDetail(detail: TheaterDetailResponse) {
     viewport: (detail.canvas_viewport as Viewport) || { x: 0, y: 0, zoom: 1 },
     isLoading: false,
     isDirty: false,
-    lastSavedAt: detail.updated_at || detail.created_at,
+    lastSavedAt: Date.now(),
     history: [] as HistoryState[],
     historyIndex: -1,
   };
@@ -180,262 +177,218 @@ function applyDetail(detail: TheaterDetailResponse) {
 
 export const useCanvasStore = create<CanvasState>()(
   persist(
-    (set, get) => {
-      const debouncedSave = debounce(() => {
-        get().saveToBackend().catch((err) => {
-          console.error('Auto-save failed:', err);
+    (set, get) => ({
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+
+      // Theater sync state
+      theaterId: null,
+      theaterTitle: '未命名剧场',
+      isSaving: false,
+      isLoading: false,
+      lastSavedAt: null,
+      isDirty: false,
+
+      history: [],
+      historyIndex: -1,
+
+      onNodesChange: (changes: NodeChange[]) => {
+        const { nodes } = get();
+        const nextNodes = applyNodeChanges(changes, nodes) as CanvasNode[];
+        set({ nodes: nextNodes });
+      },
+
+      onEdgesChange: (changes: EdgeChange[]) => {
+        const { edges } = get();
+        const nextEdges = applyEdgeChanges(changes, edges);
+        set({ edges: nextEdges });
+      },
+
+      onConnect: (connection: Connection) => {
+        const { edges } = get();
+        
+        // Prevent self-loops
+        if (connection.source === connection.target) return;
+
+        // Prevent cycles
+        if (hasCycle(edges, connection.source, connection.target)) {
+          console.warn('Cycle detected! Connection blocked.');
+          return;
+        }
+
+        const newEdges = addEdge({ ...connection, type: 'default', animated: true }, edges);
+        
+        set({ edges: newEdges, isDirty: true });
+        get().takeSnapshot();
+      },
+
+      addNode: (node: CanvasNode) => {
+        const { nodes } = get();
+        // Prevent duplicate nodes with same ID
+        if (nodes.some((n) => n.id === node.id)) {
+          return;
+        }
+        set({ nodes: [...nodes, node], isDirty: true });
+        get().takeSnapshot();
+      },
+
+      deleteNode: (id: string) => {
+        const { nodes, edges } = get();
+        const newNodes = nodes.filter((node) => node.id !== id);
+        const newEdges = edges.filter(
+          (edge) => edge.source !== id && edge.target !== id
+        );
+        set({ nodes: newNodes, edges: newEdges, isDirty: true });
+        get().takeSnapshot();
+      },
+
+      deleteEdge: (id: string) => {
+        const { edges } = get();
+        const edgeToDelete = edges.find((edge) => edge.id === id);
+        const newEdges = edges.filter((edge) => edge.id !== id);
+        set({ edges: newEdges, isDirty: true });
+        get().takeSnapshot();
+        
+        if (edgeToDelete) {
+          window.dispatchEvent(new CustomEvent('canvas:edge:deleted', { 
+            detail: { edge: edgeToDelete, edgeId: id } 
+          }));
+        }
+      },
+
+      reset: () => {
+        const initialNode: CanvasNode = {
+          id: 'script-root', 
+          type: 'script',
+          position: { x: 100, y: 100 },
+          data: { title: '我的文本卡', description: '', tags: [] },
+        };
+        set({
+          nodes: [initialNode],
+          edges: [],
+          history: [],
+          historyIndex: -1,
+          viewport: { x: 0, y: 0, zoom: 1 },
+          theaterId: null,
+          theaterTitle: '未命名剧场',
+          isDirty: false,
+          lastSavedAt: null,
         });
-      }, 300, { maxWait: 500 });
+      },
 
-      return {
-        nodes: [],
-        edges: [],
-        viewport: { x: 0, y: 0, zoom: 1 },
+      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => {
+        set({
+          nodes: get().nodes.map((node) =>
+            node.id === id ? { ...node, data: { ...node.data, ...data } } : node
+          ),
+          isDirty: true,
+        });
+        get().takeSnapshot();
+      },
 
-        // Theater sync state
-        theaterId: null,
-        theaterTitle: '未命名剧场',
-        isSaving: false,
-        isLoading: false,
-        lastSavedAt: null,
-        isDirty: false,
+      setViewport: (viewport: Viewport) => {
+        set({ viewport });
+      },
 
-        history: [],
-        historyIndex: -1,
+      takeSnapshot: () => {
+        const { nodes, edges, history, historyIndex } = get();
+        const newHistory = history.slice(0, historyIndex + 1);
+        newHistory.push({ nodes, edges });
+        
+        if (newHistory.length > MAX_HISTORY) {
+          newHistory.shift();
+        }
 
-        debouncedSave,
+        set({
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        });
+      },
 
-        onNodesChange: (changes: NodeChange[]) => {
-          const { nodes } = get();
-          const nextNodes = applyNodeChanges(changes, nodes) as CanvasNode[];
-          set({ nodes: nextNodes });
-          
-          // Only mark dirty and save if the change is a structural/positional change, not just selection
-          const isSignificantChange = changes.some(c => c.type !== 'select');
-          if (isSignificantChange) {
-            set({ isDirty: true });
-            get().debouncedSave();
-          }
-        },
-
-        onEdgesChange: (changes: EdgeChange[]) => {
-          const { edges } = get();
-          const nextEdges = applyEdgeChanges(changes, edges);
-          set({ edges: nextEdges });
-          
-          const isSignificantChange = changes.some(c => c.type !== 'select');
-          if (isSignificantChange) {
-            set({ isDirty: true });
-            get().debouncedSave();
-          }
-        },
-
-        onConnect: (connection: Connection) => {
-          const { edges } = get();
-          
-          // Prevent self-loops
-          if (connection.source === connection.target) return;
-
-          // Prevent cycles
-          if (hasCycle(edges, connection.source, connection.target)) {
-            console.warn('Cycle detected! Connection blocked.');
-            return;
-          }
-
-          const newEdges = addEdge({ ...connection, type: 'default', animated: true }, edges);
-          
-          set({ edges: newEdges, isDirty: true });
-          get().takeSnapshot();
-          get().debouncedSave();
-        },
-
-        addNode: (node: CanvasNode) => {
-          const { nodes } = get();
-          // Prevent duplicate nodes with same ID
-          if (nodes.some((n) => n.id === node.id)) {
-            return;
-          }
-          set({ nodes: [...nodes, node], isDirty: true });
-          get().takeSnapshot();
-          get().debouncedSave();
-        },
-
-        deleteNode: (id: string) => {
-          const { nodes, edges } = get();
-          const newNodes = nodes.filter((node) => node.id !== id);
-          const newEdges = edges.filter(
-            (edge) => edge.source !== id && edge.target !== id
-          );
-          set({ nodes: newNodes, edges: newEdges, isDirty: true });
-          get().takeSnapshot();
-          get().debouncedSave();
-        },
-
-        deleteEdge: (id: string) => {
-          const { edges } = get();
-          const edgeToDelete = edges.find((edge) => edge.id === id);
-          const newEdges = edges.filter((edge) => edge.id !== id);
-          set({ edges: newEdges, isDirty: true });
-          get().takeSnapshot();
-          get().debouncedSave();
-          
-          if (edgeToDelete) {
-            window.dispatchEvent(new CustomEvent('canvas:edge:deleted', { 
-              detail: { edge: edgeToDelete, edgeId: id } 
-            }));
-          }
-        },
-
-        reset: () => {
-          const initialNode: CanvasNode = {
-            id: 'script-root', 
-            type: 'script',
-            position: { x: 100, y: 100 },
-            data: { title: '我的文本卡', description: '', tags: [] },
-          };
+      undo: () => {
+        const { historyIndex, history } = get();
+        if (historyIndex > 0) {
+          const prevIndex = historyIndex - 1;
+          const prevState = history[prevIndex];
           set({
-            nodes: [initialNode],
-            edges: [],
-            history: [],
-            historyIndex: -1,
-            viewport: { x: 0, y: 0, zoom: 1 },
-            theaterId: null,
-            theaterTitle: '未命名剧场',
+            nodes: prevState.nodes,
+            edges: prevState.edges,
+            historyIndex: prevIndex,
+            isDirty: true,
+          });
+        }
+      },
+
+      redo: () => {
+        const { historyIndex, history } = get();
+        if (historyIndex < history.length - 1) {
+          const nextIndex = historyIndex + 1;
+          const nextState = history[nextIndex];
+          set({
+            nodes: nextState.nodes,
+            edges: nextState.edges,
+            historyIndex: nextIndex,
+            isDirty: true,
+          });
+        }
+      },
+
+      // --- Backend sync actions ---
+
+      setTheaterId: (id: string | null) => {
+        set({ theaterId: id });
+      },
+
+      setTheaterTitle: (title: string) => {
+        set({ theaterTitle: title, isDirty: true });
+      },
+
+      loadTheater: async (theaterId: string) => {
+        set({ isLoading: true });
+        try {
+          const detail = await theaterApi.getTheater(theaterId);
+          set(applyDetail(detail));
+        } catch (err) {
+          console.error('Failed to load theater:', err);
+          set({ isLoading: false });
+          throw err;
+        }
+      },
+
+      saveToBackend: async () => {
+        const { theaterId, nodes, edges, viewport, isSaving, theaterTitle } = get();
+        if (!theaterId || isSaving) return;
+
+        set({ isSaving: true });
+        try {
+          // Update title if changed
+          await theaterApi.updateTheater(theaterId, { title: theaterTitle });
+
+          const detail = await theaterApi.saveCanvas(theaterId, {
+            nodes: nodes.map(nodeToApi),
+            edges: edges.map(edgeToApi),
+            canvas_viewport: viewport as Record<string, number>,
+          });
+          set({
+            isSaving: false,
             isDirty: false,
-            lastSavedAt: null,
+            lastSavedAt: Date.now(),
+            // Sync node_count etc from server response (but keep local nodes/edges as source of truth)
           });
-        },
+          // Optionally sync back IDs for new nodes
+          void detail;
+        } catch (err) {
+          console.error('Failed to save to backend:', err);
+          set({ isSaving: false });
+          throw err;
+        }
+      },
 
-        updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => {
-          set({
-            nodes: get().nodes.map((node) =>
-              node.id === id ? { ...node, data: { ...node.data, ...data } } : node
-            ),
-            isDirty: true,
-          });
-          get().takeSnapshot();
-          get().debouncedSave();
-        },
-
-        updateNodeDimensions: (id: string, width: number, height: number) => {
-          set({
-            nodes: get().nodes.map((node) =>
-              node.id === id ? { ...node, width, height } : node
-            ),
-            isDirty: true,
-          });
-          // Do not take snapshot here to avoid spamming history on resize/load, but save to backend
-          get().debouncedSave();
-        },
-
-        setViewport: (viewport: Viewport) => {
-          set({ viewport });
-        },
-
-        takeSnapshot: () => {
-          const { nodes, edges, history, historyIndex } = get();
-          const newHistory = history.slice(0, historyIndex + 1);
-          newHistory.push({ nodes, edges });
-          
-          if (newHistory.length > MAX_HISTORY) {
-            newHistory.shift();
-          }
-
-          set({
-            history: newHistory,
-            historyIndex: newHistory.length - 1,
-          });
-        },
-
-        undo: () => {
-          const { historyIndex, history } = get();
-          if (historyIndex > 0) {
-            const prevIndex = historyIndex - 1;
-            const prevState = history[prevIndex];
-            set({
-              nodes: prevState.nodes,
-              edges: prevState.edges,
-              historyIndex: prevIndex,
-              isDirty: true,
-            });
-            get().debouncedSave();
-          }
-        },
-
-        redo: () => {
-          const { historyIndex, history } = get();
-          if (historyIndex < history.length - 1) {
-            const nextIndex = historyIndex + 1;
-            const nextState = history[nextIndex];
-            set({
-              nodes: nextState.nodes,
-              edges: nextState.edges,
-              historyIndex: nextIndex,
-              isDirty: true,
-            });
-            get().debouncedSave();
-          }
-        },
-
-        // --- Backend sync actions ---
-
-        setTheaterId: (id: string | null) => {
-          set({ theaterId: id });
-        },
-
-        setTheaterTitle: (title: string) => {
-          set({ theaterTitle: title, isDirty: true });
-          get().debouncedSave();
-        },
-
-        loadTheater: async (theaterId: string) => {
-          set({ isLoading: true });
-          try {
-            const detail = await theaterApi.getTheater(theaterId);
-            set(applyDetail(detail));
-          } catch (err) {
-            console.error('Failed to load theater:', err);
-            set({ isLoading: false });
-            throw err;
-          }
-        },
-
-        saveToBackend: async () => {
-          const { theaterId, nodes, edges, viewport, isSaving, theaterTitle } = get();
-          if (!theaterId || isSaving) return;
-
-          set({ isSaving: true });
-          try {
-            // Update title if changed
-            await theaterApi.updateTheater(theaterId, { title: theaterTitle });
-
-            const detail = await theaterApi.saveCanvas(theaterId, {
-              nodes: nodes.map(nodeToApi),
-              edges: edges.map(edgeToApi),
-              canvas_viewport: viewport as Record<string, number>,
-            });
-            set({
-              isSaving: false,
-              isDirty: false,
-              lastSavedAt: new Date().toISOString(),
-              // Sync node_count etc from server response (but keep local nodes/edges as source of truth)
-            });
-            // Optionally sync back IDs for new nodes
-            void detail;
-          } catch (err) {
-            console.error('Failed to save to backend:', err);
-            set({ isSaving: false });
-            // We do not unset isDirty on failure so it can be retried later
-            throw err;
-          }
-        },
-
-        markDirty: () => {
-          set({ isDirty: true });
-          get().debouncedSave();
-        },
-      };
-    },
+      markDirty: () => {
+        set({ isDirty: true });
+      },
+    }),
     {
       name: 'infinite-theater-storage',
       storage: createJSONStorage(() => localStorage),

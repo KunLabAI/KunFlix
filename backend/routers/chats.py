@@ -14,6 +14,7 @@ from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, Cr
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
 from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
+from services.skill_tools import build_skill_prompt
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
@@ -345,6 +346,15 @@ async def _generate_single_agent(
                                 parts = [{"type": "image_url", "image_url": {"url": data_url}}]
                             last_msg["content"] = parts
 
+    # 注入 agent 配置的 skill 描述到 system prompt
+    agent_tools = agent.tools or []
+    if agent_tools:
+        from skills_manager import get_active_skills_dir
+        skill_prompt = build_skill_prompt(agent_tools, get_active_skills_dir())
+        # 追加到 system prompt（第一条 system 消息）
+        if skill_prompt and messages and messages[0].get("role") == "system":
+            messages[0]["content"] += "\n\n" + skill_prompt
+
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
     input_chars = sum(_content_len(m['content']) for m in messages)
@@ -356,6 +366,7 @@ async def _generate_single_agent(
     logger.info(f"Session: {session_id} | {'Admin' if is_admin else 'User'}: {entity_id}")
     logger.info(f"History: {len(history)} | Input chars: {input_chars}")
     logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
+    logger.info(f"Skills: {agent_tools or 'none'}")
     logger.info(f"Current message: {content}")
     logger.info(f"{'-'*60}")
 

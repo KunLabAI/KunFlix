@@ -1,10 +1,3 @@
-export const AVAILABLE_TOOLS = [
-  { label: 'Web Search', value: 'web_search' },
-  { label: 'Code Interpreter', value: 'code_interpreter' },
-  { label: 'Image Generation', value: 'image_gen' },
-  { label: 'Knowledge Base', value: 'knowledge_base' },
-];
-
 export const COORDINATION_MODES = [
   { label: '流水线', value: 'pipeline', description: '顺序或并行执行任务' },
   { label: '计划', value: 'plan', description: '任务分解与依赖调度' },

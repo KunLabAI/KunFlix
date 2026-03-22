@@ -15,11 +15,20 @@ class StreamContext:
     api_key: str
     base_url: str | None
     model: str
-    messages: List[Dict[str, str]]
+    messages: List[Dict[str, Any]]
     temperature: float
     context_window: int
     thinking_mode: bool
     gemini_config: Dict[str, Any] | None = None  # Gemini 3.1 配置
+    tools: List[Dict[str, Any]] | None = None     # OpenAI-format tool definitions
+
+
+@dataclass
+class ToolCallResult:
+    """Collected tool call from LLM response"""
+    id: str          # tool_call id (for OpenAI) or block id (for Anthropic)
+    name: str        # function/tool name
+    arguments: str   # JSON string of arguments
 
 
 @dataclass
@@ -32,6 +41,7 @@ class StreamResult:
     text_output_tokens: int = 0     # TEXT 模态输出 tokens
     image_output_tokens: int = 0    # IMAGE 模态输出 tokens
     search_query_count: int = 0     # Google Search 查询次数
+    tool_calls: List[ToolCallResult] | None = None  # Collected tool calls from LLM
 
 
 # 供应商默认 base_url 配置
@@ -64,7 +74,7 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 # ============================================================
 @register_provider("openai", "deepseek", "xai")
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """OpenAI/DeepSeek 流式调用"""
+    """OpenAI/DeepSeek 流式调用（支持 tool calling）"""
     from openai import AsyncOpenAI
     
     client = AsyncOpenAI(
@@ -72,15 +82,21 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
         base_url=get_effective_base_url(ctx),
     )
     
-    stream = await client.chat.completions.create(
-        model=ctx.model,
-        messages=ctx.messages,
-        temperature=ctx.temperature,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
+    create_params = {
+        "model": ctx.model,
+        "messages": ctx.messages,
+        "temperature": ctx.temperature,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    ctx.tools and create_params.update(tools=ctx.tools)
+    
+    stream = await client.chat.completions.create(**create_params)
     
     thinking_started = False
+    # Accumulate tool_calls across chunks (OpenAI streams tool calls in deltas)
+    pending_tool_calls: dict[int, dict] = {}  # index -> {id, name, arguments}
+
     async for chunk in stream:
         # 处理 reasoning_content (thinking mode)
         if ctx.thinking_mode and chunk.choices and hasattr(chunk.choices[0].delta, 'reasoning_content'):
@@ -100,12 +116,29 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
             result.full_response += content
             yield content
 
+        # Collect tool_calls from delta
+        if chunk.choices and hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
+            for tc_delta in chunk.choices[0].delta.tool_calls:
+                idx = tc_delta.index
+                entry = pending_tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                tc_delta.id and entry.update(id=tc_delta.id)
+                (tc_delta.function and tc_delta.function.name) and entry.update(name=tc_delta.function.name)
+                (tc_delta.function and tc_delta.function.arguments) and entry.update(arguments=entry["arguments"] + tc_delta.function.arguments)
+
         if hasattr(chunk, 'usage') and chunk.usage:
             result.input_tokens = chunk.usage.prompt_tokens
             result.output_tokens = chunk.usage.completion_tokens
     
     if thinking_started:
         yield "</think>"
+
+    # Convert collected tool calls to result
+    if pending_tool_calls:
+        result.tool_calls = [
+            ToolCallResult(id=tc["id"], name=tc["name"], arguments=tc["arguments"])
+            for tc in pending_tool_calls.values()
+            if tc["name"]
+        ]
 
 
 @register_provider("azure")
@@ -143,7 +176,7 @@ async def stream_azure(ctx: StreamContext, result: StreamResult) -> AsyncGenerat
 # ============================================================
 @register_provider("anthropic", "minimax")
 async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """Anthropic/MiniMax 流式调用"""
+    """Anthropic/MiniMax 流式调用（支持 tool calling）"""
     from anthropic import AsyncAnthropic
     
     client = AsyncAnthropic(
@@ -169,6 +202,18 @@ async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGen
         "temperature": 1 if ctx.thinking_mode else ctx.temperature,
     }
     
+    # 添加 tools（转换为 Anthropic 格式: input_schema 替代 parameters）
+    if ctx.tools:
+        anthropic_tools = [
+            {
+                "name": t["function"]["name"],
+                "description": t["function"]["description"],
+                "input_schema": t["function"]["parameters"],
+            }
+            for t in ctx.tools
+        ]
+        request_params["tools"] = anthropic_tools
+    
     # 启用 extended thinking
     if ctx.thinking_mode:
         request_params["thinking"] = {
@@ -176,6 +221,7 @@ async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGen
             "budget_tokens": min(10000, ctx.context_window // 4)
         }
     
+    # 统一使用流式调用（部分 Anthropic 兼容 API 如 MiniMax 强制要求 streaming）
     async with client.messages.stream(**request_params) as stream:
         async for text in stream.text_stream:
             result.full_response += text
@@ -185,6 +231,18 @@ async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGen
         if final_message.usage:
             result.input_tokens = final_message.usage.input_tokens
             result.output_tokens = final_message.usage.output_tokens
+        
+        # 从 final_message 中提取 tool_use blocks
+        for block in final_message.content:
+            block_type = getattr(block, "type", "")
+            if block_type == "tool_use":
+                import json
+                result.tool_calls = result.tool_calls or []
+                result.tool_calls.append(ToolCallResult(
+                    id=block.id,
+                    name=block.name,
+                    arguments=json.dumps(block.input) if isinstance(block.input, dict) else str(block.input),
+                ))
 
 
 # ============================================================
@@ -505,11 +563,12 @@ async def stream_completion(
     api_key: str,
     base_url: str | None,
     model: str,
-    messages: List[Dict[str, str]],
+    messages: List[Dict[str, Any]],
     temperature: float,
     context_window: int,
     thinking_mode: bool = False,
     gemini_config: Dict[str, Any] | None = None,
+    tools: List[Dict[str, Any]] | None = None,
 ) -> AsyncGenerator[tuple[str, StreamResult], None]:
     """
     统一的流式调用入口
@@ -527,6 +586,7 @@ async def stream_completion(
         context_window=context_window,
         thinking_mode=thinking_mode,
         gemini_config=gemini_config,
+        tools=tools,
     )
     result = StreamResult()
     

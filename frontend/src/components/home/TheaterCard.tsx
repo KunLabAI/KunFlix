@@ -1,16 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, Layers, MoreHorizontal, Trash, Copy, Edit2 } from "lucide-react";
+import { Play, Layers } from "lucide-react";
 import Image from "next/image";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
-import { getEffectiveTime, formatLocalTime } from "@/lib/timeUtils";
 
 const statusLabel: Record<string, string> = {
   draft: "草稿",
@@ -31,12 +23,7 @@ interface TheaterCardProps {
   status?: string;
   nodeCount?: number;
   updatedAt?: string | null;
-  createdAt?: string;
-  canEdit?: boolean;
   onClick?: () => void;
-  onDelete?: () => void;
-  onClone?: () => void;
-  onRename?: () => void;
 }
 
 export default function TheaterCard({
@@ -45,21 +32,17 @@ export default function TheaterCard({
   status = "draft",
   nodeCount = 0,
   updatedAt,
-  createdAt,
-  canEdit = true,
   onClick,
-  onDelete,
-  onClone,
-  onRename,
 }: TheaterCardProps) {
-  const effectiveTime = createdAt ? getEffectiveTime({ updated_at: updatedAt || null, created_at: createdAt }) : updatedAt;
-  const timeLabel = effectiveTime ? formatLocalTime(effectiveTime) : null;
+  const timeLabel = updatedAt
+    ? new Date(updatedAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" })
+    : null;
 
   return (
     <motion.div
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
-      className="relative flex-shrink-0 w-[200px] h-[300px] rounded-xl overflow-hidden cursor-pointer group bg-card"
+      className="relative flex-shrink-0 w-[200px] h-[300px] rounded-xl overflow-hidden cursor-pointer group shadow-lg border border-border/50 bg-card"
       onClick={onClick}
     >
       {/* Background / Image */}
@@ -77,85 +60,19 @@ export default function TheaterCard({
       </div>
 
       {/* Status Badge */}
-      <div className="absolute top-3 left-3 z-10 pointer-events-none">
+      <div className="absolute top-3 right-3 z-10">
         <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-sm ${statusColor[status] ?? statusColor.draft}`}
+          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white ${statusColor[status] ?? statusColor.draft}`}
         >
           {statusLabel[status] ?? status}
         </span>
       </div>
 
-      {/* More Options */}
-      {(onDelete || onClone || onRename) && (
-        <div className="absolute top-1.5 right-1.5 z-20">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MoreHorizontal className="h-5 w-5" />
-                <span className="sr-only">更多选项</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              {onClone && (
-                <div title={!canEdit ? "无权限" : ""}>
-                  <DropdownMenuItem 
-                    className="cursor-pointer"
-                    disabled={!canEdit}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) onClone();
-                    }}
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    创建副本
-                  </DropdownMenuItem>
-                </div>
-              )}
-              {onRename && (
-                <div title={!canEdit ? "无权限" : ""}>
-                  <DropdownMenuItem 
-                    className="cursor-pointer"
-                    disabled={!canEdit}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) onRename();
-                    }}
-                  >
-                    <Edit2 className="mr-2 h-4 w-4" />
-                    重命名剧场
-                  </DropdownMenuItem>
-                </div>
-              )}
-              {onDelete && (
-                <div title={!canEdit ? "无权限" : ""}>
-                  <DropdownMenuItem 
-                    className="cursor-pointer"
-                    disabled={!canEdit}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (canEdit) onDelete();
-                    }}
-                  >
-                    <Trash className="mr-2 h-4 w-4" />
-                    删除剧场
-                  </DropdownMenuItem>
-                </div>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
-
       {/* Overlay Gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-300" />
       
       {/* Content Area - Glassmorphism */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md  transition-all duration-300 group-hover:bg-background/90">
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t border-white/10 dark:border-white/5 transition-all duration-300 group-hover:bg-background/90">
         <h3 className="font-bold text-lg truncate text-foreground transition-colors duration-300">
           {title}
         </h3>

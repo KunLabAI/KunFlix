@@ -182,7 +182,8 @@ class AgentExecutor:
         dialog_agent = DialogAgent(
             name=agent_config.name,
             sys_prompt=effective_prompt,
-            model=model
+            model=model,
+            skill_names=agent_config.tools or None,
         )
         
         input_msg = Msg(name="User", content=user_content, role="user")
@@ -234,7 +235,8 @@ class AgentExecutor:
         dialog_agent = DialogAgent(
             name=agent_config.name,
             sys_prompt=agent_config.system_prompt,
-            model=model
+            model=model,
+            skill_names=agent_config.tools or None,
         )
         
         self._agent_cache[cache_key] = dialog_agent

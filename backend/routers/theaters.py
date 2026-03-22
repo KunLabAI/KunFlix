@@ -17,7 +17,7 @@ router = APIRouter(
 )
 
 
-@router.post("", response_model=TheaterResponse)
+@router.post("/", response_model=TheaterResponse)
 async def create_theater(
     data: TheaterCreate,
     current_user: User = Depends(get_current_active_user),
@@ -28,7 +28,7 @@ async def create_theater(
     return await service.create_theater(current_user.id, data)
 
 
-@router.get("", response_model=TheaterListResponse)
+@router.get("/", response_model=TheaterListResponse)
 async def list_theaters(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),

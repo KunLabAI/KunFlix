@@ -18,7 +18,9 @@ import {
   LogOut,
   MoreHorizontal,
   FileCode2,
-  Film
+  Film,
+  Blocks,
+  ServerCog
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -58,6 +60,16 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '智能体管理',
       href: '/admin/agents',
       icon: Zap,
+    },
+    {
+      title: '技能管理 (Skills)',
+      href: '/admin/skills',
+      icon: Blocks,
+    },
+    {
+      title: 'MCP 客户端',
+      href: '/admin/mcp',
+      icon: ServerCog,
     },
     {
       title: '视频生成',
