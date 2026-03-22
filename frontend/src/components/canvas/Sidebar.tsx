@@ -134,7 +134,7 @@ export const Sidebar = () => {
   return (
     <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50">
       <div 
-        className="flex flex-col gap-2 p-1.5 rounded-xl bg-white/70 dark:bg-black/70 backdrop-blur-xl border border-border/50 shadow-none"
+        className="flex flex-col gap-2 p-1.5 rounded-xl bg-background/70 backdrop-blur-xl border border-border/50 shadow-none"
         onMouseLeave={handleMouseLeave}
       >
         {/* Node Library Button */}
@@ -144,14 +144,14 @@ export const Sidebar = () => {
         >
           <button className={cn(
             "w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors duration-200 shadow-none",
-            activeMenu === 'nodes' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 hover:text-foreground"
+            activeMenu === 'nodes' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}>
             <Layers className="w-4 h-4" />
           </button>
           
           {/* Node Library Panel */}
           <div className={cn(
-            "absolute left-full top-0 ml-4 w-60 bg-white/70 dark:bg-black/70 backdrop-blur-xl border border-border/50 rounded-xl p-2 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
+            "absolute left-full top-0 ml-4 w-60 bg-background/70 backdrop-blur-xl border border-border/50 rounded-xl p-2 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
             activeMenu === 'nodes' 
               ? "opacity-100 translate-x-0 pointer-events-auto" 
               : "opacity-0 -translate-x-2 pointer-events-none"
@@ -163,7 +163,7 @@ export const Sidebar = () => {
                   key={node.type}
                   draggable
                   onDragStart={(e) => onDragStart(e, node.type, node.data, node.dimensions)}
-                  className="group flex items-start gap-3 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                  className="group flex items-start gap-3 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing hover:bg-secondary transition-colors"
                 >
                   <div className={cn("p-1.5 rounded-md mt-0.5", node.bg)}>
                     <node.icon className={cn("w-4 h-4", node.color)} />
@@ -186,21 +186,21 @@ export const Sidebar = () => {
         >
           <button className={cn(
             "w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors duration-200 shadow-none",
-            activeMenu === 'assets' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-black/5 dark:hover:bg-white/10 hover:text-foreground"
+            activeMenu === 'assets' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}>
             <Plus className="w-4 h-4" />
           </button>
           
           {/* Asset Library Panel */}
           <div className={cn(
-            "absolute left-full top-0 ml-4 w-72 bg-white/70 dark:bg-black/70 backdrop-blur-xl border border-border/50 rounded-xl p-3 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none flex flex-col gap-3",
+            "absolute left-full top-0 ml-4 w-72 bg-background/70 backdrop-blur-xl border border-border/50 rounded-xl p-3 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none flex flex-col gap-3",
             activeMenu === 'assets' 
               ? "opacity-100 translate-x-0 pointer-events-auto" 
               : "opacity-0 -translate-x-2 pointer-events-none"
           )}>
             
             {/* Tabs */}
-            <div className="flex items-center gap-1 p-1 bg-black/5 dark:bg-white/5 rounded-lg">
+            <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg">
               <button 
                 onClick={() => setActiveAssetTab('images')}
                 className={cn(
@@ -244,7 +244,7 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onDragStart(e, asset.type, { name: asset.name, imageUrl: asset.url })}
-                      className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-black/5 dark:bg-white/5 hover:border-node-green/50 transition-colors h-[80px] flex items-center justify-center"
+                      className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-green/50 transition-colors h-[80px] flex items-center justify-center"
                     >
                       <img 
                         src={asset.url} 
@@ -257,7 +257,7 @@ export const Sidebar = () => {
                       </div>
                     </div>
                   )) : (
-                    <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-black/5 dark:bg-white/5 rounded-lg border border-border/50 border-dashed">
+                    <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <ImagePlus className="w-8 h-8 mb-2 opacity-20" />
                       <span className="text-xs">暂无图片资产</span>
                     </div>
@@ -273,7 +273,7 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onDragStart(e, asset.type, { name: asset.name, videoUrl: asset.url })}
-                      className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-black/5 dark:bg-white/5 hover:border-node-yellow/50 transition-colors h-[80px] flex items-center justify-center bg-black/80"
+                      className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-yellow/50 transition-colors h-[80px] flex items-center justify-center bg-black/80"
                     >
                       <video 
                         src={asset.url}
@@ -292,7 +292,7 @@ export const Sidebar = () => {
                       </div>
                     </div>
                   )) : (
-                    <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-black/5 dark:bg-white/5 rounded-lg border border-border/50 border-dashed">
+                    <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <Film className="w-8 h-8 mb-2 opacity-20" />
                       <span className="text-xs">暂无视频资产</span>
                     </div>
@@ -308,7 +308,7 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onDragStart(e, asset.type, { title: asset.name, content: { type: 'doc', content: [{ type: 'paragraph' }] } })}
-                      className="group flex items-center gap-3 p-2.5 rounded-lg border border-border/50 cursor-grab active:cursor-grabbing bg-black/5 dark:bg-white/5 hover:border-node-blue/50 transition-colors"
+                      className="group flex items-center gap-3 p-2.5 rounded-lg border border-border/50 cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-blue/50 transition-colors"
                     >
                       <div className="p-1.5 rounded-md bg-node-blue/10 shrink-0">
                         <File className="w-4 h-4 text-node-blue" />
@@ -316,7 +316,7 @@ export const Sidebar = () => {
                       <span className="text-xs font-medium text-foreground flex-1 truncate">{asset.name}</span>
                     </div>
                   )) : (
-                    <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-black/5 dark:bg-white/5 rounded-lg border border-border/50 border-dashed">
+                    <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <FileText className="w-8 h-8 mb-2 opacity-20" />
                       <span className="text-xs">暂无其他资源</span>
                     </div>

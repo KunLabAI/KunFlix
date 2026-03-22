@@ -1,8 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, Layers } from "lucide-react";
+import { Play, Layers, MoreHorizontal, Trash } from "lucide-react";
 import Image from "next/image";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import { getEffectiveTime, formatTimeAgo } from "@/lib/timeUtils";
 
 const statusLabel: Record<string, string> = {
   draft: "草稿",
@@ -23,7 +31,9 @@ interface TheaterCardProps {
   status?: string;
   nodeCount?: number;
   updatedAt?: string | null;
+  createdAt?: string;
   onClick?: () => void;
+  onDelete?: () => void;
 }
 
 export default function TheaterCard({
@@ -32,11 +42,12 @@ export default function TheaterCard({
   status = "draft",
   nodeCount = 0,
   updatedAt,
+  createdAt,
   onClick,
+  onDelete,
 }: TheaterCardProps) {
-  const timeLabel = updatedAt
-    ? new Date(updatedAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" })
-    : null;
+  const effectiveTime = createdAt ? getEffectiveTime({ updated_at: updatedAt || null, created_at: createdAt }) : updatedAt;
+  const timeLabel = effectiveTime ? formatTimeAgo(effectiveTime) : null;
 
   return (
     <motion.div
@@ -60,13 +71,44 @@ export default function TheaterCard({
       </div>
 
       {/* Status Badge */}
-      <div className="absolute top-3 right-3 z-10">
+      <div className="absolute top-3 left-3 z-10 pointer-events-none">
         <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white ${statusColor[status] ?? statusColor.draft}`}
+          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-sm ${statusColor[status] ?? statusColor.draft}`}
         >
           {statusLabel[status] ?? status}
         </span>
       </div>
+
+      {/* More Options */}
+      {onDelete && (
+        <div className="absolute top-1.5 right-1.5 z-20">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+                <span className="sr-only">更多选项</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem 
+                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash className="mr-2 h-4 w-4" />
+                删除剧场
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
 
       {/* Overlay Gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-300" />

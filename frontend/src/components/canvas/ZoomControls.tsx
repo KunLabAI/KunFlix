@@ -2,22 +2,35 @@ import React from 'react';
 import { useReactFlow, useStore } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Map, Plus, Minus, Focus } from 'lucide-react';
+import { Map, Plus, Minus, Focus, Wand2, Grid, Magnet } from 'lucide-react';
 
 export function ZoomControls({ 
   showMap, 
-  onToggleMap 
+  onToggleMap,
+  onAutoLayout,
+  isLayouting,
+  snapToGrid,
+  onToggleSnapToGrid,
+  snapToGuides,
+  onToggleSnapToGuides
 }: { 
   showMap: boolean; 
-  onToggleMap: () => void 
+  onToggleMap: () => void;
+  onAutoLayout?: () => void;
+  isLayouting?: boolean;
+  snapToGrid?: boolean;
+  onToggleSnapToGrid?: () => void;
+  snapToGuides?: boolean;
+  onToggleSnapToGuides?: () => void;
 }) {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
   
   // Get current zoom level from ReactFlow store
   const zoom = useStore((state) => state.transform[2]);
   
-  const minZoom = 0.1;
-  const maxZoom = 4;
+  // Match minZoom/maxZoom with ReactFlow's props in page.tsx
+  const minZoom = 0.25;
+  const maxZoom = 3;
   
   const handleSliderChange = (value: number[]) => {
     zoomTo(value[0]);
@@ -50,10 +63,49 @@ export function ZoomControls({
         <Focus className="w-4 h-4" />
       </Button>
 
+      {onAutoLayout && (
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-muted-foreground hover:text-foreground" 
+          onClick={onAutoLayout} 
+          disabled={isLayouting}
+          title="一键整理节点布局"
+        >
+          <Wand2 className={`w-4 h-4 ${isLayouting ? 'animate-pulse text-primary' : ''}`} />
+        </Button>
+      )}
+
+      <div className="w-px h-4 bg-border/50 mx-1" />
+
+      {onToggleSnapToGrid && (
+        <Button 
+          variant={snapToGrid ? "secondary" : "ghost"} 
+          size="icon" 
+          className={`h-8 w-8 ${!snapToGrid ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}`} 
+          onClick={onToggleSnapToGrid} 
+          title={snapToGrid ? "关闭网格吸附" : "开启网格吸附"}
+        >
+          <Grid className="w-4 h-4" />
+        </Button>
+      )}
+
+      {onToggleSnapToGuides && (
+        <Button 
+          variant={snapToGuides ? "secondary" : "ghost"} 
+          size="icon" 
+          className={`h-8 w-8 ${!snapToGuides ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}`} 
+          onClick={onToggleSnapToGuides} 
+          title={snapToGuides ? "关闭对齐线吸附" : "开启对齐线吸附"}
+        >
+          <Magnet className="w-4 h-4" />
+        </Button>
+      )}
+
       <Button 
         variant={showMap ? "secondary" : "ghost"} 
         size="icon" 
-        className={`h-8 w-8 ${!showMap && 'text-muted-foreground hover:text-foreground'}`} 
+        className={`h-8 w-8 ${!showMap ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}`} 
         onClick={onToggleMap} 
         title={showMap ? "关闭地图" : "打开地图"}
       >

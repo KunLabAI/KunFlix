@@ -4,9 +4,10 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { useCanvasStore, CharacterNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { v4 as uuidv4 } from 'uuid';
+import { createPortal } from 'react-dom';
 
 const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>>) => {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
@@ -19,6 +20,12 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.name || '');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
+  const [isPreviewDragging, setIsPreviewDragging] = useState(false);
+  const dragStartPosRef = useRef({ x: 0, y: 0 });
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -222,6 +229,76 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     }
   };
 
+  // Preview handlers
+  const handlePreviewWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    setPreviewScale(prev => {
+      const delta = e.deltaY * -0.001;
+      const newScale = Math.min(Math.max(0.1, prev + delta), 5);
+      return newScale;
+    });
+  }, []);
+
+  const handlePreviewPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return; // Only left click
+    setIsPreviewDragging(true);
+    dragStartPosRef.current = {
+      x: e.clientX - previewPosition.x,
+      y: e.clientY - previewPosition.y
+    };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePreviewPointerMove = (e: React.PointerEvent) => {
+    if (!isPreviewDragging) return;
+    setPreviewPosition({
+      x: e.clientX - dragStartPosRef.current.x,
+      y: e.clientY - dragStartPosRef.current.y
+    });
+  };
+
+  const handlePreviewPointerUp = (e: React.PointerEvent) => {
+    setIsPreviewDragging(false);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+
+  const closePreview = () => {
+    setPreviewOpen(false);
+    // Reset preview state after animation
+    setTimeout(() => {
+      setPreviewScale(1);
+      setPreviewPosition({ x: 0, y: 0 });
+    }, 300);
+  };
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && previewOpen) {
+        closePreview();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewOpen]);
+
+  React.useEffect(() => {
+    if (previewOpen) {
+      document.body.style.overflow = 'hidden';
+      // Add non-passive wheel listener for zoom
+      const container = document.getElementById('preview-container');
+      if (container) {
+        container.addEventListener('wheel', handlePreviewWheel, { passive: false });
+      }
+      return () => {
+        document.body.style.overflow = '';
+        if (container) {
+          container.removeEventListener('wheel', handlePreviewWheel);
+        }
+      };
+    }
+  }, [previewOpen, handlePreviewWheel]);
+
+
   return (
     <>
       <NodeResizer 
@@ -300,13 +377,24 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
             )}
 
             {data.imageUrl && (
-              <div className="w-full h-full flex flex-col items-center justify-center">
+              <div className="w-full h-full flex flex-col items-center justify-center relative group/img">
                 <img 
-                    src={data.imageUrl} 
-                    alt={data.name} 
-                    className={`w-full h-full rounded-sm nodrag ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
-                    onLoad={handleImageLoad}
-                  />
+                  src={data.imageUrl} 
+                  alt={data.name} 
+                  className={`w-full h-full rounded-sm ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
+                  onLoad={handleImageLoad}
+                  onPointerDown={(e) => e.stopPropagation()}
+                />
+                
+                {/* 拖拽遮罩：不含 nodrag，透明，允许 React Flow 接管拖拽，同时支持双击全屏等操作 */}
+                <div 
+                  className="absolute inset-0 cursor-grab active:cursor-grabbing z-10"
+                  title="拖拽移动节点 / 双击全屏预览"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setPreviewOpen(true);
+                  }}
+                />
               </div>
             )}
 
@@ -503,6 +591,67 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </div>
         </div>
       </div>
+
+      {/* Fullscreen Preview Portal */}
+      {previewOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={closePreview}
+        >
+          {/* Controls */}
+          <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
+            <div className="bg-black/50 text-white px-3 py-1.5 rounded-md text-sm font-medium backdrop-blur-md" onClick={e => e.stopPropagation()}>
+              {Math.round(previewScale * 100)}%
+            </div>
+            <Button 
+              variant="secondary" 
+              size="icon" 
+              className="bg-black/50 hover:bg-black/70 text-white border-none backdrop-blur-md"
+              onClick={(e) => { e.stopPropagation(); setPreviewScale(p => Math.min(5, p + 0.25)); }}
+            >
+              <ZoomIn className="h-5 w-5" />
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="icon" 
+              className="bg-black/50 hover:bg-black/70 text-white border-none backdrop-blur-md"
+              onClick={(e) => { e.stopPropagation(); setPreviewScale(p => Math.max(0.1, p - 0.25)); }}
+            >
+              <ZoomOut className="h-5 w-5" />
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="icon" 
+              className="bg-black/50 hover:bg-black/70 text-white border-none backdrop-blur-md"
+              onClick={(e) => { e.stopPropagation(); closePreview(); }}
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          {/* Image Container */}
+          <div 
+            id="preview-container"
+            className="w-full h-full flex items-center justify-center overflow-hidden p-8"
+          >
+            <img 
+              src={data.imageUrl || undefined} 
+              alt={data.name} 
+              className="max-w-full max-h-full object-contain transition-transform duration-75 ease-out select-none"
+              style={{
+                transform: `translate(${previewPosition.x}px, ${previewPosition.y}px) scale(${previewScale})`,
+                cursor: isPreviewDragging ? 'grabbing' : 'grab'
+              }}
+              draggable={false}
+              onPointerDown={handlePreviewPointerDown}
+              onPointerMove={handlePreviewPointerMove}
+              onPointerUp={handlePreviewPointerUp}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 };

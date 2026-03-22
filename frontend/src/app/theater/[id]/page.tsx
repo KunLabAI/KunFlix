@@ -14,7 +14,8 @@ import {
   ConnectionMode,
   BackgroundVariant,
   NodeTypes,
-  FinalConnectionState
+  FinalConnectionState,
+  Node
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,7 +31,8 @@ import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check } from 'lucide-react';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, Wand2 } from 'lucide-react';
+import { getLayoutedElements } from '@/lib/layoutUtils';
 
 const nodeTypes = {
   script: ScriptNode,
@@ -55,9 +57,12 @@ function InfiniteCanvas() {
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, fitView } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
-  
+  const [isLayouting, setIsLayouting] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const [snapToGuides, setSnapToGuides] = useState(true);
+
   const [menuState, setMenuState] = useState<{
     show: boolean;
     x: number;
@@ -80,6 +85,21 @@ function InfiniteCanvas() {
     loadTheater, saveToBackend, setTheaterId,
     theaterTitle, setTheaterTitle,
   } = useCanvasStore();
+
+  const [alignmentLines, setAlignmentLines] = useState<{
+    vertical: number | null;
+    horizontal: number | null;
+  }>({ vertical: null, horizontal: null });
+
+  const layoutTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (layoutTimeoutRef.current) {
+        clearTimeout(layoutTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load theater on mount (wait for auth)
   const loaded = useRef(false);
@@ -249,6 +269,36 @@ function InfiniteCanvas() {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
+  const handleAutoLayout = useCallback(() => {
+    setIsLayouting(true);
+    const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(
+      nodes,
+      edges,
+      'LR' // Left to Right direction
+    );
+    
+    // Add brief animation transition to nodes by overriding their style momentarily
+    // Note: react-flow natively animates when node position changes if we use a smooth transition.
+    // In our case, just setting the new positions will snap them, but we can do a neat trick:
+    onNodesChange(
+      layoutedNodes.map((n) => ({
+        type: 'position',
+        id: n.id,
+        position: n.position,
+      })) as any
+    );
+    
+    // Fit view after a small delay to let positions update
+    if (layoutTimeoutRef.current) {
+      clearTimeout(layoutTimeoutRef.current);
+    }
+    
+    layoutTimeoutRef.current = setTimeout(() => {
+      fitView({ duration: 800, padding: 0.2 });
+      setIsLayouting(false);
+    }, 100);
+  }, [nodes, edges, onNodesChange, fitView]);
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -263,6 +313,12 @@ function InfiniteCanvas() {
         x: event.clientX,
         y: event.clientY,
       });
+
+      // Snap to grid for dropped nodes if enabled
+      if (snapToGrid) {
+        position.x = Math.round(position.x / 20) * 20;
+        position.y = Math.round(position.y / 20) * 20;
+      }
 
       // Dimension defaults by type (avoids if-else chain)
       const defaultDimensions: Record<string, { width: number; height: number }> = {
@@ -295,12 +351,123 @@ function InfiniteCanvas() {
 
       addNode(newNode);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, snapToGrid]
   );
 
   // Save status indicator
   const saveStatusText = isSaving ? '保存中...' : isDirty ? '未保存' : lastSavedAt ? '已保存' : '';
   const SaveIcon = isSaving ? Loader2 : isDirty ? Save : Check;
+
+  const onNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
+    if (!snapToGuides) {
+      setAlignmentLines({ vertical: null, horizontal: null });
+      return;
+    }
+
+    const SNAP_THRESHOLD = 15;
+    let newVertical: number | null = null;
+    let newHorizontal: number | null = null;
+
+    const currentX = node.position.x;
+    const currentY = node.position.y;
+    // For snapping we MUST use the measured dimensions (actual rendered size)
+    const currentWidth = node.measured?.width ?? node.width ?? 0;
+    const currentHeight = node.measured?.height ?? node.height ?? 0;
+
+    const currentCenterX = currentX + currentWidth / 2;
+    const currentCenterY = currentY + currentHeight / 2;
+
+    // We don't snap to the dragging node itself
+    const otherNodes = nodes.filter((n) => n.id !== node.id);
+
+    // Keep track of the closest snap to avoid jumping between multiple nodes
+    let minDiffX = SNAP_THRESHOLD;
+    let minDiffY = SNAP_THRESHOLD;
+
+    for (const otherNode of otherNodes) {
+      // Use absolute position for snapping if parent nodes are involved,
+      // but here we assume nodes are at root level (which they are in this app)
+      const otherX = otherNode.position.x;
+      const otherY = otherNode.position.y;
+      const otherWidth = otherNode.measured?.width ?? otherNode.width ?? 0;
+      const otherHeight = otherNode.measured?.height ?? otherNode.height ?? 0;
+
+      const otherCenterX = otherX + otherWidth / 2;
+      const otherCenterY = otherY + otherHeight / 2;
+
+      // --- Vertical alignment (X axis matching) ---
+      
+      // Left to Left
+      if (Math.abs(currentX - otherX) < minDiffX) {
+        minDiffX = Math.abs(currentX - otherX);
+        newVertical = otherX;
+        node.position.x = otherX;
+      }
+      // Right to Right
+      else if (Math.abs((currentX + currentWidth) - (otherX + otherWidth)) < minDiffX) {
+        minDiffX = Math.abs((currentX + currentWidth) - (otherX + otherWidth));
+        newVertical = otherX + otherWidth;
+        node.position.x = otherX + otherWidth - currentWidth;
+      }
+      // Center to Center
+      else if (Math.abs(currentCenterX - otherCenterX) < minDiffX) {
+        minDiffX = Math.abs(currentCenterX - otherCenterX);
+        newVertical = otherCenterX;
+        node.position.x = otherCenterX - currentWidth / 2;
+      }
+      // Left to Right
+      else if (Math.abs(currentX - (otherX + otherWidth)) < minDiffX) {
+        minDiffX = Math.abs(currentX - (otherX + otherWidth));
+        newVertical = otherX + otherWidth;
+        node.position.x = otherX + otherWidth;
+      }
+      // Right to Left
+      else if (Math.abs((currentX + currentWidth) - otherX) < minDiffX) {
+        minDiffX = Math.abs((currentX + currentWidth) - otherX);
+        newVertical = otherX;
+        node.position.x = otherX - currentWidth;
+      }
+
+      // --- Horizontal alignment (Y axis matching) ---
+      
+      // Top to Top
+      if (Math.abs(currentY - otherY) < minDiffY) {
+        minDiffY = Math.abs(currentY - otherY);
+        newHorizontal = otherY;
+        node.position.y = otherY;
+      }
+      // Bottom to Bottom
+      else if (Math.abs((currentY + currentHeight) - (otherY + otherHeight)) < minDiffY) {
+        minDiffY = Math.abs((currentY + currentHeight) - (otherY + otherHeight));
+        newHorizontal = otherY + otherHeight;
+        node.position.y = otherY + otherHeight - currentHeight;
+      }
+      // Center to Center
+      else if (Math.abs(currentCenterY - otherCenterY) < minDiffY) {
+        minDiffY = Math.abs(currentCenterY - otherCenterY);
+        newHorizontal = otherCenterY;
+        node.position.y = otherCenterY - currentHeight / 2;
+      }
+      // Top to Bottom
+      else if (Math.abs(currentY - (otherY + otherHeight)) < minDiffY) {
+        minDiffY = Math.abs(currentY - (otherY + otherHeight));
+        newHorizontal = otherY + otherHeight;
+        node.position.y = otherY + otherHeight;
+      }
+      // Bottom to Top
+      else if (Math.abs((currentY + currentHeight) - otherY) < minDiffY) {
+        minDiffY = Math.abs((currentY + currentHeight) - otherY);
+        newHorizontal = otherY;
+        node.position.y = otherY - currentHeight;
+      }
+    }
+
+    setAlignmentLines({ vertical: newVertical, horizontal: newHorizontal });
+  }, [nodes, snapToGuides]);
+
+  const onNodeDragStop = useCallback(() => {
+    setAlignmentLines({ vertical: null, horizontal: null });
+  }, []);
 
   if (isLoading) {
     return (
@@ -331,16 +498,33 @@ function InfiniteCanvas() {
           connectionRadius={20}
           onDragOver={onDragOver}
           onDrop={onDrop}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
           deleteKeyCode={['Backspace', 'Delete']}
           fitView={nodes.length < 2}
           fitViewOptions={{ maxZoom: 1 }}
           minZoom={0.25}
           maxZoom={3}
           proOptions={{ hideAttribution: true }}
-          snapToGrid={false}
+          snapToGrid={snapToGrid}
+          snapGrid={[20, 20]}
         >
           <Background gap={80} size={1} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           
+          {/* Alignment Lines */}
+          {alignmentLines.vertical !== null && (
+            <div 
+              className="absolute top-0 bottom-0 border-l-[1.5px] border-solid border-primary/60 pointer-events-none z-50 transition-opacity duration-150 shadow-[0_0_8px_rgba(var(--primary),0.5)]" 
+              style={{ left: alignmentLines.vertical }} 
+            />
+          )}
+          {alignmentLines.horizontal !== null && (
+            <div 
+              className="absolute left-0 right-0 border-t-[1.5px] border-solid border-primary/60 pointer-events-none z-50 transition-opacity duration-150 shadow-[0_0_8px_rgba(var(--primary),0.5)]" 
+              style={{ top: alignmentLines.horizontal }} 
+            />
+          )}
+
           {showMap && (
             <MiniMap 
               nodeColor={(n) => {
@@ -358,7 +542,16 @@ function InfiniteCanvas() {
           )}
           
           <Panel position="bottom-left" className="m-4 z-50">
-            <ZoomControls showMap={showMap} onToggleMap={() => setShowMap(!showMap)} />
+            <ZoomControls 
+              showMap={showMap} 
+              onToggleMap={() => setShowMap(!showMap)} 
+              onAutoLayout={handleAutoLayout}
+              isLayouting={isLayouting}
+              snapToGrid={snapToGrid}
+              onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
+              snapToGuides={snapToGuides}
+              onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+            />
           </Panel>
           
           <Panel position="top-left" className="m-4 z-50">
