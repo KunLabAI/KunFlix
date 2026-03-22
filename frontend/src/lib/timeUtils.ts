@@ -1,4 +1,16 @@
 import { TheaterResponse } from "./theaterApi";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+
+dayjs.extend(utc);
+
+/**
+ * 格式化 UTC 时间到本地时区时间，格式为 YYYY-MM-DD HH:mm
+ */
+export function formatLocalTime(dateString?: string | null): string {
+  if (!dateString) return "";
+  return dayjs.utc(dateString).local().format("YYYY-MM-DD HH:mm");
+}
 
 /**
  * 获取剧本的有效时间：优先使用 updated_at，若为空则使用 created_at

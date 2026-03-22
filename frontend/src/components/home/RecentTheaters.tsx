@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { theaterApi, type TheaterResponse } from "@/lib/theaterApi";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function RecentTheaters() {
   const router = useRouter();
@@ -22,7 +23,21 @@ export default function RecentTheaters() {
   const [loading, setLoading] = useState(true);
   const [deletingTheater, setDeletingTheater] = useState<TheaterResponse | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cloningTheater, setCloningTheater] = useState<TheaterResponse | null>(null);
+  const [isCloning, setIsCloning] = useState(false);
+  const [renamingTheater, setRenamingTheater] = useState<TheaterResponse | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameTitle, setRenameTitle] = useState("");
   const fetched = useRef(false);
+
+  const fetchTheaters = () => {
+    setLoading(true);
+    theaterApi
+      .listTheaters(1, 20)
+      .then((res) => setTheaters(res.items))
+      .catch(() => setTheaters([]))
+      .finally(() => setLoading(false));
+  };
 
   const handleDeleteConfirm = async () => {
     if (!deletingTheater) return;
@@ -36,6 +51,41 @@ export default function RecentTheaters() {
     } finally {
       setIsDeleting(false);
       setDeletingTheater(null);
+    }
+  };
+
+  const handleCloneConfirm = async () => {
+    if (!cloningTheater) return;
+    setIsCloning(true);
+    try {
+      await theaterApi.cloneTheater(cloningTheater.id);
+      messageApi.success('副本已创建');
+      fetchTheaters();
+    } catch (error) {
+      messageApi.error('创建副本失败，请稍后重试');
+    } finally {
+      setIsCloning(false);
+      setCloningTheater(null);
+    }
+  };
+
+  const handleRenameConfirm = async () => {
+    if (!renamingTheater) return;
+    const newTitle = renameTitle.trim();
+    if (newTitle.length < 2 || newTitle.length > 30) {
+      messageApi.warning('剧场名称需在 2-30 个字符之间');
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      await theaterApi.renameTheater(renamingTheater.id, newTitle);
+      setTheaters(prev => prev.map(t => t.id === renamingTheater.id ? { ...t, title: newTitle } : t));
+      messageApi.success('重命名成功');
+    } catch (error) {
+      messageApi.error('重命名失败，请稍后重试');
+    } finally {
+      setIsRenaming(false);
+      setRenamingTheater(null);
     }
   };
 
@@ -54,11 +104,7 @@ export default function RecentTheaters() {
   useEffect(() => {
     if (!isAuthenticated || fetched.current) return;
     fetched.current = true;
-    theaterApi
-      .listTheaters(1, 20)
-      .then((res) => setTheaters(res.items))
-      .catch(() => setTheaters([]))
-      .finally(() => setLoading(false));
+    fetchTheaters();
   }, [isAuthenticated]);
 
   return (
@@ -98,6 +144,11 @@ export default function RecentTheaters() {
               createdAt={t.created_at}
               onClick={() => router.push(`/theater/${t.id}`)}
               onDelete={() => setDeletingTheater(t)}
+              onClone={() => setCloningTheater(t)}
+              onRename={() => {
+                setRenameTitle(t.title);
+                setRenamingTheater(t);
+              }}
             />
           ))}
         </motion.div>
@@ -118,8 +169,64 @@ export default function RecentTheaters() {
             <Button variant="outline" onClick={() => setDeletingTheater(null)} disabled={isDeleting}>
               取消
             </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
+            <Button onClick={handleDeleteConfirm} disabled={isDeleting}>
               {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clone Confirmation Dialog */}
+      <Dialog open={!!cloningTheater} onOpenChange={(open) => !open && setCloningTheater(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>创建副本</DialogTitle>
+            <DialogDescription>
+              确定要为剧场 <span className="font-bold text-foreground">“{cloningTheater?.title}”</span> 创建副本吗？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setCloningTheater(null)} disabled={isCloning}>
+              取消
+            </Button>
+            <Button onClick={handleCloneConfirm} disabled={isCloning}>
+              {isCloning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              确定
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={!!renamingTheater} onOpenChange={(open) => !open && setRenamingTheater(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>重命名剧场</DialogTitle>
+            <DialogDescription>
+              请输入新的剧场名称（2-30 个字符）
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              placeholder="剧场名称"
+              maxLength={30}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameTitle.trim().length >= 2) {
+                  handleRenameConfirm();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenamingTheater(null)} disabled={isRenaming}>
+              取消
+            </Button>
+            <Button onClick={handleRenameConfirm} disabled={isRenaming || renameTitle.trim().length < 2}>
+              {isRenaming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               确定
             </Button>
           </DialogFooter>

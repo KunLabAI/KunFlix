@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, Layers, MoreHorizontal, Trash } from "lucide-react";
+import { Play, Layers, MoreHorizontal, Trash, Copy, Edit2 } from "lucide-react";
 import Image from "next/image";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { getEffectiveTime, formatTimeAgo } from "@/lib/timeUtils";
+import { getEffectiveTime, formatLocalTime } from "@/lib/timeUtils";
 
 const statusLabel: Record<string, string> = {
   draft: "草稿",
@@ -32,8 +32,11 @@ interface TheaterCardProps {
   nodeCount?: number;
   updatedAt?: string | null;
   createdAt?: string;
+  canEdit?: boolean;
   onClick?: () => void;
   onDelete?: () => void;
+  onClone?: () => void;
+  onRename?: () => void;
 }
 
 export default function TheaterCard({
@@ -43,11 +46,14 @@ export default function TheaterCard({
   nodeCount = 0,
   updatedAt,
   createdAt,
+  canEdit = true,
   onClick,
   onDelete,
+  onClone,
+  onRename,
 }: TheaterCardProps) {
   const effectiveTime = createdAt ? getEffectiveTime({ updated_at: updatedAt || null, created_at: createdAt }) : updatedAt;
-  const timeLabel = effectiveTime ? formatTimeAgo(effectiveTime) : null;
+  const timeLabel = effectiveTime ? formatLocalTime(effectiveTime) : null;
 
   return (
     <motion.div
@@ -80,7 +86,7 @@ export default function TheaterCard({
       </div>
 
       {/* More Options */}
-      {onDelete && (
+      {(onDelete || onClone || onRename) && (
         <div className="absolute top-1.5 right-1.5 z-20">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -95,16 +101,51 @@ export default function TheaterCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-              <DropdownMenuItem 
-                className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <Trash className="mr-2 h-4 w-4" />
-                删除剧场
-              </DropdownMenuItem>
+              {onClone && (
+                <div title={!canEdit ? "无权限" : ""}>
+                  <DropdownMenuItem 
+                    className="cursor-pointer"
+                    disabled={!canEdit}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (canEdit) onClone();
+                    }}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    创建副本
+                  </DropdownMenuItem>
+                </div>
+              )}
+              {onRename && (
+                <div title={!canEdit ? "无权限" : ""}>
+                  <DropdownMenuItem 
+                    className="cursor-pointer"
+                    disabled={!canEdit}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (canEdit) onRename();
+                    }}
+                  >
+                    <Edit2 className="mr-2 h-4 w-4" />
+                    重命名剧场
+                  </DropdownMenuItem>
+                </div>
+              )}
+              {onDelete && (
+                <div title={!canEdit ? "无权限" : ""}>
+                  <DropdownMenuItem 
+                    className="cursor-pointer"
+                    disabled={!canEdit}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (canEdit) onDelete();
+                    }}
+                  >
+                    <Trash className="mr-2 h-4 w-4" />
+                    删除剧场
+                  </DropdownMenuItem>
+                </div>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, Wand2 } from 'lucide-react';
 import { getLayoutedElements } from '@/lib/layoutUtils';
+import { formatLocalTime } from '@/lib/timeUtils';
 
 const nodeTypes = {
   script: ScriptNode,
@@ -355,7 +356,7 @@ function InfiniteCanvas() {
   );
 
   // Save status indicator
-  const saveStatusText = isSaving ? '保存中...' : isDirty ? '未保存' : lastSavedAt ? '已保存' : '';
+  const saveStatusText = isSaving ? '保存中...' : isDirty ? '未保存' : lastSavedAt ? `已保存 ${formatLocalTime(lastSavedAt)}` : '';
   const SaveIcon = isSaving ? Loader2 : isDirty ? Save : Check;
 
   const onNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {

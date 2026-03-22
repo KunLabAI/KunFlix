@@ -46,7 +46,7 @@ exports[`TheaterCard renders correctly and matches snapshot 1`] = `
         <span
           class="ml-auto"
         >
-          2年前
+          2023-10-10 20:05
         </span>
       </div>
       <div
@@ -98,7 +98,7 @@ exports[`TheaterCard renders delete button when onDelete is provided 1`] = `
       <button
         aria-expanded="false"
         aria-haspopup="menu"
-        class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground h-11 w-11 rounded-full bg-black/20 hover:bg-black/40 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm"
+        class="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 hover:text-accent-foreground h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm"
         data-state="closed"
         id="radix-_r_0_"
         type="button"
@@ -137,7 +137,7 @@ exports[`TheaterCard renders delete button when onDelete is provided 1`] = `
         <span
           class="ml-auto"
         >
-          2年前
+          2023-10-10 20:00
         </span>
       </div>
       <div

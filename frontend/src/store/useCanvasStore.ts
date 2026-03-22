@@ -76,7 +76,7 @@ interface CanvasState {
   theaterTitle: string;
   isSaving: boolean;
   isLoading: boolean;
-  lastSavedAt: number | null;
+  lastSavedAt: string | null;
   isDirty: boolean;
   
   // History
@@ -172,7 +172,7 @@ function applyDetail(detail: TheaterDetailResponse) {
     viewport: (detail.canvas_viewport as Viewport) || { x: 0, y: 0, zoom: 1 },
     isLoading: false,
     isDirty: false,
-    lastSavedAt: Date.now(),
+    lastSavedAt: detail.updated_at || detail.created_at,
     history: [] as HistoryState[],
     historyIndex: -1,
   };
@@ -417,7 +417,7 @@ export const useCanvasStore = create<CanvasState>()(
             set({
               isSaving: false,
               isDirty: false,
-              lastSavedAt: Date.now(),
+              lastSavedAt: new Date().toISOString(),
               // Sync node_count etc from server response (but keep local nodes/edges as source of truth)
             });
             // Optionally sync back IDs for new nodes

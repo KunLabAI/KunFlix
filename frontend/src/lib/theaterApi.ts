@@ -149,6 +149,16 @@ export const theaterApi = {
     return res.data;
   },
 
+  async cloneTheater(theaterId: string): Promise<TheaterResponse> {
+    const res = await api.post<TheaterResponse>(`/theaters/${theaterId}/duplicate`);
+    return res.data;
+  },
+
+  async renameTheater(theaterId: string, title: string): Promise<TheaterResponse> {
+    const res = await api.put<TheaterResponse>(`/theaters/${theaterId}`, { title });
+    return res.data;
+  },
+
   async duplicateTheater(theaterId: string): Promise<TheaterResponse> {
     const res = await api.post<TheaterResponse>(
       `/theaters/${theaterId}/duplicate`,
