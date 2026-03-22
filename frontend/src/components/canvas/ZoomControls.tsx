@@ -37,7 +37,7 @@ export function ZoomControls({
   };
 
   return (
-    <div className="flex items-center bg-card border border-border/50 shadow-sm rounded-lg p-1 gap-1 pointer-events-auto">
+    <div className="flex items-center bg-card border border-border/50 rounded-lg p-1 gap-1 pointer-events-auto">
       <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => zoomOut({ duration: 300 })} title="缩小">
         <Minus className="w-4 h-4" />
       </Button>
