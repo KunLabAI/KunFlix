@@ -83,13 +83,8 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     },
     {
       title: '用户管理',
-      href: '/admin/players',
+      href: '/admin/users',
       icon: Users,
-    },
-    {
-      title: '故事管理',
-      href: '/admin/stories',
-      icon: BookOpen,
     },
     {
       title: '订阅套餐',

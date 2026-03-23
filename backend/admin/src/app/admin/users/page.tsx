@@ -257,7 +257,7 @@ export default function UsersPage() {
                       <Button variant="ghost" size="icon" title="订阅管理" onClick={() => openSubscriptionDialog(user)}>
                         <CreditCard className="h-4 w-4" />
                       </Button>
-                      <Link href={`/admin/players/${user.id}/credits`}>
+                      <Link href={`/admin/users/${user.id}/credits`}>
                         <Button variant="ghost" size="icon" title="积分历史">
                           <History className="h-4 w-4" />
                         </Button>

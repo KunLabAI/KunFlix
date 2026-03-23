@@ -37,7 +37,7 @@ def _deserialize_content(content: str) -> Any:
     """反序列化消息内容：尝试解析 JSON，失败则返回原字符串"""
     try:
         parsed = json.loads(content)
-        return parsed if isinstance(parsed, list) else content
+        return parsed if isinstance(parsed, (list, dict)) else content
     except (json.JSONDecodeError, TypeError):
         return content
 
@@ -155,12 +155,29 @@ async def get_session_messages(
         .filter(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc())
     )
-    # 反序列化多模态消息内容
-    return [
-        {"id": msg.id, "session_id": msg.session_id, "role": msg.role, 
-         "content": _deserialize_content(msg.content), "created_at": msg.created_at}
-        for msg in result.scalars().all()
-    ]
+    # 反序列化多模态消息内容及技能/工具调用
+    messages_resp = []
+    for msg in result.scalars().all():
+        deserialized = _deserialize_content(msg.content)
+        if msg.role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
+            messages_resp.append({
+                "id": msg.id,
+                "session_id": msg.session_id,
+                "role": msg.role,
+                "content": deserialized.get("text") or "",
+                "skill_calls": deserialized.get("skill_calls", []),
+                "tool_calls": deserialized.get("tool_calls", []),
+                "created_at": msg.created_at
+            })
+        else:
+            messages_resp.append({
+                "id": msg.id,
+                "session_id": msg.session_id,
+                "role": msg.role,
+                "content": deserialized,
+                "created_at": msg.created_at
+            })
+    return messages_resp
 
 
 @router.post("/{session_id}/messages")
@@ -244,7 +261,12 @@ async def _generate_multi_agent(
     history_messages = []
     for msg in history[:-1]:
         role = msg.role if msg.role in ["user", "assistant"] else "user"
-        history_messages.append({"role": role, "content": _deserialize_content(msg.content)})
+        deserialized = _deserialize_content(msg.content)
+        if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
+            content_val = deserialized.get("text") or ""
+        else:
+            content_val = deserialized
+        history_messages.append({"role": role, "content": content_val})
 
     orchestrator = DynamicOrchestrator(db)
     coordination_mode = (agent.coordination_modes or ["pipeline"])[0]
@@ -394,7 +416,12 @@ async def _generate_single_agent(
 
     for msg in history:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
-        messages.append({"role": role, "content": _deserialize_content(msg.content)})
+        deserialized = _deserialize_content(msg.content)
+        if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
+            content_val = deserialized.get("text") or ""
+        else:
+            content_val = deserialized
+        messages.append({"role": role, "content": content_val})
 
     # 如果用户请求编辑上一张图片，且当前为 Gemini 图片生成场景，则注入上一张图片为本轮输入
     if edit_last_image and provider.provider_type == "gemini":
@@ -457,6 +484,7 @@ async def _generate_single_agent(
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     MAX_TOOL_ROUNDS = 5
     loaded_skills: set[str] = set()  # 已加载的技能，防止重复调用
+    all_tool_calls = []  # 记录所有执行的普通工具
     result = None
     generation_failed = False
     _SSE_START = {True: "skill_call", False: "tool_call"}
@@ -486,6 +514,9 @@ async def _generate_single_agent(
             for tc in result.tool_calls:
                 args = json.loads(tc.arguments)
                 is_skill = tc.name == "load_skill"
+                if not is_skill:
+                    all_tool_calls.append({"name": tc.name, "arguments": args})
+                
                 event_data = (
                     {"skill_name": args.get("skill_name", "")}
                     if is_skill else
@@ -545,10 +576,21 @@ async def _generate_single_agent(
     # 保存助手消息、更新统计、扣费（仅在生成成功后执行）
     async with AsyncSessionLocal() as session:
         try:
+            # Prepare content for assistant
+            if loaded_skills or all_tool_calls:
+                assistant_data = {
+                    "text": result.full_response,
+                    "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
+                    "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls]
+                }
+                final_content = json.dumps(assistant_data, ensure_ascii=False)
+            else:
+                final_content = result.full_response
+
             assistant_msg = ChatMessage(
                 session_id=session_id,
                 role="assistant",
-                content=result.full_response,
+                content=final_content,
             )
             session.add(assistant_msg)
 
