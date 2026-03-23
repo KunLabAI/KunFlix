@@ -189,7 +189,7 @@ export default function SubscriptionsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1200px] mx-auto w-full space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">订阅套餐管理</h2>

@@ -92,7 +92,7 @@ export default function SkillsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1200px] mx-auto w-full space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">技能管理 (Skills)</h2>

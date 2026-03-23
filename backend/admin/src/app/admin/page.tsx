@@ -23,7 +23,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-[1200px] mx-auto w-full space-y-4">
       <h2 className="text-3xl font-bold tracking-tight">仪表盘</h2>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>

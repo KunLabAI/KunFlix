@@ -35,7 +35,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   }, []);
 
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm">
+    <div className="rounded-xl border bg-card p-5">
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm font-medium">工具能力</span>
         <FormField

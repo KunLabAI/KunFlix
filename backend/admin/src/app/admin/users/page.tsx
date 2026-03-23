@@ -209,7 +209,7 @@ export default function UsersPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-[1200px] mx-auto w-full space-y-4">
       <h2 className="text-3xl font-bold tracking-tight">用户管理</h2>
       <div className="rounded-md border bg-card">
         <Table>

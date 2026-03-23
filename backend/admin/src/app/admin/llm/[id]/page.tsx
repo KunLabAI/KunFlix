@@ -22,7 +22,7 @@ export default function EditLLMProviderPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center">
+      <div className="flex min-h-[60vh] w-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
@@ -30,7 +30,7 @@ export default function EditLLMProviderPage() {
 
   if (error) {
     return (
-      <div className="flex h-screen w-full items-center justify-center text-destructive">
+      <div className="flex min-h-[60vh] w-full items-center justify-center text-destructive">
         加载失败，请刷新重试
       </div>
     );
@@ -40,7 +40,7 @@ export default function EditLLMProviderPage() {
 
   if (!provider) {
     return (
-      <div className="flex h-screen w-full items-center justify-center text-muted-foreground">
+      <div className="flex min-h-[60vh] w-full items-center justify-center text-muted-foreground">
         未找到该供应商
       </div>
     );

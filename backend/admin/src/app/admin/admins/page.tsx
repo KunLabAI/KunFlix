@@ -227,7 +227,7 @@ export default function AdminsPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="max-w-[1200px] mx-auto w-full space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold tracking-tight">管理员管理</h2>
         <Button onClick={openCreateDialog}>

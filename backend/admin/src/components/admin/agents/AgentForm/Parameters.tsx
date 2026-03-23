@@ -113,7 +113,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border bg-card p-5">
          <div className="flex justify-between items-center mb-4">
            <Label className="text-sm font-medium">思考模式</Label>
            <FormField
@@ -140,7 +140,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
 
       {/* Gemini 3.1 配置区块 - 仅在选择 Gemini 供应商时显示 */}
       {isGeminiProvider && (
-        <div className="rounded-xl border bg-card p-5 shadow-sm border-blue-200 dark:border-blue-800">
+        <div className="rounded-xl border bg-card p-5 border-blue-200 dark:border-blue-800">
           <Label className="text-sm font-medium mb-4 block text-blue-600 dark:text-blue-400">Gemini 3.1 高级配置</Label>
           <div className="space-y-4">
             {/* 思考等级 */}
@@ -318,7 +318,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
         </div>
       )}
 
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border bg-card p-5">
          <div className="mb-4">
            <div className="flex justify-between items-center mb-2">
              <Label className="text-sm font-medium">上下文窗口</Label>
@@ -368,7 +368,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
          </div>
       </div>
 
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border bg-card p-5">
         <div className="flex justify-between items-center mb-4">
           <Label className="text-sm font-medium">温度 (Temperature)</Label>
           <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
@@ -414,7 +414,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card p-5 shadow-sm">
+      <div className="rounded-xl border bg-card p-5">
         <Label className="text-sm font-medium mb-2 block">积分定价</Label>
 
         {/* 成本倍率 - 仅在有 API 成本数据时显示 */}

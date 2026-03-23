@@ -180,20 +180,21 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-muted/20 overflow-hidden">
+    <>
       {/* Header */}
-      <div className="h-16 border-b flex items-center justify-between px-6 shrink-0 bg-background">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()} className="text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="h-6 w-[1px] bg-border mx-1" />
           <div className="flex flex-col">
-            <span className="font-semibold text-lg leading-tight">{initialData ? "编辑供应商" : "创建供应商"}</span>
-            {initialData && <span className="text-xs text-muted-foreground">ID: {initialData.id}</span>}
+            <h2 className="text-2xl font-bold tracking-tight">{initialData ? "编辑供应商" : "创建供应商"}</h2>
+            <p className="text-muted-foreground text-sm">配置 LLM 供应商的基础信息、模型参数及连接认证。</p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          {initialData && <span className="text-xs text-muted-foreground mr-2">ID: {initialData.id}</span>}
           <Button type="button" variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Plug className="mr-2 h-4 w-4" />}
             测试连接
@@ -205,14 +206,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto py-8 px-6">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold tracking-tight mb-2">{initialData ? "修改配置" : "开始配置"}</h2>
-            <p className="text-muted-foreground">配置 LLM 供应商的基础信息、模型参数及连接认证。</p>
-          </div>
-          
-          <div className="bg-card rounded-xl border shadow-sm p-6">
+      <div className="bg-card rounded-xl border shadow-sm p-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                 
@@ -663,8 +657,6 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
               </form>
             </Form>
           </div>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

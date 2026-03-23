@@ -98,6 +98,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     },
   ];
 
+  // 某些子页面需要全屏/无内边距布局（如：创建/编辑智能体页面有自己的滚动和分栏机制）
+  const isFullScreenPage = pathname?.match(/^\/admin\/agents\/[^/]+$/);
+
   return (
     <div className="fixed inset-0 flex w-full h-full bg-muted/40 overflow-hidden">
       <aside
@@ -179,7 +182,10 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       </aside>
 
       <div className="flex flex-col flex-1 min-w-0 w-full h-full overflow-hidden">
-        <main className="flex-1 min-h-0 w-full h-full p-8 overflow-hidden">
+        <main className={cn(
+          "flex-1 min-h-0 w-full h-full",
+          isFullScreenPage ? "overflow-hidden" : "p-8 overflow-y-auto"
+        )}>
           {children}
         </main>
       </div>

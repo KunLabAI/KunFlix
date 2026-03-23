@@ -29,7 +29,7 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
   const memberOptions = availableAgents.filter(agent => agent.id !== currentAgentId);
 
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm space-y-6">
+    <div className="rounded-xl border bg-card p-5 space-y-6">
       {/* Enable Leader Mode */}
       <div className="flex justify-between items-center">
         <div>
