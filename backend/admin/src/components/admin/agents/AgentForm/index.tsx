@@ -256,7 +256,7 @@ export default function AgentForm({
               <Section title="参数设置">
                 <Parameters disabled={loading} providers={activeProviders || []} />
               </Section>
-              <Section title="工具能力">
+              <Section title="能力">
                 <Tools disabled={loading} />
               </Section>
               <Section title="协作配置" className="mb-0">
