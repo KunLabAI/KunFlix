@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown, ImagePlus, X } from 'lucide-react';
+import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown, ImagePlus, X, Zap, Terminal } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { fetcher } from '@/lib/api-utils';
@@ -33,11 +33,24 @@ interface ChatSession {
   updated_at: string;
 }
 
+interface SkillCall {
+  skill_name: string;
+  status: 'loading' | 'loaded';
+}
+
+interface ToolCall {
+  tool_name: string;
+  arguments?: Record<string, unknown>;
+  status: 'executing' | 'completed';
+}
+
 interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string | Array<{type: string; text?: string; image_url?: {url: string}}>;
   created_at?: string;
+  skill_calls?: SkillCall[];
+  tool_calls?: ToolCall[];
   multi_agent?: MultiAgentData;
 }
 
@@ -193,13 +206,12 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
 
     try {
       const baseURL = api.defaults.baseURL || '/api';
-      const token = localStorage.getItem('access_token');
       
-      const response = await fetch(`${baseURL}/chats/${selectedSessionId}/messages`, {
+      const doFetch = (authToken: string | null) => fetch(`${baseURL}/chats/${selectedSessionId}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
+          'Authorization': authToken ? `Bearer ${authToken}` : '',
         },
         body: JSON.stringify({ 
           role: 'user', 
@@ -207,6 +219,22 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
           edit_last_image: false  // 前端已直接注入图片，后端无需再处理
         })
       });
+
+      let response = await doFetch(localStorage.getItem('access_token'));
+
+      // Token expired → refresh and retry once
+      if (response.status === 401) {
+        const refreshToken = localStorage.getItem('refresh_token');
+        const refreshRes = refreshToken && await fetch(`${baseURL}/admin/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+        const refreshOk = refreshRes && refreshRes.ok;
+        const newToken = refreshOk ? (await refreshRes.json()).access_token : null;
+        newToken && localStorage.setItem('access_token', newToken);
+        response = newToken ? await doFetch(newToken) : response;
+      }
 
       if (!response.ok) throw new Error(response.statusText);
       if (!response.body) return;
@@ -218,16 +246,12 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
       
       setMessages(prev => [...prev, assistantMsg]);
 
-      // SSE mode: collect structured multi-agent events
-      // Plain text mode: stream text directly
+      // SSE state
       const stepMap = new Map<string, AgentStep>();
       const steps: AgentStep[] = [];
-      let multiAgent: MultiAgentData | null = isSSE ? {
-        steps,
-        finalResult: '',
-        totalTokens: { input: 0, output: 0 },
-        creditCost: 0
-      } : null;
+      const skillCalls: SkillCall[] = [];
+      const toolCalls: ToolCall[] = [];
+      let multiAgent: MultiAgentData | null = null;
       let sseBuffer = '';
 
       while (true) {
@@ -236,12 +260,8 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
         
         const chunk = decoder.decode(value, { stream: true });
 
-        // Plain text mode
-        const updated = !isSSE ? (() => {
-          assistantMsg.content += chunk;
-          return true;
-        })() : (() => {
-          // SSE mode: parse events into structured data
+        // Unified SSE parsing
+        if (isSSE) {
           sseBuffer += chunk;
           const blocks = sseBuffer.split('\n\n');
           sseBuffer = blocks.pop() || '';
@@ -258,9 +278,36 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
             }
             try {
               const data = JSON.parse(dataStr);
-              // Event handlers as lookup table
               const handlers: Record<string, () => void> = {
+                // Single agent events
+                text: () => {
+                  assistantMsg.content = (assistantMsg.content as string) + (data.chunk || '');
+                },
+                skill_call: () => {
+                  skillCalls.push({ skill_name: data.skill_name, status: 'loading' });
+                  assistantMsg.skill_calls = [...skillCalls];
+                },
+                skill_loaded: () => {
+                  const sc = skillCalls.find(s => s.skill_name === data.skill_name);
+                  sc && (sc.status = 'loaded');
+                  assistantMsg.skill_calls = [...skillCalls];
+                },
+                tool_call: () => {
+                  toolCalls.push({ tool_name: data.tool_name, arguments: data.arguments, status: 'executing' });
+                  assistantMsg.tool_calls = [...toolCalls];
+                },
+                tool_result: () => {
+                  const tc = toolCalls.find(t => t.tool_name === data.tool_name && t.status === 'executing');
+                  tc && (tc.status = 'completed');
+                  assistantMsg.tool_calls = [...toolCalls];
+                },
+                done: () => {},
+                error: () => {
+                  assistantMsg.content = (assistantMsg.content as string) + `\n\nError: ${data.message}`;
+                },
+                // Multi agent events
                 subtask_created: () => {
+                  multiAgent = multiAgent || { steps, finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 };
                   const step: AgentStep = {
                     subtask_id: data.subtask_id,
                     agent_name: data.agent || '',
@@ -309,16 +356,17 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
               handlers[eventType]?.();
             } catch {}
           }
-          return true;
-        })();
+        } else {
+          // Fallback: plain text mode (non-SSE response)
+          assistantMsg.content = (assistantMsg.content as string) + chunk;
+        }
         
         setMessages(prev => {
-          const newMsgs = [...prev];
-          // In SSE mode, always attach multi_agent data for live rendering
           const updated = { ...assistantMsg };
-          if (multiAgent) {
-            updated.multi_agent = { ...multiAgent, steps: steps.map(s => ({ ...s })) };
-          }
+          multiAgent && (updated.multi_agent = { ...multiAgent, steps: steps.map(s => ({ ...s })) });
+          skillCalls.length && (updated.skill_calls = skillCalls.map(s => ({ ...s })));
+          toolCalls.length && (updated.tool_calls = toolCalls.map(t => ({ ...t })));
+          const newMsgs = [...prev];
           newMsgs[newMsgs.length - 1] = updated;
           return newMsgs;
         });
@@ -428,9 +476,32 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                           <MultiAgentSteps {...msg.multi_agent} />
                         ) : (() => {
                           const text = typeof msg.content === 'string' ? msg.content : '';
-                          // 普通文本/markdown
                           return (
-                            <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                            <div className="space-y-2">
+                              {/* Skill call indicators */}
+                              {msg.skill_calls?.map((sc, i) => (
+                                <div key={i} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                                  {sc.status === 'loading'
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <Zap className="h-3 w-3" />}
+                                  <span>
+                                    {sc.status === 'loading' ? `正在加载技能: ${sc.skill_name}` : `已加载技能: ${sc.skill_name}`}
+                                  </span>
+                                </div>
+                              ))}
+                              {/* Tool call indicators */}
+                              {msg.tool_calls?.map((tc, i) => (
+                                <div key={i} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                                  {tc.status === 'executing'
+                                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                                    : <Terminal className="h-3 w-3" />}
+                                  <span>
+                                    {tc.status === 'executing' ? `正在执行: ${tc.tool_name}` : `已完成: ${tc.tool_name}`}
+                                  </span>
+                                </div>
+                              ))}
+                              {/* Markdown content */}
+                              <div className="prose prose-sm dark:prose-invert max-w-none break-words">
                               <ReactMarkdown 
                                 remarkPlugins={[remarkGfm]}
                                 components={{
@@ -489,6 +560,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                               >
                                 {text}
                               </ReactMarkdown>
+                              </div>
                             </div>
                           );
                         })()

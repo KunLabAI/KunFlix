@@ -14,12 +14,18 @@ from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, Cr
 from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate, ChatMessageResponse
 from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
-from services.skill_tools import build_skill_prompt
+from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
+from services.base_tools import build_base_tool_defs, execute_base_tool
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
 
 logger = logging.getLogger(__name__)
+
+
+def _sse(event: str, data: dict) -> str:
+    """Format a Server-Sent Event."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def _serialize_content(content: Any) -> str:
@@ -205,7 +211,7 @@ async def send_message(
         _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image)
     )
 
-    media_type = "text/event-stream" if is_multi_agent else "text/plain"
+    media_type = "text/event-stream"
     return StreamingResponse(generator, media_type=media_type)
 
 
@@ -286,6 +292,76 @@ async def _generate_multi_agent(
                 logger.error(f"Failed to save multi-agent message: {e}")
 
 
+def _get_tool_result(tc_name: str, tc_args: dict, active_skills_dir) -> str:
+    """Dispatch tool execution by name. Returns result string."""
+    _DISPATCH = {
+        "load_skill": lambda args: load_skill_content(args.get("skill_name", ""), active_skills_dir),
+    }
+    handler = _DISPATCH.get(tc_name) or (lambda args: execute_base_tool(tc_name, args))
+    return handler(tc_args)
+
+
+def _append_tool_round(messages: list, result, active_skills_dir, is_anthropic: bool):
+    """Execute tool calls and append results to messages.
+
+    Handles both Anthropic and OpenAI message formats for tool call responses.
+    """
+    _FORMAT_HANDLERS = {
+        True: _append_anthropic_tool_round,
+        False: _append_openai_tool_round,
+    }
+    _FORMAT_HANDLERS[is_anthropic](messages, result, active_skills_dir)
+
+
+def _append_anthropic_tool_round(messages: list, result, active_skills_dir):
+    """Anthropic format: assistant content blocks + user tool_result blocks."""
+    assistant_blocks = []
+    result.full_response and assistant_blocks.append({"type": "text", "text": result.full_response})
+    for tc in result.tool_calls:
+        args = json.loads(tc.arguments)
+        assistant_blocks.append({
+            "type": "tool_use", "id": tc.id, "name": tc.name, "input": args,
+        })
+    messages.append({"role": "assistant", "content": assistant_blocks})
+
+    tool_results = []
+    for tc in result.tool_calls:
+        args = json.loads(tc.arguments)
+        content = _get_tool_result(tc.name, args, active_skills_dir)
+        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+        tool_results.append({
+            "type": "tool_result", "tool_use_id": tc.id, "content": content,
+        })
+    messages.append({"role": "user", "content": tool_results})
+    result.full_response = ""
+
+
+def _append_openai_tool_round(messages: list, result, active_skills_dir):
+    """OpenAI format: assistant message with tool_calls + tool role messages."""
+    assistant_msg = {
+        "role": "assistant",
+        "content": result.full_response or None,
+        "tool_calls": [
+            {
+                "id": tc.id, "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+                "thought_signature": tc.thought_signature,  # Gemini: preserved for multi-turn
+            }
+            for tc in result.tool_calls
+        ],
+    }
+    messages.append(assistant_msg)
+
+    for tc in result.tool_calls:
+        args = json.loads(tc.arguments)
+        content = _get_tool_result(tc.name, args, active_skills_dir)
+        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+        messages.append({
+            "role": "tool", "tool_call_id": tc.id, "content": content,
+        })
+    result.full_response = ""
+
+
 async def _generate_single_agent(
     db: AsyncSession,
     agent: Agent,
@@ -346,14 +422,21 @@ async def _generate_single_agent(
                                 parts = [{"type": "image_url", "image_url": {"url": data_url}}]
                             last_msg["content"] = parts
 
-    # 注入 agent 配置的 skill 描述到 system prompt
+    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools）
     agent_tools = agent.tools or []
+    tool_defs = None
+    active_skills_dir = None
+    base_defs = []
     if agent_tools:
         from skills_manager import get_active_skills_dir
-        skill_prompt = build_skill_prompt(agent_tools, get_active_skills_dir())
-        # 追加到 system prompt（第一条 system 消息）
-        if skill_prompt and messages and messages[0].get("role") == "system":
-            messages[0]["content"] += "\n\n" + skill_prompt
+        active_skills_dir = get_active_skills_dir()
+        skill_prompt = build_skill_prompt(agent_tools, active_skills_dir)
+        # 追加轻量索引到 system prompt
+        (skill_prompt and messages and messages[0].get("role") == "system"
+         and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
+        # 注册 base tools + load_skill 元工具
+        base_defs = build_base_tool_defs()
+        tool_defs = base_defs + [build_load_skill_tool_def(agent_tools)]
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -370,26 +453,74 @@ async def _generate_single_agent(
     logger.info(f"Current message: {content}")
     logger.info(f"{'-'*60}")
 
-    # 调用 LLM 流式接口
+    # 调用 LLM 流式接口（含工具调用循环：load_skill + base tools）
+    is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
+    MAX_TOOL_ROUNDS = 5
+    loaded_skills: set[str] = set()  # 已加载的技能，防止重复调用
     result = None
     generation_failed = False
+    _SSE_START = {True: "skill_call", False: "tool_call"}
+    _SSE_END = {True: "skill_loaded", False: "tool_result"}
     try:
-        async for chunk, result in stream_completion(
-            provider_type=provider.provider_type,
-            api_key=provider.api_key,
-            base_url=provider.base_url,
-            model=agent.model,
-            messages=messages,
-            temperature=agent.temperature,
-            context_window=agent.context_window,
-            thinking_mode=agent.thinking_mode,
-            gemini_config=agent.gemini_config,
-        ):
-            yield chunk
+        for _round in range(MAX_TOOL_ROUNDS + 1):
+            result = None
+            async for chunk, result in stream_completion(
+                provider_type=provider.provider_type,
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                model=agent.model,
+                messages=messages,
+                temperature=agent.temperature,
+                context_window=agent.context_window,
+                thinking_mode=agent.thinking_mode,
+                gemini_config=agent.gemini_config,
+                tools=tool_defs,
+            ):
+                yield _sse("text", {"chunk": chunk})
+
+            # 无 tool_calls → 直接结束
+            if not (result and result.tool_calls):
+                break
+
+            # 发送 tool 开始事件 (skill_call 或 tool_call)
+            for tc in result.tool_calls:
+                args = json.loads(tc.arguments)
+                is_skill = tc.name == "load_skill"
+                event_data = (
+                    {"skill_name": args.get("skill_name", "")}
+                    if is_skill else
+                    {"tool_name": tc.name, "arguments": args}
+                )
+                yield _sse(_SSE_START[is_skill], event_data)
+
+            # 执行工具调用并追加结果到消息
+            logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
+            _append_tool_round(messages, result, active_skills_dir, is_anthropic)
+
+            # 记录已加载的技能，更新 tool_defs（base tools 始终保留，load_skill enum 缩减）
+            for tc in result.tool_calls:
+                tc.name == "load_skill" and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+            remaining = [s for s in agent_tools if s not in loaded_skills]
+            skill_defs = [build_load_skill_tool_def(remaining)] if remaining else []
+            tool_defs = base_defs + skill_defs
+
+            # 发送 tool 完成事件 (skill_loaded 或 tool_result)
+            for tc in result.tool_calls:
+                args = json.loads(tc.arguments)
+                is_skill = tc.name == "load_skill"
+                event_data = (
+                    {"skill_name": args.get("skill_name", "")}
+                    if is_skill else
+                    {"tool_name": tc.name, "success": True}
+                )
+                yield _sse(_SSE_END[is_skill], event_data)
+
+        yield _sse("done", {})
+
     except Exception as e:
         generation_failed = True
         logger.error(f"LLM generation failed: {e}")
-        yield f"Error: {str(e)}"
+        yield _sse("error", {"message": str(e)})
 
     # 生成失败时不保存消息也不扣费
     if generation_failed or not result:

@@ -3,6 +3,7 @@ LLM 流式调用模块 - 使用注册表模式减少 if 分支
 """
 from typing import AsyncGenerator, Dict, Any, List, Callable
 from dataclasses import dataclass
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class ToolCallResult:
     id: str          # tool_call id (for OpenAI) or block id (for Anthropic)
     name: str        # function/tool name
     arguments: str   # JSON string of arguments
+    thought_signature: Any = None  # Gemini: preserved for multi-turn function calling
 
 
 @dataclass
@@ -298,6 +300,18 @@ _MODALITY_FIELDS = {"TEXT": "text_output_tokens", "IMAGE": "image_output_tokens"
 _GEMINI_ROLE_MAP = {"assistant": "model", "user": "user"}
 
 
+def _openai_tools_to_gemini(tools: list[dict]) -> list[dict]:
+    """Convert OpenAI-format tool definitions to Gemini function_declarations format."""
+    return [{"function_declarations": [
+        {
+            "name": t["function"]["name"],
+            "description": t["function"]["description"],
+            "parameters": t["function"]["parameters"],
+        }
+        for t in tools
+    ]}]
+
+
 def _parse_gemini_usage(usage_metadata, result: StreamResult):
     """从 Gemini usage_metadata 解析分模态 token 统计，填充到 result"""
     result.input_tokens = getattr(usage_metadata, 'prompt_token_count', 0) or 0
@@ -357,14 +371,49 @@ def _format_gemini_messages(messages: list[dict]) -> tuple[list, str]:
     支持多模态消息格式：
     - 纯文本: {"role": "user", "content": "hello"}
     - 多模态: {"role": "user", "content": [{"type": "text", "text": "..."}, {"type": "image_url", ...}]}
+    - 工具调用: {"role": "assistant", "tool_calls": [...]}
+    - 工具响应: {"role": "tool", "tool_call_id": "...", "content": "..."}
     """
+    from google.genai import types
+
     system_parts, contents = [], []
+    _tc_names: dict[str, str] = {}  # tool_call_id → function name
     
     for m in messages:
         role, content = m["role"], m["content"]
         
         # system 消息
         (role == "system") and system_parts.append(content if isinstance(content, str) else str(content))
+        
+        # assistant with tool_calls → model function_call parts
+        tool_calls = m.get("tool_calls")
+        if role == "assistant" and tool_calls:
+            parts = []
+            content and parts.append({"text": content})
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                name = func.get("name", "")
+                args = json.loads(func.get("arguments", "{}"))
+                _tc_names[tc.get("id", "")] = name
+                part_kwargs = {"function_call": types.FunctionCall(name=name, args=args)}
+                thought_sig = tc.get("thought_signature")
+                thought_sig and part_kwargs.update(thought_signature=thought_sig)
+                parts.append(types.Part(**part_kwargs))
+            contents.append({"role": "model", "parts": parts})
+            continue
+        
+        # tool response → user function_response parts
+        if role == "tool":
+            tc_id = m.get("tool_call_id", "")
+            fn_name = _tc_names.get(tc_id, "unknown")
+            parts = [types.Part(
+                function_response=types.FunctionResponse(
+                    name=fn_name,
+                    response={"result": content},
+                )
+            )]
+            contents.append({"role": "user", "parts": parts})
+            continue
         
         # user/assistant 消息：构建 parts
         parts = (
@@ -452,6 +501,13 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
     
     search_enabled and config_params.update(tools=[{"google_search": {}}])
 
+    # Custom function tools (OpenAI → Gemini format, with AFC disabled)
+    _fn_tools = _openai_tools_to_gemini(ctx.tools) if ctx.tools else []
+    _fn_tools and config_params.update(
+        tools=config_params.get("tools", []) + _fn_tools,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
+
     # 详细日志：记录发送给 Gemini API 的完整配置
     _ic = config_params.get('image_config')
     _ic_str = (
@@ -465,6 +521,7 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
         f"thinking={'ON(' + str(thinking_level) + ')' if 'thinking_config' in config_params else 'OFF'}, "
         f"image={'ON' if img_enabled else 'OFF'}, "
         f"search={'ON' if search_enabled else 'OFF'}, "
+        f"fn_tools={'ON(' + str(len(ctx.tools)) + ')' if ctx.tools else 'OFF'}, "
         f"image_config={{{_ic_str}}}, "
         f"api_version={http_options.get('api_version', 'default') if http_options else 'default'}"
     )
@@ -499,6 +556,17 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                         result.full_response += md
                         yield md
 
+                # Extract function calls
+                fn_call = getattr(part, 'function_call', None)
+                if fn_call:
+                    result.tool_calls = result.tool_calls or []
+                    result.tool_calls.append(ToolCallResult(
+                        id=f"gemini-tc-{len(result.tool_calls)}",
+                        name=fn_call.name,
+                        arguments=json.dumps(dict(fn_call.args) if fn_call.args else {}),
+                        thought_signature=getattr(part, 'thought_signature', None),
+                    ))
+
         usage = getattr(response, 'usage_metadata', None)
         usage and _parse_gemini_usage(usage, result)
 
@@ -507,6 +575,9 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
             grounding = getattr(candidate, 'grounding_metadata', None)
             chunks = getattr(grounding, 'grounding_chunks', None) or []
             result.search_query_count += min(len(chunks), 1)
+
+        # Propagate result when only tool calls were received (no text/image)
+        (result.tool_calls and not result.full_response) and (yield "")
 
         return
 
@@ -539,6 +610,17 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
                     in_thinking = is_thought
 
+                # Extract function calls from streaming chunks
+                fn_call = getattr(part, 'function_call', None)
+                if fn_call:
+                    result.tool_calls = result.tool_calls or []
+                    result.tool_calls.append(ToolCallResult(
+                        id=f"gemini-tc-{len(result.tool_calls)}",
+                        name=fn_call.name,
+                        arguments=json.dumps(dict(fn_call.args) if fn_call.args else {}),
+                        thought_signature=getattr(part, 'thought_signature', None),
+                    ))
+
         # Token 统计
         usage = getattr(chunk, 'usage_metadata', None)
         usage and _parse_gemini_usage(usage, result)
@@ -553,6 +635,9 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
     if in_thinking:
         result.full_response += "</think>\n"
         yield "</think>\n"
+
+    # Propagate result when only tool calls were received (no text)
+    (result.tool_calls and not result.full_response) and (yield "")
 
 
 # ============================================================
@@ -599,8 +684,12 @@ async def stream_completion(
         logger.warning(f"Unknown provider '{ctx.provider_type}', falling back to OpenAI compatible")
     
     try:
+        yielded = False
         async for chunk in handler(ctx, result):
+            yielded = True
             yield chunk, result
+        # When handler produced tool_calls but no text, yield sentinel so caller sees result
+        (not yielded and result.tool_calls) and (yield ("", result))  # type: ignore[func-returns-value]
     except Exception as e:
         error_str = str(e)
         logger.error(f"LLM stream error: {error_str}")
