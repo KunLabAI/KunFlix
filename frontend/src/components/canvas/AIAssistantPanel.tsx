@@ -1,23 +1,31 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Bot, X, Send, Sparkles, Loader2 } from 'lucide-react';
+import { Bot, X, Send, Sparkles, Loader2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCanvasStore } from '@/store/useCanvasStore';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import api from '@/lib/api';
 
-type Message = { role: 'user' | 'ai'; content: string; status?: 'streaming' | 'complete' };
-
 export function AIAssistantPanel() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' }
-  ]);
+  // 使用全局store替代本地状态，避免画布刷新时丢失状态
+  const isOpen = useAIAssistantStore((state) => state.isOpen);
+  const messages = useAIAssistantStore((state) => state.messages);
+  const sessionId = useAIAssistantStore((state) => state.sessionId);
+  const agentId = useAIAssistantStore((state) => state.agentId);
+  const panelSize = useAIAssistantStore((state) => state.panelSize);
+  
+  const setIsOpen = useAIAssistantStore((state) => state.setIsOpen);
+  const setMessages = useAIAssistantStore((state) => state.setMessages);
+  const addMessage = useAIAssistantStore((state) => state.addMessage);
+  const updateLastMessage = useAIAssistantStore((state) => state.updateLastMessage);
+  const setSessionId = useAIAssistantStore((state) => state.setSessionId);
+  const setAgentId = useAIAssistantStore((state) => state.setAgentId);
+  const clearSession = useAIAssistantStore((state) => state.clearSession);
+  const setPanelSize = useAIAssistantStore((state) => state.setPanelSize);
+  
   const [inputValue, setInputValue] = useState('');
-  const [panelSize, setPanelSize] = useState({ width: 320, height: 480 });
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [agentId, setAgentId] = useState<string | null>(null);
   
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -308,18 +316,33 @@ export function AIAssistantPanel() {
                 </div>
                 <span className="font-medium text-sm">AI 创作助手</span>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive z-50"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsOpen(false);
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-muted"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearSession();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="清空对话"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive z-50"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsOpen(false);
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
 
             {/* Chat History */}

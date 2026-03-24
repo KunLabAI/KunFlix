@@ -764,3 +764,41 @@ class TheaterSaveRequest(BaseModel):
     edges: List[TheaterEdgeCreate] = Field(default_factory=list)
     canvas_viewport: Optional[Dict[str, Any]] = None
 
+
+# ---------------------------------------------------------------------------
+# Admin Debug Session schemas (管理员调试会话 - 与用户会话隔离)
+# ---------------------------------------------------------------------------
+class AdminDebugSessionBase(BaseModel):
+    title: str = "Debug Chat"
+    agent_id: str
+
+
+class AdminDebugSessionCreate(AdminDebugSessionBase):
+    pass
+
+
+class AdminDebugSessionResponse(AdminDebugSessionBase):
+    id: str
+    admin_id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminDebugMessageBase(BaseModel):
+    role: str
+    content: Any  # str 或 List[Dict] (多模态消息)
+
+
+class AdminDebugMessageCreate(AdminDebugMessageBase):
+    edit_last_image: bool = False
+
+
+class AdminDebugMessageResponse(AdminDebugMessageBase):
+    id: str
+    session_id: str
+    created_at: Any
+
+    model_config = ConfigDict(from_attributes=True)
+

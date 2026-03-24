@@ -411,3 +411,28 @@ class VideoTask(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class AdminDebugSession(Base):
+    """管理员调试会话 - 与普通用户会话完全隔离"""
+    __tablename__ = "admin_debug_sessions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    title = Column(String, default="Debug Chat")
+    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False, index=True)
+    admin_id = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class AdminDebugMessage(Base):
+    """管理员调试消息 - 与 AdminDebugSession 关联"""
+    __tablename__ = "admin_debug_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    session_id = Column(String(36), ForeignKey("admin_debug_sessions.id"), nullable=False, index=True)
+    role = Column(String)  # user, assistant, system
+    content = Column(Text)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

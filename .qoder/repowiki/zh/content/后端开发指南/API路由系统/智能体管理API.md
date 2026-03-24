@@ -19,6 +19,10 @@
 - [backend/services/agent_executor.py](file://backend/services/agent_executor.py)
 - [backend/skills_manager.py](file://backend/skills_manager.py)
 - [backend/mcp_manager/manager.py](file://backend/mcp_manager/manager.py)
+- [backend/services/canvas_tools.py](file://backend/services/canvas_tools.py)
+- [backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx](file://backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx)
+- [backend/admin/src/components/admin/agents/AgentForm/schema.ts](file://backend/admin/src/components/admin/agents/AgentForm/schema.ts)
+- [backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py](file://backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py)
 - [backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py](file://backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py)
 - [backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py](file://backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py)
 - [backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py](file://backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py)
@@ -39,11 +43,11 @@
 
 ## 更新摘要
 **所做更改**
-- 新增智能体工具系统模块化重构：Skills 和 MCPClients 组件替代了原有的单一 Tools 组件
-- 新增技能管理API，支持技能的创建、查询、更新、删除和启用/禁用
-- 新增MCP客户端管理功能，支持Model Context Protocol客户端的动态连接
-- 增强智能体对外部能力的管理，支持声明式技能包和热插拔机制
-- 新增MCP客户端热重载支持，实现无感的客户端替换和连接恢复
+- 新增智能体画布控制权限系统：target_node_types字段允许智能体控制特定类型的画布节点
+- 新增画布工具API：支持节点列表查询、节点详情获取、节点创建、更新和删除
+- 新增画布节点类型支持：script、character、video、storyboard四种节点类型
+- 新增画布节点权限验证：智能体只能操作其授权控制的节点类型
+- 新增画布节点代理跟踪：记录节点创建者智能体ID
 
 ## 目录
 1. [简介](#简介)
@@ -65,17 +69,19 @@
 17. [智能体工具系统](#智能体工具系统)
 18. [技能管理系统](#技能管理系统)
 19. [MCP客户端管理](#mcp客户端管理)
-20. [依赖关系分析](#依赖关系分析)
-21. [性能考虑](#性能考虑)
-22. [故障排除指南](#故障排除指南)
-23. [结论](#结论)
-24. [附录](#附录)
+20. [画布节点控制权限](#画布节点控制权限)
+21. [画布工具API](#画布工具api)
+22. [依赖关系分析](#依赖关系分析)
+23. [性能考虑](#性能考虑)
+24. [故障排除指南](#故障排除指南)
+25. [结论](#结论)
+26. [附录](#附录)
 
 ## 简介
-本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。**本次更新重点集成了模块化的智能体工具系统，包括Skills和MCPClients组件，增强了智能体对外部能力的管理，新增了技能管理和MCP客户端管理功能。**
+本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。**本次更新重点集成了智能体画布控制权限系统，新增target_node_types字段允许智能体控制特定类型的画布节点，支持script、character、video、storyboard节点类型。**
 
 ## 项目结构
-后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。**新增智能体工具系统模块化重构，Skills和MCPClients组件替代了原有的单一Tools组件。**
+后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。**新增智能体画布控制权限系统，支持智能体对画布节点的精细化控制。**
 
 ```mermaid
 graph TB
@@ -86,6 +92,7 @@ SUBSCRIPTIONS["routers/subscriptions.py<br/>订阅管理API"]
 PROMPT_TEMPLATES["routers/prompt_templates.py<br/>提示词模板API"]
 VIDEOS["routers/videos.py<br/>视频生成API"]
 SKILLS_API["routers/skills_api.py<br/>技能管理API"]
+CANVAS_TOOLS["services/canvas_tools.py<br/>画布工具服务"]
 SERVICES["services.py<br/>业务服务层"]
 AGENT_EXECUTOR["services/agent_executor.py<br/>智能体执行服务"]
 VIDEO_GEN["services/video_generation.py<br/>视频生成服务"]
@@ -107,6 +114,7 @@ MAIN --> SUBSCRIPTIONS
 MAIN --> PROMPT_TEMPLATES
 MAIN --> VIDEOS
 MAIN --> SKILLS_API
+MAIN --> CANVAS_TOOLS
 ROUTERS --> SERVICES
 ROUTERS --> MODELS
 ROUTERS --> DB
@@ -121,6 +129,7 @@ SERVICES --> MODELS
 SERVICES --> AGENTS
 SERVICES --> BILLING
 SERVICES --> AGENT_EXECUTOR
+SERVICES --> CANVAS_TOOLS
 AGENT_EXECUTOR --> LLM_STREAM
 CHATS --> MODELS
 CHATS --> DB
@@ -147,6 +156,7 @@ MCP_MANAGER --> AGENTS
 - [backend/models.py:1-382](file://backend/models.py#L1-L382)
 - [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
 - [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 **章节来源**
 - [README.md:34-51](file://README.md#L34-L51)
@@ -167,7 +177,9 @@ MCP_MANAGER --> AGENTS
 - **智能体工具系统**：模块化重构的工具管理，包含Skills和MCPClients两个独立组件。
 - **技能管理系统**：支持技能的创建、查询、更新、删除和启用/禁用，实现声明式工具包管理。
 - **MCP客户端管理**：支持Model Context Protocol客户端的动态连接、热重载和无感替换。
-- 数据模型与序列化：定义智能体、LLM提供商、聊天会话、消息、**CreditTransaction**、**SubscriptionPlan**、**PromptTemplate**、**VideoTask**和**VideoConfig**的数据结构及Pydantic验证模型。
+- **画布节点控制权限**：新增target_node_types字段，允许智能体控制特定类型的画布节点。
+- **画布工具API**：提供完整的画布节点CRUD操作，支持节点列表查询、详情获取、创建、更新和删除。
+- 数据模型与序列化：定义智能体、LLM提供商、聊天会话、消息、**CreditTransaction**、**SubscriptionPlan**、**PromptTemplate**、**VideoTask**、**VideoConfig**、**TheaterNode**和**TheaterEdge**的数据结构及Pydantic验证模型。
 - 叙事引擎与AgentScope：封装多智能体协作（导演、旁白、NPC管理），支持动态配置加载与章节生成。
 - 聊天与流式响应：支持OpenAI/DashScope等提供商的流式对话，记录上下文与Token统计，并集成实时计费扣费。
 - 后台管理接口：提供统计、玩家与剧情管理等管理功能。
@@ -190,9 +202,10 @@ MCP_MANAGER --> AGENTS
 - [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
 - [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
 - [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 ## 架构总览
-系统采用"路由层-服务层-模型层-基础设施层"的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。**新增模块化的智能体工具系统，Skills和MCPClients组件提供更精细的外部能力管理。**WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
+系统采用"路由层-服务层-模型层-基础设施层"的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。**新增智能体画布控制权限系统，通过target_node_types字段实现对画布节点的精细化控制。**WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
 
 ```mermaid
 graph TB
@@ -204,6 +217,7 @@ PROMPTAPI["提示词模板API<br/>/api/prompt-templates/*"]
 CHAT["聊天流式接口<br/>/api/chats/*"]
 VIDEOAPI["视频生成API<br/>/api/videos/*"]
 SKILLSAPI["技能管理API<br/>/api/admin/skills/*"]
+CANVASAPI["画布工具API<br/>/api/agents/canvas/*"]
 ADMIN["后台管理接口<br/>/api/admin/*"]
 SERVICE["GameService<br/>业务逻辑"]
 BILLINGSVC["BillingService<br/>计费计算"]
@@ -212,6 +226,7 @@ AGENTEXEC["AgentExecutor<br/>智能体执行服务"]
 VIDEOGEN["VideoGenerationService<br/>视频生成服务"]
 SKILLSSVC["SkillService<br/>技能管理服务"]
 MCPMANAGER["MCPClientManager<br/>MCP客户端管理"]
+CANVAS["CanvasTools<br/>画布工具服务"]
 LLMSTREAM["LLMStream<br/>流式响应处理"]
 AGENG["NarrativeEngine<br/>AgentScope编排"]
 DB["数据库<br/>PostgreSQL/SQLite"]
@@ -222,8 +237,8 @@ SP["SubscriptionPlan<br/>套餐计划"]
 PT["PromptTemplate<br/>提示词模板"]
 VT["VideoTask<br/>视频任务记录"]
 VC["VideoConfig<br/>视频配置"]
-SK["SkillInfo<br/>技能信息"]
-MCP["MCPClient<br/>MCP客户端"]
+TN["TheaterNode<br/>画布节点"]
+TE["TheaterEdge<br/>画布边"]
 CLIENT --> WS
 CLIENT --> API
 CLIENT --> SUBAPI
@@ -231,6 +246,7 @@ CLIENT --> PROMPTAPI
 CLIENT --> CHAT
 CLIENT --> VIDEOAPI
 CLIENT --> SKILLSAPI
+CLIENT --> CANVASAPI
 CLIENT --> ADMIN
 API --> SERVICE
 SUBAPI --> SERVICE
@@ -241,6 +257,7 @@ CHAT --> LLMSTREAM
 VIDEOAPI --> VIDEOGEN
 VIDEOAPI --> BILLINGSVC
 SKILLSAPI --> SKILLSSVC
+CANVASAPI --> CANVAS
 SERVICE --> AGENG
 SERVICE --> BILLINGSVC
 SERVICE --> DB
@@ -252,6 +269,8 @@ VIDEOGEN --> VT
 VIDEOGEN --> VC
 SKILLSSVC --> SK
 MCPMANAGER --> MCP
+CANVAS --> TN
+CANVAS --> TE
 AGENG --> PROVIDER
 AGENG --> DB
 AGENTEXEC --> PROVIDER
@@ -275,6 +294,7 @@ TASK --> DB
 - [backend/models.py:180-382](file://backend/models.py#L180-L382)
 - [backend/skills_manager.py:263-408](file://backend/skills_manager.py#L263-L408)
 - [backend/mcp_manager/manager.py:28-138](file://backend/mcp_manager/manager.py#L28-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 ## 详细组件分析
 
@@ -291,7 +311,7 @@ TASK --> DB
 - 更新智能体
   - 接口：PUT /api/agents/{agent_id}
   - 校验：名称唯一性、提供商与模型有效性
-  - 支持字段：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思考模式、**积分费率字段**、**智能体类型**
+  - 支持字段：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思考模式、**积分费率字段**、**智能体类型**、**target_node_types画布节点控制权限**
 - 删除智能体
   - 接口：DELETE /api/agents/{agent_id}
   - 行为：审计日志打印并删除
@@ -363,6 +383,7 @@ Note over W,S : "后台任务完成章节生成后可推送状态事件"
   - 智能体更新接口支持调整温度、上下文窗口、系统提示、工具与思考模式
   - **新增积分费率字段**：input_credit_per_1m、output_credit_per_1m、image_output_credit_per_1m、search_credit_per_query
   - **新增智能体类型字段**：text、image、multimodal、**video**
+  - **新增画布节点控制权限字段**：target_node_types，支持script、character、video、storyboard节点类型
   - LLM提供商接口支持增删改查与连接测试
 
 ```mermaid
@@ -376,7 +397,8 @@ Fallback --> InitModel
 InitModel --> CreateAgents["创建智能体实例"]
 CreateAgents --> SetRates["设置积分费率"]
 SetRates --> SetType["设置智能体类型"]
-SetType --> Ready(["配置就绪"])
+SetType --> SetCanvas["设置画布节点权限"]
+SetCanvas --> Ready(["配置就绪"])
 ```
 
 **图表来源**
@@ -1451,6 +1473,190 @@ M-->>NC : "热重载完成"
 **章节来源**
 - [frontend/src/app/admin/mcp/page.tsx:11-53](file://frontend/src/app/admin/mcp/page.tsx#L11-L53)
 
+## 画布节点控制权限
+
+### target_node_types字段设计
+系统新增了target_node_types字段，允许智能体控制特定类型的画布节点。该字段是一个JSON数组，存储智能体可以操作的节点类型列表。
+
+- **字段定义**
+  - 字段名：target_node_types
+  - 数据类型：JSON数组
+  - 默认值：[]
+  - 作用域：智能体级别
+
+- **节点类型支持**
+  - script：文本节点，支持富文本内容生成与编辑
+  - character：图像节点，支持图片生成与管理
+  - video：视频节点，支持视频生成与管理
+  - storyboard：多维表格节点，支持数据表格与透视分析
+
+- **权限验证机制**
+  - 智能体只能操作其授权控制的节点类型
+  - 查询时自动过滤非授权节点
+  - 操作时进行节点类型验证
+
+```mermaid
+flowchart TD
+Agent["智能体配置"] --> Check{"target_node_types存在?"}
+Check --> |是| Filter["过滤节点类型"]
+Check --> |否| AllNodes["允许所有节点类型"]
+Filter --> Allowed["只允许授权节点类型"]
+Allowed --> Execute["执行画布操作"]
+AllNodes --> Execute
+Execute --> Validate["验证节点类型"]
+Validate --> Success["操作成功"]
+Validate --> Error["操作失败"]
+```
+
+**图表来源**
+- [backend/models.py:240-241](file://backend/models.py#L240-L241)
+- [backend/services/canvas_tools.py:239-240](file://backend/services/canvas_tools.py#L239-L240)
+
+**章节来源**
+- [backend/models.py:240-241](file://backend/models.py#L240-L241)
+- [backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py:23-24](file://backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py#L23-L24)
+
+### 画布节点类型定义
+系统定义了四种画布节点类型，每种类型都有特定的数据结构和用途。
+
+- **script节点**
+  - 数据字段：title、description、content、tags
+  - 用途：富文本内容生成与编辑
+  - UI组件：ScriptNode、ScriptEditor
+
+- **character节点**
+  - 数据字段：name、description、imageUrl
+  - 用途：角色图片生成与管理
+  - UI组件：CharacterNode、CharacterEditModal
+
+- **video节点**
+  - 数据字段：name、description、videoUrl
+  - 用途：视频内容生成与管理
+  - UI组件：VideoNode
+
+- **storyboard节点**
+  - 数据字段：shotNumber、description、duration、pivotConfig
+  - 用途：分镜表格与透视分析
+  - UI组件：StoryboardNode、StoryboardEditModal
+
+**章节来源**
+- [backend/services/canvas_tools.py:27-32](file://backend/services/canvas_tools.py#L27-L32)
+
+### 前端节点类型选择界面
+前端提供了直观的节点类型选择界面，管理员可以为智能体配置画布控制权限。
+
+- **界面组件**
+  - NodeTypes组件：提供节点类型选择界面
+  - 支持多选操作
+  - 实时状态反馈
+
+- **节点类型选项**
+  - script：文本节点，图标为FileText
+  - character：图像节点，图标为Image
+  - video：视频节点，图标为Video
+  - storyboard：多维表格，图标为Table2
+
+- **交互行为**
+  - 点击切换节点类型选中状态
+  - 选中状态高亮显示
+  - 支持禁用状态
+
+**章节来源**
+- [backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx:8-33](file://backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx#L8-L33)
+- [backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx:56-93](file://backend/admin/src/components/admin/agents/AgentForm/NodeTypes.tsx#L56-L93)
+
+### 智能体表单验证
+系统在智能体表单中集成了target_node_types字段的验证逻辑。
+
+- **验证规则**
+  - 类型：数组
+  - 枚举值：["script", "character", "storyboard", "video"]
+  - 默认值：[]
+  - 可选字段
+
+- **验证流程**
+  - Zod schema验证
+  - 数组元素类型检查
+  - 枚举值合法性验证
+
+**章节来源**
+- [backend/admin/src/components/admin/agents/AgentForm/schema.ts:48-51](file://backend/admin/src/components/admin/agents/AgentForm/schema.ts#L48-L51)
+
+## 画布工具API
+
+### 画布工具定义
+系统提供了完整的画布工具API，支持节点的CRUD操作。工具定义基于OpenAI函数格式，支持动态枚举节点类型。
+
+- **工具集合**
+  - list_canvas_nodes：列出画布节点
+  - get_canvas_node：获取节点详情
+  - create_canvas_node：创建节点
+  - update_canvas_node：更新节点
+  - delete_canvas_node：删除节点
+
+- **工具参数**
+  - node_type：节点类型（动态枚举）
+  - data：节点数据（节点类型特定）
+  - position_x/position_y：节点位置（可选）
+  - node_id：节点ID（操作节点时必需）
+
+- **动态枚举机制**
+  - 根据target_node_types动态生成枚举值
+  - 仅允许智能体授权的节点类型
+  - 支持空数组（允许所有类型）
+
+```mermaid
+flowchart TD
+TargetTypes["target_node_types"] --> BuildEnum["构建枚举值"]
+BuildEnum --> ToolDefs["生成工具定义"]
+ToolDefs --> OpenAIFormat["OpenAI函数格式"]
+OpenAIFormat --> Register["注册到LLM"]
+Register --> Execute["执行工具调用"]
+```
+
+**图表来源**
+- [backend/services/canvas_tools.py:42-51](file://backend/services/canvas_tools.py#L42-L51)
+
+### 节点操作执行流程
+系统实现了完整的节点操作执行流程，包括权限验证、数据处理和数据库操作。
+
+- **权限验证**
+  - 检查节点类型是否在target_node_types中
+  - 验证节点所有权（同一theater_id）
+  - 支持空权限（无限制）
+
+- **数据处理**
+  - 自动位置计算（未指定时）
+  - 数据合并（更新操作）
+  - 边缘关系处理（删除操作）
+
+- **数据库操作**
+  - 异步数据库访问
+  - 事务管理
+  - 错误处理与回滚
+
+**章节来源**
+- [backend/services/canvas_tools.py:227-248](file://backend/services/canvas_tools.py#L227-L248)
+- [backend/services/canvas_tools.py:251-269](file://backend/services/canvas_tools.py#L251-L269)
+- [backend/services/canvas_tools.py:272-322](file://backend/services/canvas_tools.py#L272-L322)
+
+### 节点代理跟踪
+系统支持节点创建者的智能体ID跟踪，便于审计和权限管理。
+
+- **字段设计**
+  - created_by_agent_id：节点创建者智能体ID
+  - 外键约束：指向agents表
+  - 可选字段（历史数据可能为空）
+
+- **使用场景**
+  - 审计日志：追踪节点创建者
+  - 权限验证：确保操作者有权修改节点
+  - 统计分析：分析智能体的节点创建量
+
+**章节来源**
+- [backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py:30-32](file://backend/migrations/versions/1802336702d6_add_agent_target_node_types_and_node_.py#L30-L32)
+- [backend/services/canvas_tools.py:301-312](file://backend/services/canvas_tools.py#L301-L312)
+
 ## 依赖关系分析
 - 组件耦合
   - 路由层依赖数据库会话与模型定义
@@ -1462,6 +1668,7 @@ M-->>NC : "热重载完成"
   - **视频生成路由依赖视频生成服务和计费服务**
   - **技能管理路由依赖技能管理器和技能文件系统**
   - **MCP客户端管理依赖MCP客户端管理器和AgentScope集成**
+  - **画布工具服务依赖数据库会话和智能体权限验证**
   - 聊天路由依赖提供商类型分支、数据库会话和计费服务
   - 后台任务依赖引擎与数据库
 - 外部依赖
@@ -1481,6 +1688,7 @@ ROUTERS --> SERVICES["服务层"]
 SERVICES --> AGENTS["AgentScope引擎"]
 SERVICES --> BILLING["计费服务"]
 SERVICES --> AGENT_EXEC["智能体执行服务"]
+SERVICES --> CANVAS["画布工具服务"]
 AGENT_EXEC --> LLM_STREAM["LLM流式处理"]
 PROMPT_TEMPLATES["提示词模板路由"] --> MODELS
 PROMPT_TEMPLATES --> DB
@@ -1493,6 +1701,9 @@ SKILLS_API["技能管理路由"] --> SKILLS_SVC["技能服务"]
 SKILLS_SVC --> SKILLS_MGR["技能管理器"]
 MCP_API["MCP管理路由"] --> MCP_MGR["MCP客户端管理器"]
 MCP_MGR --> AGENTS
+CANVAS_API["画布工具路由"] --> CANVAS
+CANVAS --> THEATER_NODES["TheaterNode模型"]
+CANVAS --> THEATER_EDGES["TheaterEdge模型"]
 CHATS["聊天路由"] --> PROVIDERS["LLM提供商"]
 CHATS --> DB
 CHATS --> BILLING
@@ -1517,6 +1728,7 @@ TASKS --> DB
 - [backend/database.py:1-31](file://backend/database.py#L1-L31)
 - [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
 - [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 **章节来源**
 - [backend/routers/agents.py:1-141](file://backend/routers/agents.py#L1-L141)
@@ -1533,6 +1745,7 @@ TASKS --> DB
 - [backend/database.py:1-31](file://backend/database.py#L1-L31)
 - [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
 - [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 ## 性能考虑
 - 异步I/O与连接池：使用异步SQLAlchemy与连接池，避免阻塞
@@ -1552,7 +1765,9 @@ TASKS --> DB
 - **视频状态轮询优化**：智能轮询策略，减少API调用频率
 - **技能管理优化**：技能文件差异检测，避免不必要的文件复制
 - **MCP客户端热重载**：双阶段锁定策略，最小化阻塞时间
-- **工具系统模块化**：Skills和MCPClients分离，提升系统可维护性
+- **智能体工具系统模块化**：Skills和MCPClients分离，提升系统可维护性
+- **画布节点权限验证**：智能体只能操作授权节点，减少无效数据库查询
+- **画布工具动态枚举**：根据权限动态生成工具定义，避免硬编码
 
 ## 故障排除指南
 - 数据库连接失败
@@ -1598,7 +1813,7 @@ TASKS --> DB
   - 现象：视频任务状态无法正常轮询
   - 处理：检查xAI API连接；验证任务ID有效性；查看轮询超时设置
 - **技能管理异常**
-  - 现象：技能创建、更新或删除失败
+  - 现现：技能创建、更新或删除失败
   - 处理：检查SKILL.md格式；验证文件权限；确认技能名称唯一性
 - **MCP客户端连接失败**
   - 现象：MCP客户端无法连接或频繁断开
@@ -1606,6 +1821,12 @@ TASKS --> DB
 - **工具系统配置错误**
   - 现象：智能体无法使用技能或MCP客户端
   - 处理：确认工具开关开启；检查技能启用状态；验证MCP客户端连接
+- **画布节点权限问题**
+  - 现象：智能体无法操作某些画布节点
+  - 处理：检查target_node_types配置；确认节点类型在授权列表中；验证节点所有权
+- **画布工具执行失败**
+  - 现象：画布节点操作返回错误
+  - 处理：检查节点类型权限；验证节点ID有效性；查看数据库连接状态
 
 **章节来源**
 - [backend/main.py:45-82](file://backend/main.py#L45-L82)
@@ -1621,9 +1842,10 @@ TASKS --> DB
 - [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
 - [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
 - [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
+- [backend/services/canvas_tools.py:1-481](file://backend/services/canvas_tools.py#L1-L481)
 
 ## 结论
-本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。**本次更新显著增强了系统功能，新增了模块化的智能体工具系统，包括Skills和MCPClients组件，替代了原有的单一Tools组件，增强了智能体对外部能力的管理。**通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。**新增的智能体执行服务为智能体管理提供了统一的接口，xAI兼容性支持确保了与xAI平台的无缝集成，改进的错误处理机制提升了系统的稳定性和可靠性。**新增的技能管理系统和MCP客户端管理功能，实现了声明式工具包管理和动态客户端连接，为智能体提供了更强大的外部能力扩展。建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本，加强视频生成任务的监控与优化，以及完善技能和MCP客户端的版本管理与热重载机制。
+本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。**本次更新显著增强了系统功能，新增了智能体画布控制权限系统，通过target_node_types字段实现了对script、character、video、storyboard四种节点类型的精细化控制。**通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。**新增的智能体执行服务为智能体管理提供了统一的接口，xAI兼容性支持确保了与xAI平台的无缝集成，改进的错误处理机制提升了系统的稳定性和可靠性。**新增的技能管理系统和MCP客户端管理功能，实现了声明式工具包管理和动态客户端连接，为智能体提供了更强大的外部能力扩展。**新增的画布节点控制权限系统为多智能体协作提供了更安全的画布操作环境，通过权限验证和代理跟踪确保了系统的安全性和可审计性。**建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本，加强视频生成任务的监控与优化，以及完善技能、MCP客户端和画布权限的版本管理与热重载机制。
 
 ## 附录
 - API端点概览
@@ -1635,6 +1857,7 @@ TASKS --> DB
   - **订阅管理**：/api/admin/subscriptions/*
   - **视频生成**：/api/videos/*
   - **技能管理**：/api/admin/skills/*
+  - **画布工具**：/api/agents/canvas/*
   - 实时通信：/ws/{player_id}
 - **计费相关字段**
   - 智能体：input_credit_per_1m、output_credit_per_1m、image_output_credit_per_1m、search_credit_per_query、**video_input_image_credit、video_input_second_credit、video_output_480p_credit、video_output_720p_credit**
@@ -1645,6 +1868,8 @@ TASKS --> DB
   - **套餐计划**：name、price_usd、credits、billing_period、features
   - **技能信息**：id、name、description、version、source、status、content
   - **MCP客户端**：name、transport、enabled、url、headers、command、args、env、cwd
+  - **画布节点**：id、theater_id、node_type、position_x、position_y、width、height、z_index、data、created_by_agent_id、created_at、updated_at
+  - **画布边**：id、theater_id、source_node_id、target_node_id、created_at
 - **xAI兼容性字段**
   - provider_type：xai
   - base_url：https://api.x.ai/v1
@@ -1658,7 +1883,19 @@ TASKS --> DB
   - tools：工具列表（技能ID或MCP客户端ID）
   - **技能状态**：active/inactive
   - **MCP客户端状态**：connected/disconnected
-- 最佳实践
+  - **画布节点类型**：script、character、video、storyboard
+  - **画布节点权限**：target_node_types（智能体可控制的节点类型列表）
+- **画布工具API**
+  - **list_canvas_nodes**：列出画布节点，支持按节点类型过滤
+  - **get_canvas_node**：获取节点详情
+  - **create_canvas_node**：创建新节点，支持自动位置计算
+  - **update_canvas_node**：更新节点数据（合并更新）
+  - **delete_canvas_node**：删除节点及其关联边
+- **权限验证字段**
+  - **智能体权限**：target_node_types（节点类型枚举）
+  - **节点类型枚举**：["script", "character", "storyboard", "video"]
+  - **权限验证**：智能体只能操作授权的节点类型
+- **最佳实践**
   - 使用后台任务进行章节预生成
   - 通过WebSocket推送状态事件
   - 合理设置上下文窗口与温度
@@ -1678,3 +1915,6 @@ TASKS --> DB
   - **监控MCP客户端连接状态**
   - **实施技能和MCP客户端的版本控制**
   - **利用热重载机制实现无感更新**
+  - **合理配置画布节点权限，确保系统安全**
+  - **监控画布节点操作日志，进行审计分析**
+  - **实施画布节点代理跟踪，便于责任追溯**

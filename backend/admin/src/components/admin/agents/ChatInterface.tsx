@@ -79,8 +79,9 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
+  // 使用新的管理员调试API，与普通用户会话隔离
   const { data: sessions, isLoading: sessionsLoading } = useSWR(
-    agentId ? `/chats/?agent_id=${agentId}` : null,
+    agentId ? `/admin/debug/sessions?agent_id=${agentId}` : null,
     fetcher
   );
 
@@ -91,11 +92,11 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
     }
   }, [sessions]);
 
-  // Fetch messages
+  // Fetch messages from admin debug API
   useEffect(() => {
     if (selectedSessionId) {
       setMessages([]);
-      api.get(`/chats/${selectedSessionId}/messages`)
+      api.get(`/admin/debug/sessions/${selectedSessionId}/messages`)
         .then(res => setMessages(res.data))
         .catch(err => toast({ variant: "destructive", title: "Failed to load messages" }));
     }
@@ -125,28 +126,28 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   const handleCreateSession = async () => {
     if (!agentId) return;
     try {
-      const res = await api.post('/chats', {
-        title: `New Chat ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
+      const res = await api.post('/admin/debug/sessions', {
+        title: `Debug ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
         agent_id: agentId
       });
-      mutate(`/chats/?agent_id=${agentId}`);
+      mutate(`/admin/debug/sessions?agent_id=${agentId}`);
       setSelectedSessionId(res.data.id);
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to create chat" });
+      toast({ variant: "destructive", title: "Failed to create debug session" });
     }
   };
 
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await api.delete(`/chats/${id}`);
-      mutate(`/chats/?agent_id=${agentId}`);
+      await api.delete(`/admin/debug/sessions/${id}`);
+      mutate(`/admin/debug/sessions?agent_id=${agentId}`);
       if (selectedSessionId === id) {
         setSelectedSessionId(null);
         setMessages([]);
       }
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to delete chat" });
+      toast({ variant: "destructive", title: "Failed to delete debug session" });
     }
   };
 
@@ -207,7 +208,8 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
     try {
       const baseURL = api.defaults.baseURL || '/api';
       
-      const doFetch = (authToken: string | null) => fetch(`${baseURL}/chats/${selectedSessionId}/messages`, {
+      // 使用管理员调试API发送消息
+      const doFetch = (authToken: string | null) => fetch(`${baseURL}/admin/debug/sessions/${selectedSessionId}/messages`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
