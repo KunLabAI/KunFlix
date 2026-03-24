@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Bot, X, Send, Sparkles, Loader2, Trash2, ChevronDown } from 'lucide-react';
+import { Bot, X, Send, Sparkles, Loader2, Trash2, ChevronDown, Zap, Terminal, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,8 +10,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { useAIAssistantStore, type AgentInfo } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type AgentInfo, type Message } from '@/store/useAIAssistantStore';
+import MultiAgentSteps, { type MultiAgentData, type AgentStep } from './MultiAgentSteps';
 import api from '@/lib/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { cn } from '@/lib/utils';
 
 export function AIAssistantPanel() {
   // 使用全局store替代本地状态，避免画布刷新时丢失状态
@@ -34,7 +38,7 @@ export function AIAssistantPanel() {
   const setAgentName = useAIAssistantStore((state) => state.setAgentName);
   const setCurrentAgent = useAIAssistantStore((state) => state.setCurrentAgent);
   const setAvailableAgents = useAIAssistantStore((state) => state.setAvailableAgents);
-  const clearSession = useAIAssistantStore((state) => state.clearSession);
+  const clearMessagesKeepSession = useAIAssistantStore((state) => state.clearMessagesKeepSession);
   const setPanelSize = useAIAssistantStore((state) => state.setPanelSize);
   const setPanelPosition = useAIAssistantStore((state) => state.setPanelPosition);
   const switchTheater = useAIAssistantStore((state) => state.switchTheater);
@@ -201,6 +205,28 @@ export function AIAssistantPanel() {
     }
   };
 
+  const handleClearSession = async () => {
+    if (!sessionId) {
+      // 没有会话ID，仅清空前端消息
+      clearMessagesKeepSession();
+      return;
+    }
+
+    try {
+      // 调用后端API清空数据库中的消息
+      await api.delete(`/chats/${sessionId}/messages`);
+      
+      // 清空前端消息但保留会话，以便继续对话
+      clearMessagesKeepSession();
+      
+      console.log('对话已清空');
+    } catch (err) {
+      console.error('Failed to clear session:', err);
+      // 即使API调用失败，也清空前端显示
+      clearMessagesKeepSession();
+    }
+  };
+
   const DEFAULT_MESSAGES = [
     { role: 'ai' as const, content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' as const }
   ];
@@ -214,27 +240,221 @@ export function AIAssistantPanel() {
          : null;
   };
 
+  // SSE事件处理状态引用（用于在异步流中保持状态）
+  const streamingStateRef = useRef<{
+    skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
+    toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed' }[];
+    steps: AgentStep[];
+    stepMap: Map<string, AgentStep>;
+    multiAgent: MultiAgentData | null;
+    assistantMsg: Message | null;
+  }>({
+    skillCalls: [],
+    toolCalls: [],
+    steps: [],
+    stepMap: new Map(),
+    multiAgent: null,
+    assistantMsg: null,
+  });
+
+  const resetStreamingState = () => {
+    streamingStateRef.current = {
+      skillCalls: [],
+      toolCalls: [],
+      steps: [],
+      stepMap: new Map(),
+      multiAgent: null,
+      assistantMsg: null,
+    };
+  };
+
   const handleSSEEvent = useCallback((eventType: string, data: unknown) => {
+    const state = streamingStateRef.current;
+
     const handlers: Record<string, () => void> = {
+      // 单智能体：流式文本
       text: () => {
         const chunk = (data as { chunk?: string })?.chunk || '';
         setMessages(prev => {
           const last = prev[prev.length - 1];
           const isStreaming = last?.role === 'ai' && last?.status === 'streaming';
-          return isStreaming
-            ? [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
-            : [...prev, { role: 'ai', content: chunk, status: 'streaming' }];
+          if (isStreaming) {
+            const updated = { ...last, content: last.content + chunk };
+            state.assistantMsg = updated;
+            return [...prev.slice(0, -1), updated];
+          }
+          const newMsg: Message = { 
+            role: 'ai', 
+            content: chunk, 
+            status: 'streaming',
+            skill_calls: [...state.skillCalls],
+            tool_calls: [...state.toolCalls],
+          };
+          state.assistantMsg = newMsg;
+          return [...prev, newMsg];
         });
       },
+
+      // 技能调用开始
+      skill_call: () => {
+        const skillName = (data as { skill_name?: string })?.skill_name || '';
+        state.skillCalls.push({ skill_name: skillName, status: 'loading' });
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai' && last?.status === 'streaming') {
+            return [...prev.slice(0, -1), { ...last, skill_calls: [...state.skillCalls] }];
+          }
+          return prev;
+        });
+      },
+
+      // 技能加载完成
+      skill_loaded: () => {
+        const skillName = (data as { skill_name?: string })?.skill_name || '';
+        const skill = state.skillCalls.find(s => s.skill_name === skillName && s.status === 'loading');
+        skill && (skill.status = 'loaded');
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai' && last?.status === 'streaming') {
+            return [...prev.slice(0, -1), { ...last, skill_calls: [...state.skillCalls] }];
+          }
+          return prev;
+        });
+      },
+
+      // 工具调用开始
+      tool_call: () => {
+        const toolName = (data as { tool_name?: string })?.tool_name || '';
+        const args = (data as { arguments?: Record<string, unknown> })?.arguments;
+        state.toolCalls.push({ tool_name: toolName, arguments: args, status: 'executing' });
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai' && last?.status === 'streaming') {
+            return [...prev.slice(0, -1), { ...last, tool_calls: [...state.toolCalls] }];
+          }
+          return prev;
+        });
+      },
+
+      // 工具执行完成
+      tool_result: () => {
+        const toolName = (data as { tool_name?: string })?.tool_name || '';
+        const tool = state.toolCalls.find(t => t.tool_name === toolName && t.status === 'executing');
+        tool && (tool.status = 'completed');
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai' && last?.status === 'streaming') {
+            return [...prev.slice(0, -1), { ...last, tool_calls: [...state.toolCalls] }];
+          }
+          return prev;
+        });
+      },
+
+      // 多智能体：子任务创建
+      subtask_created: () => {
+        const d = data as { subtask_id?: string; agent?: string; description?: string };
+        state.multiAgent = state.multiAgent || { steps: state.steps, finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 } as MultiAgentData;
+        const step: AgentStep = {
+          subtask_id: d.subtask_id || '',
+          agent_name: d.agent || '',
+          description: d.description || '',
+          status: 'pending',
+        };
+        state.stepMap.set(d.subtask_id || '', step);
+        state.steps.push(step);
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          const baseContent = last?.role === 'ai' ? last.content : `正在协作... (${state.steps.length} 个智能体)`;
+          const newMsg: Message = {
+            role: 'ai',
+            content: baseContent,
+            status: 'streaming',
+            multi_agent: state.multiAgent ? { ...state.multiAgent, steps: [...state.steps] } : { steps: [...state.steps], finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 },
+          };
+          state.assistantMsg = newMsg;
+          return last?.role === 'ai' ? [...prev.slice(0, -1), newMsg] : [...prev, newMsg];
+        });
+      },
+
+      // 多智能体：子任务开始
+      subtask_started: () => {
+        const d = data as { subtask_id?: string; agent_name?: string };
+        const step = state.stepMap.get(d.subtask_id || '');
+        step && (step.status = 'running', step.agent_name = d.agent_name || step.agent_name);
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai') {
+            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
+          }
+          return prev;
+        });
+      },
+
+      // 多智能体：子任务完成
+      subtask_completed: () => {
+        const d = data as { subtask_id?: string; result?: string; agent_name?: string; description?: string; tokens?: { input: number; output: number } };
+        const step = state.stepMap.get(d.subtask_id || '');
+        if (step) {
+          step.status = 'completed';
+          step.result = d.result;
+          step.agent_name = d.agent_name || step.agent_name;
+          step.description = d.description || step.description;
+          step.tokens = d.tokens;
+        }
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai') {
+            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
+          }
+          return prev;
+        });
+      },
+
+      // 多智能体：子任务失败
+      subtask_failed: () => {
+        const d = data as { subtask_id?: string; error?: string };
+        const step = state.stepMap.get(d.subtask_id || '');
+        step && (step.status = 'failed', step.error = d.error);
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai') {
+            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
+          }
+          return prev;
+        });
+      },
+
+      // 多智能体：任务完成
+      task_completed: () => {
+        const d = data as { result?: string; total_input_tokens?: number; total_output_tokens?: number; total_credit_cost?: number };
+        if (state.multiAgent) {
+          state.multiAgent.finalResult = d.result || '';
+          state.multiAgent.totalTokens = { input: d.total_input_tokens || 0, output: d.total_output_tokens || 0 };
+          state.multiAgent.creditCost = d.total_credit_cost || 0;
+        }
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai') {
+            return [...prev.slice(0, -1), { 
+              ...last, 
+              content: d.result || last.content,
+              multi_agent: state.multiAgent ? { ...state.multiAgent } : undefined,
+            }];
+          }
+          return prev;
+        });
+      },
+
+      // 画布更新
       canvas_updated: () => {
         const { theater_id } = data as { theater_id: string };
         const store = useCanvasStore.getState();
-        // Sync canvas if this theater is currently active
         if (store.theaterId === theater_id) {
-          // Use syncTheater to avoid resetting canvas viewport and breaking reference equality
           store.syncTheater(theater_id);
         }
       },
+
+      // 完成
       done: () => {
         setMessages(prev => {
           const last = prev[prev.length - 1];
@@ -243,11 +463,15 @@ export function AIAssistantPanel() {
             : prev;
         });
         setIsLoading(false);
+        resetStreamingState();
       },
+
+      // 错误
       error: () => {
         const msg = (data as { message?: string })?.message || 'Unknown error';
         setMessages(prev => [...prev, { role: 'ai', content: `错误: ${msg}`, status: 'complete' }]);
         setIsLoading(false);
+        resetStreamingState();
       },
     };
     handlers[eventType]?.();
@@ -484,9 +708,9 @@ export function AIAssistantPanel() {
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 hover:bg-muted"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    clearSession();
+                    await handleClearSession();
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
                   title="清空对话"
@@ -513,16 +737,72 @@ export function AIAssistantPanel() {
               {messages.map((msg, i) => (
                 <div
                   key={i}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={cn(
+                    "flex",
+                    msg.role === 'user' ? "justify-end" : "justify-start"
+                  )}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                    className={cn(
+                      "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
                       msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground rounded-tr-sm'
-                        : 'bg-secondary text-secondary-foreground rounded-tl-sm'
-                    }`}
+                        ? "bg-primary text-primary-foreground rounded-tr-sm"
+                        : "bg-secondary text-secondary-foreground rounded-tl-sm"
+                    )}
                   >
-                    {msg.content}
+                    {/* 用户消息 */}
+                    {msg.role === 'user' && (
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    )}
+
+                    {/* AI消息 */}
+                    {msg.role === 'ai' && (
+                      <div className="space-y-2">
+                        {/* Skill call indicators */}
+                        {msg.skill_calls?.map((sc, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                            {sc.status === 'loading' ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Zap className="h-3 w-3" />
+                            )}
+                            <span>
+                              {sc.status === 'loading'
+                                ? `正在加载技能: ${sc.skill_name}`
+                                : `已加载技能: ${sc.skill_name}`}
+                            </span>
+                          </div>
+                        ))}
+
+                        {/* Tool call indicators */}
+                        {msg.tool_calls?.map((tc, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                            {tc.status === 'executing' ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Terminal className="h-3 w-3" />
+                            )}
+                            <span>
+                              {tc.status === 'executing'
+                                ? `正在执行: ${tc.tool_name}`
+                                : `已完成: ${tc.tool_name}`}
+                            </span>
+                          </div>
+                        ))}
+
+                        {/* Multi-agent steps */}
+                        {msg.multi_agent && (
+                          <MultiAgentSteps {...msg.multi_agent} className="mb-2" />
+                        )}
+
+                        {/* Markdown content */}
+                        <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

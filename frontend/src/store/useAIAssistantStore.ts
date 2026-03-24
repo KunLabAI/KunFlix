@@ -4,10 +4,49 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export type MessageRole = 'user' | 'ai';
 export type MessageStatus = 'streaming' | 'complete';
 
+// 技能调用
+export interface SkillCall {
+  skill_name: string;
+  status: 'loading' | 'loaded';
+}
+
+// 工具调用
+export interface ToolCall {
+  tool_name: string;
+  arguments?: Record<string, unknown>;
+  status: 'executing' | 'completed';
+}
+
+// 智能体步骤（多智能体协作）
+export interface AgentStep {
+  subtask_id: string;
+  agent_name: string;
+  description: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  result?: string;
+  error?: string;
+  tokens?: { input: number; output: number };
+}
+
+// 多智能体数据
+export interface MultiAgentData {
+  steps: AgentStep[];
+  finalResult: string;
+  totalTokens: { input: number; output: number };
+  creditCost: number;
+}
+
+// 多模态内容
+export type MessageContent = string | Array<{type: string; text?: string; image_url?: {url: string}}>;
+
 export interface Message {
   role: MessageRole;
   content: string;
   status?: MessageStatus;
+  // 扩展字段用于技能/工具/多智能体展示
+  skill_calls?: SkillCall[];
+  tool_calls?: ToolCall[];
+  multi_agent?: MultiAgentData;
 }
 
 export interface AgentInfo {
@@ -69,6 +108,7 @@ interface AIAssistantState {
   setAgentName: (name: string) => void;
   setCurrentAgent: (agentId: string, agentName: string) => void;
   clearSession: () => void;
+  clearMessagesKeepSession: () => void;
   
   // Agents
   setAvailableAgents: (agents: AgentInfo[]) => void;
@@ -174,6 +214,11 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         sessionId: null, 
         agentId: null, 
         agentName: 'AI 助手',
+        messages: [...DEFAULT_MESSAGES] 
+      }),
+      
+      // 清空消息但保留会话（用于清空对话功能）
+      clearMessagesKeepSession: () => set({ 
         messages: [...DEFAULT_MESSAGES] 
       }),
 

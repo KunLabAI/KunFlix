@@ -712,6 +712,30 @@ async def _generate_single_agent(
             logger.error(f"Failed to save message: {e}")
 
 
+@router.delete("/{session_id}/messages")
+async def clear_session_messages(
+    session_id: str,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """清空会话的所有消息记录（保留会话本身）"""
+    # 验证会话存在且属于当前用户
+    query = select(ChatSession).filter(ChatSession.id == session_id)
+    query = scoped_query(query, ChatSession, current_user)
+    chat_session = await db.scalar(query)
+    if not chat_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # 删除该会话的所有消息
+    from sqlalchemy import delete
+    result = await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+    await db.commit()
+
+    deleted_count = result.rowcount
+    logger.info(f"Cleared {deleted_count} messages from session {session_id}")
+    return {"message": "Messages cleared", "deleted_count": deleted_count}
+
+
 @router.delete("/{session_id}")
 async def delete_session(
     session_id: str,
