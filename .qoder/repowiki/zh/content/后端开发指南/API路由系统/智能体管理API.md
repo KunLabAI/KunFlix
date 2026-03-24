@@ -8,6 +8,7 @@
 - [backend/routers/chats.py](file://backend/routers/chats.py)
 - [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py)
 - [backend/routers/videos.py](file://backend/routers/videos.py)
+- [backend/routers/skills_api.py](file://backend/routers/skills_api.py)
 - [backend/models.py](file://backend/models.py)
 - [backend/schemas.py](file://backend/schemas.py)
 - [backend/services/billing.py](file://backend/services/billing.py)
@@ -16,6 +17,8 @@
 - [backend/database.py](file://backend/database.py)
 - [backend/services/llm_stream.py](file://backend/services/llm_stream.py)
 - [backend/services/agent_executor.py](file://backend/services/agent_executor.py)
+- [backend/skills_manager.py](file://backend/skills_manager.py)
+- [backend/mcp_manager/manager.py](file://backend/mcp_manager/manager.py)
 - [backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py](file://backend/migrations/versions/h4i5j6k7l8m9_add_model_costs_and_subscriptions.py)
 - [backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py](file://backend/migrations/versions/f2a3b4c5d6e7_add_image_search_billing.py)
 - [backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py](file://backend/migrations/versions/d221879c21d9_add_agent_type_and_prompt_templates.py)
@@ -24,18 +27,23 @@
 - [frontend/src/hooks/usePromptTemplates.ts](file://frontend/src/hooks/usePromptTemplates.ts)
 - [frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx](file://frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx)
 - [frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx](file://frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx)
+- [frontend/src/components/admin/agents/AgentForm/Tools/index.tsx](file://frontend/src/components/admin/agents/AgentForm/Tools/index.tsx)
+- [frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx](file://frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx)
+- [frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx](file://frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx)
+- [frontend/src/app/admin/skills/page.tsx](file://frontend/src/app/admin/skills/page.tsx)
+- [frontend/src/app/admin/skills/SkillDialog.tsx](file://frontend/src/app/admin/skills/SkillDialog.tsx)
+- [frontend/src/app/admin/mcp/page.tsx](file://frontend/src/app/admin/mcp/page.tsx)
 - [README.md](file://README.md)
 - [docs/wiki/Backend-Guide.md](file://docs/wiki/Backend-Guide.md)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 新增视频代理类型支持，扩展智能体类型为text、image、multimodal、video
-- 新增视频生成API路由，支持文本到视频、图片到视频、视频编辑三种模式
-- 新增视频任务管理系统，支持异步视频生成任务追踪
-- 新增视频计费系统，支持按输入图片数量和输出时长的积分计费
-- 新增视频生成服务，基于xAI平台实现视频生成和轮询
-- 新增视频配置管理，支持时长、画质、画面比例等参数配置
+- 新增智能体工具系统模块化重构：Skills 和 MCPClients 组件替代了原有的单一 Tools 组件
+- 新增技能管理API，支持技能的创建、查询、更新、删除和启用/禁用
+- 新增MCP客户端管理功能，支持Model Context Protocol客户端的动态连接
+- 增强智能体对外部能力的管理，支持声明式技能包和热插拔机制
+- 新增MCP客户端热重载支持，实现无感的客户端替换和连接恢复
 
 ## 目录
 1. [简介](#简介)
@@ -54,17 +62,20 @@
 14. [视频生成服务](#视频生成服务)
 15. [计费系统增强](#计费系统增强)
 16. [订阅管理API](#订阅管理api)
-17. [依赖关系分析](#依赖关系分析)
-18. [性能考虑](#性能考虑)
-19. [故障排除指南](#故障排除指南)
-20. [结论](#结论)
-21. [附录](#附录)
+17. [智能体工具系统](#智能体工具系统)
+18. [技能管理系统](#技能管理系统)
+19. [MCP客户端管理](#mcp客户端管理)
+20. [依赖关系分析](#依赖关系分析)
+21. [性能考虑](#性能考虑)
+22. [故障排除指南](#故障排除指南)
+23. [结论](#结论)
+24. [附录](#附录)
 
 ## 简介
-本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。**本次更新重点集成了视频代理类型支持、视频生成API、视频任务管理和视频计费系统，以及增强的智能体执行服务、xAI兼容性支持和改进的错误处理机制。**
+本文件为智能体管理API的专业技术文档，聚焦于多智能体系统的生命周期管理与协作机制。系统基于AgentScope多智能体框架，结合FastAPI后端与异步数据库访问，提供智能体创建、配置、启动与销毁的完整API；同时实现智能体状态同步、事件通知、配置热切换与性能优化能力。**本次更新重点集成了模块化的智能体工具系统，包括Skills和MCPClients组件，增强了智能体对外部能力的管理，新增了技能管理和MCP客户端管理功能。**
 
 ## 项目结构
-后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。**新增视频代理类型支持、视频生成API和视频计费系统。**
+后端采用分层架构：入口文件负责应用生命周期与路由注册，路由层提供REST API与WebSocket，服务层封装业务逻辑，模型层定义数据结构，工具层提供数据库连接与配置管理。前端通过WebSocket与后端进行实时通信。**新增智能体工具系统模块化重构，Skills和MCPClients组件替代了原有的单一Tools组件。**
 
 ```mermaid
 graph TB
@@ -74,6 +85,7 @@ ROUTERS["routers/*<br/>REST API路由"]
 SUBSCRIPTIONS["routers/subscriptions.py<br/>订阅管理API"]
 PROMPT_TEMPLATES["routers/prompt_templates.py<br/>提示词模板API"]
 VIDEOS["routers/videos.py<br/>视频生成API"]
+SKILLS_API["routers/skills_api.py<br/>技能管理API"]
 SERVICES["services.py<br/>业务服务层"]
 AGENT_EXECUTOR["services/agent_executor.py<br/>智能体执行服务"]
 VIDEO_GEN["services/video_generation.py<br/>视频生成服务"]
@@ -85,6 +97,8 @@ CHATS["routers/chats.py<br/>聊天与流式响应"]
 DB["database.py<br/>数据库连接与会话"]
 CONFIG["config.py<br/>配置管理"]
 TASKS["tasks.py<br/>后台任务"]
+SKILLS_MANAGER["skills_manager.py<br/>技能管理服务"]
+MCP_MANAGER["mcp_manager/manager.py<br/>MCP客户端管理"]
 end
 FRONT["frontend/src/hooks/useSocket.ts<br/>前端WebSocket客户端"]
 FRONT --> MAIN
@@ -92,6 +106,7 @@ MAIN --> ROUTERS
 MAIN --> SUBSCRIPTIONS
 MAIN --> PROMPT_TEMPLATES
 MAIN --> VIDEOS
+MAIN --> SKILLS_API
 ROUTERS --> SERVICES
 ROUTERS --> MODELS
 ROUTERS --> DB
@@ -101,6 +116,7 @@ PROMPT_TEMPLATES --> MODELS
 PROMPT_TEMPLATES --> DB
 VIDEOS --> VIDEO_GEN
 VIDEOS --> BILLING
+SKILLS_API --> SKILLS_MANAGER
 SERVICES --> MODELS
 SERVICES --> AGENTS
 SERVICES --> BILLING
@@ -114,23 +130,27 @@ AGENTS --> DB
 TASKS --> AGENTS
 TASKS --> DB
 CONFIG --> DB
+MCP_MANAGER --> AGENTS
 ```
 
 **图表来源**
-- [backend/main.py](file://backend/main.py#L41-L105)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
-- [backend/models.py](file://backend/models.py#L1-L382)
+- [backend/main.py:41-105](file://backend/main.py#L41-L105)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/services/billing.py:1-324](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py:1-150](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py:1-203](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py:1-552](file://backend/services/llm_stream.py#L1-L552)
+- [backend/routers/chats.py:1-393](file://backend/routers/chats.py#L1-L393)
+- [backend/models.py:1-382](file://backend/models.py#L1-L382)
+- [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
+- [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
 
 **章节来源**
-- [README.md](file://README.md#L34-L51)
-- [docs/wiki/Backend-Guide.md](file://docs/wiki/Backend-Guide.md#L1-L21)
+- [README.md:34-51](file://README.md#L34-L51)
+- [docs/wiki/Backend-Guide.md:1-21](file://docs/wiki/Backend-Guide.md#L1-L21)
 
 ## 核心组件
 - 应用入口与生命周期：负责数据库迁移、Lifespan钩子、CORS配置、路由注册与WebSocket端点。
@@ -144,6 +164,9 @@ CONFIG --> DB
 - **视频生成API**：提供视频生成任务的提交、状态查询和结果获取，支持异步处理。
 - **视频计费系统**：实现视频任务的积分计费，支持按输入图片数量和输出时长的精确计费。
 - **视频生成服务**：基于xAI平台实现视频生成，支持文本到视频、图片到视频、视频编辑三种模式。
+- **智能体工具系统**：模块化重构的工具管理，包含Skills和MCPClients两个独立组件。
+- **技能管理系统**：支持技能的创建、查询、更新、删除和启用/禁用，实现声明式工具包管理。
+- **MCP客户端管理**：支持Model Context Protocol客户端的动态连接、热重载和无感替换。
 - 数据模型与序列化：定义智能体、LLM提供商、聊天会话、消息、**CreditTransaction**、**SubscriptionPlan**、**PromptTemplate**、**VideoTask**和**VideoConfig**的数据结构及Pydantic验证模型。
 - 叙事引擎与AgentScope：封装多智能体协作（导演、旁白、NPC管理），支持动态配置加载与章节生成。
 - 聊天与流式响应：支持OpenAI/DashScope等提供商的流式对话，记录上下文与Token统计，并集成实时计费扣费。
@@ -151,22 +174,25 @@ CONFIG --> DB
 - 任务调度：实现章节预生成与资源生成的后台任务。
 
 **章节来源**
-- [backend/main.py](file://backend/main.py#L45-L82)
-- [backend/routers/agents.py](file://backend/routers/agents.py#L15-L55)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
-- [backend/agents.py](file://backend/agents.py#L71-L74)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/models.py](file://backend/models.py#L100-L122)
-- [backend/schemas.py](file://backend/schemas.py#L43-L73)
-- [backend/agents.py](file://backend/agents.py#L43-L196)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
-- [backend/tasks.py](file://backend/tasks.py#L7-L55)
+- [backend/main.py:45-82](file://backend/main.py#L45-L82)
+- [backend/routers/agents.py:15-55](file://backend/routers/agents.py#L15-L55)
+- [backend/services/agent_executor.py:77-112](file://backend/services/agent_executor.py#L77-L112)
+- [backend/agents.py:71-74](file://backend/agents.py#L71-L74)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/services/billing.py:1-324](file://backend/services/billing.py#L1-L324)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/models.py:100-122](file://backend/models.py#L100-L122)
+- [backend/schemas.py:43-73](file://backend/schemas.py#L43-L73)
+- [backend/agents.py:43-196](file://backend/agents.py#L43-L196)
+- [backend/routers/chats.py:72-258](file://backend/routers/chats.py#L72-L258)
+- [backend/tasks.py:7-55](file://backend/tasks.py#L7-L55)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
+- [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
 
 ## 架构总览
-系统采用"路由层-服务层-模型层-基础设施层"的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。**新增视频代理类型支持、视频生成API和视频计费系统，扩展了智能体的功能边界。**WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
+系统采用"路由层-服务层-模型层-基础设施层"的分层设计，智能体管理API位于路由层，通过服务层与数据库交互，使用AgentScope进行多智能体编排。**新增模块化的智能体工具系统，Skills和MCPClients组件提供更精细的外部能力管理。**WebSocket用于实时状态推送，后台任务实现章节预生成与资源生成。
 
 ```mermaid
 graph TB
@@ -177,12 +203,15 @@ SUBAPI["订阅管理API<br/>/api/admin/subscriptions/*"]
 PROMPTAPI["提示词模板API<br/>/api/prompt-templates/*"]
 CHAT["聊天流式接口<br/>/api/chats/*"]
 VIDEOAPI["视频生成API<br/>/api/videos/*"]
+SKILLSAPI["技能管理API<br/>/api/admin/skills/*"]
 ADMIN["后台管理接口<br/>/api/admin/*"]
 SERVICE["GameService<br/>业务逻辑"]
 BILLINGSVC["BillingService<br/>计费计算"]
 PROMPTSVR["PromptTemplateService<br/>模板服务"]
 AGENTEXEC["AgentExecutor<br/>智能体执行服务"]
 VIDEOGEN["VideoGenerationService<br/>视频生成服务"]
+SKILLSSVC["SkillService<br/>技能管理服务"]
+MCPMANAGER["MCPClientManager<br/>MCP客户端管理"]
 LLMSTREAM["LLMStream<br/>流式响应处理"]
 AGENG["NarrativeEngine<br/>AgentScope编排"]
 DB["数据库<br/>PostgreSQL/SQLite"]
@@ -193,12 +222,15 @@ SP["SubscriptionPlan<br/>套餐计划"]
 PT["PromptTemplate<br/>提示词模板"]
 VT["VideoTask<br/>视频任务记录"]
 VC["VideoConfig<br/>视频配置"]
+SK["SkillInfo<br/>技能信息"]
+MCP["MCPClient<br/>MCP客户端"]
 CLIENT --> WS
 CLIENT --> API
 CLIENT --> SUBAPI
 CLIENT --> PROMPTAPI
 CLIENT --> CHAT
 CLIENT --> VIDEOAPI
+CLIENT --> SKILLSAPI
 CLIENT --> ADMIN
 API --> SERVICE
 SUBAPI --> SERVICE
@@ -208,6 +240,7 @@ CHAT --> AGENTEXEC
 CHAT --> LLMSTREAM
 VIDEOAPI --> VIDEOGEN
 VIDEOAPI --> BILLINGSVC
+SKILLSAPI --> SKILLSSVC
 SERVICE --> AGENG
 SERVICE --> BILLINGSVC
 SERVICE --> DB
@@ -217,6 +250,8 @@ BILLINGSVC --> CT
 BILLINGSVC --> SP
 VIDEOGEN --> VT
 VIDEOGEN --> VC
+SKILLSSVC --> SK
+MCPMANAGER --> MCP
 AGENG --> PROVIDER
 AGENG --> DB
 AGENTEXEC --> PROVIDER
@@ -226,17 +261,20 @@ TASK --> DB
 ```
 
 **图表来源**
-- [backend/main.py](file://backend/main.py#L157-L169)
-- [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
-- [backend/models.py](file://backend/models.py#L180-L382)
+- [backend/main.py:157-169](file://backend/main.py#L157-L169)
+- [backend/routers/agents.py:1-141](file://backend/routers/agents.py#L1-L141)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py:1-393](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/services/billing.py:1-324](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py:1-150](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py:1-203](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py:1-552](file://backend/services/llm_stream.py#L1-L552)
+- [backend/models.py:180-382](file://backend/models.py#L180-L382)
+- [backend/skills_manager.py:263-408](file://backend/skills_manager.py#L263-L408)
+- [backend/mcp_manager/manager.py:28-138](file://backend/mcp_manager/manager.py#L28-L138)
 
 ## 详细组件分析
 
@@ -275,12 +313,12 @@ R-->>C : "智能体对象"
 ```
 
 **图表来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L15-L55)
+- [backend/routers/agents.py:15-55](file://backend/routers/agents.py#L15-L55)
 
 **章节来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L15-L141)
-- [backend/schemas.py](file://backend/schemas.py#L54-L73)
-- [backend/models.py](file://backend/models.py#L134-L177)
+- [backend/routers/agents.py:15-141](file://backend/routers/agents.py#L15-L141)
+- [backend/schemas.py:54-73](file://backend/schemas.py#L54-L73)
+- [backend/models.py:134-177](file://backend/models.py#L134-L177)
 
 ### 智能体状态同步与事件通知
 - WebSocket端点
@@ -307,12 +345,12 @@ Note over W,S : "后台任务完成章节生成后可推送状态事件"
 ```
 
 **图表来源**
-- [backend/main.py](file://backend/main.py#L157-L169)
-- [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
+- [backend/main.py:157-169](file://backend/main.py#L157-L169)
+- [frontend/src/hooks/useSocket.ts:1-43](file://frontend/src/hooks/useSocket.ts#L1-L43)
 
 **章节来源**
-- [backend/main.py](file://backend/main.py#L157-L169)
-- [frontend/src/hooks/useSocket.ts](file://frontend/src/hooks/useSocket.ts#L1-L43)
+- [backend/main.py:157-169](file://backend/main.py#L157-L169)
+- [frontend/src/hooks/useSocket.ts:1-43](file://frontend/src/hooks/useSocket.ts#L1-L43)
 
 ### 智能体配置管理与热切换
 - 配置来源
@@ -342,13 +380,13 @@ SetType --> Ready(["配置就绪"])
 ```
 
 **图表来源**
-- [backend/agents.py](file://backend/agents.py#L49-L99)
-- [backend/config.py](file://backend/config.py#L22-L28)
+- [backend/agents.py:49-99](file://backend/agents.py#L49-L99)
+- [backend/config.py:22-28](file://backend/config.py#L22-L28)
 
 **章节来源**
-- [backend/agents.py](file://backend/agents.py#L43-L196)
-- [backend/config.py](file://backend/config.py#L1-L34)
-- [backend/routers/admin.py](file://backend/routers/admin.py#L16-L31)
+- [backend/agents.py:43-196](file://backend/agents.py#L43-L196)
+- [backend/config.py:1-34](file://backend/config.py#L1-L34)
+- [backend/routers/admin.py:16-31](file://backend/routers/admin.py#L16-L31)
 
 ### 智能体间通信协议与消息传递
 - 消息结构
@@ -378,12 +416,12 @@ C->>D : "保存助手消息并更新会话时间"
 ```
 
 **图表来源**
-- [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
-- [backend/agents.py](file://backend/agents.py#L11-L42)
+- [backend/routers/chats.py:72-258](file://backend/routers/chats.py#L72-L258)
+- [backend/agents.py:11-42](file://backend/agents.py#L11-L42)
 
 **章节来源**
-- [backend/routers/chats.py](file://backend/routers/chats.py#L72-L258)
-- [backend/agents.py](file://backend/agents.py#L11-L42)
+- [backend/routers/chats.py:72-258](file://backend/routers/chats.py#L72-L258)
+- [backend/agents.py:11-42](file://backend/agents.py#L11-L42)
 
 ### 性能优化与后台任务
 - 连接池与超时
@@ -406,12 +444,12 @@ TriggerAssets --> Done
 ```
 
 **图表来源**
-- [backend/tasks.py](file://backend/tasks.py#L7-L55)
-- [backend/agents.py](file://backend/agents.py#L154-L191)
+- [backend/tasks.py:7-55](file://backend/tasks.py#L7-L55)
+- [backend/agents.py:154-191](file://backend/agents.py#L154-L191)
 
 **章节来源**
-- [backend/database.py](file://backend/database.py#L8-L23)
-- [backend/tasks.py](file://backend/tasks.py#L7-L55)
+- [backend/database.py:8-23](file://backend/database.py#L8-L23)
+- [backend/tasks.py:7-55](file://backend/tasks.py#L7-L55)
 
 ## 智能体执行服务
 
@@ -451,10 +489,10 @@ AE-->>API : "返回执行结果"
 ```
 
 **图表来源**
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+- [backend/services/agent_executor.py:77-112](file://backend/services/agent_executor.py#L77-L112)
 
 **章节来源**
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
+- [backend/services/agent_executor.py:77-112](file://backend/services/agent_executor.py#L77-L112)
 
 ### 智能体回复处理增强
 改进的智能体回复处理机制增强了xAI平台的兼容性，优化了消息格式化和异常处理。
@@ -470,8 +508,8 @@ AE-->>API : "返回执行结果"
   - 响应内容提取和标准化
 
 **章节来源**
-- [backend/agents.py](file://backend/agents.py#L71-L74)
-- [backend/agents.py](file://backend/agents.py#L106-L108)
+- [backend/agents.py:71-74](file://backend/agents.py#L71-L74)
+- [backend/agents.py:106-108](file://backend/agents.py#L106-L108)
 
 ## xAI兼容性增强
 
@@ -501,13 +539,13 @@ Normalize --> Return["返回结果"]
 ```
 
 **图表来源**
-- [backend/agents.py](file://backend/agents.py#L71-L74)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L41-L42)
+- [backend/agents.py:71-74](file://backend/agents.py#L71-L74)
+- [backend/services/llm_stream.py:41-42](file://backend/services/llm_stream.py#L41-L42)
 
 **章节来源**
-- [backend/agents.py](file://backend/agents.py#L71-L74)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L41-L42)
-- [backend/agents.py](file://backend/agents.py#L179-L187)
+- [backend/agents.py:71-74](file://backend/agents.py#L71-L74)
+- [backend/services/llm_stream.py:41-42](file://backend/services/llm_stream.py#L41-L42)
+- [backend/agents.py:179-187](file://backend/agents.py#L179-L187)
 
 ### 流式响应处理优化
 改进的流式响应处理机制增强了xAI平台的兼容性和错误处理能力。
@@ -523,8 +561,8 @@ Normalize --> Return["返回结果"]
   - 响应内容的完整性检查
 
 **章节来源**
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L65-L109)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L544-L552)
+- [backend/services/llm_stream.py:65-109](file://backend/services/llm_stream.py#L65-L109)
+- [backend/services/llm_stream.py:544-552](file://backend/services/llm_stream.py#L544-L552)
 
 ## 错误处理与异常管理
 
@@ -565,10 +603,10 @@ Log3 --> Return
 ```
 
 **图表来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L18-L64)
+- [backend/routers/agents.py:18-64](file://backend/routers/agents.py#L18-L64)
 
 **章节来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L18-L64)
+- [backend/routers/agents.py:18-64](file://backend/routers/agents.py#L18-L64)
 
 ### 流式响应异常处理
 改进的流式响应处理增强了异常捕获和错误恢复能力。
@@ -584,8 +622,8 @@ Log3 --> Return
   - 清晰的错误状态报告
 
 **章节来源**
-- [backend/routers/chats.py](file://backend/routers/chats.py#L378-L386)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L544-L552)
+- [backend/routers/chats.py:378-386](file://backend/routers/chats.py#L378-L386)
+- [backend/services/llm_stream.py:544-552](file://backend/services/llm_stream.py#L544-L552)
 
 ### 计费系统异常处理
 增强的计费系统异常处理机制确保了积分扣费的可靠性和一致性。
@@ -602,7 +640,7 @@ Log3 --> Return
   - 其他未知异常
 
 **章节来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L167-L200)
+- [backend/services/billing.py:167-200](file://backend/services/billing.py#L167-L200)
 
 ## 提示词模板系统
 
@@ -644,7 +682,7 @@ PT-->>A : "模板详情"
 ```
 
 **图表来源**
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L32-L58)
+- [backend/routers/prompt_templates.py:32-58](file://backend/routers/prompt_templates.py#L32-L58)
 
 ### 模板变量系统
 模板支持Jinja2格式的变量替换，管理员可以定义输入变量及其类型。
@@ -666,9 +704,9 @@ PT-->>A : "模板详情"
   - description：变量说明
 
 **章节来源**
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/models.py](file://backend/models.py#L287-L322)
-- [backend/schemas.py](file://backend/schemas.py#L468-L538)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/models.py:287-322](file://backend/models.py#L287-L322)
+- [backend/schemas.py:468-538](file://backend/schemas.py#L468-L538)
 
 ### AI内容生成流程
 系统提供基于模板的AI内容生成功能，支持流式响应和计费计算。
@@ -692,10 +730,10 @@ Note over PT : "实时计算并记录积分交易"
 ```
 
 **图表来源**
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L157-L275)
+- [backend/routers/prompt_templates.py:157-275](file://backend/routers/prompt_templates.py#L157-L275)
 
 **章节来源**
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L157-L275)
+- [backend/routers/prompt_templates.py:157-275](file://backend/routers/prompt_templates.py#L157-L275)
 
 ### 前端模板管理界面
 前端提供了完整的模板管理界面，支持模板的创建、编辑、删除和导入。
@@ -713,9 +751,9 @@ Note over PT : "实时计算并记录积分交易"
   - 搜索和分页功能
 
 **章节来源**
-- [frontend/src/hooks/usePromptTemplates.ts](file://frontend/src/hooks/usePromptTemplates.ts#L1-L53)
-- [frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx](file://frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx#L1-L416)
-- [frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx](file://frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx#L49-L173)
+- [frontend/src/hooks/usePromptTemplates.ts:1-53](file://frontend/src/hooks/usePromptTemplates.ts#L1-L53)
+- [frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx:1-416](file://frontend/src/app/admin/prompt-templates/PromptTemplateDialog.tsx#L1-L416)
+- [frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx:49-173](file://frontend/src/components/admin/agents/AgentForm/SystemPrompt.tsx#L49-L173)
 
 ## 智能体类型增强
 
@@ -739,7 +777,7 @@ Note over PT : "实时计算并记录积分交易"
 
 - **视频智能体（video）**
   - 专门用于视频生成和处理
-  - 支持文本到视频、图片到视频、视频编辑
+  - 支持多种视频生成模式
   - 适合动态内容创作和多媒体场景
 
 ### 智能体类型与模板匹配
@@ -760,12 +798,12 @@ Render --> Generate["生成内容"]
 ```
 
 **图表来源**
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L182-L196)
+- [backend/routers/prompt_templates.py:182-196](file://backend/routers/prompt_templates.py#L182-L196)
 
 **章节来源**
-- [backend/models.py](file://backend/models.py#L178-L179)
-- [backend/models.py](file://backend/models.py#L298-L299)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L182-L196)
+- [backend/models.py:178-179](file://backend/models.py#L178-L179)
+- [backend/models.py:298-299](file://backend/models.py#L298-L299)
+- [backend/routers/prompt_templates.py:182-196](file://backend/routers/prompt_templates.py#L182-L196)
 
 ## 视频代理类型支持
 
@@ -785,8 +823,8 @@ Render --> Generate["生成内容"]
   - 集成视频生成参数配置
 
 **章节来源**
-- [backend/models.py](file://backend/models.py#L196-L200)
-- [backend/schemas.py](file://backend/schemas.py#L211-L215)
+- [backend/models.py:196-200](file://backend/models.py#L196-L200)
+- [backend/schemas.py:211-215](file://backend/schemas.py#L211-L215)
 
 ### 视频智能体计费字段
 视频智能体支持四种计费维度，提供精确的成本控制。
@@ -804,8 +842,8 @@ Render --> Generate["生成内容"]
   - video_output_720p_credit：每秒720p输出积分
 
 **章节来源**
-- [backend/models.py](file://backend/models.py#L196-L200)
-- [backend/schemas.py](file://backend/schemas.py#L211-L215)
+- [backend/models.py:196-200](file://backend/models.py#L196-L200)
+- [backend/schemas.py:211-215](file://backend/schemas.py#L211-L215)
 
 ## 视频生成API
 
@@ -847,8 +885,8 @@ V-->>C : "返回最新状态"
 ```
 
 **图表来源**
-- [backend/routers/videos.py](file://backend/routers/videos.py#L23-L104)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L107-L185)
+- [backend/routers/videos.py:23-104](file://backend/routers/videos.py#L23-L104)
+- [backend/routers/videos.py:107-185](file://backend/routers/videos.py#L107-L185)
 
 ### 视频生成请求处理
 视频生成API提供了完整的请求处理流程，包括配置合并、任务创建和状态轮询。
@@ -868,8 +906,8 @@ V-->>C : "返回最新状态"
   - 自动失败处理
 
 **章节来源**
-- [backend/routers/videos.py](file://backend/routers/videos.py#L23-L104)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L107-L185)
+- [backend/routers/videos.py:23-104](file://backend/routers/videos.py#L23-L104)
+- [backend/routers/videos.py:107-185](file://backend/routers/videos.py#L107-L185)
 
 ### 视频任务状态管理
 系统实现了完整的视频任务状态管理，支持异步处理和状态追踪。
@@ -886,7 +924,7 @@ V-->>C : "返回最新状态"
   - 在聊天会话中插入消息
 
 **章节来源**
-- [backend/routers/videos.py](file://backend/routers/videos.py#L147-L185)
+- [backend/routers/videos.py:147-185](file://backend/routers/videos.py#L147-L185)
 
 ## 视频计费系统
 
@@ -917,7 +955,7 @@ CreateMetadata --> Return["返回(总费用, 元数据)"]
 ```
 
 **图表来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L287-L324)
+- [backend/services/billing.py:287-324](file://backend/services/billing.py#L287-L324)
 
 ### 计费元数据记录
 视频计费系统会详细记录每个计费维度的元数据，便于审计和分析。
@@ -935,7 +973,7 @@ CreateMetadata --> Return["返回(总费用, 元数据)"]
   - video_output_720p_rate：720p计费费率
 
 **章节来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L287-L324)
+- [backend/services/billing.py:287-324](file://backend/services/billing.py#L287-L324)
 
 ### 视频计费字段映射
 系统通过映射表实现视频计费字段的动态选择，避免复杂的条件判断。
@@ -951,7 +989,7 @@ CreateMetadata --> Return["返回(总费用, 元数据)"]
   - video_output_720p → video_output_720p_credit
 
 **章节来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L22-L35)
+- [backend/services/billing.py:22-35](file://backend/services/billing.py#L22-L35)
 
 ## 视频生成服务
 
@@ -986,8 +1024,8 @@ Deduct --> InsertMsg["插入聊天消息"]
 ```
 
 **图表来源**
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L62-L138)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L147-L181)
+- [backend/services/video_generation.py:62-138](file://backend/services/video_generation.py#L62-L138)
+- [backend/services/video_generation.py:147-181](file://backend/services/video_generation.py#L147-L181)
 
 ### 视频生成上下文
 视频生成服务使用VideoContext封装生成所需的全部参数。
@@ -1008,7 +1046,7 @@ Deduct --> InsertMsg["插入聊天消息"]
   - 支持扩展新的视频生成模式
 
 **章节来源**
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L37-L138)
+- [backend/services/video_generation.py:37-138](file://backend/services/video_generation.py#L37-L138)
 
 ### 视频状态轮询与处理
 视频生成服务实现了完整的状态轮询和结果处理机制。
@@ -1024,7 +1062,7 @@ Deduct --> InsertMsg["插入聊天消息"]
   - 失败状态处理和错误记录
 
 **章节来源**
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L147-L203)
+- [backend/services/video_generation.py:147-203](file://backend/services/video_generation.py#L147-L203)
 
 ## 计费系统增强
 
@@ -1073,7 +1111,7 @@ Sum --> Record["记录CreditTransaction"]
 ```
 
 **图表来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L13-L35)
+- [backend/services/billing.py:13-35](file://backend/services/billing.py#L13-L35)
 
 ### CreditTransaction积分交易记录
 系统自动记录所有积分交易，包括扣费、充值和管理员调整。每笔交易都包含详细的元数据信息。
@@ -1096,9 +1134,9 @@ Sum --> Record["记录CreditTransaction"]
   - description：交易描述
 
 **章节来源**
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L56)
-- [backend/models.py](file://backend/models.py#L222-L242)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L351-L368)
+- [backend/services/billing.py:1-56](file://backend/services/billing.py#L1-L56)
+- [backend/models.py:222-242](file://backend/models.py#L222-L242)
+- [backend/routers/chats.py:351-368](file://backend/routers/chats.py#L351-L368)
 
 ### 聊天流式响应的计费集成
 聊天接口集成了实时计费功能，在对话过程中动态计算并扣除积分费用。
@@ -1120,12 +1158,12 @@ Note over C,B : "实时计算并记录积分交易"
 ```
 
 **图表来源**
-- [backend/routers/chats.py](file://backend/routers/chats.py#L351-L368)
-- [backend/services/billing.py](file://backend/services/billing.py#L16-L56)
+- [backend/routers/chats.py:351-368](file://backend/routers/chats.py#L351-L368)
+- [backend/services/billing.py:16-56](file://backend/services/billing.py#L16-L56)
 
 **章节来源**
-- [backend/routers/chats.py](file://backend/routers/chats.py#L340-L373)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L56)
+- [backend/routers/chats.py:340-373](file://backend/routers/chats.py#L340-L373)
+- [backend/services/billing.py:1-56](file://backend/services/billing.py#L1-L56)
 
 ## 订阅管理API
 
@@ -1163,7 +1201,7 @@ S-->>A : "套餐计划详情"
 ```
 
 **图表来源**
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L21-L37)
+- [backend/routers/subscriptions.py:21-37](file://backend/routers/subscriptions.py#L21-L37)
 
 ### 权限控制与数据验证
 - 所有订阅管理操作都需要管理员权限
@@ -1172,8 +1210,246 @@ S-->>A : "套餐计划详情"
 - 价格和积分数必须大于0
 
 **章节来源**
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/schemas.py](file://backend/schemas.py#L320-L352)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/schemas.py:320-352](file://backend/schemas.py#L320-L352)
+
+## 智能体工具系统
+
+### 模块化重构概述
+系统实现了智能体工具系统的模块化重构，Skills和MCPClients组件替代了原有的单一Tools组件，提供了更精细的外部能力管理。
+
+- **Skills组件**
+  - 管理声明式技能包
+  - 支持热插拔和版本控制
+  - 提供技能启用/禁用功能
+
+- **MCPClients组件**
+  - 管理Model Context Protocol客户端
+  - 支持动态连接和热重载
+  - 提供无感的客户端替换
+
+- **工具配置结构**
+  - tools_enabled：工具开关
+  - tools：工具列表（技能ID或MCP客户端ID）
+
+**章节来源**
+- [frontend/src/components/admin/agents/AgentForm/Tools/index.tsx:1-57](file://frontend/src/components/admin/agents/AgentForm/Tools/index.tsx#L1-L57)
+- [frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx:1-79](file://frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx#L1-L79)
+- [frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx:1-97](file://frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx#L1-L97)
+
+### 工具配置界面
+前端提供了直观的工具配置界面，支持Skills和MCPClients的选择和管理。
+
+- **工具开关**
+  - tools_enabled：启用/禁用所有工具
+  - 实时影响智能体的能力范围
+
+- **技能选择**
+  - 勾选框选择所需技能
+  - 显示技能描述和状态
+  - 支持批量操作
+
+- **MCP客户端选择**
+  - 勾选框选择所需客户端
+  - 显示客户端状态和描述
+  - 支持动态加载
+
+**章节来源**
+- [frontend/src/components/admin/agents/AgentForm/Tools/index.tsx:12-54](file://frontend/src/components/admin/agents/AgentForm/Tools/index.tsx#L12-L54)
+- [frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx:28-75](file://frontend/src/components/admin/agents/AgentForm/Tools/Skills.tsx#L28-L75)
+- [frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx:43-93](file://frontend/src/components/admin/agents/AgentForm/Tools/MCPClients.tsx#L43-L93)
+
+## 技能管理系统
+
+### 技能管理API
+系统提供了完整的技能管理API，支持技能的创建、查询、更新、删除和启用/禁用操作。
+
+- **API端点**
+  - GET /api/admin/skills/：获取所有技能列表
+  - GET /api/admin/skills/{skill_name}：获取技能详情
+  - POST /api/admin/skills/：创建新技能
+  - PUT /api/admin/skills/{skill_name}：更新技能
+  - DELETE /api/admin/skills/{skill_name}：删除技能
+  - POST /api/admin/skills/{skill_name}/toggle：切换技能状态
+
+- **技能类型**
+  - builtin：内置技能（系统自带）
+  - customized：自定义技能（用户创建）
+  - active：已启用技能（在active_skills目录中）
+
+- **技能状态**
+  - active：运行中（已启用）
+  - inactive：已停用（未启用）
+
+```mermaid
+sequenceDiagram
+participant A as "管理员"
+participant SA as "技能管理路由"
+participant SS as "技能服务"
+participant SM as "技能管理器"
+A->>SA : "POST /api/admin/skills/"
+SA->>SS : "创建技能"
+SS->>SM : "写入SKILL.md文件"
+SM-->>SS : "返回技能信息"
+SS-->>SA : "返回技能详情"
+SA-->>A : "技能创建成功"
+```
+
+**图表来源**
+- [backend/routers/skills_api.py:140-153](file://backend/routers/skills_api.py#L140-L153)
+
+### 技能文件结构
+技能使用声明式文件格式，支持Markdown语法和元数据管理。
+
+- **SKILL.md结构**
+  - YAML头部：name、description、metadata
+  - Markdown正文：技能详细说明
+  - 支持代码示例和使用指导
+
+- **元数据字段**
+  - name：技能标识符（英文）
+  - description：技能描述
+  - metadata.builtin_skill_version：版本号
+  - 支持自定义元数据
+
+- **文件组织**
+  - builtin_skills：系统内置技能
+  - customized_skills：用户自定义技能
+  - active_skills：已启用技能（运行时）
+
+**章节来源**
+- [backend/routers/skills_api.py:26-47](file://backend/routers/skills_api.py#L26-L47)
+- [backend/skills_manager.py:19-37](file://backend/skills_manager.py#L19-L37)
+- [backend/skills_manager.py:107-143](file://backend/skills_manager.py#L107-L143)
+
+### 技能启用/禁用机制
+系统实现了智能的技能启用/禁用机制，支持热插拔和版本控制。
+
+- **启用流程**
+  - 将技能从builtin或customized复制到active_skills
+  - 支持强制覆盖和差异检测
+  - 自动同步相关文件和脚本
+
+- **禁用流程**
+  - 从active_skills目录删除技能
+  - 保持builtin技能不变
+  - 支持批量禁用
+
+- **版本控制**
+  - 内置技能版本管理
+  - 自定义技能版本覆盖
+  - 差异检测和更新
+
+**章节来源**
+- [backend/routers/skills_api.py:190-206](file://backend/routers/skills_api.py#L190-L206)
+- [backend/skills_manager.py:284-301](file://backend/skills_manager.py#L284-L301)
+- [backend/skills_manager.py:180-226](file://backend/skills_manager.py#L180-L226)
+
+### 前端技能管理界面
+前端提供了完整的技能管理界面，支持技能的创建、编辑、删除和状态切换。
+
+- **技能列表**
+  - 显示技能名称、描述、版本和状态
+  - 支持按状态和类型筛选
+  - 实时状态更新
+
+- **技能详情**
+  - 显示技能完整内容和元数据
+  - 支持Markdown预览
+  - 版本信息展示
+
+- **技能操作**
+  - 创建新技能（自定义）
+  - 编辑现有技能
+  - 删除自定义技能
+  - 启用/禁用技能
+
+**章节来源**
+- [frontend/src/app/admin/skills/page.tsx:37-185](file://frontend/src/app/admin/skills/page.tsx#L37-L185)
+- [frontend/src/app/admin/skills/SkillDialog.tsx:44-235](file://frontend/src/app/admin/skills/SkillDialog.tsx#L44-L235)
+
+## MCP客户端管理
+
+### MCP客户端架构
+系统实现了完整的MCP（Model Context Protocol）客户端管理，支持动态连接和热重载。
+
+- **MCP客户端类型**
+  - stdio：本地进程通信
+  - http：HTTP REST API
+  - 支持自定义传输协议
+
+- **客户端配置**
+  - name：客户端名称
+  - transport：传输协议（stdio/http）
+  - enabled：启用状态
+  - 连接参数：命令、URL、头信息等
+
+- **热重载机制**
+  - 双阶段锁定：连接新客户端（锁外）+ 替换（锁内）
+  - 无感替换：最小化阻塞时间
+  - 连接恢复：自动重连和错误处理
+
+```mermaid
+sequenceDiagram
+participant M as "MCP管理器"
+participant NC as "新客户端"
+participant OC as "旧客户端"
+M->>NC : "构建新客户端"
+NC->>NC : "连接新客户端"
+NC-->>M : "连接成功"
+M->>M : "获取互斥锁"
+M->>OC : "关闭旧客户端"
+M->>M : "交换客户端引用"
+M-->>M : "释放互斥锁"
+M-->>NC : "热重载完成"
+```
+
+**图表来源**
+- [backend/mcp_manager/manager.py:57-86](file://backend/mcp_manager/manager.py#L57-L86)
+
+### MCP客户端生命周期
+系统提供了完整的MCP客户端生命周期管理，包括初始化、连接、替换和关闭。
+
+- **初始化流程**
+  - 从配置加载客户端
+  - 按启用状态初始化
+  - 异常处理和日志记录
+
+- **连接管理**
+  - 超时控制（默认60秒）
+  - 连接状态监控
+  - 自动重连机制
+
+- **客户端替换**
+  - 双阶段锁定策略
+  - 最小阻塞时间
+  - 优雅关闭旧客户端
+
+**章节来源**
+- [backend/mcp_manager/manager.py:40-56](file://backend/mcp_manager/manager.py#L40-L56)
+- [backend/mcp_manager/manager.py:87-104](file://backend/mcp_manager/manager.py#L87-L104)
+
+### 前端MCP管理界面
+前端提供了MCP客户端管理界面，支持客户端的添加、配置和状态监控。
+
+- **客户端列表**
+  - 显示客户端ID、名称、传输协议
+  - 状态指示器（连接/断开）
+  - 工具数量统计
+
+- **客户端操作**
+  - 添加新客户端
+  - 编辑客户端配置
+  - 启用/禁用客户端
+  - 删除客户端
+
+- **状态监控**
+  - 实时连接状态
+  - 传输协议显示
+  - 详细信息面板
+
+**章节来源**
+- [frontend/src/app/admin/mcp/page.tsx:11-53](file://frontend/src/app/admin/mcp/page.tsx#L11-L53)
 
 ## 依赖关系分析
 - 组件耦合
@@ -1184,12 +1460,15 @@ S-->>A : "套餐计划详情"
   - **订阅路由依赖数据库会话和管理员权限验证**
   - **提示词模板路由依赖数据库会话、模板引擎和智能体模型**
   - **视频生成路由依赖视频生成服务和计费服务**
+  - **技能管理路由依赖技能管理器和技能文件系统**
+  - **MCP客户端管理依赖MCP客户端管理器和AgentScope集成**
   - 聊天路由依赖提供商类型分支、数据库会话和计费服务
   - 后台任务依赖引擎与数据库
 - 外部依赖
   - AgentScope：多智能体编排与模型初始化
   - OpenAI/DashScope：流式对话与增量输出
   - **xAI：视频生成平台API兼容性支持**
+  - **agentscope.mcp：MCP客户端SDK**
   - SQLAlchemy异步ORM：数据库访问
   - FastAPI：路由与WebSocket
   - **Jinja2：模板渲染引擎**
@@ -1210,6 +1489,10 @@ SUBSCRIPTIONS["订阅路由"] --> MODELS
 SUBSCRIPTIONS --> DB
 VIDEOS["视频生成路由"] --> VIDEO_GEN["视频生成服务"]
 VIDEOS --> BILLING
+SKILLS_API["技能管理路由"] --> SKILLS_SVC["技能服务"]
+SKILLS_SVC --> SKILLS_MGR["技能管理器"]
+MCP_API["MCP管理路由"] --> MCP_MGR["MCP客户端管理器"]
+MCP_MGR --> AGENTS
 CHATS["聊天路由"] --> PROVIDERS["LLM提供商"]
 CHATS --> DB
 CHATS --> BILLING
@@ -1220,30 +1503,36 @@ TASKS --> DB
 ```
 
 **图表来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
-- [backend/agents.py](file://backend/agents.py#L1-L196)
-- [backend/database.py](file://backend/database.py#L1-L31)
+- [backend/routers/agents.py:1-141](file://backend/routers/agents.py#L1-L141)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py:1-393](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/services/billing.py:1-324](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py:1-150](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py:1-203](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py:1-552](file://backend/services/llm_stream.py#L1-L552)
+- [backend/agents.py:1-196](file://backend/agents.py#L1-L196)
+- [backend/database.py:1-31](file://backend/database.py#L1-L31)
+- [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
+- [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
 
 **章节来源**
-- [backend/routers/agents.py](file://backend/routers/agents.py#L1-L141)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/prompt_templates.py](file://backend/routers/prompt_templates.py#L1-L303)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L1-L393)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/services/billing.py](file://backend/services/billing.py#L1-L324)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L1-L150)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
-- [backend/services/llm_stream.py](file://backend/services/llm_stream.py#L1-L552)
-- [backend/agents.py](file://backend/agents.py#L1-L196)
-- [backend/database.py](file://backend/database.py#L1-L31)
+- [backend/routers/agents.py:1-141](file://backend/routers/agents.py#L1-L141)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/prompt_templates.py:1-303](file://backend/routers/prompt_templates.py#L1-L303)
+- [backend/routers/chats.py:1-393](file://backend/routers/chats.py#L1-L393)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/services/billing.py:1-324](file://backend/services/billing.py#L1-L324)
+- [backend/services/agent_executor.py:1-150](file://backend/services/agent_executor.py#L1-L150)
+- [backend/services/video_generation.py:1-203](file://backend/services/video_generation.py#L1-L203)
+- [backend/services/llm_stream.py:1-552](file://backend/services/llm_stream.py#L1-L552)
+- [backend/agents.py:1-196](file://backend/agents.py#L1-L196)
+- [backend/database.py:1-31](file://backend/database.py#L1-L31)
+- [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
+- [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
 
 ## 性能考虑
 - 异步I/O与连接池：使用异步SQLAlchemy与连接池，避免阻塞
@@ -1261,6 +1550,9 @@ TASKS --> DB
 - **视频生成异步处理**：视频任务异步处理，避免阻塞主请求线程
 - **视频计费精确计算**：基于映射表的计费算法，提升计算效率
 - **视频状态轮询优化**：智能轮询策略，减少API调用频率
+- **技能管理优化**：技能文件差异检测，避免不必要的文件复制
+- **MCP客户端热重载**：双阶段锁定策略，最小化阻塞时间
+- **工具系统模块化**：Skills和MCPClients分离，提升系统可维护性
 
 ## 故障排除指南
 - 数据库连接失败
@@ -1305,21 +1597,33 @@ TASKS --> DB
 - **视频状态轮询异常**
   - 现象：视频任务状态无法正常轮询
   - 处理：检查xAI API连接；验证任务ID有效性；查看轮询超时设置
+- **技能管理异常**
+  - 现象：技能创建、更新或删除失败
+  - 处理：检查SKILL.md格式；验证文件权限；确认技能名称唯一性
+- **MCP客户端连接失败**
+  - 现象：MCP客户端无法连接或频繁断开
+  - 处理：检查传输配置；验证连接参数；查看客户端日志；尝试重启客户端
+- **工具系统配置错误**
+  - 现象：智能体无法使用技能或MCP客户端
+  - 处理：确认工具开关开启；检查技能启用状态；验证MCP客户端连接
 
 **章节来源**
-- [backend/main.py](file://backend/main.py#L45-L82)
-- [backend/agents.py](file://backend/agents.py#L49-L99)
-- [backend/routers/chats.py](file://backend/routers/chats.py#L145-L209)
-- [backend/routers/agents.py](file://backend/routers/agents.py#L96-L119)
-- [backend/services/agent_executor.py](file://backend/services/agent_executor.py#L77-L112)
-- [backend/agents.py](file://backend/agents.py#L71-L74)
-- [backend/services/billing.py](file://backend/services/billing.py#L16-L56)
-- [backend/routers/subscriptions.py](file://backend/routers/subscriptions.py#L1-L119)
-- [backend/routers/videos.py](file://backend/routers/videos.py#L1-L232)
-- [backend/services/video_generation.py](file://backend/services/video_generation.py#L1-L203)
+- [backend/main.py:45-82](file://backend/main.py#L45-L82)
+- [backend/agents.py:49-99](file://backend/agents.py#L49-L99)
+- [backend/routers/chats.py:145-209](file://backend/routers/chats.py#L145-L209)
+- [backend/routers/agents.py:96-119](file://backend/routers/agents.py#L96-L119)
+- [backend/services/agent_executor.py:77-112](file://backend/services/agent_executor.py#L77-L112)
+- [backend/agents.py:71-74](file://backend/agents.py#L71-L74)
+- [backend/services/billing.py:16-56](file://backend/services/billing.py#L16-L56)
+- [backend/routers/subscriptions.py:1-119](file://backend/routers/subscriptions.py#L1-L119)
+- [backend/routers/videos.py:1-232](file://backend/routers/videos.py#L1-L232)
+- [backend/services/video_generation.py:1-203](file://backend/services/video_generation.py#L1-L203)
+- [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
+- [backend/skills_manager.py:1-408](file://backend/skills_manager.py#L1-L408)
+- [backend/mcp_manager/manager.py:1-138](file://backend/mcp_manager/manager.py#L1-L138)
 
 ## 结论
-本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。**本次更新显著增强了系统功能，新增了视频代理类型支持、视频生成API、视频任务管理和视频计费系统，扩展了智能体的功能边界。**通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。**新增的智能体执行服务为智能体管理提供了统一的接口，xAI兼容性支持确保了与xAI平台的无缝集成，改进的错误处理机制提升了系统的稳定性和可靠性。**建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本，加强视频生成任务的监控与优化。
+本智能体管理API以AgentScope为核心，结合FastAPI与异步数据库访问，提供了完整的智能体生命周期管理、状态同步与配置热切换能力。**本次更新显著增强了系统功能，新增了模块化的智能体工具系统，包括Skills和MCPClients组件，替代了原有的单一Tools组件，增强了智能体对外部能力的管理。**通过流式响应、预生成策略与后台任务，系统在保证实时性的同时兼顾性能与可扩展性。**新增的智能体执行服务为智能体管理提供了统一的接口，xAI兼容性支持确保了与xAI平台的无缝集成，改进的错误处理机制提升了系统的稳定性和可靠性。**新增的技能管理系统和MCP客户端管理功能，实现了声明式工具包管理和动态客户端连接，为智能体提供了更强大的外部能力扩展。建议在生产环境中完善事件推送、监控告警与资源缓存策略，持续优化上下文窗口与Token成本，加强视频生成任务的监控与优化，以及完善技能和MCP客户端的版本管理与热重载机制。
 
 ## 附录
 - API端点概览
@@ -1330,6 +1634,7 @@ TASKS --> DB
   - **提示词模板管理**：/api/prompt-templates/*
   - **订阅管理**：/api/admin/subscriptions/*
   - **视频生成**：/api/videos/*
+  - **技能管理**：/api/admin/skills/*
   - 实时通信：/ws/{player_id}
 - **计费相关字段**
   - 智能体：input_credit_per_1m、output_credit_per_1m、image_output_credit_per_1m、search_credit_per_query、**video_input_image_credit、video_input_second_credit、video_output_480p_credit、video_output_720p_credit**
@@ -1338,6 +1643,8 @@ TASKS --> DB
   - **视频配置**：duration、quality、aspect_ratio、mode
   - **模板**：name、description、template_type、agent_type、system_prompt_template、variables_schema
   - **套餐计划**：name、price_usd、credits、billing_period、features
+  - **技能信息**：id、name、description、version、source、status、content
+  - **MCP客户端**：name、transport、enabled、url、headers、command、args、env、cwd
 - **xAI兼容性字段**
   - provider_type：xai
   - base_url：https://api.x.ai/v1
@@ -1346,6 +1653,11 @@ TASKS --> DB
   - text_to_video：文本生成视频
   - image_to_video：图片生成视频
   - edit：视频编辑
+- **工具系统字段**
+  - tools_enabled：工具开关
+  - tools：工具列表（技能ID或MCP客户端ID）
+  - **技能状态**：active/inactive
+  - **MCP客户端状态**：connected/disconnected
 - 最佳实践
   - 使用后台任务进行章节预生成
   - 通过WebSocket推送状态事件
@@ -1361,3 +1673,8 @@ TASKS --> DB
   - **合理设置视频生成参数，控制成本和质量**
   - **监控视频任务状态，及时处理失败任务**
   - **优化视频计费策略，平衡成本与质量**
+  - **使用模块化的工具系统管理智能体能力**
+  - **定期同步和更新技能文件**
+  - **监控MCP客户端连接状态**
+  - **实施技能和MCP客户端的版本控制**
+  - **利用热重载机制实现无感更新**

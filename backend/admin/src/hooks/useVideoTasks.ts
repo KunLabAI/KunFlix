@@ -58,7 +58,7 @@ export function useVideoTasks(filters: VideoTaskFilters = {}) {
 
 export function useCreateVideoTask() {
   const createVideoTask = async (body: VideoCreateRequest) => {
-    const res = await api.post('/videos/', body);
+    const res = await api.post('/videos', body);
     return res.data;
   };
   return { createVideoTask };

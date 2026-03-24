@@ -1,8 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Play, Layers } from "lucide-react";
+import { Play, Layers, MoreHorizontal, Edit2, Copy, Trash2 } from "lucide-react";
 import Image from "next/image";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 const statusLabel: Record<string, string> = {
   draft: "草稿",
@@ -24,19 +31,47 @@ interface TheaterCardProps {
   nodeCount?: number;
   updatedAt?: string | null;
   onClick?: () => void;
+  onRename?: (id: string, newTitle: string) => void;
+  onDuplicate?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }
 
 export default function TheaterCard({
+  id,
   title,
   image,
   status = "draft",
   nodeCount = 0,
   updatedAt,
   onClick,
+  onRename,
+  onDuplicate,
+  onDelete,
 }: TheaterCardProps) {
   const timeLabel = updatedAt
     ? new Date(updatedAt).toLocaleDateString("zh-CN", { month: "short", day: "numeric" })
     : null;
+
+  const handleRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onRename) return;
+    const newTitle = window.prompt("请输入新的剧场名称", title);
+    if (newTitle && newTitle.trim() !== "" && newTitle !== title) {
+      onRename(id, newTitle.trim());
+    }
+  };
+
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDuplicate?.(id);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm("确定要删除这个剧场吗？此操作不可恢复。")) {
+      onDelete?.(id);
+    }
+  };
 
   return (
     <motion.div
@@ -60,13 +95,55 @@ export default function TheaterCard({
       </div>
 
       {/* Status Badge */}
-      <div className="absolute top-3 right-3 z-10">
+      <div className="absolute top-3 left-3 z-10 pointer-events-none">
         <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white ${statusColor[status] ?? statusColor.draft}`}
+          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold text-white shadow-sm ${statusColor[status] ?? statusColor.draft}`}
         >
           {statusLabel[status] ?? status}
         </span>
       </div>
+
+      {/* Action Menu */}
+      {(onRename || onDuplicate || onDelete) && (
+        <div className="absolute top-1.5 right-1.5 z-20">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 backdrop-blur-sm"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+                <span className="sr-only">更多选项</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36 z-50">
+              {onRename && (
+                <DropdownMenuItem onClick={handleRename}>
+                  <Edit2 className="w-4 h-4 mr-2" />
+                  <span>重命名</span>
+                </DropdownMenuItem>
+              )}
+              {onDuplicate && (
+                <DropdownMenuItem onClick={handleDuplicate}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  <span>创建副本</span>
+                </DropdownMenuItem>
+              )}
+              {onDelete && (
+                <DropdownMenuItem
+                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  <span>删除剧本</span>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
 
       {/* Overlay Gradient */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity duration-300" />

@@ -120,7 +120,7 @@ def _to_detail(skill, active: set[str]) -> SkillDetailResponse:
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@router.get("/", response_model=List[SkillInfoResponse])
+@router.get("", response_model=List[SkillInfoResponse])
 async def list_skills(current_admin=Depends(require_admin)):
     """List all skills and their status."""
     all_skills = _skill_service.list_all_skills()
@@ -137,7 +137,7 @@ async def get_skill(skill_name: str, current_admin=Depends(require_admin)):
     return _to_detail(skill, active)
 
 
-@router.post("/", response_model=SkillInfoResponse)
+@router.post("", response_model=SkillInfoResponse)
 async def create_skill(req: CreateSkillRequest, current_admin=Depends(require_admin)):
     """Create a new customized skill."""
     full_md = _build_skill_md(req.name, req.description, req.version, req.content)

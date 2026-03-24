@@ -38,7 +38,7 @@ export function useDeleteAgent() {
 
 export function useCreateAgent() {
     const createAgent = async (values: Partial<Agent>) => {
-        return await api.post('/agents/', values);
+        return await api.post('/agents', values);
     }
     return { createAgent };
 }

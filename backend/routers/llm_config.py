@@ -134,7 +134,7 @@ async def test_connection(request: TestConnectionRequest, _admin: Admin = Depend
         traceback.print_exc()
         return {"success": False, "message": f"Server Error: {str(e)}"}
 
-@router.post("/", response_model=LLMProviderResponse)
+@router.post("", response_model=LLMProviderResponse)
 async def create_llm_provider(
     provider: LLMProviderCreate,
     _admin: Admin = Depends(require_admin),
@@ -163,7 +163,7 @@ async def create_llm_provider(
         
     return new_provider
 
-@router.get("/", response_model=List[LLMProviderResponse])
+@router.get("", response_model=List[LLMProviderResponse])
 async def read_llm_providers(
     skip: int = 0, 
     limit: int = 100,

@@ -1,16 +1,26 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Bot, X, Send, Sparkles } from 'lucide-react';
+import { Bot, X, Send, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useCanvasStore } from '@/store/useCanvasStore';
+import api from '@/lib/api';
+
+type Message = { role: 'user' | 'ai'; content: string; status?: 'streaming' | 'complete' };
 
 export function AIAssistantPanel() {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; content: string }[]>([
-    { role: 'ai', content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？' }
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'ai', content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [panelSize, setPanelSize] = useState({ width: 320, height: 480 });
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
+  
+  const theaterId = useCanvasStore((state) => state.theaterId);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
@@ -29,20 +39,171 @@ export function AIAssistantPanel() {
 
   // Auto scroll to bottom
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  const handleSend = () => {
-    if (!inputValue.trim()) return;
-    setMessages((prev) => [...prev, { role: 'user', content: inputValue }]);
-    setInputValue('');
+  // Initialize session when agent is available
+  useEffect(() => {
+    const initSession = async () => {
+      // Skip if already initialized or no agent selected
+      const hasSession = sessionId && agentId;
+      hasSession || await createSession();
+    };
+    isOpen && initSession();
+  }, [isOpen, agentId, sessionId]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => abortControllerRef.current?.abort();
+  }, []);
+
+  const createSession = async (): Promise<{ sessionId: string; agentId: string } | null> => {
+    try {
+      // Fetch first available agent with canvas tools
+      const agentsRes = await api.get('/agents');
+      const agents = agentsRes.data || [];
+      const canvasAgent = agents.find((a: { target_node_types?: string[] }) => a.target_node_types?.length);
+      const selectedAgent = canvasAgent || agents[0];
+      
+      const noAgent = !selectedAgent;
+      noAgent && console.warn('No agents available');
+      if (noAgent) return null;
+
+      // Create chat session
+      const res = await api.post('/chats', { agent_id: selectedAgent.id, title: 'Canvas AI Chat' });
+      const newSessionId = res.data.id as string;
+
+      setAgentId(selectedAgent.id);
+      setSessionId(newSessionId);
+
+      return { sessionId: newSessionId, agentId: selectedAgent.id };
+    } catch (err) {
+      console.error('Failed to initialize AI assistant:', err);
+      return null;
+    }
+  };
+
+  const parseSSELine = (line: string): { event: string; data: unknown } | null => {
+    const eventMatch = line.match(/^event:\s*(.+)$/);
+    const dataMatch = line.match(/^data:\s*(.+)$/);
     
-    // Mock AI response
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { role: 'ai', content: '这是一个模拟回复。AI功能正在开发中。' }]);
-    }, 1000);
+    return eventMatch ? { event: eventMatch[1], data: null } 
+         : dataMatch ? { event: '', data: JSON.parse(dataMatch[1]) } 
+         : null;
+  };
+
+  const handleSSEEvent = useCallback((eventType: string, data: unknown) => {
+    const handlers: Record<string, () => void> = {
+      text: () => {
+        const chunk = (data as { chunk?: string })?.chunk || '';
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          const isStreaming = last?.role === 'ai' && last?.status === 'streaming';
+          return isStreaming
+            ? [...prev.slice(0, -1), { ...last, content: last.content + chunk }]
+            : [...prev, { role: 'ai', content: chunk, status: 'streaming' }];
+        });
+      },
+      canvas_updated: () => {
+        const { theater_id } = data as { theater_id: string };
+        const store = useCanvasStore.getState();
+        // Reload canvas if this theater is currently active
+        (store.theaterId === theater_id) && store.loadTheater(theater_id);
+      },
+      done: () => {
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          return last?.status === 'streaming'
+            ? [...prev.slice(0, -1), { ...last, status: 'complete' }]
+            : prev;
+        });
+        setIsLoading(false);
+      },
+      error: () => {
+        const msg = (data as { message?: string })?.message || 'Unknown error';
+        setMessages(prev => [...prev, { role: 'ai', content: `错误: ${msg}`, status: 'complete' }]);
+        setIsLoading(false);
+      },
+    };
+    handlers[eventType]?.();
+  }, []);
+
+  const handleSend = async () => {
+    const content = inputValue.trim();
+    // Early return if empty
+    const isEmpty = !content;
+    isEmpty && setInputValue('');
+    if (isEmpty) return;
+    
+    // Ensure session exists
+    let currentSessionId = sessionId;
+    let currentAgentId = agentId;
+
+    const needsSession = !currentSessionId || !currentAgentId;
+    if (needsSession) {
+      const created = await createSession();
+      const failed = !created;
+      if (failed) return;
+      currentSessionId = created.sessionId;
+      currentAgentId = created.agentId;
+    }
+
+    // Add user message
+    setMessages(prev => [...prev, { role: 'user', content, status: 'complete' }]);
+    setInputValue('');
+    setIsLoading(true);
+
+    // Abort previous request
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await fetch(`/api/chats/${currentSessionId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ role: 'user', content, theater_id: theaterId }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      !response.ok && (() => { throw new Error(`HTTP ${response.status}`); })();
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let currentEvent = '';
+      let buffer = '';
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        done && handleSSEEvent('done', {});
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          !trimmed && (currentEvent = '');
+          if (!trimmed) continue;
+
+          const parsed = parseSSELine(trimmed);
+          if (parsed) {
+            if (parsed.event) currentEvent = parsed.event;
+            if (parsed.data !== null && currentEvent) {
+              handleSSEEvent(currentEvent, parsed.data);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      const isAbort = (err as Error).name === 'AbortError';
+      isAbort || setMessages(prev => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
+      setIsLoading(false);
+    }
   };
 
   // Resize Handlers
@@ -198,8 +359,8 @@ export function AIAssistantPanel() {
                   className="flex-1"
                   autoFocus
                 />
-                <Button type="submit" size="icon" disabled={!inputValue.trim()}>
-                  <Send className="h-4 w-4" />
+                <Button type="submit" size="icon" disabled={!inputValue.trim() || isLoading}>
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </form>
             </div>

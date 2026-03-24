@@ -573,6 +573,7 @@ class DynamicOrchestrator:
         user_id: str,
         leader_agent_id: str,
         session_id: Optional[str] = None,
+        theater_id: Optional[str] = None,
         coordination_mode: str = "auto",
         max_iterations: int = 3,
         enable_review: bool = True,

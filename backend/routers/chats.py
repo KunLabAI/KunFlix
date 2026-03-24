@@ -16,6 +16,7 @@ from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.llm_stream import stream_completion
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.base_tools import build_base_tool_defs, execute_base_tool
+from services.canvas_tools import build_canvas_tool_defs, execute_canvas_tool, CANVAS_TOOL_NAMES
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
@@ -83,7 +84,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=ChatSessionResponse)
+@router.post("", response_model=ChatSessionResponse)
 async def create_session(
     session: ChatSessionCreate,
     current_user=Depends(get_current_active_user_or_admin),
@@ -105,7 +106,7 @@ async def create_session(
     return new_session
 
 
-@router.get("/", response_model=List[ChatSessionResponse])
+@router.get("", response_model=List[ChatSessionResponse])
 async def list_sessions(
     agent_id: Optional[str] = None,
     skip: int = 0,
@@ -223,9 +224,9 @@ async def send_message(
 
     # 5. 根据模式选择生成器
     generator = (
-        _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin)
+        _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin, message.theater_id)
         if is_multi_agent else
-        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image)
+        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image, message.theater_id)
     )
 
     media_type = "text/event-stream"
@@ -238,7 +239,8 @@ async def _generate_multi_agent(
     content: str,
     entity_id: str,
     session_id: str,
-    is_admin: bool = False
+    is_admin: bool = False,
+    theater_id: str | None = None,
 ):
     """多智能体协作模式生成器"""
     logger.info(f"\n{'='*60}")
@@ -277,6 +279,7 @@ async def _generate_multi_agent(
         user_id=entity_id,
         leader_agent_id=agent.id,
         session_id=session_id,
+        theater_id=theater_id,
         coordination_mode=coordination_mode,
         max_iterations=agent.max_subtasks or 5,
         enable_review=agent.enable_auto_review or False,
@@ -314,8 +317,23 @@ async def _generate_multi_agent(
                 logger.error(f"Failed to save multi-agent message: {e}")
 
 
-def _get_tool_result(tc_name: str, tc_args: dict, active_skills_dir) -> str:
+async def _get_tool_result(
+    tc_name: str, tc_args: dict, active_skills_dir, theater_id: str | None,
+    agent: Agent, db: AsyncSession
+) -> str:
     """Dispatch tool execution by name. Returns result string."""
+    # Canvas tools (async)
+    is_canvas_tool = tc_name in CANVAS_TOOL_NAMES and theater_id and agent.target_node_types
+    result = (
+        await execute_canvas_tool(tc_name, tc_args, theater_id, agent.target_node_types, db, agent_id=agent.id)
+        if is_canvas_tool
+        else _dispatch_standard_tool(tc_name, tc_args, active_skills_dir)
+    )
+    return result
+
+
+def _dispatch_standard_tool(tc_name: str, tc_args: dict, active_skills_dir) -> str:
+    """Dispatch standard (sync) tools."""
     _DISPATCH = {
         "load_skill": lambda args: load_skill_content(args.get("skill_name", ""), active_skills_dir),
     }
@@ -323,7 +341,10 @@ def _get_tool_result(tc_name: str, tc_args: dict, active_skills_dir) -> str:
     return handler(tc_args)
 
 
-def _append_tool_round(messages: list, result, active_skills_dir, is_anthropic: bool):
+async def _append_tool_round(
+    messages: list, result, active_skills_dir, is_anthropic: bool,
+    theater_id: str | None, agent: Agent, db: AsyncSession
+):
     """Execute tool calls and append results to messages.
 
     Handles both Anthropic and OpenAI message formats for tool call responses.
@@ -332,10 +353,13 @@ def _append_tool_round(messages: list, result, active_skills_dir, is_anthropic: 
         True: _append_anthropic_tool_round,
         False: _append_openai_tool_round,
     }
-    _FORMAT_HANDLERS[is_anthropic](messages, result, active_skills_dir)
+    await _FORMAT_HANDLERS[is_anthropic](messages, result, active_skills_dir, theater_id, agent, db)
 
 
-def _append_anthropic_tool_round(messages: list, result, active_skills_dir):
+async def _append_anthropic_tool_round(
+    messages: list, result, active_skills_dir,
+    theater_id: str | None, agent: Agent, db: AsyncSession
+):
     """Anthropic format: assistant content blocks + user tool_result blocks."""
     assistant_blocks = []
     result.full_response and assistant_blocks.append({"type": "text", "text": result.full_response})
@@ -349,7 +373,7 @@ def _append_anthropic_tool_round(messages: list, result, active_skills_dir):
     tool_results = []
     for tc in result.tool_calls:
         args = json.loads(tc.arguments)
-        content = _get_tool_result(tc.name, args, active_skills_dir)
+        content = await _get_tool_result(tc.name, args, active_skills_dir, theater_id, agent, db)
         logger.info(f"  {tc.name}({args}) → {len(content)} chars")
         tool_results.append({
             "type": "tool_result", "tool_use_id": tc.id, "content": content,
@@ -358,7 +382,10 @@ def _append_anthropic_tool_round(messages: list, result, active_skills_dir):
     result.full_response = ""
 
 
-def _append_openai_tool_round(messages: list, result, active_skills_dir):
+async def _append_openai_tool_round(
+    messages: list, result, active_skills_dir,
+    theater_id: str | None, agent: Agent, db: AsyncSession
+):
     """OpenAI format: assistant message with tool_calls + tool role messages."""
     assistant_msg = {
         "role": "assistant",
@@ -376,7 +403,7 @@ def _append_openai_tool_round(messages: list, result, active_skills_dir):
 
     for tc in result.tool_calls:
         args = json.loads(tc.arguments)
-        content = _get_tool_result(tc.name, args, active_skills_dir)
+        content = await _get_tool_result(tc.name, args, active_skills_dir, theater_id, agent, db)
         logger.info(f"  {tc.name}({args}) → {len(content)} chars")
         messages.append({
             "role": "tool", "tool_call_id": tc.id, "content": content,
@@ -392,6 +419,7 @@ async def _generate_single_agent(
     session_id: str,
     is_admin: bool = False,
     edit_last_image: bool = False,
+    theater_id: str | None = None,
 ):
     """单智能体模式生成器"""
     # 获取历史消息
@@ -449,21 +477,26 @@ async def _generate_single_agent(
                                 parts = [{"type": "image_url", "image_url": {"url": data_url}}]
                             last_msg["content"] = parts
 
-    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools）
+    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools + canvas tools）
     agent_tools = agent.tools or []
     tool_defs = None
     active_skills_dir = None
     base_defs = []
-    if agent_tools:
+    canvas_defs = []
+    # 注入画布工具（当 theater_id 和 target_node_types 都存在时）
+    has_canvas_context = theater_id and agent.target_node_types
+    canvas_defs = build_canvas_tool_defs(agent.target_node_types) if has_canvas_context else []
+    if agent_tools or canvas_defs:
         from skills_manager import get_active_skills_dir
         active_skills_dir = get_active_skills_dir()
         skill_prompt = build_skill_prompt(agent_tools, active_skills_dir)
         # 追加轻量索引到 system prompt
         (skill_prompt and messages and messages[0].get("role") == "system"
          and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
-        # 注册 base tools + load_skill 元工具
+        # 注册 base tools + load_skill 元工具 + canvas tools
         base_defs = build_base_tool_defs()
-        tool_defs = base_defs + [build_load_skill_tool_def(agent_tools)]
+        skill_defs = [build_load_skill_tool_def(agent_tools)] if agent_tools else []
+        tool_defs = base_defs + canvas_defs + skill_defs
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -528,25 +561,31 @@ async def _generate_single_agent(
 
             # 执行工具调用并追加结果到消息
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
-            _append_tool_round(messages, result, active_skills_dir, is_anthropic)
+            await _append_tool_round(messages, result, active_skills_dir, is_anthropic, theater_id, agent, db)
 
-            # 记录已加载的技能，更新 tool_defs（base tools 始终保留，load_skill enum 缩减）
+            # 记录已加载的技能，更新 tool_defs（base tools + canvas tools 始终保留，load_skill enum 缩减）
             for tc in result.tool_calls:
                 tc.name == "load_skill" and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
             remaining = [s for s in agent_tools if s not in loaded_skills]
             skill_defs = [build_load_skill_tool_def(remaining)] if remaining else []
-            tool_defs = base_defs + skill_defs
+            tool_defs = base_defs + canvas_defs + skill_defs
 
             # 发送 tool 完成事件 (skill_loaded 或 tool_result)
             for tc in result.tool_calls:
                 args = json.loads(tc.arguments)
                 is_skill = tc.name == "load_skill"
+                is_canvas = tc.name in CANVAS_TOOL_NAMES
                 event_data = (
                     {"skill_name": args.get("skill_name", "")}
                     if is_skill else
                     {"tool_name": tc.name, "success": True}
                 )
                 yield _sse(_SSE_END[is_skill], event_data)
+                
+                # Canvas tool 执行后发送画布更新事件，通知前端刷新
+                is_canvas and theater_id and (
+                    yield _sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
+                )
 
         yield _sse("done", {})
 

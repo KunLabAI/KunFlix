@@ -106,7 +106,7 @@ export interface TheaterUpdateRequest {
 
 export const theaterApi = {
   async createTheater(data: TheaterCreateRequest = {}): Promise<TheaterResponse> {
-    const res = await api.post<TheaterResponse>("/theaters/", data);
+    const res = await api.post<TheaterResponse>("/theaters", data);
     return res.data;
   },
 
@@ -117,7 +117,7 @@ export const theaterApi = {
   ): Promise<TheaterListResponse> {
     const params: Record<string, unknown> = { page, page_size: pageSize };
     if (status) params.status = status;
-    const res = await api.get<TheaterListResponse>("/theaters/", { params });
+    const res = await api.get<TheaterListResponse>("/theaters", { params });
     return res.data;
   },
 

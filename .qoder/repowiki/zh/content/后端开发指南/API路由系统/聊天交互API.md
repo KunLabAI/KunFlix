@@ -22,11 +22,13 @@
 
 ## 更新摘要
 **变更内容**
+- 优化聊天路由逻辑：在对话的最后轮次中智能地避免传递工具定义，减少计算开销并提高响应速度
 - 新增技能驱动聊天架构：引入技能注入服务、工具调用处理、多轮执行管理
 - 添加实时技能加载指示器：前端显示技能加载和工具执行状态
 - 新增技能管理API：支持技能的创建、编辑、激活/停用和版本管理
 - 扩展聊天路由：支持多轮工具调用和技能加载的SSE事件流
 - 增强管理员界面：提供完整的技能管理功能
+- **新增技能和工具调用跟踪**：现在支持skill_calls和tool_calls的完整序列化和反序列化，包括SSE事件流的完整跟踪机制
 
 ## 目录
 1. [简介](#简介)
@@ -45,14 +47,15 @@
 - 实时聊天：基于FastAPI的异步流式响应，结合前端fetch的ReadableStream实现边读边渲染
 - 聊天室管理：会话创建、列表查询、消息查询与删除
 - 多模型提供商：OpenAI、Azure OpenAI、DashScope、Gemini等
-- 多模态支持：文本与图片混合消息，Gemini 3.1图片生成功能
+- 多模态支持：文本与图片混合消息，Gemini 3.1图片生动生成
 - 媒体文件服务：安全的媒体文件存储与访问，支持批量图片生成
 - 技能驱动架构：基于技能注入的服务，支持工具调用和多轮执行管理
 - 实时状态指示：技能加载和工具执行的可视化反馈
 - 安全与合规：输入校验、角色约束、上下文窗口控制
 - 历史记录：消息持久化、按会话检索、时间排序
+- **技能调用跟踪**：完整的skill_calls和tool_calls序列化/反序列化机制，支持SSE事件流的实时跟踪
 
-**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。
+**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。**优化后的聊天路由逻辑在对话最后轮次智能避免传递工具定义，显著减少计算开销并提高响应速度。**
 
 ## 项目结构
 后端采用FastAPI + SQLAlchemy异步ORM + Alembic迁移的现代Python架构；前端使用React + SWR进行数据拉取与缓存；管理员界面集成在Next.js中。
@@ -99,7 +102,7 @@ M --> A
 
 **图表来源**
 - [backend/main.py:83-97](file://backend/main.py#L83-L97)
-- [backend/routers/chats.py:1-645](file://backend/routers/chats.py#L1-L645)
+- [backend/routers/chats.py:1-689](file://backend/routers/chats.py#L1-L689)
 - [backend/routers/media.py:1-130](file://backend/routers/media.py#L1-L130)
 - [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
 - [backend/services/skill_tools.py:1-142](file://backend/services/skill_tools.py#L1-L142)
@@ -122,9 +125,11 @@ M --> A
 - 前端聊天界面：会话列表、消息流式渲染、发送消息、图片上传、多模态渲染
 - 管理员技能对话框：技能创建、编辑、版本管理
 - WebSocket示例：基础连接、消息收发、断开处理
+- **技能调用跟踪**：完整的skill_calls和tool_calls序列化/反序列化机制，支持SSE事件流的实时跟踪
+- **聊天路由优化**：智能工具定义传递策略，在最后轮次避免传递工具定义，减少计算开销
 
 **章节来源**
-- [backend/routers/chats.py:22-645](file://backend/routers/chats.py#L22-L645)
+- [backend/routers/chats.py:22-689](file://backend/routers/chats.py#L22-L689)
 - [backend/routers/media.py:1-130](file://backend/routers/media.py#L1-L130)
 - [backend/routers/skills_api.py:1-207](file://backend/routers/skills_api.py#L1-L207)
 - [backend/services/skill_tools.py:1-142](file://backend/services/skill_tools.py#L1-L142)
@@ -133,9 +138,9 @@ M --> A
 - [backend/admin/src/app/admin/skills/SkillDialog.tsx:1-235](file://backend/admin/src/app/admin/skills/SkillDialog.tsx#L1-L235)
 
 ## 架构总览
-聊天API采用"请求-流式响应"的实时模式，后端根据会话历史与Agent参数调用外部LLM提供商，前端以ReadableStream增量接收文本块并实时更新UI。新增的技能驱动架构通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。媒体服务提供安全的文件访问和批量图片生成能力。
+聊天API采用"请求-流式响应"的实时模式，后端根据会话历史与Agent参数调用外部LLM提供商，前端以ReadableStream增量接收文本块并实时更新UI。新增的技能驱动架构通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。媒体服务提供安全的文件访问和批量图片生成能力。**新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。** **优化后的聊天路由逻辑在对话最后轮次智能避免传递工具定义，显著减少计算开销并提高响应速度。**
 
-**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。
+**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。**优化后的聊天路由逻辑在对话最后轮次智能避免传递工具定义，显著减少计算开销并提高响应速度。**
 
 ```mermaid
 sequenceDiagram
@@ -153,6 +158,7 @@ API->>DB : "读取历史消息"
 API->>Skills : "构建技能索引"
 Skills-->>API : "技能工具定义"
 API->>LLM : "流式请求(含system提示+技能工具)"
+Note over API,LLM : "最后轮次：智能避免传递工具定义"
 LLM-->>API : "增量文本块"
 API-->>FE : "流式文本(ReadableStream)"
 FE->>Skills : "SSE : skill_call/skill_loaded"
@@ -166,7 +172,7 @@ BatchGen->>LLM : "批量图片生成(Gemini)"
 LLM-->>BatchGen : "图片数据"
 BatchGen-->>FE : "批量生成结果"
 FE->>DB : "刷新会话消息列表"
-API->>DB : "保存助手回复"
+API->>DB : "保存助手回复(含skill_calls/tool_calls)"
 ```
 
 **图表来源**
@@ -184,9 +190,11 @@ API->>DB : "保存助手回复"
 - 多模态内容处理：支持文本和图片混合消息的序列化和反序列化
 - 历史准备：按时间升序拼装messages数组，支持system、user、assistant三种角色
 - 技能工具集成：构建技能索引和工具定义，支持动态能力扩展
+- **聊天路由优化**：在最后轮次智能避免传递工具定义，减少计算开销
 - 提供商适配：OpenAI/Azure OpenAI、DashScope、Gemini分别处理流式响应与token统计
 - 流式生成器：逐块yield增量文本，最终保存assistant消息并更新会话时间戳
 - 多轮执行管理：支持工具调用的多轮处理和实时状态反馈
+- **技能调用跟踪**：完整的skill_calls和tool_calls序列化/反序列化机制，支持SSE事件流的实时跟踪
 
 ```mermaid
 flowchart TD
@@ -196,19 +204,19 @@ SerializeContent --> SaveUser["保存用户消息"]
 SaveUser --> LoadHistory["读取历史消息(升序)"]
 LoadHistory --> BuildMessages["组装messages(含system)"]
 BuildMessages --> BuildSkills["构建技能索引与工具定义"]
-BuildSkills --> CallProvider{"选择提供商"}
-CallProvider --> |OpenAI/Azure| OpenAI["调用OpenAI流式接口"]
-CallProvider --> |DashScope| Dash["调用DashScope流式接口"]
-CallProvider --> |Gemini| Gemini["调用Gemini流式接口"]
-OpenAI --> StreamOut["逐块yield增量文本"]
-Dash --> StreamOut
-Gemini --> StreamOut
+BuildSkills --> ToolRound["工具调用轮次循环"]
+ToolRound --> CheckLastRound{"是否为最后轮次?"}
+CheckLastRound --> |是| NoTools["不传递工具定义"]
+CheckLastRound --> |否| PassTools["传递完整工具定义"]
+NoTools --> CallProvider["调用LLM流式接口"]
+PassTools --> CallProvider
+CallProvider --> StreamOut["逐块yield增量文本"]
 StreamOut --> ToolCalls{"检测工具调用"}
 ToolCalls --> |有| ProcessTool["处理工具调用"]
 ProcessTool --> SendEvents["发送SSE事件"]
 SendEvents --> UpdateTools["更新工具定义"]
-UpdateTools --> StreamOut
-ToolCalls --> |无| SaveAssistant["保存助手消息(新会话)"]
+UpdateTools --> ToolRound
+ToolCalls --> |无| SaveAssistant["保存助手消息(含skill_calls/tool_calls)"]
 SaveAssistant --> UpdateTS["更新会话updated_at"]
 UpdateTS --> End(["结束"])
 ```
@@ -219,6 +227,59 @@ UpdateTS --> End(["结束"])
 **章节来源**
 - [backend/routers/chats.py:470-518](file://backend/routers/chats.py#L470-L518)
 
+### 聊天路由优化：最后轮次智能工具定义传递
+**更新** 系统现已实现聊天路由逻辑优化，在对话的最后轮次中智能地避免传递工具定义，显著减少计算开销并提高响应速度。
+
+- **优化原理**：在MAX_TOOL_ROUNDS轮次的最后一次迭代中，is_last_round标志为True，此时current_tools被设置为None，从而避免向LLM传递任何工具定义
+- **性能收益**：减少最后轮次的API调用开销，因为LLM通常不需要工具定义来完成最终回答
+- **逻辑实现**：通过`is_last_round = _round == MAX_TOOL_ROUNDS`判断是否为最后轮次，然后`current_tools = None if is_last_round else tool_defs`智能控制工具定义传递
+- **兼容性保证**：此优化不影响工具调用的完整执行流程，仅在最后轮次省略工具定义传递
+
+```mermaid
+flowchart TD
+MaxRounds["MAX_TOOL_ROUNDS = 5"] --> RoundLoop["轮次循环 (0-5)"]
+RoundLoop --> CheckRound{"检查轮次"}
+CheckRound --> Round0["第1轮<br/>current_tools = tool_defs"]
+CheckRound --> Round1["第2轮<br/>current_tools = tool_defs"]
+CheckRound --> Round2["第3轮<br/>current_tools = tool_defs"]
+CheckRound --> Round3["第4轮<br/>current_tools = tool_defs"]
+CheckRound --> Round4["第5轮<br/>current_tools = tool_defs"]
+CheckRound --> Round5["第6轮<br/>current_tools = None"]
+Round0 --> CallLLM1["调用LLM(带工具定义)"]
+Round1 --> CallLLM2["调用LLM(带工具定义)"]
+Round2 --> CallLLM3["调用LLM(带工具定义)"]
+Round3 --> CallLLM4["调用LLM(带工具定义)"]
+Round4 --> CallLLM5["调用LLM(带工具定义)"]
+Round5 --> CallLLM6["调用LLM(不带工具定义)"]
+CallLLM1 --> ToolCalls1{"有工具调用?"}
+CallLLM2 --> ToolCalls2{"有工具调用?"}
+CallLLM3 --> ToolCalls3{"有工具调用?"}
+CallLLM4 --> ToolCalls4{"有工具调用?"}
+CallLLM5 --> ToolCalls5{"有工具调用?"}
+CallLLM6 --> FinalResp["最终响应"]
+ToolCalls1 --> |是| UpdateDefs1["更新工具定义"]
+ToolCalls2 --> |是| UpdateDefs2["更新工具定义"]
+ToolCalls3 --> |是| UpdateDefs3["更新工具定义"]
+ToolCalls4 --> |是| UpdateDefs4["更新工具定义"]
+ToolCalls5 --> |是| UpdateDefs5["更新工具定义"]
+ToolCalls1 --> |否| FinalResp
+ToolCalls2 --> |否| FinalResp
+ToolCalls3 --> |否| FinalResp
+ToolCalls4 --> |否| FinalResp
+ToolCalls5 --> |否| FinalResp
+UpdateDefs1 --> RoundLoop
+UpdateDefs2 --> RoundLoop
+UpdateDefs3 --> RoundLoop
+UpdateDefs4 --> RoundLoop
+UpdateDefs5 --> RoundLoop
+```
+
+**图表来源**
+- [backend/routers/chats.py:485-495](file://backend/routers/chats.py#L485-L495)
+
+**章节来源**
+- [backend/routers/chats.py:485-495](file://backend/routers/chats.py#L485-L495)
+
 ### 技能驱动架构与工具调用处理
 - 技能索引构建：轻量级技能索引，仅包含技能名称和描述
 - 技能内容加载：通过load_skill元工具按需加载完整技能内容
@@ -226,8 +287,9 @@ UpdateTS --> End(["结束"])
 - 多轮执行管理：支持工具调用的多轮处理，动态更新可用技能列表
 - 实时状态反馈：通过SSE事件流提供技能加载和工具执行状态
 - 技能同步：支持内置技能和自定义技能的同步与管理
+- **技能调用跟踪**：完整的skill_calls序列化/反序列化机制，支持SSE事件流的实时跟踪
 
-**更新** 新增技能驱动架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。
+**更新** 新增技能驱动架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈。新增的技能调用跟踪机制确保所有技能加载过程都得到完整记录和可视化展示。
 
 ```mermaid
 flowchart TD
@@ -439,8 +501,9 @@ CREDIT_TRANSACTION }o--|| CHAT_SESSION : "关联"
 - 编辑模式：支持基于现有图片进行修改
 - 技能加载指示器：实时显示技能加载状态
 - 工具执行指示器：实时显示工具执行状态
+- **技能调用跟踪**：完整的skill_calls和tool_calls可视化展示
 
-**更新** 系统现已支持技能加载和工具执行的实时状态指示，通过SSE事件流提供可视化反馈。
+**更新** 系统现已支持技能加载和工具执行的实时状态指示，通过SSE事件流提供可视化反馈。新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。
 
 ```mermaid
 sequenceDiagram
@@ -455,6 +518,7 @@ DB-->>API : "消息列表(含多模态)"
 API-->>UI : "JSON响应"
 UI->>API : "POST /api/chats/{session_id}/messages"
 API->>DB : "保存用户消息(多模态)"
+Note over API : "最后轮次：智能避免传递工具定义"
 API-->>UI : "ReadableStream增量文本"
 UI->>Skills : "SSE : skill_call/skill_loaded"
 Skills-->>UI : "技能加载状态"
@@ -495,6 +559,31 @@ WS-->>FE : "onclose"
 - [frontend/src/hooks/useSocket.ts:3-42](file://frontend/src/hooks/useSocket.ts#L3-L42)
 - [backend/main.py:157-169](file://backend/main.py#L157-L169)
 
+### 技能调用跟踪机制
+**新增功能** 系统现在支持完整的技能调用跟踪机制，包括skill_calls和tool_calls的序列化和反序列化：
+
+- **序列化机制**：在保存助手消息时，将技能调用和工具调用信息序列化为JSON格式
+- **反序列化机制**：在获取消息列表时，将JSON格式的技能调用和工具调用信息还原为结构化数据
+- **SSE事件流**：通过Server-Sent Events实时传输技能加载和工具执行状态
+- **前端可视化**：前端组件实时更新技能加载和工具执行的可视化状态
+
+```mermaid
+flowchart TD
+Serialize["序列化技能调用"] --> SaveMsg["保存消息到数据库"]
+SaveMsg --> GetMsg["获取消息列表"]
+Deserialize["反序列化技能调用"] --> Display["前端显示"]
+SSE["SSE事件流"] --> UpdateUI["更新UI状态"]
+UpdateUI --> Display
+```
+
+**图表来源**
+- [backend/routers/chats.py:158-180](file://backend/routers/chats.py#L158-L180)
+- [backend/routers/chats.py:581-590](file://backend/routers/chats.py#L581-L590)
+
+**章节来源**
+- [backend/routers/chats.py:158-180](file://backend/routers/chats.py#L158-L180)
+- [backend/routers/chats.py:581-590](file://backend/routers/chats.py#L581-L590)
+
 ## 依赖关系分析
 - 后端依赖：FastAPI、SQLAlchemy异步、Alembic、OpenAI SDK、DashScope SDK、AgentScope、Google Genai等
 - 前端依赖：SWR、React、React Markdown、Tailwind UI组件库
@@ -502,8 +591,10 @@ WS-->>FE : "onclose"
 - 媒体处理：依赖Google Genai SDK进行多模态处理和批量图片生成
 - 批量生成：支持并发控制和错误处理
 - 技能管理：依赖frontmatter库进行技能内容解析和管理
+- **技能调用跟踪**：依赖完整的SSE事件流机制和前端解析逻辑
+- **聊天路由优化**：依赖智能工具定义传递策略和轮次控制逻辑
 
-**更新** 系统现已集成了技能驱动架构，新增了技能管理相关的依赖和服务。
+**更新** 系统现已集成了技能驱动架构，新增了技能管理相关的依赖和服务。新增的技能调用跟踪机制依赖完整的SSE事件流和前端解析逻辑。**优化后的聊天路由逻辑依赖智能工具定义传递策略。**
 
 ```mermaid
 graph LR
@@ -520,17 +611,19 @@ Media --> Utils["媒体工具"]
 BatchGen --> Gemini["Gemini SDK"]
 SkillTools --> Frontmatter["frontmatter库"]
 SkillManager --> Frontmatter
+API --> Optimization["聊天路由优化"]
+Optimization --> ToolDefStrategy["智能工具定义传递策略"]
 ```
 
 **图表来源**
 - [backend/requirements.txt:1-20](file://backend/requirements.txt#L1-L20)
 - [backend/admin/src/components/admin/agents/ChatInterface.tsx:1-711](file://backend/admin/src/components/admin/agents/ChatInterface.tsx#L1-L711)
-- [backend/routers/chats.py:1-645](file://backend/routers/chats.py#L1-L645)
+- [backend/routers/chats.py:1-689](file://backend/routers/chats.py#L1-L689)
 
 **章节来源**
 - [backend/requirements.txt:1-20](file://backend/requirements.txt#L1-L20)
 - [backend/admin/src/components/admin/agents/ChatInterface.tsx:1-711](file://backend/admin/src/components/admin/agents/ChatInterface.tsx#L1-L711)
-- [backend/routers/chats.py:1-645](file://backend/routers/chats.py#L1-L645)
+- [backend/routers/chats.py:1-689](file://backend/routers/chats.py#L1-L689)
 
 ## 性能考虑
 - 异步I/O：使用async/await与异步数据库连接，避免阻塞
@@ -545,8 +638,10 @@ SkillManager --> Frontmatter
 - SSE事件流：实时状态反馈，避免轮询开销
 - 日志级别：生产环境降低SQLAlchemy与uvicorn访问日志级别
 - CORS：仅允许必要域名，减少跨域风险
+- **聊天路由优化**：智能工具定义传递策略显著减少最后轮次的API调用开销
+- **技能调用跟踪优化**：使用高效的JSON序列化/反序列化机制，减少内存占用
 
-**更新** 系统现已考虑技能驱动架构的性能优化，包括轻量级技能索引和按需加载机制。
+**更新** 系统现已考虑技能驱动架构的性能优化，包括轻量级技能索引和按需加载机制。新增的技能调用跟踪机制已优化JSON序列化/反序列化性能。**优化后的聊天路由逻辑通过智能工具定义传递策略显著减少计算开销。**
 
 **章节来源**
 - [backend/database.py:8-23](file://backend/database.py#L8-L23)
@@ -568,8 +663,10 @@ SkillManager --> Frontmatter
 - 工具调用错误：检查工具定义和参数格式，确认提供商支持相应工具
 - SSE事件流异常：检查后端SSE事件生成和前端解析逻辑
 - 技能同步问题：确认技能目录权限和文件同步状态
+- **聊天路由优化问题**：检查轮次控制逻辑，确认最后轮次工具定义传递策略正常工作
+- **技能调用跟踪问题**：检查skill_calls和tool_calls的序列化/反序列化逻辑，确认SSE事件流正常工作
 
-**更新** 故障排查指南已扩展至技能驱动架构相关的错误处理，包括技能加载、工具调用和SSE事件流的问题诊断。
+**更新** 故障排查指南已扩展至技能驱动架构相关的错误处理，包括技能加载、工具调用和SSE事件流的问题诊断。新增的技能调用跟踪问题排查已包含在内。**新增聊天路由优化相关的问题排查指导。**
 
 **章节来源**
 - [backend/routers/chats.py:27-28](file://backend/routers/chats.py#L27-L28)
@@ -579,7 +676,7 @@ SkillManager --> Frontmatter
 ## 结论
 本聊天交互API通过异步流式响应实现了低延迟的实时聊天体验，并新增了强大的技能驱动架构、多模态支持和批量图片生成功能。系统具备良好的扩展性与安全性，支持文本和图片的混合消息处理，以及Gemini 3.1的高级功能。
 
-**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈，为用户提供更加智能化和可视化的聊天体验。
+**更新** 系统现已支持技能驱动的聊天架构，通过技能注入服务实现动态能力扩展，支持工具调用的多轮执行和实时状态反馈，为用户提供更加智能化和可视化的聊天体验。新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。**优化后的聊天路由逻辑通过智能工具定义传递策略显著减少计算开销，提高响应速度。**
 
 未来可在以下方面进一步增强：
 - 引入WebSocket用于房间广播与状态通知
@@ -592,6 +689,8 @@ SkillManager --> Frontmatter
 - 实现技能版本管理和依赖关系追踪
 - 增强多轮执行的错误恢复机制
 - 扩展更多LLM提供商的工具支持
+- **优化技能调用跟踪的性能和可靠性**
+- **进一步优化聊天路由的工具定义传递策略**
 
 ## 附录
 
@@ -614,7 +713,7 @@ SkillManager --> Frontmatter
 **更新** 系统现已提供完整的技能管理API，支持技能的全生命周期管理。
 
 **章节来源**
-- [backend/routers/chats.py:22-645](file://backend/routers/chats.py#L22-L645)
+- [backend/routers/chats.py:22-689](file://backend/routers/chats.py#L22-L689)
 - [backend/routers/media.py:24-130](file://backend/routers/media.py#L24-L130)
 - [backend/routers/skills_api.py:123-206](file://backend/routers/skills_api.py#L123-L206)
 
@@ -625,7 +724,7 @@ SkillManager --> Frontmatter
 - 时间字段：created_at（服务端自动生成）
 - 技能调用格式：`{"type": "skill_call", "skill_name": "..."}`
 
-**更新** 消息格式规范已扩展至技能调用的支持，包括技能加载和工具执行的状态表示。
+**更新** 消息格式规范已扩展至技能调用的支持，包括技能加载和工具执行的状态表示。新增的技能调用跟踪机制确保skill_calls和tool_calls字段得到完整序列化和反序列化。
 
 **章节来源**
 - [backend/schemas.py:217-231](file://backend/schemas.py#L217-L231)
@@ -641,8 +740,9 @@ SkillManager --> Frontmatter
 - 批量生成安全：限制并发数和请求频率
 - 技能安全：防止路径遍历，验证技能文件完整性
 - 工具调用安全：验证工具参数和权限控制
+- **技能调用跟踪安全**：确保skill_calls和tool_calls数据的完整性和安全性
 
-**更新** 权限与安全检查已扩展至技能驱动架构，包括技能文件的安全验证和工具调用的权限控制。
+**更新** 权限与安全检查已扩展至技能驱动架构，包括技能文件的安全验证和工具调用的权限控制。新增的技能调用跟踪机制已包含安全检查。
 
 **章节来源**
 - [backend/schemas.py:43-73](file://backend/schemas.py#L43-L73)
@@ -677,8 +777,9 @@ SkillManager --> Frontmatter
 - 版本管理：支持技能版本控制和差异比较
 - 目录管理：支持内置和自定义技能的目录结构
 - 文件安全：防止路径遍历，验证文件访问权限
+- **技能调用跟踪**：完整的skill_calls序列化/反序列化机制，支持SSE事件流的实时跟踪
 
-**更新** 新增技能驱动架构的完整特性说明，包括技能索引、动态加载、工具定义生成等核心功能。
+**更新** 新增技能驱动架构的完整特性说明，包括技能索引、动态加载、工具定义生成等核心功能。新增的技能调用跟踪机制确保所有技能加载和工具执行过程都得到完整记录和可视化展示。
 
 **章节来源**
 - [backend/services/skill_tools.py:1-142](file://backend/services/skill_tools.py#L1-L142)
@@ -699,3 +800,31 @@ SkillManager --> Frontmatter
 - [backend/models.py:200-201](file://backend/models.py#L200-L201)
 - [backend/services/llm_stream.py:225-233](file://backend/services/llm_stream.py#L225-L233)
 - [backend/services/batch_image_gen.py:18-26](file://backend/services/batch_image_gen.py#L18-L26)
+
+### 技能调用跟踪技术细节
+**新增章节** 系统现在支持完整的技能调用跟踪机制，包括以下技术细节：
+
+- **序列化机制**：在保存助手消息时，将技能调用和工具调用信息序列化为JSON格式，包含技能名称、工具名称、参数和状态信息
+- **反序列化机制**：在获取消息列表时，将JSON格式的技能调用和工具调用信息还原为结构化数据，支持前端直接使用
+- **SSE事件流**：通过Server-Sent Events实时传输技能加载和工具执行状态，包括skill_call、skill_loaded、tool_call、tool_result等事件类型
+- **前端可视化**：前端组件实时更新技能加载和工具执行的可视化状态，包括加载指示器、执行状态和完成状态
+- **状态管理**：维护技能调用和工具调用的完整状态链，确保用户能够看到完整的执行过程
+
+**章节来源**
+- [backend/routers/chats.py:158-180](file://backend/routers/chats.py#L158-L180)
+- [backend/routers/chats.py:581-590](file://backend/routers/chats.py#L581-L590)
+- [backend/admin/src/components/admin/agents/ChatInterface.tsx:286-303](file://backend/admin/src/components/admin/agents/ChatInterface.tsx#L286-L303)
+
+### 聊天路由优化技术细节
+**新增章节** 系统现已实现聊天路由逻辑优化，在对话的最后轮次中智能避免传递工具定义，具体技术实现如下：
+
+- **轮次控制**：MAX_TOOL_ROUNDS = 5，定义最大工具调用轮次
+- **最后轮次检测**：`is_last_round = _round == MAX_TOOL_ROUNDS`判断是否为最后轮次
+- **智能工具定义传递**：`current_tools = None if is_last_round else tool_defs`在最后轮次设置为None
+- **性能优化效果**：避免最后轮次的工具定义传递，减少API调用开销和计算成本
+- **兼容性保证**：不影响工具调用的完整执行流程，仅在最后轮次省略工具定义传递
+- **逻辑完整性**：确保工具调用在最后轮次之前已完成，最终响应无需工具定义
+
+**章节来源**
+- [backend/routers/chats.py:485-495](file://backend/routers/chats.py#L485-L495)
+- [backend/routers/chats.py:493-495](file://backend/routers/chats.py#L493-L495)

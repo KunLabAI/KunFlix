@@ -29,7 +29,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=PromptTemplateResponse)
+@router.post("", response_model=PromptTemplateResponse)
 async def create_template(
     template: PromptTemplateCreate,
     _admin=Depends(require_admin),
@@ -58,7 +58,7 @@ async def create_template(
     return new_template
 
 
-@router.get("/", response_model=List[PromptTemplateResponse])
+@router.get("", response_model=List[PromptTemplateResponse])
 async def list_templates(
     template_type: Optional[str] = None,
     agent_type: Optional[str] = None,

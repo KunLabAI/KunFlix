@@ -41,6 +41,8 @@ export interface Agent {
   video_input_second_credit: number;
   video_output_480p_credit: number;
   video_output_720p_credit: number;
+  // 画布节点控制
+  target_node_types: string[];
   // Leader configuration
   is_leader: boolean;
   coordination_modes: string[];

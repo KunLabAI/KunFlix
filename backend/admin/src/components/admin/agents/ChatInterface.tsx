@@ -125,7 +125,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
   const handleCreateSession = async () => {
     if (!agentId) return;
     try {
-      const res = await api.post('/chats/', {
+      const res = await api.post('/chats', {
         title: `New Chat ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
         agent_id: agentId
       });

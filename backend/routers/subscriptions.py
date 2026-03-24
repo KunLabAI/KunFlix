@@ -18,7 +18,7 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=SubscriptionPlanResponse)
+@router.post("", response_model=SubscriptionPlanResponse)
 async def create_plan(
     plan: SubscriptionPlanCreate,
     _admin: Admin = Depends(require_admin),
@@ -37,7 +37,7 @@ async def create_plan(
     return new_plan
 
 
-@router.get("/", response_model=List[SubscriptionPlanResponse])
+@router.get("", response_model=List[SubscriptionPlanResponse])
 async def list_plans(
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),

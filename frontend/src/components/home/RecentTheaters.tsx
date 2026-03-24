@@ -40,6 +40,36 @@ export default function RecentTheaters() {
       .finally(() => setLoading(false));
   }, [isAuthenticated]);
 
+  const handleRename = async (id: string, newTitle: string) => {
+    try {
+      const updatedTheater = await theaterApi.updateTheater(id, { title: newTitle });
+      setTheaters((prev) => prev.map((t) => (t.id === id ? { ...t, title: updatedTheater.title } : t)));
+    } catch (err) {
+      console.error("Failed to rename theater:", err);
+      alert("重命名失败");
+    }
+  };
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      const newTheater = await theaterApi.duplicateTheater(id);
+      setTheaters((prev) => [newTheater, ...prev]);
+    } catch (err) {
+      console.error("Failed to duplicate theater:", err);
+      alert("创建副本失败");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await theaterApi.deleteTheater(id);
+      setTheaters((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      console.error("Failed to delete theater:", err);
+      alert("删除失败");
+    }
+  };
+
   return (
     <div className="w-full py-8">
       <h2 className="text-2xl font-bold mb-6 px-6 text-foreground">最近剧场</h2>
@@ -74,6 +104,9 @@ export default function RecentTheaters() {
               nodeCount={t.node_count}
               updatedAt={t.updated_at}
               onClick={() => router.push(`/theater/${t.id}`)}
+              onRename={handleRename}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
             />
           ))}
         </motion.div>

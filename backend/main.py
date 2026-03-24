@@ -107,7 +107,10 @@ async def lifespan(app: FastAPI):
     
     yield
 
-app = FastAPI(title="Infinite Narrative Theater", lifespan=lifespan)
+app = FastAPI(
+    title="Infinite Narrative Theater",
+    lifespan=lifespan,
+)
 
 # DEBUG: Log Authorization header for /api/theaters requests
 from starlette.middleware.base import BaseHTTPMiddleware

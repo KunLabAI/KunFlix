@@ -50,6 +50,7 @@ async def execute_orchestration(
                 user_id=current_user.id,
                 leader_agent_id=request.leader_agent_id,
                 session_id=request.session_id,
+                theater_id=request.theater_id,
                 coordination_mode=request.coordination_mode,
                 max_iterations=request.options.max_iterations,
                 enable_review=request.options.enable_review,
@@ -106,7 +107,7 @@ async def get_task_execution(
     return response
 
 
-@router.get("/", response_model=list[TaskExecutionResponse])
+@router.get("", response_model=list[TaskExecutionResponse])
 async def list_task_executions(
     status: Optional[str] = None,
     skip: int = 0,

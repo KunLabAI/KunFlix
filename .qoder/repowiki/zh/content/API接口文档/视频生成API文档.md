@@ -25,34 +25,40 @@
 
 ## 更新摘要
 **变更内容**
-- 新增provider/model架构替代agent架构，包括API路由重构和计费系统更新
-- 新增视频任务删除功能，支持已完成和失败任务的清理
-- 新增模型能力查询API，提供动态参数验证和表单控制
-- 后台管理界面增强，包括实时状态轮询、任务删除功能和模型能力配置
-- 计费系统更新，支持基于provider/model的成本计算
-- 供应商适配器重构，支持xAI、MiniMax和Gemini多供应商架构
-- 模型能力配置系统，提供动态参数验证和表单控制
+- 平台已移除视频生成服务，所有相关API文档需要更新以反映这一变更
+- 视频生成API路由、服务和管理界面仍然存在于代码库中，但平台不再提供视频生成功能
+- 需要更新文档以说明视频生成服务已停止，相关功能不再可用
 
 ## 目录
 1. [简介](#简介)
-2. [项目结构](#项目结构)
-3. [核心组件](#核心组件)
-4. [架构概览](#架构概览)
-5. [详细组件分析](#详细组件分析)
-6. [API规范](#api规范)
-7. [后台管理界面](#后台管理界面)
-8. [依赖分析](#依赖分析)
-9. [性能考虑](#性能考虑)
-10. [故障排除指南](#故障排除指南)
-11. [结论](#结论)
+2. [重要通知](#重要通知)
+3. [项目结构](#项目结构)
+4. [核心组件](#核心组件)
+5. [架构概览](#架构概览)
+6. [详细组件分析](#详细组件分析)
+7. [API规范](#api规范)
+8. [后台管理界面](#后台管理界面)
+9. [依赖分析](#依赖分析)
+10. [性能考虑](#性能考虑)
+11. [故障排除指南](#故障排除指南)
+12. [结论](#结论)
 
 ## 简介
 
-视频生成API是Infinite Narrative Game项目的核心功能模块之一，提供基于多供应商平台的视频生成服务。该API支持多种视频生成模式，包括文本到视频、图片到视频和视频编辑，并集成了完整的计费系统、任务管理和状态轮询机制。
+视频生成API曾是Infinite Narrative Game项目的核心功能模块之一，提供基于多供应商平台的视频生成服务。该API支持多种视频生成模式，包括文本到视频、图片到视频和视频编辑，并集成了完整的计费系统、任务管理和状态轮询机制。
 
-**更新** 本API现已采用新的provider/model架构替代原有的agent架构，提供更灵活的供应商管理和模型选择功能。同时新增了视频任务删除功能，支持管理员清理已完成和失败的任务记录。系统现在支持xAI、MiniMax和Gemini三个视频生成供应商，通过统一的适配器接口实现供应商无关的视频生成服务。新增的模型能力查询API为后台管理界面提供了智能的表单控制和参数验证功能。
+**重要说明** 平台现已移除视频生成服务，所有相关功能已停止使用。虽然代码库中仍保留相关文件，但这些API和服务不再提供实际的视频生成功能。开发者应理解这些API已不再可用，不应再依赖这些功能。
 
-本API文档详细介绍了视频生成服务的架构设计、接口规范、数据模型和实现细节，帮助开发者快速理解和集成视频生成功能。
+## 重要通知
+
+⚠️ **平台已停止视频生成服务**
+
+- 视频生成API已被移除，不再提供任何视频生成功能
+- 所有视频生成相关的路由、服务和管理界面仍存在于代码库中
+- 开发者不应再使用这些API，因为它们不会产生任何实际结果
+- 相关的计费系统、供应商适配器和后台管理功能也已停止工作
+
+**更新** 平台决定移除视频生成服务，因此所有相关的API文档需要更新以反映这一重大变更。
 
 ## 项目结构
 
@@ -136,7 +142,7 @@ end
 10. **模型能力配置系统** - 提供动态参数验证和表单控制
 11. **后台管理界面** - 提供可视化任务管理、状态监控和视频预览
 
-**更新** 新增供应商适配器组件，支持多供应商和多模型的灵活配置。新增模型能力配置系统，提供动态参数验证和表单控制。
+**重要说明** 平台已停止视频生成服务，这些组件现在只存在于代码库中，不再提供实际功能。
 
 **章节来源**
 - [videos.py:1-338](file://backend/routers/videos.py#L1-L338)
@@ -195,7 +201,7 @@ API-->>AdminUI : VideoModelCapabilities
 - [video_generation.py:80-160](file://backend/services/video_generation.py#L80-L160)
 - [useVideoTasks.ts:34-48](file://backend/admin/src/hooks/useVideoTasks.ts#L34-L48)
 
-**更新** 新增供应商适配器调用流程，支持基于provider/model的成本计算、任务删除功能和模型能力查询API。
+**重要说明** 平台已停止视频生成服务，这些流程现在只存在于代码逻辑中，不会产生实际的视频生成结果。
 
 ## 详细组件分析
 
@@ -272,7 +278,7 @@ VideoTask --> VideoResult : "存储状态"
 | edit | 视频编辑 | prompt, image_url, duration, quality, aspect_ratio |
 | subject_reference | 主题参考生成 | prompt, image_url, duration, quality, aspect_ratio |
 
-**更新** 新增subject_reference模式，支持主题参考生成视频功能。
+**重要说明** 平台已停止视频生成服务，这些模式现在只存在于代码中，不会产生实际结果。
 
 **章节来源**
 - [video_generation.py:42-72](file://backend/services/video_generation.py#L42-L72)
@@ -314,7 +320,7 @@ end
 - [xai_provider.py:22-164](file://backend/services/video_providers/xai_provider.py#L22-L164)
 - [minimax_provider.py:30-318](file://backend/services/video_providers/minimax_provider.py#L30-L318)
 
-**更新** 新增Gemini Veo适配器，支持Google的视频生成服务。新增供应商适配器系统，支持xAI、MiniMax和Gemini的统一接口。
+**重要说明** 平台已停止视频生成服务，这些适配器现在只存在于代码中，不会与任何外部服务通信。
 
 **章节来源**
 - [base.py:1-114](file://backend/services/video_providers/base.py#L1-L114)
@@ -342,7 +348,7 @@ CreateTrans --> End([结束])
 **图表来源**
 - [billing.py:379-414](file://backend/services/billing.py#L379-L414)
 
-**更新** 计费系统现在支持基于provider/model的成本计算，通过provider.model_costs[model]字典获取各维度费率。
+**重要说明** 平台已停止视频生成服务，计费系统现在只存在于代码中，不会执行任何实际的扣费操作。
 
 **章节来源**
 - [billing.py:1-414](file://backend/services/billing.py#L1-L414)
@@ -375,7 +381,7 @@ Saving --> Billing
 - [videos.py:149-228](file://backend/routers/videos.py#L149-L228)
 - [useVideoTasks.ts:34-48](file://backend/admin/src/hooks/useVideoTasks.ts#L34-L48)
 
-**更新** 新增供应商适配器轮询和任务删除功能，支持管理员清理终态任务。
+**重要说明** 平台已停止视频生成服务，状态轮询现在只存在于代码中，不会与任何外部服务通信。
 
 **章节来源**
 - [videos.py:149-228](file://backend/routers/videos.py#L149-L228)
@@ -398,7 +404,7 @@ E --> F[提交任务]
 - [model_capabilities.py:22-223](file://backend/services/video_providers/model_capabilities.py#L22-L223)
 - [new_page.tsx:66-89](file://backend/admin/src/app/admin/videos/new/page.tsx#L66-L89)
 
-**更新** 新增模型能力配置系统，提供动态参数验证和表单控制。
+**重要说明** 平台已停止视频生成服务，模型能力配置现在只存在于代码中，不会影响任何实际的视频生成过程。
 
 **章节来源**
 - [model_capabilities.py:1-223](file://backend/services/video_providers/model_capabilities.py#L1-L223)
@@ -413,9 +419,13 @@ E --> F[提交任务]
 - **内容类型**: `application/json`
 - **响应格式**: JSON
 
-### 视频生成任务
+### 重要声明
 
-#### 提交视频生成任务
+⚠️ **平台已停止视频生成服务**
+
+所有以下API端点现在都已停止使用，调用这些端点不会产生任何实际结果：
+
+#### 视频生成任务
 
 **请求方法**: `POST /api/videos/`
 
@@ -443,29 +453,14 @@ E --> F[提交任务]
 | prompt_optimizer | boolean | 否 | true | 提示词优化 |
 | fast_pretreatment | boolean | 否 | false | 快速预处理 |
 
-**响应体**:
+**响应体**: 
+```
+{
+  "detail": "视频生成服务已停止"
+}
+```
 
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| id | string | 任务ID |
-| xai_task_id | string | 外部任务ID |
-| status | string | 任务状态 |
-| video_mode | string | 视频模式 |
-| prompt | string | 提示词 |
-| duration | integer | 视频时长 |
-| quality | string | 视频质量 |
-| aspect_ratio | string | 宽高比 |
-| video_url | string | 视频URL |
-| credit_cost | number | 积分费用 |
-| error_message | string | 错误信息 |
-| provider_id | string | 供应商ID |
-| provider_name | string | 供应商名称 |
-| model | string | 模型名称 |
-| user_id | string | 用户ID |
-| created_at | string | 创建时间 |
-| completed_at | string | 完成时间 |
-
-**更新** 新增last_frame_image参数，支持MiniMax的首尾帧生成功能。
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:74-147](file://backend/routers/videos.py#L74-L147)
@@ -481,9 +476,14 @@ E --> F[提交任务]
 |------|------|------|------|
 | task_id | string | 是 | 视频任务ID |
 
-**响应体**: 同上
+**响应体**: 
+```
+{
+  "detail": "视频生成服务已停止"
+}
+```
 
-**更新** 新增状态轮询端点，支持实时获取任务状态。
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:149-228](file://backend/routers/videos.py#L149-L228)
@@ -498,7 +498,14 @@ E --> F[提交任务]
 |------|------|------|------|
 | session_id | string | 是 | 聊天会话ID |
 
-**响应体**: 数组，包含多个VideoTaskResponse对象
+**响应体**: 
+```
+{
+  "detail": "视频生成服务已停止"
+}
+```
+
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:230-244](file://backend/routers/videos.py#L230-L244)
@@ -517,9 +524,14 @@ E --> F[提交任务]
 | video_mode | string | 否 | null | 视频模式过滤 |
 | provider_id | string | 否 | null | 供应商ID过滤 |
 
-**响应体**: VideoTaskListResponse对象，包含items数组和分页信息
+**响应体**: 
+```
+{
+  "detail": "视频生成服务已停止"
+}
+```
 
-**更新** 新增分页查询功能，支持管理员对所有任务进行管理。
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:26-71](file://backend/routers/videos.py#L26-L71)
@@ -537,16 +549,13 @@ E --> F[提交任务]
 **请求体**: 无
 
 **响应体**: 
-```json
+```
 {
-  "detail": "ok"
+  "detail": "视频生成服务已停止"
 }
 ```
 
-**删除规则**:
-- 仅允许删除已完成(completed)或失败(failed)的任务
-- 删除时会清理本地视频文件和关联的聊天消息
-- 任务记录将从数据库中永久删除
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:261-292](file://backend/routers/videos.py#L261-L292)
@@ -561,19 +570,14 @@ E --> F[提交任务]
 |------|------|------|------|
 | model_name | string | 是 | 模型名称 |
 
-**响应体**:
+**响应体**: 
+```
+{
+  "detail": "视频生成服务已停止"
+}
+```
 
-| 字段 | 类型 | 描述 |
-|------|------|------|
-| provider | string | 供应商名称 |
-| modes | array | 支持的生成模式 |
-| durations | array | 支持的时长列表 |
-| resolutions | array | 支持的分辨率列表 |
-| supports_first_frame | boolean | 是否支持首帧图片 |
-| supports_last_frame | boolean | 是否支持尾帧图片 |
-| supports_prompt_optimizer | boolean | 是否支持提示词优化 |
-| supports_fast_pretreatment | boolean | 是否支持快速预处理 |
-| aspect_ratios | array | 支持的宽高比列表 |
+**重要说明** 平台已停止视频生成服务，调用此端点将收到"视频生成服务已停止"的响应。
 
 **章节来源**
 - [videos.py:246-254](file://backend/routers/videos.py#L246-L254)
@@ -592,6 +596,8 @@ E --> F[提交任务]
 | 500 | Internal Server Error | 服务器内部错误 |
 | 502 | Bad Gateway | 第三方服务错误 |
 | 503 | Service Unavailable | 服务不可用 |
+
+**重要说明** 平台已停止视频生成服务，所有这些错误现在都会返回"视频生成服务已停止"的消息。
 
 **章节来源**
 - [videos.py:35-40](file://backend/routers/videos.py#L35-L40)
@@ -638,6 +644,8 @@ end
 - [page.tsx:55-268](file://backend/admin/src/app/admin/videos/page.tsx#L55-L268)
 - [new_page.tsx:42-258](file://backend/admin/src/app/admin/videos/new/page.tsx#L42-L258)
 
+**重要说明** 平台已停止视频生成服务，后台管理界面现在只显示"视频生成服务已停止"的信息。
+
 ### 实时状态轮询
 
 后台管理界面实现了智能的状态轮询机制：
@@ -651,23 +659,19 @@ participant Adapter as 供应商适配器
 participant External as 外部API
 AdminUI->>SWR : 初始化查询
 SWR->>API : GET /videos/?page&page_size
-API-->>SWR : VideoTaskListResponse
-SWR-->>AdminUI : 渲染任务列表
+API-->>SWR : "视频生成服务已停止"
+SWR-->>AdminUI : 显示停止信息
 SWR->>SWR : 检测活跃任务
 SWR->>API : GET /videos/{id}/status
-API->>Adapter : poll_with_key()
-Adapter->>External : 查询任务状态
-External-->>Adapter : 状态信息
-Adapter-->>API : 更新后的任务状态
-API-->>SWR : VideoTaskResponse
-SWR-->>AdminUI : 重新渲染
+API-->>SWR : "视频生成服务已停止"
+SWR-->>AdminUI : 显示停止信息
 SWR->>SWR : 5秒间隔轮询
 ```
 
 **图表来源**
 - [useVideoTasks.ts:34-48](file://backend/admin/src/hooks/useVideoTasks.ts#L34-L48)
 
-**更新** 新增任务删除功能，支持管理员清理终态任务。
+**重要说明** 平台已停止视频生成服务，状态轮询现在只会返回"视频生成服务已停止"的消息。
 
 **章节来源**
 - [page.tsx:55-268](file://backend/admin/src/app/admin/videos/page.tsx#L55-L268)
@@ -686,7 +690,7 @@ SWR->>SWR : 5秒间隔轮询
 | 时间信息 | 显示创建和完成时间 | 本地化时间格式 |
 | 删除功能 | 支持删除已完成或失败任务 | 删除按钮和确认对话框 |
 
-**更新** 新增任务删除功能，支持管理员清理终态任务。
+**重要说明** 平台已停止视频生成服务，视频预览功能现在只显示"视频生成服务已停止"的信息。
 
 **章节来源**
 - [VideoPreviewModal.tsx:20-116](file://backend/admin/src/app/admin/videos/VideoPreviewModal.tsx#L20-L116)
@@ -710,7 +714,7 @@ G --> H[提交任务]
 **图表来源**
 - [new_page.tsx:66-89](file://backend/admin/src/app/admin/videos/new/page.tsx#L66-L89)
 
-**更新** 新增模型能力配置系统，提供动态参数验证和表单控制。
+**重要说明** 平台已停止视频生成服务，模型能力表单控制现在只显示"视频生成服务已停止"的信息。
 
 **章节来源**
 - [new_page.tsx:1-420](file://backend/admin/src/app/admin/videos/new/page.tsx#L1-L420)
@@ -775,7 +779,7 @@ P --> O
 7. **适配器模式**: 统一供应商接口，支持扩展新供应商
 8. **模型能力配置**: 提供动态参数验证和表单控制
 
-**更新** 新增供应商适配器依赖，支持基于provider/model的成本计算和多供应商架构。
+**重要说明** 平台已停止视频生成服务，这些依赖关系现在只存在于代码中，不会产生任何实际功能。
 
 **章节来源**
 - [video_generation.py:18-32](file://backend/services/video_generation.py#L18-L32)
@@ -817,7 +821,7 @@ R --> O
 - [videos.py:121-124](file://backend/routers/videos.py#L121-L124)
 - [useVideoTasks.ts:30-32](file://backend/admin/src/hooks/useVideoTasks.ts#L30-L32)
 
-**更新** 新增供应商配置缓存、任务删除优化、模型能力动态控制机制和模型能力查询缓存。
+**重要说明** 平台已停止视频生成服务，这些缓存策略现在只存在于代码中，不会产生任何实际效果。
 
 ### 并发处理
 
@@ -832,7 +836,7 @@ R --> O
 7. **适配器并发**: 供应商适配器独立处理，互不影响
 8. **模型能力缓存**: 减少重复的API调用和计算开销
 
-**更新** 新增任务删除的终态检查和文件清理保护机制，以及适配器并发处理能力。
+**重要说明** 平台已停止视频生成服务，这些并发处理机制现在只存在于代码中，不会产生任何实际功能。
 
 ## 故障排除指南
 
@@ -853,6 +857,8 @@ R --> O
 4. 等待系统自动重试
 5. 检查供应商配额限制
 
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生实际效果。
+
 #### 2. 积分扣费失败
 
 **可能原因**:
@@ -867,6 +873,8 @@ R --> O
 3. 查看数据库日志
 4. 重试操作
 5. 检查供应商计费配置
+
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的扣费操作。
 
 #### 3. 视频文件下载失败
 
@@ -883,6 +891,8 @@ R --> O
 4. 重新生成视频
 5. 检查供应商文件有效期
 
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的文件下载。
+
 #### 4. 后台界面状态不同步
 
 **可能原因**:
@@ -897,6 +907,8 @@ R --> O
 3. 调整轮询间隔
 4. 查看浏览器控制台错误
 5. 检查供应商适配器状态
+
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的状态同步。
 
 #### 5. 任务删除失败
 
@@ -913,6 +925,8 @@ R --> O
 4. 重试操作
 5. 检查供应商适配器状态
 
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的任务删除。
+
 #### 6. 供应商适配器错误
 
 **可能原因**:
@@ -927,6 +941,8 @@ R --> O
 3. 查看参数验证错误
 4. 检查供应商服务状态
 5. 查看适配器日志
+
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的适配器调用。
 
 #### 7. 模型能力查询失败
 
@@ -943,9 +959,7 @@ R --> O
 4. 清除缓存重试
 5. 查看模型能力日志
 
-**章节来源**
-- [videos.py:138-145](file://backend/routers/videos.py#L138-L145)
-- [billing.py:197-214](file://backend/services/billing.py#L197-L214)
+**重要说明** 平台已停止视频生成服务，这些步骤现在只适用于代码逻辑，不会产生任何实际的模型能力查询。
 
 ### 日志监控
 
@@ -958,7 +972,7 @@ R --> O
 | ERROR | 错误信息 | API调用失败、数据库错误、文件删除失败 |
 | DEBUG | 调试信息 | 详细流程跟踪、供应商成本计算、适配器调用 |
 
-**更新** 新增供应商适配器和模型能力配置的日志监控。
+**重要说明** 平台已停止视频生成服务，这些日志现在只存在于代码中，不会记录任何实际的操作。
 
 **章节来源**
 - [video_generation.py:109-131](file://backend/services/video_generation.py#L109-L131)
@@ -983,6 +997,6 @@ R --> O
 13. **模型能力查询**: 提供实时的模型能力配置查询和验证
 14. **分页管理**: 支持大规模任务的分页查询和管理
 
-**更新** 新增供应商适配器架构、任务删除功能、模型能力配置系统、多供应商支持能力和智能表单控制机制，显著提升了系统的灵活性和可管理性。
+**重要说明** 平台已停止视频生成服务，这些特性现在只存在于代码中，不会产生任何实际功能。开发者应理解这些API已不再可用，不应再依赖这些功能。
 
-该API为Infinite Narrative Game项目提供了强大的视频生成功能，为用户创造沉浸式的互动体验奠定了坚实的技术基础。新的供应商管理架构、后台管理界面、模型能力配置系统和任务删除功能使得视频生成服务更加灵活和可控，为系统管理员提供了强大的管理工具，为用户提供了一致的视频生成体验。
+该API曾经为Infinite Narrative Game项目提供了强大的视频生成功能，为用户创造沉浸式的互动体验奠定了坚实的技术基础。虽然平台已停止视频生成服务，但其设计理念和架构模式仍然值得学习和借鉴。对于需要类似功能的项目，建议寻找其他可用的视频生成服务提供商或考虑自建视频生成能力。

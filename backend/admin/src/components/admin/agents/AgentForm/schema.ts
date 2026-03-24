@@ -45,6 +45,10 @@ export const agentFormSchema = z.object({
   video_input_second_credit: z.number().min(0, "不能为负数").default(0),
   video_output_480p_credit: z.number().min(0, "不能为负数").default(0),
   video_output_720p_credit: z.number().min(0, "不能为负数").default(0),
+  // 画布节点控制
+  target_node_types: z.array(
+    z.enum(["script", "character", "storyboard", "video"])
+  ).default([]),
   // Leader configuration
   is_leader: z.boolean().optional().default(false),
   coordination_modes: z.array(z.string()).optional().default([]),

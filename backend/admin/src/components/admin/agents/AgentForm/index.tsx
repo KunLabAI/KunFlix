@@ -12,6 +12,7 @@ import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
 import Parameters from './Parameters';
 import Tools from './Tools';
+import NodeTypes from './NodeTypes';
 import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
 
@@ -72,6 +73,7 @@ export default function AgentForm({
       thinking_mode: false,
       tools_enabled: false,
       tools: [],
+      target_node_types: [],
       input_credit_per_1m: 0,
       output_credit_per_1m: 0,
       image_output_credit_per_1m: 0,
@@ -112,6 +114,7 @@ export default function AgentForm({
         thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools,
         tools: initialValues.tools || [],
+        target_node_types: initialValues.target_node_types || [],
         input_credit_per_1m: Number(initialValues.input_credit_per_1m) || 0,
         output_credit_per_1m: Number(initialValues.output_credit_per_1m) || 0,
         image_output_credit_per_1m: Number(initialValues.image_output_credit_per_1m) || 0,
@@ -153,6 +156,7 @@ export default function AgentForm({
         thinking_mode: false,
         tools_enabled: false,
         tools: [],
+        target_node_types: [],
         input_credit_per_1m: 0,
         output_credit_per_1m: 0,
         is_leader: false,
@@ -259,6 +263,9 @@ export default function AgentForm({
               <Section title="能力">
                 <Tools disabled={loading} />
               </Section>
+              <Section title="画布节点控制">
+                <NodeTypes disabled={loading} />
+              </Section>
               <Section title="协作配置" className="mb-0">
                 <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
               </Section>
@@ -284,6 +291,10 @@ export default function AgentForm({
             <div className="h-px bg-border"></div>
 
             <Tools disabled={loading} />
+
+            <div className="h-px bg-border"></div>
+
+            <NodeTypes disabled={loading} />
 
             <div className="h-px bg-border"></div>
 

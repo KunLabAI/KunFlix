@@ -32,7 +32,7 @@ export function usePromptTemplate(id: string) {
 
 export function useCreatePromptTemplate() {
   const createTemplate = async (values: Partial<PromptTemplate>) => {
-    return await api.post('/prompt-templates/', values);
+    return await api.post('/prompt-templates', values);
   };
   return { createTemplate };
 }

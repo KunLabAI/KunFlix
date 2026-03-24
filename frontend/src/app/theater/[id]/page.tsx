@@ -30,7 +30,9 @@ import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check } from 'lucide-react';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid } from 'lucide-react';
+import { useAutoLayout } from './hooks/useAutoLayout';
+import { useCanvasSnapping } from './hooks/useCanvasSnapping';
 
 const nodeTypes = {
   script: ScriptNode,
@@ -79,7 +81,23 @@ function InfiniteCanvas() {
     undo, redo, takeSnapshot,
     loadTheater, saveToBackend, setTheaterId,
     theaterTitle, setTheaterTitle,
+    snapToGrid, snapToGuides,
+    setSnapToGrid, setSnapToGuides
   } = useCanvasStore();
+
+  const { isLayouting, handleAutoLayout } = useAutoLayout();
+  const { alignmentLines, onNodeDrag, onNodeDragStop } = useCanvasSnapping(snapToGuides);
+
+  // Auto-save logic
+  useEffect(() => {
+    if (!isDirty || isSaving) return;
+
+    const timer = setTimeout(() => {
+      saveToBackend().catch(console.error);
+    }, 2000); // 2 seconds debounce
+
+    return () => clearTimeout(timer);
+  }, [isDirty, isSaving, saveToBackend]);
 
   // Load theater on mount (wait for auth)
   const loaded = useRef(false);
@@ -319,6 +337,8 @@ function InfiniteCanvas() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
+          onNodeDrag={onNodeDrag}
+          onNodeDragStop={onNodeDragStop}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
@@ -332,10 +352,31 @@ function InfiniteCanvas() {
           minZoom={0.25}
           maxZoom={3}
           proOptions={{ hideAttribution: true }}
-          snapToGrid={false}
+          snapToGrid={snapToGrid}
+          snapGrid={[20, 20]}
         >
           <Background gap={80} size={1} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           
+          {/* Snap alignment lines */}
+          {snapToGuides && alignmentLines.vertical !== null && (
+            <div
+              className="absolute top-0 bottom-0 w-px bg-primary/50 pointer-events-none z-50 transition-opacity"
+              style={{
+                left: `${alignmentLines.vertical}px`,
+                transform: 'translateX(-50%)',
+              }}
+            />
+          )}
+          {snapToGuides && alignmentLines.horizontal !== null && (
+            <div
+              className="absolute left-0 right-0 h-px bg-primary/50 pointer-events-none z-50 transition-opacity"
+              style={{
+                top: `${alignmentLines.horizontal}px`,
+                transform: 'translateY(-50%)',
+              }}
+            />
+          )}
+
           {showMap && (
             <MiniMap 
               nodeColor={(n) => {
@@ -353,7 +394,16 @@ function InfiniteCanvas() {
           )}
           
           <Panel position="bottom-left" className="m-4 z-50">
-            <ZoomControls showMap={showMap} onToggleMap={() => setShowMap(!showMap)} />
+            <ZoomControls 
+              showMap={showMap} 
+              onToggleMap={() => setShowMap(!showMap)} 
+              onAutoLayout={handleAutoLayout}
+              isLayouting={isLayouting}
+              snapToGrid={snapToGrid}
+              onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
+              snapToGuides={snapToGuides}
+              onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+            />
           </Panel>
           
           <Panel position="top-left" className="m-4 z-50">
@@ -376,18 +426,12 @@ function InfiniteCanvas() {
               <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={redo} title="重做 (Ctrl+Y)">
                 <Redo className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-8 w-8 ${isDirty ? 'text-amber-500 hover:text-amber-600' : 'text-muted-foreground hover:text-foreground'}`}
-                onClick={() => saveToBackend().catch(console.error)}
-                disabled={isSaving}
-                title={`保存 (Ctrl+S) ${saveStatusText}`}
-              >
-                <SaveIcon className={`w-4 h-4 ${isSaving ? 'animate-spin' : ''}`} />
-              </Button>
+              <div className="w-px h-4 bg-border/50 mx-1" />
               {saveStatusText && (
-                <span className="text-xs text-muted-foreground px-1 whitespace-nowrap">{saveStatusText}</span>
+                <div className="flex items-center gap-1.5 px-2">
+                  <SaveIcon className={`w-3.5 h-3.5 text-muted-foreground ${isSaving ? 'animate-spin' : ''}`} />
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">{saveStatusText}</span>
+                </div>
               )}
             </div>
           </Panel>

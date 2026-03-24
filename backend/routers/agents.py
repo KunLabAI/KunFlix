@@ -13,7 +13,7 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-@router.post("/", response_model=AgentResponse)
+@router.post("", response_model=AgentResponse)
 async def create_agent(agent: AgentCreate, _admin: Admin = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     try:
         # 1. Check if name exists
@@ -63,7 +63,7 @@ async def create_agent(agent: AgentCreate, _admin: Admin = Depends(require_admin
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/", response_model=List[AgentResponse])
+@router.get("", response_model=List[AgentResponse])
 async def list_agents(
     skip: int = 0, 
     limit: int = 20, 

@@ -91,7 +91,7 @@ export default function SkillDialog({ open, skill, onClose }: SkillDialogProps) 
     setSaving(true);
     try {
       const action = isNew
-        ? () => api.post('/admin/skills/', {
+        ? () => api.post('/admin/skills', {
             name: values.name,
             description: values.description,
             content: values.content,

@@ -91,6 +91,7 @@ interface CanvasState {
   deleteEdge: (id: string) => void;
   reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => void;
+  updateNodeDimensions: (id: string, width: number, height: number) => void;
   setViewport: (viewport: Viewport) => void;
   
   // Undo/Redo
@@ -104,6 +105,12 @@ interface CanvasState {
   loadTheater: (theaterId: string) => Promise<void>;
   saveToBackend: () => Promise<void>;
   markDirty: () => void;
+
+  // Settings
+  snapToGrid: boolean;
+  snapToGuides: boolean;
+  setSnapToGrid: (snap: boolean) => void;
+  setSnapToGuides: (snap: boolean) => void;
 }
 
 const MAX_HISTORY = 50;
@@ -193,16 +200,39 @@ export const useCanvasStore = create<CanvasState>()(
       history: [],
       historyIndex: -1,
 
+      // Settings
+      snapToGrid: false,
+      snapToGuides: true,
+      setSnapToGrid: (snap: boolean) => set({ snapToGrid: snap }),
+      setSnapToGuides: (snap: boolean) => set({ snapToGuides: snap }),
+
       onNodesChange: (changes: NodeChange[]) => {
         const { nodes } = get();
         const nextNodes = applyNodeChanges(changes, nodes) as CanvasNode[];
-        set({ nodes: nextNodes });
+        
+        // Flag as dirty for relevant changes (position, dimension, remove)
+        const isSignificant = changes.some(
+          (c) => c.type === 'position' || c.type === 'dimensions' || c.type === 'remove' || c.type === 'add'
+        );
+
+        set({ 
+          nodes: nextNodes,
+          ...(isSignificant ? { isDirty: true } : {})
+        });
       },
 
       onEdgesChange: (changes: EdgeChange[]) => {
         const { edges } = get();
         const nextEdges = applyEdgeChanges(changes, edges);
-        set({ edges: nextEdges });
+        
+        const isSignificant = changes.some(
+          (c) => c.type === 'remove' || c.type === 'add'
+        );
+
+        set({ 
+          edges: nextEdges,
+          ...(isSignificant ? { isDirty: true } : {})
+        });
       },
 
       onConnect: (connection: Connection) => {
@@ -285,6 +315,17 @@ export const useCanvasStore = create<CanvasState>()(
           isDirty: true,
         });
         get().takeSnapshot();
+      },
+
+      updateNodeDimensions: (id: string, width: number, height: number) => {
+        set({
+          nodes: get().nodes.map((node) =>
+            node.id === id ? { ...node, width, height } : node
+          ),
+          isDirty: true,
+        });
+        // We might not want to take a snapshot for every dimension change
+        // get().takeSnapshot();
       },
 
       setViewport: (viewport: Viewport) => {

@@ -104,6 +104,9 @@ class TheaterNode(Base):
     z_index = Column(Integer, default=0)
     data = Column(JSON, default=dict)  # 节点业务数据（title, content, imageUrl 等）
 
+    # 创建此节点的 Agent（可选）
+    created_by_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -233,6 +236,9 @@ class Agent(Base):
 
     # Gemini 3.1 配置 (thinking_level, media_resolution, image_config)
     gemini_config = Column(JSON, default=dict)
+
+    # 可控制的画布节点类型: ["script", "character", "storyboard", "video"]
+    target_node_types = Column(JSON, default=[])
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

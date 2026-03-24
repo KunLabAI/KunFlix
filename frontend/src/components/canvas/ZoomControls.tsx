@@ -2,7 +2,7 @@ import React from 'react';
 import { useReactFlow, useStore } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { Map, Plus, Minus, Focus, Wand2, Grid, Magnet } from 'lucide-react';
+import { Map, Plus, Minus, Focus, LayoutGrid, Grid, Magnet } from 'lucide-react';
 
 export function ZoomControls({ 
   showMap, 
@@ -70,9 +70,9 @@ export function ZoomControls({
           className="h-8 w-8 text-muted-foreground hover:text-foreground" 
           onClick={onAutoLayout} 
           disabled={isLayouting}
-          title="一键整理节点布局"
+          title="自动排列节点"
         >
-          <Wand2 className={`w-4 h-4 ${isLayouting ? 'animate-pulse text-primary' : ''}`} />
+          <LayoutGrid className={`w-4 h-4 ${isLayouting ? 'animate-pulse text-primary' : ''}`} />
         </Button>
       )}
 
@@ -86,7 +86,7 @@ export function ZoomControls({
           onClick={onToggleSnapToGrid} 
           title={snapToGrid ? "关闭网格吸附" : "开启网格吸附"}
         >
-          <Grid className="w-4 h-4" />
+          <Magnet className="w-4 h-4" />
         </Button>
       )}
 
@@ -96,9 +96,9 @@ export function ZoomControls({
           size="icon" 
           className={`h-8 w-8 ${!snapToGuides ? 'text-muted-foreground hover:text-foreground' : 'text-primary'}`} 
           onClick={onToggleSnapToGuides} 
-          title={snapToGuides ? "关闭对齐线吸附" : "开启对齐线吸附"}
+          title={snapToGuides ? "关闭对齐参考线" : "开启对齐参考线"}
         >
-          <Magnet className="w-4 h-4" />
+          <Grid className="w-4 h-4" />
         </Button>
       )}
 

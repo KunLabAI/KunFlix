@@ -160,7 +160,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
         await api.put(`/admin/llm-providers/${initialData.id}`, submitValues);
         toast({ title: "供应商更新成功" });
       } else {
-        await api.post('/admin/llm-providers/', submitValues);
+        await api.post('/admin/llm-providers', submitValues);
         toast({ title: "供应商创建成功" });
       }
       mutate('/admin/llm-providers/');

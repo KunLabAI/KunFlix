@@ -3,6 +3,10 @@ from typing import Optional, Dict, Any, List, Literal
 from datetime import datetime
 
 
+# 画布节点类型常量
+NODE_TYPES = {"script", "character", "storyboard", "video"}
+
+
 # ---------------------------------------------------------------------------
 # Auth schemas (用户)
 # ---------------------------------------------------------------------------
@@ -220,6 +224,16 @@ class AgentBase(BaseModel):
     enable_auto_review: bool = True
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
+    # 可控制的画布节点类型
+    target_node_types: List[str] = Field(default_factory=list)
+
+    @field_validator('target_node_types', mode='before')
+    @classmethod
+    def validate_node_types(cls, v):
+        v = v or []
+        invalid = set(v) - NODE_TYPES
+        assert not invalid, f"Invalid node types: {invalid}. Must be in {NODE_TYPES}"
+        return v
 
 
 class AgentCreate(AgentBase):
@@ -254,6 +268,16 @@ class AgentUpdate(BaseModel):
     enable_auto_review: Optional[bool] = None
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
+    # 可控制的画布节点类型
+    target_node_types: Optional[List[str]] = None
+
+    @field_validator('target_node_types', mode='before')
+    @classmethod
+    def validate_node_types(cls, v):
+        v = v or []
+        invalid = set(v) - NODE_TYPES
+        assert not invalid, f"Invalid node types: {invalid}. Must be in {NODE_TYPES}"
+        return v
 
 
 class AgentResponse(AgentBase):
@@ -263,7 +287,7 @@ class AgentResponse(AgentBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator('coordination_modes', 'member_agent_ids', 'tools', mode='before')
+    @field_validator('coordination_modes', 'member_agent_ids', 'tools', 'target_node_types', mode='before')
     @classmethod
     def none_to_list(cls, v):
         return v or []
@@ -302,6 +326,7 @@ class ChatMessageBase(BaseModel):
 
 class ChatMessageCreate(ChatMessageBase):
     edit_last_image: bool = False
+    theater_id: Optional[str] = None  # 画布上下文，用于启用画布工具
 
 
 class ChatMessageResponse(ChatMessageBase):
@@ -350,6 +375,7 @@ class OrchestrationRequest(BaseModel):
     task_description: str = Field(..., min_length=1, max_length=5000)
     leader_agent_id: str
     session_id: Optional[str] = None
+    theater_id: Optional[str] = None  # 画布上下文，用于启用画布工具
     coordination_mode: str = Field(default="auto")  # auto, pipeline, plan, discussion
     options: OrchestrationOptions = Field(default_factory=OrchestrationOptions)
 
@@ -646,6 +672,7 @@ class TheaterNodeResponse(BaseModel):
     height: Optional[float] = None
     z_index: int = 0
     data: Dict[str, Any] = Field(default_factory=dict)
+    created_by_agent_id: Optional[str] = None
     created_at: Any
     updated_at: Optional[Any] = None
 

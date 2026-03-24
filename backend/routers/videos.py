@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/videos", tags=["videos"])
 
 
-@router.get("/", response_model=VideoTaskListResponse)
+@router.get("", response_model=VideoTaskListResponse)
 async def list_video_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -71,7 +71,7 @@ async def list_video_tasks(
     return VideoTaskListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
-@router.post("/", response_model=VideoTaskResponse)
+@router.post("", response_model=VideoTaskResponse)
 async def create_video_task(
     request: VideoGenerateRequest,
     current_user=Depends(get_current_active_user_or_admin),

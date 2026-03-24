@@ -7,9 +7,9 @@ dayjs.extend(utc);
 /**
  * 格式化 UTC 时间到本地时区时间，格式为 YYYY-MM-DD HH:mm
  */
-export function formatLocalTime(dateString?: string | null): string {
-  if (!dateString) return "";
-  return dayjs.utc(dateString).local().format("YYYY-MM-DD HH:mm");
+export function formatLocalTime(dateValue?: string | number | Date | null): string {
+  if (!dateValue) return "";
+  return dayjs.utc(dateValue).local().format("YYYY-MM-DD HH:mm");
 }
 
 /**
