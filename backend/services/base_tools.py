@@ -142,9 +142,61 @@ def _human_size(nbytes: int) -> str:
 # Tool definitions (OpenAI format)
 # ---------------------------------------------------------------------------
 
+def _exec_shell_command(args: dict) -> str:
+    command = args.get("command", "")
+    cwd = args.get("cwd", ".")
+    try:
+        import subprocess
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        output = result.stdout
+        if result.stderr:
+            output += "\n[STDERR]\n" + result.stderr
+            
+        exit_info = f"[Exit Code: {result.returncode}]"
+        if not output.strip():
+            return f"{exit_info} Command executed with no output."
+            
+        if len(output) > _MAX_BYTES:
+            return f"{exit_info}\n" + output[:_MAX_BYTES] + "\n... [Output Truncated]"
+        return f"{exit_info}\n" + output
+    except Exception as exc:
+        return f"Error executing command: {exc}"
+
+
 def build_base_tool_defs() -> list[dict]:
     """Return OpenAI-format tool definitions for all base tools."""
     return [
+        {
+            "type": "function",
+            "function": {
+                "name": "execute_shell_command",
+                "description": (
+                    "Execute a shell command. Use this to run scripts, manipulate files, or perform system operations. "
+                    "Output is captured and returned. Commands timeout after 60 seconds."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to execute.",
+                        },
+                        "cwd": {
+                            "type": "string",
+                            "description": "Current working directory to run the command in. Defaults to current directory.",
+                        },
+                    },
+                    "required": ["command"],
+                },
+            },
+        },
         {
             "type": "function",
             "function": {
@@ -203,6 +255,7 @@ def build_base_tool_defs() -> list[dict]:
 _EXECUTORS: dict[str, callable] = {
     "read_file": _exec_read_file,
     "list_directory": _exec_list_directory,
+    "execute_shell_command": _exec_shell_command,
 }
 
 BASE_TOOL_NAMES: frozenset[str] = frozenset(_EXECUTORS)

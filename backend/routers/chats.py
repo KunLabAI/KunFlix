@@ -491,6 +491,8 @@ async def _generate_single_agent(
     _SSE_END = {True: "skill_loaded", False: "tool_result"}
     try:
         for _round in range(MAX_TOOL_ROUNDS + 1):
+            is_last_round = _round == MAX_TOOL_ROUNDS
+            current_tools = None if is_last_round else tool_defs
             result = None
             async for chunk, result in stream_completion(
                 provider_type=provider.provider_type,
@@ -502,7 +504,7 @@ async def _generate_single_agent(
                 context_window=agent.context_window,
                 thinking_mode=agent.thinking_mode,
                 gemini_config=agent.gemini_config,
-                tools=tool_defs,
+                tools=current_tools,
             ):
                 yield _sse("text", {"chunk": chunk})
 
