@@ -304,6 +304,7 @@ class AgentResponse(AgentBase):
 class ChatSessionBase(BaseModel):
     title: str = "New Chat"
     agent_id: str
+    theater_id: Optional[str] = None  # 关联画布/剧场
 
 
 class ChatSessionCreate(ChatSessionBase):
@@ -313,6 +314,7 @@ class ChatSessionCreate(ChatSessionBase):
 class ChatSessionResponse(ChatSessionBase):
     id: str
     user_id: Optional[str] = None
+    theater_id: Optional[str] = None
     created_at: Any
     updated_at: Optional[Any] = None
 

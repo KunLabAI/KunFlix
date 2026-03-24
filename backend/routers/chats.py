@@ -99,6 +99,7 @@ async def create_session(
         title=session.title,
         agent_id=session.agent_id,
         user_id=current_user.id,
+        theater_id=session.theater_id,
     )
     db.add(new_session)
     await db.commit()
@@ -109,6 +110,7 @@ async def create_session(
 @router.get("", response_model=List[ChatSessionResponse])
 async def list_sessions(
     agent_id: Optional[str] = None,
+    theater_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
     current_user=Depends(get_current_active_user_or_admin),
@@ -119,6 +121,9 @@ async def list_sessions(
 
     if agent_id:
         query = query.filter(ChatSession.agent_id == agent_id)
+    
+    if theater_id:
+        query = query.filter(ChatSession.theater_id == theater_id)
 
     query = query.offset(skip).limit(limit)
     result = await db.execute(query)

@@ -103,6 +103,7 @@ interface CanvasState {
   setTheaterId: (id: string | null) => void;
   setTheaterTitle: (title: string) => void;
   loadTheater: (theaterId: string) => Promise<void>;
+  syncTheater: (theaterId: string) => Promise<void>;
   saveToBackend: () => Promise<void>;
   markDirty: () => void;
 
@@ -394,6 +395,84 @@ export const useCanvasStore = create<CanvasState>()(
           console.error('Failed to load theater:', err);
           set({ isLoading: false });
           throw err;
+        }
+      },
+
+      syncTheater: async (theaterId: string) => {
+        try {
+          const detail = await theaterApi.getTheater(theaterId);
+          const currentNodes = get().nodes;
+          const currentEdges = get().edges;
+
+          const newNodesRaw = detail.nodes.map(apiToNode);
+          const newEdgesRaw = detail.edges.map(apiToEdge);
+
+          let nodesChanged = false;
+          const mergedNodes = newNodesRaw.map((newNode) => {
+            const existingNode = currentNodes.find((n) => n.id === newNode.id);
+            if (existingNode) {
+              const isSame = 
+                existingNode.type === newNode.type &&
+                existingNode.position.x === newNode.position.x &&
+                existingNode.position.y === newNode.position.y &&
+                existingNode.width === newNode.width &&
+                existingNode.height === newNode.height &&
+                JSON.stringify(existingNode.data) === JSON.stringify(newNode.data);
+
+              if (isSame) {
+                return existingNode;
+              } else {
+                nodesChanged = true;
+                return {
+                  ...existingNode,
+                  ...newNode,
+                  data: newNode.data, // overwrite with new data
+                  selected: existingNode.selected, // preserve selection
+                  dragging: existingNode.dragging, // preserve dragging
+                  measured: existingNode.measured,
+                };
+              }
+            }
+            nodesChanged = true;
+            return newNode;
+          });
+
+          if (currentNodes.length !== mergedNodes.length) {
+            nodesChanged = true;
+          }
+
+          let edgesChanged = false;
+          const mergedEdges = newEdgesRaw.map((newEdge) => {
+            const existingEdge = currentEdges.find((e) => e.id === newEdge.id);
+            if (existingEdge) {
+              const isSame = 
+                existingEdge.source === newEdge.source &&
+                existingEdge.target === newEdge.target &&
+                existingEdge.sourceHandle === newEdge.sourceHandle &&
+                existingEdge.targetHandle === newEdge.targetHandle &&
+                existingEdge.type === newEdge.type;
+              
+              if (isSame) return existingEdge;
+              edgesChanged = true;
+              return { ...existingEdge, ...newEdge };
+            }
+            edgesChanged = true;
+            return newEdge;
+          });
+
+          if (currentEdges.length !== mergedEdges.length) {
+            edgesChanged = true;
+          }
+
+          if (nodesChanged || edgesChanged) {
+            set({
+              ...(nodesChanged ? { nodes: mergedNodes } : {}),
+              ...(edgesChanged ? { edges: mergedEdges } : {}),
+              // We intentionally do NOT overwrite viewport to preserve user zoom/scroll
+            });
+          }
+        } catch (err) {
+          console.error('Failed to sync theater:', err);
         }
       },
 

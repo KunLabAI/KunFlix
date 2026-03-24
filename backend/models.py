@@ -176,6 +176,7 @@ class ChatSession(Base):
     title = Column(String, default="New Chat")
     agent_id = Column(String(36), ForeignKey("agents.id"))
     user_id = Column(String(36), nullable=True, index=True)  # 可存储用户或管理员 ID
+    theater_id = Column(String(36), ForeignKey("theaters.id"), nullable=True, index=True)  # 关联画布/剧场
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

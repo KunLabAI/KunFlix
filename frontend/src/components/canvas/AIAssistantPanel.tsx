@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Bot, X, Send, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import { Bot, X, Send, Sparkles, Loader2, Trash2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type AgentInfo } from '@/store/useAIAssistantStore';
 import api from '@/lib/api';
 
 export function AIAssistantPanel() {
@@ -13,7 +19,11 @@ export function AIAssistantPanel() {
   const messages = useAIAssistantStore((state) => state.messages);
   const sessionId = useAIAssistantStore((state) => state.sessionId);
   const agentId = useAIAssistantStore((state) => state.agentId);
+  const agentName = useAIAssistantStore((state) => state.agentName);
+  const availableAgents = useAIAssistantStore((state) => state.availableAgents);
   const panelSize = useAIAssistantStore((state) => state.panelSize);
+  const panelPosition = useAIAssistantStore((state) => state.panelPosition);
+  const currentTheaterId = useAIAssistantStore((state) => state.currentTheaterId);
   
   const setIsOpen = useAIAssistantStore((state) => state.setIsOpen);
   const setMessages = useAIAssistantStore((state) => state.setMessages);
@@ -21,11 +31,17 @@ export function AIAssistantPanel() {
   const updateLastMessage = useAIAssistantStore((state) => state.updateLastMessage);
   const setSessionId = useAIAssistantStore((state) => state.setSessionId);
   const setAgentId = useAIAssistantStore((state) => state.setAgentId);
+  const setAgentName = useAIAssistantStore((state) => state.setAgentName);
+  const setCurrentAgent = useAIAssistantStore((state) => state.setCurrentAgent);
+  const setAvailableAgents = useAIAssistantStore((state) => state.setAvailableAgents);
   const clearSession = useAIAssistantStore((state) => state.clearSession);
   const setPanelSize = useAIAssistantStore((state) => state.setPanelSize);
+  const setPanelPosition = useAIAssistantStore((state) => state.setPanelPosition);
+  const switchTheater = useAIAssistantStore((state) => state.switchTheater);
   
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -50,23 +66,91 @@ export function AIAssistantPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // Initialize session when agent is available
+  // Load available agents on mount
+  useEffect(() => {
+    const loadAgents = async () => {
+      setIsLoadingAgents(true);
+      try {
+        const agentsRes = await api.get('/agents');
+        const agents: AgentInfo[] = agentsRes.data || [];
+        setAvailableAgents(agents);
+      } catch (err) {
+        console.error('Failed to load agents:', err);
+      } finally {
+        setIsLoadingAgents(false);
+      }
+    };
+    loadAgents();
+  }, []);
+
+  // Switch theater when canvas theaterId changes
+  useEffect(() => {
+    const handleTheaterChange = async () => {
+      // Only switch if theaterId actually changed to a different theater
+      const currentStoreTheaterId = useAIAssistantStore.getState().currentTheaterId;
+      const isSameTheater = theaterId === currentStoreTheaterId;
+      
+      // Skip if same theater (e.g., canvas refresh from canvas_updated event)
+      if (isSameTheater) return;
+      
+      // Switch to new theater session
+      switchTheater(theaterId);
+      
+      // If no session for this theater, create one
+      if (theaterId && !sessionId) {
+        await createSessionForTheater(theaterId);
+      }
+    };
+    handleTheaterChange();
+  }, [theaterId]);
+
+  // Initialize session when panel opens
   useEffect(() => {
     const initSession = async () => {
-      // Skip if already initialized or no agent selected
-      const hasSession = sessionId && agentId;
-      hasSession || await createSession();
+      if (!isOpen) return;
+      
+      // If no session exists for current theater, create one
+      const needsSession = !sessionId || !agentId;
+      needsSession && theaterId && await createSessionForTheater(theaterId);
     };
-    isOpen && initSession();
-  }, [isOpen, agentId, sessionId]);
+    initSession();
+  }, [isOpen]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => abortControllerRef.current?.abort();
   }, []);
 
-  const createSession = async (): Promise<{ sessionId: string; agentId: string } | null> => {
+  const createSessionForTheater = async (theaterId: string): Promise<{ sessionId: string; agentId: string; agentName: string } | null> => {
     try {
+      // Try to find existing session for this theater
+      const sessionsRes = await api.get(`/chats?theater_id=${theaterId}&limit=1`);
+      const existingSessions = sessionsRes.data || [];
+      
+      if (existingSessions.length > 0) {
+        // Use existing session
+        const session = existingSessions[0];
+        // Fetch agent details
+        const agentRes = await api.get(`/agents/${session.agent_id}`);
+        const agent = agentRes.data;
+        
+        setSessionId(session.id);
+        setAgentId(session.agent_id);
+        setAgentName(agent?.name || 'AI 助手');
+        
+        // Load messages
+        const messagesRes = await api.get(`/chats/${session.id}/messages`);
+        const historyMessages = messagesRes.data.map((m: { role: string; content: string }) => ({
+          role: m.role === 'assistant' ? 'ai' : m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          status: 'complete' as const,
+        }));
+        setMessages(historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES]);
+        
+        return { sessionId: session.id, agentId: session.agent_id, agentName: agent?.name || 'AI 助手' };
+      }
+      
+      // No existing session, create new one
       // Fetch first available agent with canvas tools
       const agentsRes = await api.get('/agents');
       const agents = agentsRes.data || [];
@@ -77,19 +161,49 @@ export function AIAssistantPanel() {
       noAgent && console.warn('No agents available');
       if (noAgent) return null;
 
-      // Create chat session
-      const res = await api.post('/chats', { agent_id: selectedAgent.id, title: 'Canvas AI Chat' });
+      // Create chat session with theater_id
+      const res = await api.post('/chats', { 
+        agent_id: selectedAgent.id, 
+        title: `画布对话 - ${new Date().toLocaleDateString()}`,
+        theater_id: theaterId
+      });
       const newSessionId = res.data.id as string;
 
       setAgentId(selectedAgent.id);
+      setAgentName(selectedAgent.name || 'AI 助手');
       setSessionId(newSessionId);
+      setMessages([...DEFAULT_MESSAGES]);
 
-      return { sessionId: newSessionId, agentId: selectedAgent.id };
+      return { sessionId: newSessionId, agentId: selectedAgent.id, agentName: selectedAgent.name || 'AI 助手' };
     } catch (err) {
       console.error('Failed to initialize AI assistant:', err);
       return null;
     }
   };
+
+  const switchAgent = async (newAgent: AgentInfo) => {
+    if (!theaterId) return;
+    
+    // Create new session with selected agent
+    try {
+      const res = await api.post('/chats', { 
+        agent_id: newAgent.id, 
+        title: `画布对话 - ${newAgent.name}`,
+        theater_id: theaterId
+      });
+      const newSessionId = res.data.id as string;
+
+      setCurrentAgent(newAgent.id, newAgent.name || 'AI 助手');
+      setSessionId(newSessionId);
+      setMessages([...DEFAULT_MESSAGES]);
+    } catch (err) {
+      console.error('Failed to switch agent:', err);
+    }
+  };
+
+  const DEFAULT_MESSAGES = [
+    { role: 'ai' as const, content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' as const }
+  ];
 
   const parseSSELine = (line: string): { event: string; data: unknown } | null => {
     const eventMatch = line.match(/^event:\s*(.+)$/);
@@ -115,8 +229,11 @@ export function AIAssistantPanel() {
       canvas_updated: () => {
         const { theater_id } = data as { theater_id: string };
         const store = useCanvasStore.getState();
-        // Reload canvas if this theater is currently active
-        (store.theaterId === theater_id) && store.loadTheater(theater_id);
+        // Sync canvas if this theater is currently active
+        if (store.theaterId === theater_id) {
+          // Use syncTheater to avoid resetting canvas viewport and breaking reference equality
+          store.syncTheater(theater_id);
+        }
       },
       done: () => {
         setMessages(prev => {
@@ -149,7 +266,9 @@ export function AIAssistantPanel() {
 
     const needsSession = !currentSessionId || !currentAgentId;
     if (needsSession) {
-      const created = await createSession();
+      const noTheater = !theaterId;
+      if (noTheater) return;
+      const created = await createSessionForTheater(theaterId);
       const failed = !created;
       if (failed) return;
       currentSessionId = created.sessionId;
@@ -286,13 +405,18 @@ export function AIAssistantPanel() {
             dragConstraints={constraintsRef}
             dragMomentum={false}
             dragElastic={0}
-            initial={{ opacity: 0, width: 48, height: 48, borderRadius: 24, x: 0, y: 0 }}
+            onDragEnd={(_, info) => {
+              // Save panel position after drag
+              setPanelPosition({ x: panelPosition.x + info.offset.x, y: panelPosition.y + info.offset.y });
+            }}
+            initial={{ opacity: 0, width: 48, height: 48, borderRadius: 24, x: panelPosition.x, y: panelPosition.y }}
             animate={{ 
               opacity: 1, 
               width: panelSize.width, 
               height: panelSize.height, 
               borderRadius: 12, 
-              // Do not animate x/y in animate prop to avoid fighting with drag
+              x: panelPosition.x,
+              y: panelPosition.y,
             }}
             exit={{ opacity: 0, width: 48, height: 48, borderRadius: 24 }}
             transition={{ 
@@ -314,7 +438,46 @@ export function AIAssistantPanel() {
                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                   <Bot className="h-4 w-4 text-primary" />
                 </div>
-                <span className="font-medium text-sm">AI 创作助手</span>
+                <div className="flex flex-col">
+                  <span className="font-medium text-sm">AI 创作助手</span>
+                  {/* Agent selector */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-5 px-1 text-xs text-muted-foreground hover:text-foreground pointer-events-auto"
+                        disabled={isLoadingAgents}
+                      >
+                        {agentName}
+                        <ChevronDown className="h-3 w-3 ml-1" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-48">
+                      {availableAgents.map((agent) => (
+                        <DropdownMenuItem
+                          key={agent.id}
+                          onClick={() => switchAgent(agent)}
+                          className="text-xs cursor-pointer"
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{agent.name}</span>
+                            {agent.target_node_types && agent.target_node_types.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                支持: {agent.target_node_types.join(', ')}
+                              </span>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      ))}
+                      {availableAgents.length === 0 && (
+                        <div className="p-2 text-xs text-muted-foreground text-center">
+                          暂无可用智能体
+                        </div>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <Button
