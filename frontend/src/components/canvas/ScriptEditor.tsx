@@ -12,7 +12,84 @@ import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
+
+/**
+ * Convert Markdown string to Tiptap JSON content
+ * Simple conversion for basic Markdown syntax
+ */
+function markdownToTiptapJson(markdown: string): JSONContent {
+  const lines = markdown.split('\n');
+  const content: JSONContent['content'] = [];
+
+  for (const line of lines) {
+    // Heading: ## Title
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length as 1 | 2 | 3;
+      content.push({
+        type: 'heading',
+        attrs: { level },
+        content: [{ type: 'text', text: headingMatch[2] }],
+      });
+      continue;
+    }
+
+    // Empty line - skip
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    // Regular paragraph - strip markdown formatting
+    const processed = trimmed
+      .replace(/\*\*(.+?)\*\*/g, '$1')  // bold
+      .replace(/\*(.+?)\*/g, '$1')       // italic
+      .replace(/`(.+?)`/g, '$1');        // code
+
+    content.push({
+      type: 'paragraph',
+      content: [{ type: 'text', text: processed }],
+    });
+  }
+
+  // Ensure at least empty paragraph
+  content.length === 0 && content.push({ type: 'paragraph' });
+
+  return { type: 'doc', content };
+}
+
+/**
+ * Validate Tiptap JSON content structure
+ */
+function isValidTiptapJson(content: unknown): content is JSONContent {
+  return (
+    typeof content === 'object' &&
+    content !== null &&
+    'type' in content &&
+    content.type === 'doc' &&
+    'content' in content &&
+    Array.isArray(content.content)
+  );
+}
+
+/**
+ * Normalize content to Tiptap JSON format
+ */
+function normalizeContent(content: JSONContent | string | undefined): JSONContent {
+  // Already valid Tiptap JSON
+  if (isValidTiptapJson(content)) {
+    return content;
+  }
+
+  // String content - convert from Markdown
+  if (typeof content === 'string' && content.trim()) {
+    return markdownToTiptapJson(content);
+  }
+
+  // Default empty document
+  return { type: 'doc', content: [{ type: 'paragraph' }] };
+}
 
 // --- Tiptap UI Primitives ---
 import { Toolbar, ToolbarGroup, ToolbarSeparator } from '@/components/tiptap-ui-primitive/toolbar';
@@ -40,6 +117,16 @@ interface ScriptEditorProps {
 export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Memoize normalized content to prevent unnecessary re-parsing
+  const normalizedContent = useMemo(() => {
+    try {
+      return normalizeContent(initialContent);
+    } catch (error) {
+      console.error('Failed to normalize content:', error);
+      return { type: 'doc' as const, content: [{ type: 'paragraph' as const }] };
+    }
+  }, [initialContent]);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -66,7 +153,7 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
       }),
       CharacterCount,
     ],
-    content: initialContent || { type: 'doc', content: [{ type: 'paragraph' }] },
+    content: normalizedContent,
     editable: isEditable,
     immediatelyRender: false,
     onUpdate: ({ editor: ed }) => {
@@ -90,11 +177,29 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
   useEffect(() => {
     if (editor && editor.isEditable !== isEditable) {
       editor.setEditable(isEditable);
-      // Ensure character count stays synced when toggling modes
-      const chars = editor.storage.characterCount.characters();
-      onUpdate(editor.getJSON(), chars);
     }
-  }, [isEditable, editor, onUpdate]);
+  }, [isEditable, editor]);
+
+  // Sync content when initialContent changes from outside (e.g., Agent update)
+  // Only sync when NOT in edit mode to avoid interfering with user input
+  const contentRef = useRef<string>('');
+  useEffect(() => {
+    if (!editor || isEditable) return;
+
+    try {
+      // Serialize incoming content for comparison
+      const incomingStr = JSON.stringify(normalizedContent);
+      const currentStr = JSON.stringify(editor.getJSON());
+
+      // Only update if content actually changed
+      if (incomingStr !== currentStr && incomingStr !== contentRef.current) {
+        contentRef.current = incomingStr;
+        editor.commands.setContent(normalizedContent);
+      }
+    } catch (error) {
+      console.error('Failed to sync editor content:', error);
+    }
+  }, [normalizedContent, editor, isEditable]);
 
   const stopPointerPropagation = useCallback((e: React.SyntheticEvent) => {
     isEditable && e.stopPropagation();

@@ -234,8 +234,15 @@ async def send_message(
         _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image, message.theater_id)
     )
 
-    media_type = "text/event-stream"
-    return StreamingResponse(generator, media_type=media_type)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def _generate_multi_agent(

@@ -119,7 +119,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       />
       <div 
         ref={nodeRef}
-        className={`script-node-wrapper w-full h-full flex flex-col group relative`} 
+        className={`script-node-wrapper w-full flex flex-col group relative`} 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >
@@ -164,7 +164,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         </div>
 
       <Card className={`flex-1 flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
-        <CardContent className="script-node__content p-0 flex-1 overflow-hidden flex flex-col">
+        <CardContent className="script-node__content p-0 flex-1 flex flex-col">
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor
               initialContent={editData.content || undefined}

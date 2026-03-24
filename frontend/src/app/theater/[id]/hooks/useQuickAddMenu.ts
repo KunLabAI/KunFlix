@@ -61,7 +61,7 @@ export function useQuickAddMenu() {
   );
 
   const nodeDefaultData: Record<string, Record<string, unknown>> = {
-    script: { title: '新文本卡', description: '', tags: [] },
+    script: { title: '新文本卡', tags: [] },
     character: { name: '新图片卡', description: '' },
     storyboard: { shotNumber: '001', description: '', duration: 5 },
     video: { name: '新视频卡', description: '' },

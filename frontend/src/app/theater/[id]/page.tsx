@@ -35,8 +35,8 @@ import { useAutoLayout } from './hooks/useAutoLayout';
 import { useCanvasSnapping } from './hooks/useCanvasSnapping';
 
 const nodeTypes = {
-  script: ScriptNode,
-  character: CharacterNode,
+  text: ScriptNode,
+  image: CharacterNode,
   storyboard: StoryboardNode,
   video: VideoNode,
 } as unknown as NodeTypes;
@@ -155,7 +155,7 @@ function InfiniteCanvas() {
 
   // Node type default data registry (avoids switch/case)
   const nodeDefaultData: Record<string, Record<string, unknown>> = {
-    script: { title: '新文本卡', description: '', tags: [] },
+    script: { title: '新文本卡', tags: [] },
     character: { name: '新图片卡', description: '' },
     storyboard: { shotNumber: '001', description: '', duration: 5 },
     video: { name: '新视频卡', description: '' },

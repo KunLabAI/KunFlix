@@ -26,7 +26,6 @@ import {
 // Define Node Data Types
 export type ScriptNodeData = {
   title: string;
-  description: string;
   content?: unknown; // tiptap JSON content
   tags: string[];
   characters?: string[];
@@ -290,10 +289,10 @@ export const useCanvasStore = create<CanvasState>()(
 
       reset: () => {
         const initialNode: CanvasNode = {
-          id: 'script-root', 
-          type: 'script',
+          id: 'text-root', 
+          type: 'text',
           position: { x: 100, y: 100 },
-          data: { title: '我的文本卡', description: '', tags: [] },
+          data: { title: '我的文本卡', tags: [] },
         };
         set({
           nodes: [initialNode],

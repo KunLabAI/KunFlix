@@ -8,16 +8,16 @@ import { useCanvasStore, CharacterNodeData, VideoNodeData } from '@/store/useCan
 
 const NODE_TYPES = [
   { 
-    type: 'script', 
+    type: 'text', 
     name: '文本卡', 
     description: '剧本、广告等文案',
     icon: ScrollText, 
     color: 'text-node-blue', 
     bg: 'bg-node-blue/10',
-    data: { title: '新文本卡', description: '', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] }
+    data: { title: '新文本卡', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] }
   },
   { 
-    type: 'character', 
+    type: 'image', 
     name: '图片卡', 
     description: '角色、场景、海报等',
     icon: ImageIcon, 
@@ -61,12 +61,12 @@ export const Sidebar = () => {
     const others: any[] = [];
 
     nodes.forEach(node => {
-      if (node.type === 'character') {
+      if (node.type === 'image') {
         const charData = node.data as CharacterNodeData;
         if (charData.imageUrl) {
           images.push({
             id: `img-${node.id}`,
-            type: 'character',
+            type: 'image',
             url: charData.imageUrl,
             name: charData.name || '未命名图片',
           });

@@ -36,13 +36,13 @@ describe('useCanvasStore Auto-Save', () => {
         id: 'node-1',
         type: 'script',
         position: { x: 0, y: 0 },
-        data: { title: 'Node 1', description: '', tags: [] },
+        data: { title: 'Node 1', tags: [] },
       });
       result.current.addNode({
         id: 'node-2',
         type: 'script',
         position: { x: 100, y: 100 },
-        data: { title: 'Node 2', description: '', tags: [] },
+        data: { title: 'Node 2', tags: [] },
       });
     });
 
@@ -112,7 +112,7 @@ describe('useCanvasStore Auto-Save', () => {
           id: `node-${i}`,
           type: 'script',
           position: { x: i * 10, y: i * 10 },
-          data: { title: `Node ${i}`, description: '', tags: [] },
+          data: { title: `Node ${i}`, tags: [] },
         });
       }
     });

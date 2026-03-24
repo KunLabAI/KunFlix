@@ -6,24 +6,24 @@
 - [useAIAssistantStore.ts](file://frontend/src/store/useAIAssistantStore.ts)
 - [useCanvasStore.ts](file://frontend/src/store/useCanvasStore.ts)
 - [api.ts](file://frontend/src/lib/api.ts)
+- [MultiAgentSteps.tsx](file://frontend/src/components/canvas/MultiAgentSteps.tsx)
 - [chats.py](file://backend/routers/chats.py)
 - [orchestrator.py](file://backend/services/orchestrator.py)
 - [agent_executor.py](file://backend/services/agent_executor.py)
+- [theater.py](file://backend/services/theater.py)
 - [models.py](file://backend/models.py)
 - [schemas.py](file://backend/schemas.py)
 - [main.py](file://backend/main.py)
-- [page.tsx](file://backend/admin/src/app/admin/agents/[id]/page.tsx)
-- [theaters.py](file://backend/routers/theaters.py)
-- [theater.py](file://backend/services/theater.py)
 </cite>
 
 ## 更新摘要
 **变更内容**
-- 新增剧院会话缓存系统，支持跨多个剧院的独立聊天会话状态管理
-- 实现智能剧院切换功能，自动在不同剧院间切换会话状态
-- 增强画布同步机制，支持 canvas_updated SSE 事件处理
-- 完善状态持久化，所有剧院会话状态保存到 localStorage
-- 优化多智能体协作与剧院环境的集成
+- 新增多模态内容支持，包括图像和文本混合内容处理
+- 增强SSE事件处理机制，支持更丰富的事件类型和状态管理
+- 新增多智能体协作UI组件，提供可视化的工作流展示
+- 改进画布集成机制，支持实时画布状态同步和事件通知
+- 优化流式事件处理，支持技能调用、工具执行等详细状态跟踪
+- 增强错误处理和状态恢复机制
 
 ## 目录
 1. [简介](#简介)
@@ -31,21 +31,25 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [多模态内容支持](#多模态内容支持)
+7. [SSE事件处理增强](#sse事件处理增强)
+8. [多智能体协作UI](#多智能体协作ui)
+9. [依赖关系分析](#依赖关系分析)
+10. [性能考虑](#性能考虑)
+11. [故障排除指南](#故障排除指南)
+12. [结论](#结论)
 
 ## 简介
 
 AI助手面板增强是一个集成了智能对话、多智能体协作和画布集成的综合性AI创作平台。该项目通过一个可拖拽、可调整大小的AI助手面板，为用户提供实时的AI对话体验，同时支持多智能体协作、画布节点操作和实时流式响应。
 
 **重大增强功能**：
-- **剧院会话缓存系统**：支持跨多个剧院的独立聊天会话状态管理
-- **智能剧院切换**：自动检测剧院变化并切换到相应的会话状态
-- **增强画布同步**：支持 canvas_updated SSE 事件，实现画布状态实时同步
-- **多智能体剧院集成**：智能体与剧院环境的深度集成
-- **状态持久化增强**：所有剧院会话状态保存到 localStorage
+- **多模态内容支持**：支持文本、图像等多种内容类型的混合处理
+- **增强SSE事件处理**：支持技能调用、工具执行、多智能体协作等详细事件跟踪
+- **多智能体协作UI**：提供可视化的多智能体工作流展示和状态管理
+- **实时画布同步**：支持画布更新事件的实时同步和状态恢复
+- **流式事件管理**：完整的事件状态跟踪和错误处理机制
+- **增强的错误处理**：完善的错误捕获和用户反馈机制
 
 ## 项目结构
 
@@ -59,6 +63,7 @@ Store[Zustand状态管理]
 API[API客户端]
 TheaterStore[剧院状态管理]
 CanvasStore[画布状态管理]
+MultiAgentUI[多智能体UI组件]
 end
 subgraph "后端层"
 Router[FastAPI路由层]
@@ -70,6 +75,7 @@ subgraph "AI引擎层"
 Agent[智能体执行器]
 Orchestrator[编排器]
 Provider[LLM提供者]
+Tool[工具系统]
 end
 UI --> API
 API --> Router
@@ -79,14 +85,16 @@ Model --> DB
 Service --> Agent
 Agent --> Orchestrator
 Orchestrator --> Provider
+Orchestrator --> Tool
 TheaterStore --> CanvasStore
 CanvasStore --> UI
+MultiAgentUI --> UI
 ```
 
 **图表来源**
 - [main.py:110-152](file://backend/main.py#L110-L152)
-- [AIAssistantPanel.tsx:16-576](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L576)
-- [useAIAssistantStore.ts:28-210](file://frontend/src/store/useAIAssistantStore.ts#L28-L210)
+- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
+- [useAIAssistantStore.ts:28-255](file://frontend/src/store/useAIAssistantStore.ts#L28-L255)
 
 **章节来源**
 - [main.py:1-174](file://backend/main.py#L1-L174)
@@ -114,11 +122,15 @@ class AIAssistantPanel {
 +createSessionForTheater()
 +handleSSEEvent()
 +switchTheater()
++resetStreamingState()
 }
 class Message {
 +role : MessageRole
-+content : string
++content : string | MessageContent
 +status : MessageStatus
++skill_calls : SkillCall[]
++tool_calls : ToolCall[]
++multi_agent : MultiAgentData
 }
 class AgentInfo {
 +id : string
@@ -148,8 +160,8 @@ AIAssistantPanel --> TheaterSession : manages
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:16-576](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L576)
-- [useAIAssistantStore.ts:7-210](file://frontend/src/store/useAIAssistantStore.ts#L7-L210)
+- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
+- [useAIAssistantStore.ts:7-255](file://frontend/src/store/useAIAssistantStore.ts#L7-L255)
 
 ### 剧院会话缓存系统
 
@@ -188,8 +200,8 @@ AIAssistantState --> Position : contains
 - [useAIAssistantStore.ts:110-149](file://frontend/src/store/useAIAssistantStore.ts#L110-L149)
 
 **章节来源**
-- [AIAssistantPanel.tsx:16-576](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L576)
-- [useAIAssistantStore.ts:1-210](file://frontend/src/store/useAIAssistantStore.ts#L1-L210)
+- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
+- [useAIAssistantStore.ts:1-255](file://frontend/src/store/useAIAssistantStore.ts#L1-L255)
 
 ## 架构概览
 
@@ -225,11 +237,11 @@ Panel-->>User : 显示结果
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:256-334](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L256-L334)
+- [AIAssistantPanel.tsx:520-558](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L520-L558)
 - [chats.py:189-238](file://backend/routers/chats.py#L189-L238)
 
 **章节来源**
-- [chats.py:1-733](file://backend/routers/chats.py#L1-L733)
+- [chats.py:1-757](file://backend/routers/chats.py#L1-L757)
 - [orchestrator.py:560-672](file://backend/services/orchestrator.py#L560-L672)
 
 ## 详细组件分析
@@ -245,6 +257,8 @@ AI助手面板是一个高度交互的组件，提供了丰富的功能特性：
 - **画布集成**：与画布系统深度集成
 - **剧院会话管理**：完整的对话历史管理和持久化
 - **智能剧院切换**：自动检测剧院变化并切换会话
+- **多模态内容显示**：支持文本和图像的混合内容展示
+- **技能工具跟踪**：实时显示技能加载和工具执行状态
 
 #### 核心功能实现
 
@@ -266,10 +280,10 @@ SaveMsg --> End([完成])
 
 **图表来源**
 - [AIAssistantPanel.tsx:86-117](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L86-L117)
-- [AIAssistantPanel.tsx:256-334](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L256-L334)
+- [AIAssistantPanel.tsx:520-558](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L520-L558)
 
 **章节来源**
-- [AIAssistantPanel.tsx:16-576](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L576)
+- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
 
 ### 剧院会话缓存系统
 
@@ -305,7 +319,7 @@ TheaterSessionCache --> TheaterSession : manages
 - [useAIAssistantStore.ts:46-149](file://frontend/src/store/useAIAssistantStore.ts#L46-L149)
 
 **章节来源**
-- [useAIAssistantStore.ts:1-210](file://frontend/src/store/useAIAssistantStore.ts#L1-L210)
+- [useAIAssistantStore.ts:1-255](file://frontend/src/store/useAIAssistantStore.ts#L1-L255)
 
 ### 增强画布同步机制
 
@@ -334,10 +348,10 @@ CanvasStore-->>Agent : 确认同步完成
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:229-237](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L229-L237)
+- [AIAssistantPanel.tsx:448-455](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L448-L455)
 
 **章节来源**
-- [AIAssistantPanel.tsx:217-254](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L217-L254)
+- [AIAssistantPanel.tsx:417-454](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L417-L454)
 
 ### 多智能体编排系统
 
@@ -381,7 +395,7 @@ CollaborationStrategy <|-- DiscussionStrategy
 - [orchestrator.py:82-530](file://backend/services/orchestrator.py#L82-L530)
 
 **章节来源**
-- [orchestrator.py:1-800](file://backend/services/orchestrator.py#L1-L800)
+- [orchestrator.py:1-890](file://backend/services/orchestrator.py#L1-L890)
 
 ### 画布集成机制
 
@@ -411,11 +425,189 @@ Agent->>Canvas : 请求重新加载
 
 **图表来源**
 - [chats.py:590-594](file://backend/routers/chats.py#L590-L594)
-- [AIAssistantPanel.tsx:229-234](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L229-L234)
+- [AIAssistantPanel.tsx:448-453](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L448-L453)
 
 **章节来源**
 - [chats.py:325-417](file://backend/routers/chats.py#L325-L417)
 - [useCanvasStore.ts:185-462](file://frontend/src/store/useCanvasStore.ts#L185-L462)
+
+## 多模态内容支持
+
+系统新增了对多模态内容的完整支持，包括文本和图像的混合处理：
+
+### 内容类型定义
+
+```mermaid
+classDiagram
+class MessageContent {
+<<union>>
++string
++ContentPart[]
+}
+class ContentPart {
++type : string
++text : string
++image_url : ImageURL
+}
+class ImageURL {
++url : string
+}
+MessageContent --> ContentPart : contains
+ContentPart --> ImageURL : contains
+```
+
+**图表来源**
+- [useAIAssistantStore.ts:39-40](file://frontend/src/store/useAIAssistantStore.ts#L39-L40)
+
+### 图像处理机制
+
+系统支持多种图像处理场景：
+
+#### 图像注入流程
+1. **图像检测**：从历史消息中查找最后的图像
+2. **数据URL转换**：将本地文件转换为data URL格式
+3. **内容重构**：将图像和文本组合为多模态内容
+4. **Gemini兼容**：确保图像格式符合特定模型要求
+
+#### 图像处理流程
+
+```mermaid
+flowchart TD
+Detect[检测历史图像] --> Found{找到图像?}
+Found --> |是| Convert[转换为data URL]
+Found --> |否| Continue[继续正常处理]
+Convert --> Inject[注入到用户消息]
+Inject --> Process[处理多模态内容]
+Process --> Complete[完成]
+Continue --> Complete
+```
+
+**图表来源**
+- [chats.py:460-484](file://backend/routers/chats.py#L460-L484)
+
+**章节来源**
+- [chats.py:460-484](file://backend/routers/chats.py#L460-L484)
+
+## SSE事件处理增强
+
+系统实现了增强的SSE事件处理机制，支持详细的事件状态跟踪：
+
+### 事件类型系统
+
+```mermaid
+classDiagram
+class SSEEventHandler {
++streamingStateRef : StreamingState
++handleSSEEvent(eventType, data)
++parseSSELine(line)
++resetStreamingState()
+}
+class StreamingState {
++skillCalls : SkillCall[]
++toolCalls : ToolCall[]
++steps : AgentStep[]
++stepMap : Map~string, AgentStep~
++multiAgent : MultiAgentData
++assistantMsg : Message
+}
+class EventHandler {
+<<interface>>
++handle() void
+}
+SSEEventHandler --> StreamingState : manages
+SSEEventHandler --> EventHandler : uses
+```
+
+**图表来源**
+- [AIAssistantPanel.tsx:244-269](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L244-L269)
+
+### 事件处理流程
+
+系统支持以下事件类型：
+
+#### 单智能体事件
+- **text**：流式文本内容
+- **skill_call**：技能调用开始
+- **skill_loaded**：技能加载完成
+- **tool_call**：工具调用开始
+- **tool_result**：工具执行结果
+
+#### 多智能体事件
+- **subtask_created**：子任务创建
+- **subtask_started**：子任务开始
+- **subtask_chunk**：子任务流式内容
+- **subtask_completed**：子任务完成
+- **subtask_failed**：子任务失败
+- **task_completed**：任务完成
+
+#### 系统事件
+- **canvas_updated**：画布状态更新
+- **done**：流式响应完成
+- **error**：错误发生
+
+**章节来源**
+- [AIAssistantPanel.tsx:271-478](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L271-L478)
+
+## 多智能体协作UI
+
+系统新增了专门的多智能体协作UI组件，提供可视化的工作流展示：
+
+### 组件结构
+
+```mermaid
+classDiagram
+class MultiAgentSteps {
++steps : AgentStep[]
++finalResult : string
++totalTokens : Tokens
++creditCost : number
++isExpanded : boolean
++expandedSteps : Set~string~
++toggleStep(stepId)
++getStatusIcon(status)
+}
+class AgentStep {
++subtask_id : string
++agent_name : string
++description : string
++status : StepStatus
++result : string
++error : string
++tokens : Tokens
+}
+class Tokens {
++input : number
++output : number
+}
+MultiAgentSteps --> AgentStep : contains
+MultiAgentSteps --> Tokens : contains
+```
+
+**图表来源**
+- [MultiAgentSteps.tsx:7-22](file://frontend/src/components/canvas/MultiAgentSteps.tsx#L7-L22)
+
+### 状态管理
+
+组件支持以下状态：
+
+#### 步骤状态
+- **pending**：待执行
+- **running**：执行中
+- **completed**：已完成
+- **failed**：执行失败
+
+#### 用户交互
+- **展开/收起**：切换详细信息显示
+- **步骤详情**：点击查看具体执行结果
+- **状态指示**：使用不同图标表示状态
+
+#### 统计信息
+- **进度显示**：已完成/总数的百分比
+- **Token统计**：输入输出Token使用情况
+- **积分消耗**：任务消耗的积分金额
+
+**章节来源**
+- [MultiAgentSteps.tsx:28-128](file://frontend/src/components/canvas/MultiAgentSteps.tsx#L28-L128)
 
 ## 依赖关系分析
 
@@ -427,33 +619,34 @@ subgraph "前端依赖"
 A[AIAssistantPanel.tsx] --> B[useAIAssistantStore.ts]
 A --> C[useCanvasStore.ts]
 A --> D[api.ts]
-B --> E[Zustand]
-C --> F[@xyflow/react]
-D --> G[Axios]
-H[TheaterService] --> I[TheaterAPI]
-J[CanvasStore] --> H
-K[AIAssistantStore] --> J
+A --> E[MultiAgentSteps.tsx]
+B --> F[Zustand]
+C --> G[@xyflow/react]
+D --> H[Axios]
+I[TheaterService] --> J[TheaterAPI]
+K[CanvasStore] --> I
+L[AIAssistantStore] --> K
 end
 subgraph "后端依赖"
-L[chats.py] --> M[FastAPI]
-L --> N[SQLAlchemy]
-O[orchestrator.py] --> P[agentscope]
-Q[agent_executor.py] --> R[DialogAgent]
-S[models.py] --> T[SQLAlchemy ORM]
-U[theaters.py] --> V[TheaterService]
-W[theater.py] --> X[TheaterService]
+M[chats.py] --> N[FastAPI]
+M --> O[SQLAlchemy]
+P[orchestrator.py] --> Q[agentscope]
+R[agent_executor.py] --> S[DialogAgent]
+T[models.py] --> U[SQLAlchemy ORM]
+V[theater.py] --> W[TheaterService]
+X[theater.py] --> Y[TheaterAPI]
 end
 subgraph "AI引擎依赖"
-Y[LLM提供者] --> Z[OpenAI]
-Y --> AA[Anthropic]
-Y --> AB[Gemini]
-Y --> AC[DashScope]
+Z[LLM提供者] --> AA[OpenAI]
+Z --> AB[Anthropic]
+Z --> AC[Gemini]
+Z --> AD[DashScope]
 end
-A --> L
-L --> O
-O --> Q
-Q --> Y
-U --> W
+A --> M
+M --> P
+P --> R
+R --> Z
+V --> X
 ```
 
 **图表来源**
@@ -475,6 +668,8 @@ U --> W
 - **渲染优化**：使用React.memo和useCallback优化重渲染
 - **剧院会话缓存**：避免重复创建会话的开销
 - **智能事件处理**：只处理当前活跃剧院的画布更新
+- **流式渲染**：SSE事件的增量更新减少重绘
+- **多模态内容优化**：图像内容的延迟加载和缓存
 
 ### 后端性能优化
 - **异步处理**：全面使用async/await减少阻塞
@@ -482,6 +677,8 @@ U --> W
 - **缓存策略**：智能体和模型实例缓存
 - **流式响应**：SSE流式传输减少延迟
 - **剧院会话查询**：优化剧院相关查询性能
+- **工具调用优化**：智能体工具的按需加载
+- **多模态处理**：图像文件的高效处理和缓存
 
 ### 数据库优化
 - **索引优化**：关键字段建立索引
@@ -532,7 +729,33 @@ U --> W
 3. 查看数据库连接状态
 4. 检查网络连接
 
-#### 4. 画布集成问题
+#### 4. 多模态内容显示问题
+**症状**：图像内容无法正确显示
+**可能原因**：
+- 图像文件路径错误
+- MIME类型识别失败
+- Base64编码问题
+
+**解决步骤**：
+1. 检查图像文件是否存在
+2. 验证文件路径和权限
+3. 确认MIME类型检测
+4. 检查Base64编码过程
+
+#### 5. SSE事件处理异常
+**症状**：流式响应中断或显示不完整
+**可能原因**：
+- 事件解析错误
+- 状态管理问题
+- 网络连接中断
+
+**解决步骤**：
+1. 检查SSE事件格式
+2. 验证状态引用完整性
+3. 确认网络连接稳定性
+4. 查看事件处理日志
+
+#### 6. 画布集成问题
 **症状**：AI助手无法操作画布
 **可能原因**：
 - 权限不足
@@ -555,11 +778,14 @@ AI助手面板增强项目展现了现代全栈应用的最佳实践，通过精
 
 ### 主要成就
 - **完整的AI对话系统**：支持实时流式响应和多轮对话
+- **多模态内容处理**：支持文本和图像的混合内容展示
 - **剧院会话缓存系统**：支持跨多个剧院的独立聊天会话状态管理
 - **智能剧院切换**：自动检测剧院变化并切换会话状态
 - **增强画布同步**：支持 canvas_updated SSE 事件，实现画布状态实时同步
 - **灵活的多智能体协作**：三种不同的协作策略满足不同场景需求
 - **深度的画布集成**：AI助手可以直接操作和编辑画布内容
+- **增强的SSE事件处理**：完整的事件状态跟踪和错误处理机制
+- **多智能体协作UI**：可视化的工作流展示和状态管理
 - **优秀的用户体验**：直观的界面设计和流畅的交互体验
 - **可靠的系统架构**：清晰的分层设计和完善的错误处理机制
 - **状态持久化增强**：所有剧院会话状态保存到localStorage
@@ -571,6 +797,8 @@ AI助手面板增强项目展现了现代全栈应用的最佳实践，通过精
 - **智能体系统**：灵活的多智能体协作框架
 - **画布集成**：创新的AI与可视化工具结合
 - **剧院会话管理**：独特的剧院概念与AI助手的深度集成
+- **多模态内容支持**：完整的文本和图像处理能力
+- **事件驱动架构**：基于SSE的事件处理机制
 
 ### 未来发展方向
 - **性能进一步优化**：考虑引入Web Workers处理复杂计算
@@ -579,5 +807,7 @@ AI助手面板增强项目展现了现代全栈应用的最佳实践，通过精
 - **移动端适配**：优化移动设备上的使用体验
 - **插件生态**：构建开放的插件系统支持第三方扩展
 - **剧院功能扩展**：支持更多剧院级别的创作功能
+- **多模态内容增强**：支持视频、音频等更多媒体类型
+- **AI能力扩展**：集成更多先进的AI模型和服务
 
 该项目为AI创作工具的发展提供了宝贵的参考，展示了如何将复杂的AI技术与用户友好的界面设计相结合，创造出真正有价值的应用程序。

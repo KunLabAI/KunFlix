@@ -1,567 +1,166 @@
+'use client';
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Bot, X, Send, Sparkles, Loader2, Trash2, ChevronDown, Zap, Terminal, User } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useCanvasStore } from '@/store/useCanvasStore';
-import { useAIAssistantStore, type AgentInfo, type Message } from '@/store/useAIAssistantStore';
-import MultiAgentSteps, { type MultiAgentData, type AgentStep } from './MultiAgentSteps';
-import api from '@/lib/api';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { cn } from '@/lib/utils';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+
+// 导入拆分后的组件
+import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
+import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 
 export function AIAssistantPanel() {
-  // 使用全局store替代本地状态，避免画布刷新时丢失状态
+  // 面板状态
   const isOpen = useAIAssistantStore((state) => state.isOpen);
   const messages = useAIAssistantStore((state) => state.messages);
-  const sessionId = useAIAssistantStore((state) => state.sessionId);
-  const agentId = useAIAssistantStore((state) => state.agentId);
-  const agentName = useAIAssistantStore((state) => state.agentName);
-  const availableAgents = useAIAssistantStore((state) => state.availableAgents);
   const panelSize = useAIAssistantStore((state) => state.panelSize);
   const panelPosition = useAIAssistantStore((state) => state.panelPosition);
-  const currentTheaterId = useAIAssistantStore((state) => state.currentTheaterId);
-  
   const setIsOpen = useAIAssistantStore((state) => state.setIsOpen);
   const setMessages = useAIAssistantStore((state) => state.setMessages);
-  const addMessage = useAIAssistantStore((state) => state.addMessage);
-  const updateLastMessage = useAIAssistantStore((state) => state.updateLastMessage);
-  const setSessionId = useAIAssistantStore((state) => state.setSessionId);
-  const setAgentId = useAIAssistantStore((state) => state.setAgentId);
-  const setAgentName = useAIAssistantStore((state) => state.setAgentName);
-  const setCurrentAgent = useAIAssistantStore((state) => state.setCurrentAgent);
-  const setAvailableAgents = useAIAssistantStore((state) => state.setAvailableAgents);
-  const clearMessagesKeepSession = useAIAssistantStore((state) => state.clearMessagesKeepSession);
   const setPanelSize = useAIAssistantStore((state) => state.setPanelSize);
   const setPanelPosition = useAIAssistantStore((state) => state.setPanelPosition);
-  const switchTheater = useAIAssistantStore((state) => state.switchTheater);
-  
-  const [inputValue, setInputValue] = useState('');
+
+  // 会话管理
+  const {
+    sessionId,
+    agentId,
+    agentName,
+    availableAgents,
+    isLoadingAgents,
+    loadAgents,
+    createSessionForTheater,
+    switchAgent,
+    clearSession,
+  } = useSessionManager();
+
+  // SSE处理
+  const { parseSSELine, handleSSEEvent, resetStreamingState } = useSSEHandler();
+
+  // 本地状态
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
-  
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
-  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
-  
-  // Close on ESC
+
+  // ESC关闭面板
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        setIsOpen(false);
-      }
+      e.key === 'Escape' && isOpen && setIsOpen(false);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, setIsOpen]);
 
-  // Auto scroll to bottom
+  // 自动滚动到底部
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // Load available agents on mount
+  // 初始化加载Agent列表
   useEffect(() => {
-    const loadAgents = async () => {
-      setIsLoadingAgents(true);
-      try {
-        const agentsRes = await api.get('/agents');
-        const agents: AgentInfo[] = agentsRes.data || [];
-        setAvailableAgents(agents);
-      } catch (err) {
-        console.error('Failed to load agents:', err);
-      } finally {
-        setIsLoadingAgents(false);
-      }
-    };
     loadAgents();
-  }, []);
+  }, [loadAgents]);
 
-  // Switch theater when canvas theaterId changes
-  useEffect(() => {
-    const handleTheaterChange = async () => {
-      // Only switch if theaterId actually changed to a different theater
-      const currentStoreTheaterId = useAIAssistantStore.getState().currentTheaterId;
-      const isSameTheater = theaterId === currentStoreTheaterId;
-      
-      // Skip if same theater (e.g., canvas refresh from canvas_updated event)
-      if (isSameTheater) return;
-      
-      // Switch to new theater session
-      switchTheater(theaterId);
-      
-      // If no session for this theater, create one
-      if (theaterId && !sessionId) {
-        await createSessionForTheater(theaterId);
-      }
-    };
-    handleTheaterChange();
-  }, [theaterId]);
-
-  // Initialize session when panel opens
+  // 面板打开时初始化会话
   useEffect(() => {
     const initSession = async () => {
-      if (!isOpen) return;
-      
-      // If no session exists for current theater, create one
       const needsSession = !sessionId || !agentId;
-      needsSession && theaterId && await createSessionForTheater(theaterId);
+      needsSession && isOpen && theaterId && (await createSessionForTheater(theaterId));
     };
     initSession();
-  }, [isOpen]);
+  }, [isOpen, sessionId, agentId, theaterId, createSessionForTheater]);
 
-  // Cleanup on unmount
+  // 组件卸载时清理
   useEffect(() => {
     return () => abortControllerRef.current?.abort();
   }, []);
 
-  const createSessionForTheater = async (theaterId: string): Promise<{ sessionId: string; agentId: string; agentName: string } | null> => {
-    try {
-      // Try to find existing session for this theater
-      const sessionsRes = await api.get(`/chats?theater_id=${theaterId}&limit=1`);
-      const existingSessions = sessionsRes.data || [];
-      
-      if (existingSessions.length > 0) {
-        // Use existing session
-        const session = existingSessions[0];
-        // Fetch agent details
-        const agentRes = await api.get(`/agents/${session.agent_id}`);
-        const agent = agentRes.data;
-        
-        setSessionId(session.id);
-        setAgentId(session.agent_id);
-        setAgentName(agent?.name || 'AI 助手');
-        
-        // Load messages
-        const messagesRes = await api.get(`/chats/${session.id}/messages`);
-        const historyMessages = messagesRes.data.map((m: { role: string; content: string }) => ({
-          role: m.role === 'assistant' ? 'ai' : m.role,
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-          status: 'complete' as const,
-        }));
-        setMessages(historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES]);
-        
-        return { sessionId: session.id, agentId: session.agent_id, agentName: agent?.name || 'AI 助手' };
+  // 发送消息
+  const handleSend = useCallback(
+    async (content: string) => {
+      // 确保会话存在
+      let currentSessionId = sessionId;
+      let currentAgentId = agentId;
+
+      const needsSession = !currentSessionId || !currentAgentId;
+      if (needsSession) {
+        !theaterId && console.warn('No theater ID');
+        if (!theaterId) return;
+        const created = await createSessionForTheater(theaterId);
+        if (!created) return;
+        currentSessionId = created.sessionId;
+        currentAgentId = created.agentId;
       }
-      
-      // No existing session, create new one
-      // Fetch first available agent with canvas tools
-      const agentsRes = await api.get('/agents');
-      const agents = agentsRes.data || [];
-      const canvasAgent = agents.find((a: { target_node_types?: string[] }) => a.target_node_types?.length);
-      const selectedAgent = canvasAgent || agents[0];
-      
-      const noAgent = !selectedAgent;
-      noAgent && console.warn('No agents available');
-      if (noAgent) return null;
 
-      // Create chat session with theater_id
-      const res = await api.post('/chats', { 
-        agent_id: selectedAgent.id, 
-        title: `画布对话 - ${new Date().toLocaleDateString()}`,
-        theater_id: theaterId
-      });
-      const newSessionId = res.data.id as string;
+      // 添加用户消息
+      setMessages((prev) => [...prev, { role: 'user', content, status: 'complete' }]);
+      setIsLoading(true);
 
-      setAgentId(selectedAgent.id);
-      setAgentName(selectedAgent.name || 'AI 助手');
-      setSessionId(newSessionId);
-      setMessages([...DEFAULT_MESSAGES]);
+      // 取消之前的请求
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = new AbortController();
 
-      return { sessionId: newSessionId, agentId: selectedAgent.id, agentName: selectedAgent.name || 'AI 助手' };
-    } catch (err) {
-      console.error('Failed to initialize AI assistant:', err);
-      return null;
-    }
-  };
-
-  const switchAgent = async (newAgent: AgentInfo) => {
-    if (!theaterId) return;
-    
-    // Create new session with selected agent
-    try {
-      const res = await api.post('/chats', { 
-        agent_id: newAgent.id, 
-        title: `画布对话 - ${newAgent.name}`,
-        theater_id: theaterId
-      });
-      const newSessionId = res.data.id as string;
-
-      setCurrentAgent(newAgent.id, newAgent.name || 'AI 助手');
-      setSessionId(newSessionId);
-      setMessages([...DEFAULT_MESSAGES]);
-    } catch (err) {
-      console.error('Failed to switch agent:', err);
-    }
-  };
-
-  const handleClearSession = async () => {
-    if (!sessionId) {
-      // 没有会话ID，仅清空前端消息
-      clearMessagesKeepSession();
-      return;
-    }
-
-    try {
-      // 调用后端API清空数据库中的消息
-      await api.delete(`/chats/${sessionId}/messages`);
-      
-      // 清空前端消息但保留会话，以便继续对话
-      clearMessagesKeepSession();
-      
-      console.log('对话已清空');
-    } catch (err) {
-      console.error('Failed to clear session:', err);
-      // 即使API调用失败，也清空前端显示
-      clearMessagesKeepSession();
-    }
-  };
-
-  const DEFAULT_MESSAGES = [
-    { role: 'ai' as const, content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' as const }
-  ];
-
-  const parseSSELine = (line: string): { event: string; data: unknown } | null => {
-    const eventMatch = line.match(/^event:\s*(.+)$/);
-    const dataMatch = line.match(/^data:\s*(.+)$/);
-    
-    return eventMatch ? { event: eventMatch[1], data: null } 
-         : dataMatch ? { event: '', data: JSON.parse(dataMatch[1]) } 
-         : null;
-  };
-
-  // SSE事件处理状态引用（用于在异步流中保持状态）
-  const streamingStateRef = useRef<{
-    skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
-    toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed' }[];
-    steps: AgentStep[];
-    stepMap: Map<string, AgentStep>;
-    multiAgent: MultiAgentData | null;
-    assistantMsg: Message | null;
-  }>({
-    skillCalls: [],
-    toolCalls: [],
-    steps: [],
-    stepMap: new Map(),
-    multiAgent: null,
-    assistantMsg: null,
-  });
-
-  const resetStreamingState = () => {
-    streamingStateRef.current = {
-      skillCalls: [],
-      toolCalls: [],
-      steps: [],
-      stepMap: new Map(),
-      multiAgent: null,
-      assistantMsg: null,
-    };
-  };
-
-  const handleSSEEvent = useCallback((eventType: string, data: unknown) => {
-    const state = streamingStateRef.current;
-
-    const handlers: Record<string, () => void> = {
-      // 单智能体：流式文本
-      text: () => {
-        const chunk = (data as { chunk?: string })?.chunk || '';
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          const isStreaming = last?.role === 'ai' && last?.status === 'streaming';
-          if (isStreaming) {
-            const updated = { ...last, content: last.content + chunk };
-            state.assistantMsg = updated;
-            return [...prev.slice(0, -1), updated];
-          }
-          const newMsg: Message = { 
-            role: 'ai', 
-            content: chunk, 
-            status: 'streaming',
-            skill_calls: [...state.skillCalls],
-            tool_calls: [...state.toolCalls],
-          };
-          state.assistantMsg = newMsg;
-          return [...prev, newMsg];
+      try {
+        const token = localStorage.getItem('access_token');
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
+        const response = await fetch(`${apiBase}/api/chats/${currentSessionId}/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ role: 'user', content, theater_id: theaterId }),
+          signal: abortControllerRef.current.signal,
         });
-      },
 
-      // 技能调用开始
-      skill_call: () => {
-        const skillName = (data as { skill_name?: string })?.skill_name || '';
-        state.skillCalls.push({ skill_name: skillName, status: 'loading' });
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai' && last?.status === 'streaming') {
-            return [...prev.slice(0, -1), { ...last, skill_calls: [...state.skillCalls] }];
-          }
-          return prev;
-        });
-      },
+        !response.ok && (() => { throw new Error(`HTTP ${response.status}`); })();
 
-      // 技能加载完成
-      skill_loaded: () => {
-        const skillName = (data as { skill_name?: string })?.skill_name || '';
-        const skill = state.skillCalls.find(s => s.skill_name === skillName && s.status === 'loading');
-        skill && (skill.status = 'loaded');
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai' && last?.status === 'streaming') {
-            return [...prev.slice(0, -1), { ...last, skill_calls: [...state.skillCalls] }];
-          }
-          return prev;
-        });
-      },
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let currentEvent = '';
+        let buffer = '';
 
-      // 工具调用开始
-      tool_call: () => {
-        const toolName = (data as { tool_name?: string })?.tool_name || '';
-        const args = (data as { arguments?: Record<string, unknown> })?.arguments;
-        state.toolCalls.push({ tool_name: toolName, arguments: args, status: 'executing' });
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai' && last?.status === 'streaming') {
-            return [...prev.slice(0, -1), { ...last, tool_calls: [...state.toolCalls] }];
-          }
-          return prev;
-        });
-      },
+        while (reader) {
+          const { done, value } = await reader.read();
+          done && handleSSEEvent('done', {});
+          if (done) break;
 
-      // 工具执行完成
-      tool_result: () => {
-        const toolName = (data as { tool_name?: string })?.tool_name || '';
-        const tool = state.toolCalls.find(t => t.tool_name === toolName && t.status === 'executing');
-        tool && (tool.status = 'completed');
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai' && last?.status === 'streaming') {
-            return [...prev.slice(0, -1), { ...last, tool_calls: [...state.toolCalls] }];
-          }
-          return prev;
-        });
-      },
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-      // 多智能体：子任务创建
-      subtask_created: () => {
-        const d = data as { subtask_id?: string; agent?: string; description?: string };
-        state.multiAgent = state.multiAgent || { steps: state.steps, finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 } as MultiAgentData;
-        const step: AgentStep = {
-          subtask_id: d.subtask_id || '',
-          agent_name: d.agent || '',
-          description: d.description || '',
-          status: 'pending',
-        };
-        state.stepMap.set(d.subtask_id || '', step);
-        state.steps.push(step);
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          const baseContent = last?.role === 'ai' ? last.content : `正在协作... (${state.steps.length} 个智能体)`;
-          const newMsg: Message = {
-            role: 'ai',
-            content: baseContent,
-            status: 'streaming',
-            multi_agent: state.multiAgent ? { ...state.multiAgent, steps: [...state.steps] } : { steps: [...state.steps], finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 },
-          };
-          state.assistantMsg = newMsg;
-          return last?.role === 'ai' ? [...prev.slice(0, -1), newMsg] : [...prev, newMsg];
-        });
-      },
+          for (const line of lines) {
+            const trimmed = line.trim();
+            !trimmed && (currentEvent = '');
+            if (!trimmed) continue;
 
-      // 多智能体：子任务开始
-      subtask_started: () => {
-        const d = data as { subtask_id?: string; agent_name?: string };
-        const step = state.stepMap.get(d.subtask_id || '');
-        step && (step.status = 'running', step.agent_name = d.agent_name || step.agent_name);
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai') {
-            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
-          }
-          return prev;
-        });
-      },
-
-      // 多智能体：子任务完成
-      subtask_completed: () => {
-        const d = data as { subtask_id?: string; result?: string; agent_name?: string; description?: string; tokens?: { input: number; output: number } };
-        const step = state.stepMap.get(d.subtask_id || '');
-        if (step) {
-          step.status = 'completed';
-          step.result = d.result;
-          step.agent_name = d.agent_name || step.agent_name;
-          step.description = d.description || step.description;
-          step.tokens = d.tokens;
-        }
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai') {
-            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
-          }
-          return prev;
-        });
-      },
-
-      // 多智能体：子任务失败
-      subtask_failed: () => {
-        const d = data as { subtask_id?: string; error?: string };
-        const step = state.stepMap.get(d.subtask_id || '');
-        step && (step.status = 'failed', step.error = d.error);
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai') {
-            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
-          }
-          return prev;
-        });
-      },
-
-      // 多智能体：任务完成
-      task_completed: () => {
-        const d = data as { result?: string; total_input_tokens?: number; total_output_tokens?: number; total_credit_cost?: number };
-        if (state.multiAgent) {
-          state.multiAgent.finalResult = d.result || '';
-          state.multiAgent.totalTokens = { input: d.total_input_tokens || 0, output: d.total_output_tokens || 0 };
-          state.multiAgent.creditCost = d.total_credit_cost || 0;
-        }
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'ai') {
-            return [...prev.slice(0, -1), { 
-              ...last, 
-              content: d.result || last.content,
-              multi_agent: state.multiAgent ? { ...state.multiAgent } : undefined,
-            }];
-          }
-          return prev;
-        });
-      },
-
-      // 画布更新
-      canvas_updated: () => {
-        const { theater_id } = data as { theater_id: string };
-        const store = useCanvasStore.getState();
-        if (store.theaterId === theater_id) {
-          store.syncTheater(theater_id);
-        }
-      },
-
-      // 完成
-      done: () => {
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          return last?.status === 'streaming'
-            ? [...prev.slice(0, -1), { ...last, status: 'complete' }]
-            : prev;
-        });
-        setIsLoading(false);
-        resetStreamingState();
-      },
-
-      // 错误
-      error: () => {
-        const msg = (data as { message?: string })?.message || 'Unknown error';
-        setMessages(prev => [...prev, { role: 'ai', content: `错误: ${msg}`, status: 'complete' }]);
-        setIsLoading(false);
-        resetStreamingState();
-      },
-    };
-    handlers[eventType]?.();
-  }, []);
-
-  const handleSend = async () => {
-    const content = inputValue.trim();
-    // Early return if empty
-    const isEmpty = !content;
-    isEmpty && setInputValue('');
-    if (isEmpty) return;
-    
-    // Ensure session exists
-    let currentSessionId = sessionId;
-    let currentAgentId = agentId;
-
-    const needsSession = !currentSessionId || !currentAgentId;
-    if (needsSession) {
-      const noTheater = !theaterId;
-      if (noTheater) return;
-      const created = await createSessionForTheater(theaterId);
-      const failed = !created;
-      if (failed) return;
-      currentSessionId = created.sessionId;
-      currentAgentId = created.agentId;
-    }
-
-    // Add user message
-    setMessages(prev => [...prev, { role: 'user', content, status: 'complete' }]);
-    setInputValue('');
-    setIsLoading(true);
-
-    // Abort previous request
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const token = localStorage.getItem('access_token');
-      const response = await fetch(`/api/chats/${currentSessionId}/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ role: 'user', content, theater_id: theaterId }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      !response.ok && (() => { throw new Error(`HTTP ${response.status}`); })();
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let currentEvent = '';
-      let buffer = '';
-
-      while (reader) {
-        const { done, value } = await reader.read();
-        done && handleSSEEvent('done', {});
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          !trimmed && (currentEvent = '');
-          if (!trimmed) continue;
-
-          const parsed = parseSSELine(trimmed);
-          if (parsed) {
-            if (parsed.event) currentEvent = parsed.event;
-            if (parsed.data !== null && currentEvent) {
-              handleSSEEvent(currentEvent, parsed.data);
+            const parsed = parseSSELine(trimmed);
+            if (parsed) {
+              parsed.event && (currentEvent = parsed.event);
+              parsed.data !== null && currentEvent && handleSSEEvent(currentEvent, parsed.data);
             }
           }
         }
+      } catch (err) {
+        const isAbort = (err as Error).name === 'AbortError';
+        !isAbort &&
+          setMessages((prev) => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      const isAbort = (err as Error).name === 'AbortError';
-      isAbort || setMessages(prev => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
-      setIsLoading(false);
-    }
-  };
+    },
+    [sessionId, agentId, theaterId, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent]
+  );
 
-  // Resize Handlers
+  // 调整面板大小
   const handleResizeStart = (e: React.PointerEvent, direction: 'left' | 'bottom' | 'corner') => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const startX = e.clientX;
     const startY = e.clientY;
     const startWidth = panelSize.width;
@@ -570,19 +169,9 @@ export function AIAssistantPanel() {
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
-      
-      let newWidth = startWidth;
-      let newHeight = startHeight;
 
-      if (direction === 'left' || direction === 'corner') {
-        // Dragging left handle to the left (negative delta) increases width
-        newWidth = Math.max(300, startWidth - deltaX);
-      }
-      
-      if (direction === 'bottom' || direction === 'corner') {
-        // Dragging bottom handle down (positive delta) increases height
-        newHeight = Math.max(400, startHeight + deltaY);
-      }
+      const newWidth = (direction === 'left' || direction === 'corner') ? Math.max(300, startWidth - deltaX) : startWidth;
+      const newHeight = (direction === 'bottom' || direction === 'corner') ? Math.max(400, startHeight + deltaY) : startHeight;
 
       setPanelSize({ width: newWidth, height: newHeight });
     };
@@ -598,11 +187,12 @@ export function AIAssistantPanel() {
 
   return (
     <>
-      {/* Drag boundary container (covers the screen but allows pointer events through) */}
+      {/* 拖拽边界容器 */}
       <div className="fixed inset-0 pointer-events-none z-40" ref={constraintsRef} />
 
       <AnimatePresence initial={false} mode="wait">
         {!isOpen ? (
+          // AI按钮
           <motion.div
             key="ai-button"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -621,6 +211,7 @@ export function AIAssistantPanel() {
             </Button>
           </motion.div>
         ) : (
+          // AI面板
           <motion.div
             key="ai-panel"
             drag
@@ -630,220 +221,59 @@ export function AIAssistantPanel() {
             dragMomentum={false}
             dragElastic={0}
             onDragEnd={(_, info) => {
-              // Save panel position after drag
               setPanelPosition({ x: panelPosition.x + info.offset.x, y: panelPosition.y + info.offset.y });
             }}
             initial={{ opacity: 0, width: 48, height: 48, borderRadius: 24, x: panelPosition.x, y: panelPosition.y }}
-            animate={{ 
-              opacity: 1, 
-              width: panelSize.width, 
-              height: panelSize.height, 
-              borderRadius: 12, 
+            animate={{
+              opacity: 1,
+              width: panelSize.width,
+              height: panelSize.height,
+              borderRadius: 12,
               x: panelPosition.x,
               y: panelPosition.y,
             }}
             exit={{ opacity: 0, width: 48, height: 48, borderRadius: 24 }}
-            transition={{ 
-              duration: 0.3, 
+            transition={{
+              duration: 0.3,
               ease: 'easeInOut',
-              // Disable transition for x/y to prevent drag lag
               x: { duration: 0 },
-              y: { duration: 0 }
+              y: { duration: 0 },
             }}
             className="pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default"
             style={{ touchAction: 'none' }}
           >
-            {/* Header (Draggable Handle) */}
-            <div 
-              className="flex items-center justify-between p-3 border-b bg-secondary/30 cursor-grab active:cursor-grabbing"
-              onPointerDown={(e) => dragControls.start(e)}
-            >
-              <div className="flex items-center gap-2 pointer-events-none">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Bot className="h-4 w-4 text-primary" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="font-medium text-sm">AI 创作助手</span>
-                  {/* Agent selector */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="h-5 px-1 text-xs text-muted-foreground hover:text-foreground pointer-events-auto"
-                        disabled={isLoadingAgents}
-                      >
-                        {agentName}
-                        <ChevronDown className="h-3 w-3 ml-1" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-48">
-                      {availableAgents.map((agent) => (
-                        <DropdownMenuItem
-                          key={agent.id}
-                          onClick={() => switchAgent(agent)}
-                          className="text-xs cursor-pointer"
-                        >
-                          <div className="flex flex-col">
-                            <span className="font-medium">{agent.name}</span>
-                            {agent.target_node_types && agent.target_node_types.length > 0 && (
-                              <span className="text-[10px] text-muted-foreground">
-                                支持: {agent.target_node_types.join(', ')}
-                              </span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      ))}
-                      {availableAgents.length === 0 && (
-                        <div className="p-2 text-xs text-muted-foreground text-center">
-                          暂无可用智能体
-                        </div>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-muted"
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    await handleClearSession();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title="清空对话"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive z-50"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsOpen(false);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+            {/* 头部 */}
+            <PanelHeader
+              agentName={agentName}
+              availableAgents={availableAgents}
+              isLoadingAgents={isLoadingAgents}
+              onSwitchAgent={switchAgent}
+              onClearSession={clearSession}
+              onClose={() => setIsOpen(false)}
+              onDragStart={(e) => dragControls.start(e)}
+            />
 
-            {/* Chat History */}
+            {/* 消息列表 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10">
               {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "flex",
-                    msg.role === 'user' ? "justify-end" : "justify-start"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
-                      msg.role === 'user'
-                        ? "bg-primary text-primary-foreground rounded-tr-sm"
-                        : "bg-secondary text-secondary-foreground rounded-tl-sm"
-                    )}
-                  >
-                    {/* 用户消息 */}
-                    {msg.role === 'user' && (
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                    )}
-
-                    {/* AI消息 */}
-                    {msg.role === 'ai' && (
-                      <div className="space-y-2">
-                        {/* Skill call indicators */}
-                        {msg.skill_calls?.map((sc, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
-                            {sc.status === 'loading' ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Zap className="h-3 w-3" />
-                            )}
-                            <span>
-                              {sc.status === 'loading'
-                                ? `正在加载技能: ${sc.skill_name}`
-                                : `已加载技能: ${sc.skill_name}`}
-                            </span>
-                          </div>
-                        ))}
-
-                        {/* Tool call indicators */}
-                        {msg.tool_calls?.map((tc, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
-                            {tc.status === 'executing' ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <Terminal className="h-3 w-3" />
-                            )}
-                            <span>
-                              {tc.status === 'executing'
-                                ? `正在执行: ${tc.tool_name}`
-                                : `已完成: ${tc.tool_name}`}
-                            </span>
-                          </div>
-                        ))}
-
-                        {/* Multi-agent steps */}
-                        {msg.multi_agent && (
-                          <MultiAgentSteps {...msg.multi_agent} className="mb-2" />
-                        )}
-
-                        {/* Markdown content */}
-                        <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <ChatMessage key={i} message={msg} isLoading={isLoading} />
               ))}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
-            <div className="p-3 border-t bg-background">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSend();
-                }}
-                className="flex items-center gap-2"
-              >
-                <Input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="输入你的想法..."
-                  className="flex-1"
-                  autoFocus
-                />
-                <Button type="submit" size="icon" disabled={!inputValue.trim() || isLoading}>
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              </form>
-            </div>
+            {/* 输入区域 */}
+            <MessageInput onSend={handleSend} isLoading={isLoading} />
 
-            {/* Resize Handles */}
-            {/* Left Edge */}
-            <div 
+            {/* 调整大小手柄 */}
+            <div
               className="absolute left-0 top-0 bottom-4 w-1 cursor-ew-resize hover:bg-primary/50 transition-colors z-50"
               onPointerDown={(e) => handleResizeStart(e, 'left')}
             />
-            {/* Bottom Edge */}
-            <div 
+            <div
               className="absolute bottom-0 left-4 right-0 h-1 cursor-ns-resize hover:bg-primary/50 transition-colors z-50"
               onPointerDown={(e) => handleResizeStart(e, 'bottom')}
             />
-            {/* Bottom-Left Corner */}
-            <div 
+            <div
               className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize hover:bg-primary/50 transition-colors z-50 rounded-tr-lg"
               onPointerDown={(e) => handleResizeStart(e, 'corner')}
             />

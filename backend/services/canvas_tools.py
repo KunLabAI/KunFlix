@@ -24,20 +24,104 @@ logger = logging.getLogger(__name__)
 
 CANVAS_TOOL_NAMES = {"list_canvas_nodes", "get_canvas_node", "create_canvas_node", "update_canvas_node", "delete_canvas_node"}
 
+# Legacy node type migration mapping (old -> new)
+NODE_TYPE_MIGRATION = {
+    "script": "text",
+    "character": "image",
+}
+
+
+def _migrate_node_type(node_type: str) -> str:
+    """Migrate legacy node type names to current names."""
+    return NODE_TYPE_MIGRATION.get(node_type, node_type)
+
+# Node type definitions with descriptions for Agent understanding
+NODE_TYPE_INFO = {
+    "text": {
+        "description": "文本节点：用于剧本、文案、广告等文字内容。支持富文本格式。",
+        "fields": {
+            "title": "标题，字符串类型，必填",
+            "content": "正文内容，Markdown格式字符串。支持标题(#/##/###)、段落、加粗(**text**)、斜体(*text*)、代码块等Markdown语法。创建节点时必须提供此字段，更新节点时如果不需要修改内容则不要包含此字段。",
+            "tags": "标签列表，数组类型，可选，用于分类和筛选"
+        },
+        "example": {
+            "title": "故事大纲",
+            "content": "# 第一章\n\n故事开始...\n\n## 场景一\n\n主角登场。",
+            "tags": ["大纲", "第一章"]
+        }
+    },
+    "image": {
+        "description": "图像节点：用于角色设定、场景、海报等图像内容。需要调用生图模型生成图像，支持JPEG/PNG/JPG格式图像。",
+        "fields": {
+            "name": "图像名称，字符串类型",
+            "description": "图像描述，字符串类型，包含场景、人物等信息",
+            "imageUrl": "图片URL地址，字符串类型，支持jpeg/png/jpg格式",
+            "fitMode": "图片适配模式，字符串类型，可选值为cover(填充)或contain(适应)"
+        },
+        "example": {"name": "小明", "description": "主角，18岁，性格开朗", "imageUrl": "/media/xxx.jpg", "fitMode": "cover"}
+    },
+    "video": {
+        "description": "视频节点：用于动画、短片、视频内容。需要调用视频处理模型生成视频，支持MP4格式视频。",
+        "fields": {
+            "name": "视频名称，字符串类型",
+            "description": "视频描述，字符串类型，包含场景、时长等信息",
+            "videoUrl": "视频URL地址，字符串类型，支持mp4格式",
+            "fitMode": "视频适配模式，字符串类型，可选值为cover(填充)或contain(适应)"
+        },
+        "example": {"name": "开场动画", "description": "城市夜景转场", "videoUrl": "/media/xxx.mp4", "fitMode": "cover"}
+    },
+    "storyboard": {
+        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。JSON格式，支持自定义字段。",
+        "fields": {
+            "shotNumber": "镜头号，字符串类型，如'1-1', '2-3'",
+            "description": "镜头描述，字符串类型，描述画面内容",
+            "duration": "时长，整数类型，单位为秒",
+            "pivotConfig": "多维表格配置，JSON格式，可自定义字段类型和显示方式"
+        },
+        "example": {"shotNumber": "1-1", "description": "全景：城市夜景", "duration": 5, "pivotConfig": {"columns": [{"key": "camera", "label": "机位", "type": "text"}]}}
+    }
+}
+
+# Schema for validation (simplified)
 NODE_TYPE_SCHEMA = {
-    "script":     {"title": str, "description": str, "content": Any, "tags": list},
-    "character":  {"name": str, "description": str, "imageUrl": str},
-    "video":      {"name": str, "description": str, "videoUrl": str},
+    "text":     {"title": str, "content": str, "tags": list},
+    "image":  {"name": str, "description": str, "imageUrl": str, "fitMode": str},
+    "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
     "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any},
 }
 
-_DEFAULT_NODE_WIDTH = 280
-_DEFAULT_NODE_HEIGHT = 200
-_DEFAULT_X_OFFSET = 300
+_DEFAULT_NODE_WIDTH = 420
+_DEFAULT_NODE_HEIGHT = 300
+_DEFAULT_X_OFFSET = 460
+
+
+def _estimate_text_node_size(data: dict) -> tuple[int, int]:
+    """Estimate appropriate node dimensions for text content."""
+    content = data.get("content", "") or ""
+    content_len = len(content)
+    # ~35 CJK chars per line at 420px width, 14px font
+    line_count = max(content.count('\n') + 1, content_len // 35 + 1)
+    chrome_px = 120  # title bar + padding + margins
+    estimated_height = line_count * 24 + chrome_px
+    return 420, max(300, min(800, estimated_height))
 
 # ---------------------------------------------------------------------------
 # Tool Definitions (OpenAI format)
 # ---------------------------------------------------------------------------
+
+def _build_node_type_description() -> str:
+    """Build a detailed description of node types for the Agent."""
+    lines = ["节点类型说明："]
+    for node_type, info in NODE_TYPE_INFO.items():
+        lines.append(f"\n**{node_type}**: {info['description']}")
+        lines.append("字段说明：")
+        for field, desc in info['fields'].items():
+            lines.append(f"  - {field}: {desc}")
+        if "example" in info:
+            lines.append("示例：")
+            lines.append(f"  {info['example']}")
+    return "\n".join(lines)
+
 
 def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
     """Return OpenAI-format tool definitions for canvas tools.
@@ -48,7 +132,10 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
     Returns:
         List of 5 tool definitions with node_type enums restricted to target_node_types.
     """
-    type_enum = target_node_types or list(NODE_TYPE_SCHEMA.keys())
+    # Migrate legacy node type names to current names
+    migrated_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+    type_enum = migrated_types or list(NODE_TYPE_SCHEMA.keys())
+    node_type_desc = _build_node_type_description()
     
     return [
         {
@@ -56,15 +143,15 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "function": {
                 "name": "list_canvas_nodes",
                 "description": (
-                    "List all nodes on the canvas. Use this to see what content exists. "
-                    "Can filter by node_type. Returns a summary with id, type, position, and key data fields."
+                    "列出画布上的所有节点。可以按节点类型筛选。"
+                    "返回节点摘要，包含id、类型、位置和关键数据字段。"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_type": {
                             "type": "string",
-                            "description": "Filter by node type. Leave empty to list all accessible nodes.",
+                            "description": "按节点类型筛选，留空则列出所有可访问的节点。",
                             "enum": type_enum,
                         },
                     },
@@ -77,15 +164,15 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "function": {
                 "name": "get_canvas_node",
                 "description": (
-                    "Get the full details of a specific node by its ID. "
-                    "Returns complete node data including all fields."
+                    "获取指定节点的完整详情。"
+                    "返回节点的所有数据字段。"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "The UUID of the node to retrieve.",
+                            "description": "要获取的节点UUID。",
                         },
                     },
                     "required": ["node_id"],
@@ -97,28 +184,29 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "function": {
                 "name": "create_canvas_node",
                 "description": (
-                    "Create a new node on the canvas. Specify the node type and data. "
-                    "Position is optional - if not provided, the node will be placed to the right of existing nodes."
+                    "在画布上创建新节点。指定节点类型和数据。"
+                    "位置可选，如未提供则自动放置在现有节点右侧。\n\n"
+                    f"{node_type_desc}"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_type": {
                             "type": "string",
-                            "description": "The type of node to create.",
+                            "description": "要创建的节点类型。",
                             "enum": type_enum,
                         },
                         "data": {
                             "type": "object",
-                            "description": "Node-specific data (e.g., title, content for script; name, imageUrl for character).",
+                            "description": "节点数据，根据节点类型提供相应字段。参考上方节点类型说明。",
                         },
                         "position_x": {
                             "type": "number",
-                            "description": "X coordinate on the canvas. Optional.",
+                            "description": "画布X坐标，可选。",
                         },
                         "position_y": {
                             "type": "number",
-                            "description": "Y coordinate on the canvas. Optional.",
+                            "description": "画布Y坐标，可选。",
                         },
                     },
                     "required": ["node_type", "data"],
@@ -130,19 +218,19 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "function": {
                 "name": "update_canvas_node",
                 "description": (
-                    "Update an existing node's data. Provide only the fields you want to change - "
-                    "they will be merged with existing data."
+                    "更新现有节点的数据。只需提供要修改的字段，会与现有数据合并。\n\n"
+                    f"{node_type_desc}"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "The UUID of the node to update.",
+                            "description": "要更新的节点UUID。",
                         },
                         "data": {
                             "type": "object",
-                            "description": "Fields to update. Will be merged with existing node data.",
+                            "description": "要更新的字段，会与现有数据合并。参考上方节点类型说明。",
                         },
                     },
                     "required": ["node_id", "data"],
@@ -154,14 +242,14 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "function": {
                 "name": "delete_canvas_node",
                 "description": (
-                    "Delete a node from the canvas. This will also remove any edges connected to this node."
+                    "从画布上删除节点。同时会删除与该节点相连的所有连线。"
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "The UUID of the node to delete.",
+                            "description": "要删除的节点UUID。",
                         },
                     },
                     "required": ["node_id"],
@@ -190,8 +278,8 @@ def _node_summary(node: TheaterNode) -> dict:
     data = node.data or {}
     # Key fields vary by type
     key_fields_map = {
-        "script": ["title", "tags"],
-        "character": ["name"],
+        "text": ["title", "tags"],
+        "image": ["name"],
         "video": ["name"],
         "storyboard": ["shotNumber", "description"],
     }
@@ -228,16 +316,19 @@ async def _exec_list_nodes(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
     """List nodes, optionally filtered by node_type."""
-    node_type_filter = args.get("node_type")
+    node_type_filter = _migrate_node_type(args.get("node_type", "")) if args.get("node_type") else None
+    
+    # Migrate target_node_types for validation
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
     
     query = select(TheaterNode).where(TheaterNode.theater_id == theater_id)
     
     # Apply type filter if specified and valid
-    valid_filter = node_type_filter and node_type_filter in target_node_types
+    valid_filter = node_type_filter and node_type_filter in migrated_target_types
     query = query.where(TheaterNode.node_type == node_type_filter) if valid_filter else query
     
     # Only list nodes of types we can control
-    query = query.where(TheaterNode.node_type.in_(target_node_types)) if target_node_types else query
+    query = query.where(TheaterNode.node_type.in_(migrated_target_types)) if migrated_target_types else query
     
     result = await db.execute(query.order_by(TheaterNode.created_at))
     nodes = result.scalars().all()
@@ -254,6 +345,9 @@ async def _exec_get_node(
     """Get full details of a single node."""
     node_id = args.get("node_id", "")
     
+    # Migrate target_node_types for validation
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+    
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
         TheaterNode.theater_id == theater_id,
@@ -264,7 +358,7 @@ async def _exec_get_node(
     # Validation
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot access node of type '{node.node_type}'")
-        if target_node_types and node.node_type not in target_node_types
+        if migrated_target_types and node.node_type not in migrated_target_types
         else _json_result(_node_full(node))
     )
 
@@ -273,13 +367,15 @@ async def _exec_create_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession, agent_id: str | None = None
 ) -> str:
     """Create a new node on the canvas."""
-    node_type = args.get("node_type", "")
+    node_type = _migrate_node_type(args.get("node_type", ""))
     data = args.get("data", {})
     position_x = args.get("position_x")
     position_y = args.get("position_y")
     
+    # Migrate target_node_types for validation
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
     # Validate node_type
-    type_allowed = node_type in target_node_types
+    type_allowed = node_type in migrated_target_types
     return _error_result(f"Node type '{node_type}' not allowed") if not type_allowed else await _do_create_node(
         node_type, data, position_x, position_y, theater_id, agent_id, db
     )
@@ -298,14 +394,19 @@ async def _do_create_node(
     final_x = final_x if final_x is not None else auto_x
     final_y = final_y if final_y is not None else auto_y
     
+    # Dynamic size estimation for text nodes, default for others
+    _size_estimators = {"text": _estimate_text_node_size}
+    estimator = _size_estimators.get(node_type)
+    width, height = estimator(data) if estimator else (_DEFAULT_NODE_WIDTH, _DEFAULT_NODE_HEIGHT)
+
     node = TheaterNode(
         id=str(uuid.uuid4()),
         theater_id=theater_id,
         node_type=node_type,
         position_x=final_x,
         position_y=final_y,
-        width=_DEFAULT_NODE_WIDTH,
-        height=_DEFAULT_NODE_HEIGHT,
+        width=width,
+        height=height,
         z_index=0,
         data=data,
         created_by_agent_id=agent_id,
@@ -339,6 +440,9 @@ async def _exec_update_node(
     node_id = args.get("node_id", "")
     new_data = args.get("data", {})
     
+    # Migrate target_node_types for validation
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+    
     # Fetch node
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
@@ -350,14 +454,16 @@ async def _exec_update_node(
     # Validation
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot update node of type '{node.node_type}'")
-        if node.node_type not in target_node_types
+        if node.node_type not in migrated_target_types
         else await _do_update_node(node, new_data, db)
     )
 
 
 async def _do_update_node(node: TheaterNode, new_data: dict, db: AsyncSession) -> str:
     """Actual node update logic."""
-    merged_data = {**(node.data or {}), **new_data}
+    # Filter out None values to prevent overwriting existing data
+    filtered_new_data = {k: v for k, v in new_data.items() if v is not None}
+    merged_data = {**(node.data or {}), **filtered_new_data}
     node.data = merged_data
     
     await db.commit()
@@ -376,6 +482,9 @@ async def _exec_delete_node(
     """Delete a node and its associated edges."""
     node_id = args.get("node_id", "")
     
+    # Migrate target_node_types for validation
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+    
     # Fetch node
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
@@ -387,7 +496,7 @@ async def _exec_delete_node(
     # Validation
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot delete node of type '{node.node_type}'")
-        if node.node_type not in target_node_types
+        if node.node_type not in migrated_target_types
         else await _do_delete_node(node, node_id, theater_id, db)
     )
 
