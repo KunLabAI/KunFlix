@@ -3,6 +3,12 @@
 <cite>
 **本文档引用的文件**
 - [AIAssistantPanel.tsx](file://frontend/src/components/canvas/AIAssistantPanel.tsx)
+- [ChatMessage.tsx](file://frontend/src/components/ai-assistant/ChatMessage.tsx)
+- [MessageInput.tsx](file://frontend/src/components/ai-assistant/MessageInput.tsx)
+- [PanelHeader.tsx](file://frontend/src/components/ai-assistant/PanelHeader.tsx)
+- [useSSEHandler.ts](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts)
+- [useSessionManager.ts](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts)
+- [index.ts](file://frontend/src/components/ai-assistant/index.ts)
 - [useAIAssistantStore.ts](file://frontend/src/store/useAIAssistantStore.ts)
 - [useCanvasStore.ts](file://frontend/src/store/useCanvasStore.ts)
 - [api.ts](file://frontend/src/lib/api.ts)
@@ -18,12 +24,11 @@
 
 ## 更新摘要
 **变更内容**
-- 新增多模态内容支持，包括图像和文本混合内容处理
-- 增强SSE事件处理机制，支持更丰富的事件类型和状态管理
-- 新增多智能体协作UI组件，提供可视化的工作流展示
-- 改进画布集成机制，支持实时画布状态同步和事件通知
-- 优化流式事件处理，支持技能调用、工具执行等详细状态跟踪
-- 增强错误处理和状态恢复机制
+- 新增模块化组件架构：ChatMessage、MessageInput、PanelHeader等专用组件
+- 新增Hook系统：useSSEHandler和useSessionManager实现关注点分离
+- 重构AI助手面板：采用拆分后的专用组件和Hook
+- 增强状态管理：更清晰的组件职责划分
+- 改进可维护性和可测试性：模块化设计提升代码质量
 
 ## 目录
 1. [简介](#简介)
@@ -31,80 +36,81 @@
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [多模态内容支持](#多模态内容支持)
-7. [SSE事件处理增强](#sse事件处理增强)
-8. [多智能体协作UI](#多智能体协作ui)
-9. [依赖关系分析](#依赖关系分析)
-10. [性能考虑](#性能考虑)
-11. [故障排除指南](#故障排除指南)
-12. [结论](#结论)
+6. [模块化组件系统](#模块化组件系统)
+7. [Hook系统](#hook系统)
+8. [多模态内容支持](#多模态内容支持)
+9. [SSE事件处理增强](#sse事件处理增强)
+10. [多智能体协作UI](#多智能体协作ui)
+11. [依赖关系分析](#依赖关系分析)
+12. [性能考虑](#性能考虑)
+13. [故障排除指南](#故障排除指南)
+14. [结论](#结论)
 
 ## 简介
 
-AI助手面板增强是一个集成了智能对话、多智能体协作和画布集成的综合性AI创作平台。该项目通过一个可拖拽、可调整大小的AI助手面板，为用户提供实时的AI对话体验，同时支持多智能体协作、画布节点操作和实时流式响应。
+AI助手面板增强项目经过重大重构，采用了全新的模块化架构设计。项目通过拆分AI助手面板为专用组件和Hook系统，实现了更好的代码组织、可维护性和可测试性。新增的ChatMessage、MessageInput、PanelHeader等组件以及useSSEHandler和useSessionManager Hook，为开发者提供了更清晰的开发体验和更强的扩展能力。
 
-**重大增强功能**：
-- **多模态内容支持**：支持文本、图像等多种内容类型的混合处理
-- **增强SSE事件处理**：支持技能调用、工具执行、多智能体协作等详细事件跟踪
-- **多智能体协作UI**：提供可视化的多智能体工作流展示和状态管理
-- **实时画布同步**：支持画布更新事件的实时同步和状态恢复
-- **流式事件管理**：完整的事件状态跟踪和错误处理机制
-- **增强的错误处理**：完善的错误捕获和用户反馈机制
+**重大重构功能**：
+- **模块化组件架构**：ChatMessage、MessageInput、PanelHeader等专用组件
+- **Hook系统**：useSSEHandler和useSessionManager实现关注点分离
+- **增强的状态管理**：更清晰的组件职责划分
+- **改进的可维护性**：模块化设计提升代码质量
+- **更好的可测试性**：独立组件便于单元测试
+- **增强的扩展性**：Hook系统支持自定义扩展
 
 ## 项目结构
 
-项目采用前后端分离的架构设计，主要分为以下层次：
+项目采用全新的模块化架构设计，将AI助手功能拆分为独立的组件和Hook：
 
 ```mermaid
 graph TB
-subgraph "前端层"
-UI[React组件层]
-Store[Zustand状态管理]
-API[API客户端]
-TheaterStore[剧院状态管理]
-CanvasStore[画布状态管理]
-MultiAgentUI[多智能体UI组件]
+subgraph "AI助手模块"
+AIAssistantPanel[AIAssistantPanel.tsx]
+ChatMessage[ChatMessage.tsx]
+MessageInput[MessageInput.tsx]
+PanelHeader[PanelHeader.tsx]
+useSSEHandler[useSSEHandler.ts]
+useSessionManager[useSessionManager.ts]
+index[index.ts]
 end
-subgraph "后端层"
-Router[FastAPI路由层]
-Service[业务服务层]
-Model[数据模型层]
-DB[(数据库)]
+subgraph "状态管理"
+useAIAssistantStore[useAIAssistantStore.ts]
+useCanvasStore[useCanvasStore.ts]
 end
-subgraph "AI引擎层"
-Agent[智能体执行器]
-Orchestrator[编排器]
-Provider[LLM提供者]
-Tool[工具系统]
+subgraph "后端服务"
+chats[后台聊天路由]
+orchestrator[编排器]
+agent_executor[智能体执行器]
+theater[剧院服务]
 end
-UI --> API
-API --> Router
-Router --> Service
-Service --> Model
-Model --> DB
-Service --> Agent
-Agent --> Orchestrator
-Orchestrator --> Provider
-Orchestrator --> Tool
-TheaterStore --> CanvasStore
-CanvasStore --> UI
-MultiAgentUI --> UI
+AIAssistantPanel --> ChatMessage
+AIAssistantPanel --> MessageInput
+AIAssistantPanel --> PanelHeader
+AIAssistantPanel --> useSSEHandler
+AIAssistantPanel --> useSessionManager
+ChatMessage --> useAIAssistantStore
+MessageInput --> useAIAssistantStore
+PanelHeader --> useAIAssistantStore
+useSSEHandler --> useAIAssistantStore
+useSessionManager --> useAIAssistantStore
+AIAssistantPanel --> useCanvasStore
+useSSEHandler --> useCanvasStore
+useSessionManager --> chats
 ```
 
 **图表来源**
-- [main.py:110-152](file://backend/main.py#L110-L152)
-- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
-- [useAIAssistantStore.ts:28-255](file://frontend/src/store/useAIAssistantStore.ts#L28-L255)
+- [AIAssistantPanel.tsx:10-12](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L10-L12)
+- [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
 
 **章节来源**
-- [main.py:1-174](file://backend/main.py#L1-L174)
-- [models.py:1-200](file://backend/models.py#L1-L200)
+- [AIAssistantPanel.tsx:1-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L286)
+- [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
 
 ## 核心组件
 
-### AI助手面板组件
+### 重构后的AI助手面板组件
 
-AI助手面板是整个系统的核心交互界面，提供了完整的AI对话体验：
+AI助手面板经过重构，现在采用模块化设计，将功能拆分为多个专用组件：
 
 ```mermaid
 classDiagram
@@ -117,323 +123,446 @@ class AIAssistantPanel {
 +panelSize : Size
 +panelPosition : Position
 +currentTheaterId : string
++useSessionManager()
++useSSEHandler()
 +handleSend()
-+switchAgent(agent)
-+createSessionForTheater()
-+handleSSEEvent()
-+switchTheater()
-+resetStreamingState()
++handleResizeStart()
 }
-class Message {
-+role : MessageRole
-+content : string | MessageContent
-+status : MessageStatus
-+skill_calls : SkillCall[]
-+tool_calls : ToolCall[]
-+multi_agent : MultiAgentData
+class ChatMessage {
++message : Message
++isLoading : boolean
++className : string
++render()
 }
-class AgentInfo {
-+id : string
-+name : string
-+description : string
-+target_node_types : string[]
+class MessageInput {
++onSend : Function
++isLoading : boolean
++disabled : boolean
++placeholder : string
++handleSubmit()
++handleKeyDown()
 }
-class Size {
-+width : number
-+height : number
-}
-class Position {
-+x : number
-+y : number
-}
-class TheaterSession {
-+sessionId : string
-+agentId : string
+class PanelHeader {
 +agentName : string
-+messages : Message[]
++availableAgents : AgentInfo[]
++isLoadingAgents : boolean
++onSwitchAgent : Function
++onClearSession : Function
++onClose : Function
++onDragStart : Function
++renderAgentSelector()
 }
-AIAssistantPanel --> Message : manages
-AIAssistantPanel --> AgentInfo : displays
-AIAssistantPanel --> Size : controls
-AIAssistantPanel --> Position : controls
-AIAssistantPanel --> TheaterSession : manages
+AIAssistantPanel --> ChatMessage : renders
+AIAssistantPanel --> MessageInput : contains
+AIAssistantPanel --> PanelHeader : contains
+AIAssistantPanel --> useSSEHandler : uses
+AIAssistantPanel --> useSessionManager : uses
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
-- [useAIAssistantStore.ts:7-255](file://frontend/src/store/useAIAssistantStore.ts#L7-L255)
+- [AIAssistantPanel.tsx:14-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L14-L286)
+- [ChatMessage.tsx:46-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L46-L126)
+- [MessageInput.tsx:9-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L9-L110)
+- [PanelHeader.tsx:15-123](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L15-L123)
 
-### 剧院会话缓存系统
+### Hook系统架构
 
-系统新增了剧院会话缓存系统，实现了跨多个剧院的独立会话状态管理：
+新增的Hook系统实现了关注点分离，提供专门的功能封装：
 
 ```mermaid
 classDiagram
-class AIAssistantState {
-+isOpen : boolean
-+currentTheaterId : string
-+messages : Message[]
-+sessionId : string
-+agentId : string
-+availableAgents : AgentInfo[]
-+theaterSessions : Record~string, TheaterSession~
-+panelSize : Size
-+panelPosition : Position
-+setIsOpen()
-+switchTheater()
-+setMessages()
-+clearSession()
+class useSSEHandler {
++streamingStateRef : StreamingState
++parseSSELine()
++handleSSEEvent()
++resetStreamingState()
++handleText()
++handleSkillCall()
++handleToolCall()
++handleMultiAgentEvents()
 }
-class TheaterSession {
+class useSessionManager {
 +sessionId : string
 +agentId : string
 +agentName : string
-+messages : Message[]
++availableAgents : AgentInfo[]
++isLoadingAgents : boolean
++loadAgents()
++createSessionForTheater()
++switchAgent()
++clearSession()
++handleTheaterChange()
 }
-AIAssistantState --> TheaterSession : contains
-AIAssistantState --> Size : contains
-AIAssistantState --> Position : contains
+class StreamingState {
++skillCalls : SkillCall[]
++toolCalls : ToolCall[]
++steps : AgentStep[]
++stepMap : Map~string, AgentStep~
++multiAgent : MultiAgentData
++assistantMsg : Message
++roundHasTools : boolean
+}
+useSSEHandler --> StreamingState : manages
+useSessionManager --> useAIAssistantStore : uses
+useSSEHandler --> useCanvasStore : uses
 ```
 
 **图表来源**
-- [useAIAssistantStore.ts:20-82](file://frontend/src/store/useAIAssistantStore.ts#L20-L82)
-- [useAIAssistantStore.ts:110-149](file://frontend/src/store/useAIAssistantStore.ts#L110-L149)
+- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
+- [useSessionManager.ts:12-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L179)
 
 **章节来源**
-- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
-- [useAIAssistantStore.ts:1-255](file://frontend/src/store/useAIAssistantStore.ts#L1-L255)
+- [AIAssistantPanel.tsx:25-39](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L25-L39)
+- [useSSEHandler.ts:1-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L305)
+- [useSessionManager.ts:1-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L179)
 
 ## 架构概览
 
-系统采用分层架构设计，实现了清晰的关注点分离和剧院会话管理：
+系统采用模块化架构设计，实现了清晰的关注点分离：
 
 ```mermaid
 sequenceDiagram
 participant User as 用户
-participant Panel as AI助手面板
-participant Store as 状态管理
-participant TheaterStore as 剧院状态管理
+participant AIAssistantPanel as AI助手面板
+participant PanelHeader as 面板头部
+participant MessageInput as 消息输入
+participant ChatMessage as 聊天消息
+participant useSessionManager as 会话管理Hook
+participant useSSEHandler as SSE处理Hook
 participant API as API客户端
-participant Router as FastAPI路由
-participant Service as 业务服务
-participant Orchestrator as 编排器
-participant Agent as 智能体执行器
-participant DB as 数据库
-User->>Panel : 输入消息
-Panel->>Store : 更新消息状态
-Panel->>API : 发送请求
-API->>Router : POST /api/chats/{session_id}/messages
-Router->>Service : 处理消息
-Service->>Orchestrator : 执行编排
-Orchestrator->>Agent : 调用智能体
-Agent->>DB : 保存消息
-Agent-->>Service : 返回结果
-Service-->>Router : SSE流
-Router-->>API : SSE流
-API-->>Panel : 推送消息
-Panel->>Store : 更新状态
-Panel->>TheaterStore : 切换剧院会话
-Panel-->>User : 显示结果
+User->>PanelHeader : 切换智能体/清空会话
+PanelHeader->>useSessionManager : 切换Agent
+useSessionManager->>API : 切换Agent请求
+API-->>useSessionManager : Agent信息
+useSessionManager-->>PanelHeader : 更新UI
+User->>MessageInput : 输入消息
+MessageInput->>AIAssistantPanel : 发送消息
+AIAssistantPanel->>useSessionManager : 创建会话
+useSessionManager->>API : 创建会话
+API-->>useSessionManager : 会话信息
+AIAssistantPanel->>useSSEHandler : 处理SSE事件
+useSSEHandler->>API : 流式响应
+API-->>useSSEHandler : SSE事件
+useSSEHandler->>ChatMessage : 更新消息显示
+ChatMessage->>User : 显示消息
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:520-558](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L520-L558)
-- [chats.py:189-238](file://backend/routers/chats.py#L189-L238)
+- [AIAssistantPanel.tsx:246-265](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L246-L265)
+- [useSessionManager.ts:110-131](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L110-L131)
+- [useSSEHandler.ts:61-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L61-L297)
 
 **章节来源**
-- [chats.py:1-757](file://backend/routers/chats.py#L1-L757)
-- [orchestrator.py:560-672](file://backend/services/orchestrator.py#L560-L672)
+- [AIAssistantPanel.tsx:82-157](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L82-L157)
+- [useSessionManager.ts:48-108](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L48-L108)
 
 ## 详细组件分析
 
-### AI助手面板组件
+### ChatMessage组件
 
-AI助手面板是一个高度交互的组件，提供了丰富的功能特性：
+ChatMessage组件负责单个消息的渲染，支持多种消息类型和状态显示：
 
 #### 组件特性
-- **可拖拽布局**：支持拖拽改变位置和大小
-- **多智能体支持**：动态切换不同AI智能体
-- **实时流式响应**：支持SSE流式传输
-- **画布集成**：与画布系统深度集成
-- **剧院会话管理**：完整的对话历史管理和持久化
-- **智能剧院切换**：自动检测剧院变化并切换会话
-- **多模态内容显示**：支持文本和图像的混合内容展示
-- **技能工具跟踪**：实时显示技能加载和工具执行状态
+- **多模态内容渲染**：支持文本和代码块的Markdown渲染
+- **流式内容显示**：实时显示流式文本内容
+- **状态指示器**：显示技能调用和工具执行状态
+- **多智能体支持**：显示多智能体协作步骤
+- **思考状态指示**：AI思考时的动画效果
 
-#### 核心功能实现
+#### 渲染逻辑
 
 ```mermaid
 flowchart TD
-Start([用户输入]) --> Validate[验证输入]
-Validate --> HasSession{是否有会话?}
-HasSession --> |否| CreateSession[创建会话]
-HasSession --> |是| SendMsg[发送消息]
-CreateSession --> CheckTheater{检查剧院ID}
-CheckTheater --> |变化| SwitchTheater[切换剧院]
-CheckTheater --> |相同| SendMsg
-SwitchTheater --> SendMsg
-SendMsg --> StreamResp[流式响应]
-StreamResp --> UpdateUI[更新界面]
-UpdateUI --> SaveMsg[保存消息]
-SaveMsg --> End([完成])
+Start([接收消息]) --> CheckRole{检查消息角色}
+CheckRole --> |用户| RenderUser[渲染用户消息]
+CheckRole --> |AI| CheckStatus{检查状态}
+CheckStatus --> |思考中| RenderThinking[渲染思考指示器]
+CheckStatus --> |流式| CheckContent{检查内容类型}
+CheckStatus --> |完成| RenderComplete[渲染完成消息]
+CheckContent --> |纯文本| RenderText[渲染文本]
+CheckContent --> |Markdown| RenderMarkdown[渲染Markdown]
+RenderUser --> End([完成])
+RenderThinking --> End
+RenderText --> End
+RenderMarkdown --> End
+RenderComplete --> End
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:86-117](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L86-L117)
-- [AIAssistantPanel.tsx:520-558](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L520-L558)
+- [ChatMessage.tsx:52-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L52-L126)
 
 **章节来源**
-- [AIAssistantPanel.tsx:16-856](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L16-L856)
+- [ChatMessage.tsx:1-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L126)
 
-### 剧院会话缓存系统
+### MessageInput组件
 
-系统新增了剧院会话缓存系统，实现了跨多个剧院的独立会话状态管理：
+MessageInput组件提供消息输入功能，支持键盘快捷键和状态反馈：
 
-#### 缓存机制
-- **剧院ID映射**：每个剧院ID对应一个独立的会话缓存
-- **自动切换**：检测剧院变化时自动切换到相应会话
-- **状态持久化**：所有剧院会话状态保存到localStorage
-- **智能恢复**：应用重启后自动恢复到上次使用的剧院
+#### 组件特性
+- **智能输入处理**：Enter发送，Shift+Enter换行
+- **状态反馈**：显示AI响应状态
+- **禁用控制**：根据加载状态自动禁用
+- **焦点管理**：自动聚焦和重新聚焦
+- **占位符提示**：友好的用户提示
 
-#### 切换流程
-
-```mermaid
-classDiagram
-class TheaterSessionCache {
-+theaterSessions : Record~string, TheaterSession~
-+currentTheaterId : string
-+switchTheater(newTheaterId)
-+saveCurrentSession()
-+loadTheaterSession()
-}
-class TheaterSession {
-+sessionId : string
-+agentId : string
-+agentName : string
-+messages : Message[]
-}
-TheaterSessionCache --> TheaterSession : manages
-```
-
-**图表来源**
-- [useAIAssistantStore.ts:46-149](file://frontend/src/store/useAIAssistantStore.ts#L46-L149)
-
-**章节来源**
-- [useAIAssistantStore.ts:1-255](file://frontend/src/store/useAIAssistantStore.ts#L1-L255)
-
-### 增强画布同步机制
-
-系统增强了画布同步机制，支持 canvas_updated SSE 事件：
-
-#### 同步特性
-- **实时事件处理**：监听 canvas_updated 事件
-- **剧院过滤**：只同步当前活跃剧院的画布状态
-- **状态合并**：智能合并画布状态变化
-- **视口保持**：避免重置画布视口导致的性能问题
-
-#### 同步流程
+#### 输入处理流程
 
 ```mermaid
 sequenceDiagram
-participant Agent as 智能体
-participant SSE as SSE事件
-participant CanvasStore as 画布状态管理
-participant TheaterStore as 剧院状态管理
-Agent->>SSE : 发送 canvas_updated 事件
-SSE->>CanvasStore : 推送画布更新
-CanvasStore->>TheaterStore : 检查剧院ID
-TheaterStore->>CanvasStore : 验证当前剧院
-CanvasStore->>CanvasStore : 合并画布状态
-CanvasStore-->>Agent : 确认同步完成
+participant User as 用户
+participant MessageInput as 消息输入
+participant Form as 表单
+User->>MessageInput : 输入文本
+MessageInput->>MessageInput : 更新状态
+User->>MessageInput : 按下Enter键
+MessageInput->>Form : 提交表单
+Form->>MessageInput : 验证输入
+MessageInput->>MessageInput : 清空输入框
+MessageInput->>MessageInput : 重新聚焦
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:448-455](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L448-L455)
+- [MessageInput.tsx:32-50](file://frontend/src/components/ai-assistant/MessageInput.tsx#L32-L50)
 
 **章节来源**
-- [AIAssistantPanel.tsx:417-454](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L417-L454)
+- [MessageInput.tsx:1-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L110)
 
-### 多智能体编排系统
+### PanelHeader组件
 
-系统支持三种不同的智能体协作策略：
+PanelHeader组件提供面板头部功能，包含智能体选择和操作按钮：
 
-#### 策略类型
-1. **管道策略**：顺序或并行的任务执行
-2. **计划策略**：基于依赖关系的任务规划
-3. **讨论策略**：多智能体间的讨论协作
+#### 组件特性
+- **智能体选择**：下拉菜单选择可用智能体
+- **动态加载**：智能体列表的加载状态显示
+- **操作按钮**：清空会话和关闭面板
+- **拖拽支持**：面板拖拽功能
+- **节点类型显示**：显示智能体支持的节点类型
 
-#### 执行流程
+#### 智能体选择流程
+
+```mermaid
+flowchart TD
+Click[点击智能体名称] --> CheckLoading{检查加载状态}
+CheckLoading --> |加载中| ShowSpinner[显示加载指示器]
+CheckLoading --> |完成| ShowDropdown[显示下拉菜单]
+ShowDropdown --> SelectAgent[选择智能体]
+SelectAgent --> CallSwitch[调用切换函数]
+CallSwitch --> UpdateUI[更新UI状态]
+ShowSpinner --> End([完成])
+UpdateUI --> End
+```
+
+**图表来源**
+- [PanelHeader.tsx:51-90](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L51-L90)
+
+**章节来源**
+- [PanelHeader.tsx:1-123](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L1-L123)
+
+### useSSEHandler Hook
+
+useSSEHandler Hook封装了SSE事件处理逻辑，提供统一的事件处理接口：
+
+#### Hook特性
+- **事件分类处理**：区分单智能体和多智能体事件
+- **状态管理**：维护流式处理状态
+- **事件解析**：解析SSE事件格式
+- **状态重置**：处理完成后重置状态
+- **画布同步**：处理画布更新事件
+
+#### 事件处理架构
 
 ```mermaid
 classDiagram
-class CollaborationStrategy {
-<<abstract>>
-+execute() AsyncGenerator
-+create_subtask_record()
-+execute_subtask()
-+execute_subtask_streaming()
+class SSEEventHandler {
++streamingStateRef : StreamingState
++parseSSELine(line)
++handleSSEEvent(eventType, data)
++resetStreamingState()
 }
-class PipelineStrategy {
-+execute()
-+_execute_parallel()
+class StreamingState {
++skillCalls : SkillCall[]
++toolCalls : ToolCall[]
++steps : AgentStep[]
++stepMap : Map~string, AgentStep~
++multiAgent : MultiAgentData
++assistantMsg : Message
++roundHasTools : boolean
 }
-class PlanStrategy {
-+execute()
-+_execute_parallel()
+class EventHandlers {
++text : Function
++skill_call : Function
++skill_loaded : Function
++tool_call : Function
++tool_result : Function
++subtask_created : Function
++subtask_started : Function
++subtask_completed : Function
++subtask_failed : Function
++task_completed : Function
++canvas_updated : Function
++done : Function
++error : Function
 }
-class DiscussionStrategy {
-+execute()
-+_build_discussion_prompt()
-+_leader_should_continue()
-}
-CollaborationStrategy <|-- PipelineStrategy
-CollaborationStrategy <|-- PlanStrategy
-CollaborationStrategy <|-- DiscussionStrategy
+SSEEventHandler --> StreamingState : manages
+SSEEventHandler --> EventHandlers : uses
 ```
 
 **图表来源**
-- [orchestrator.py:82-530](file://backend/services/orchestrator.py#L82-L530)
+- [useSSEHandler.ts:23-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L297)
 
 **章节来源**
-- [orchestrator.py:1-890](file://backend/services/orchestrator.py#L1-L890)
+- [useSSEHandler.ts:1-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L305)
 
-### 画布集成机制
+### useSessionManager Hook
 
-AI助手与画布系统的集成提供了强大的创作能力：
+useSessionManager Hook封装了会话管理逻辑，提供完整的会话生命周期管理：
 
-#### 画布工具支持
-- **节点创建**：智能体可以直接创建新的画布节点
-- **节点编辑**：支持编辑现有节点内容
-- **节点删除**：可以删除不需要的节点
-- **节点连接**：自动建立节点间的连接关系
+#### Hook特性
+- **智能体管理**：加载和切换智能体
+- **会话创建**：为剧院创建会话
+- **消息管理**：加载和清空消息
+- **剧院切换**：处理剧院切换逻辑
+- **状态同步**：与画布状态同步
 
-#### 事件同步
+#### 会话管理流程
 
 ```mermaid
 sequenceDiagram
-participant Agent as 智能体
-participant Canvas as 画布系统
-participant Store as 状态管理
-participant SSE as SSE事件
-Agent->>Canvas : 执行画布操作
-Canvas->>Canvas : 更新画布状态
-Canvas->>Store : 触发状态变更
-Store->>SSE : 发送canvas_updated事件
-SSE->>Agent : 通知画布已更新
-Agent->>Canvas : 请求重新加载
+participant Component as 组件
+participant useSessionManager as 会话管理Hook
+participant API as API服务
+Component->>useSessionManager : 初始化
+useSessionManager->>API : 加载智能体列表
+API-->>useSessionManager : 智能体列表
+useSessionManager->>Component : 更新状态
+Component->>useSessionManager : 切换剧院
+useSessionManager->>useSessionManager : 检查会话
+alt 有现有会话
+useSessionManager->>API : 加载消息历史
+API-->>useSessionManager : 消息历史
+useSessionManager->>Component : 更新UI
+else 无现有会话
+useSessionManager->>API : 创建新会话
+API-->>useSessionManager : 新会话信息
+useSessionManager->>Component : 更新UI
+end
 ```
 
 **图表来源**
-- [chats.py:590-594](file://backend/routers/chats.py#L590-L594)
-- [AIAssistantPanel.tsx:448-453](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L448-L453)
+- [useSessionManager.ts:48-108](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L48-L108)
 
 **章节来源**
-- [chats.py:325-417](file://backend/routers/chats.py#L325-L417)
-- [useCanvasStore.ts:185-462](file://frontend/src/store/useCanvasStore.ts#L185-L462)
+- [useSessionManager.ts:1-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L179)
+
+## 模块化组件系统
+
+### 组件导出系统
+
+AI助手模块现在通过统一的导出入口提供所有组件和Hook：
+
+```mermaid
+graph TB
+index[index.ts]
+ChatMessage[ChatMessage.tsx]
+MessageInput[MessageInput.tsx]
+PanelHeader[PanelHeader.tsx]
+SkillCallIndicator[SkillCallIndicator.tsx]
+ToolCallIndicator[ToolCallIndicator.tsx]
+ThinkingIndicator[ThinkingIndicator.tsx]
+TypewriterText[TypewriterText.tsx]
+useSSEHandler[useSSEHandler.ts]
+useSessionManager[useSessionManager.ts]
+index --> ChatMessage
+index --> MessageInput
+index --> PanelHeader
+index --> SkillCallIndicator
+index --> ToolCallIndicator
+index --> ThinkingIndicator
+index --> TypewriterText
+index --> useSSEHandler
+index --> useSessionManager
+```
+
+**图表来源**
+- [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
+
+### 组件职责分离
+
+每个组件都有明确的职责范围：
+
+#### ChatMessage组件
+- **职责**：渲染单个消息内容
+- **输入**：Message对象和加载状态
+- **输出**：格式化的消息显示
+- **依赖**：Markdown渲染、状态指示器
+
+#### MessageInput组件
+- **职责**：处理用户输入和提交
+- **输入**：回调函数和状态
+- **输出**：标准化的消息内容
+- **依赖**：表单验证、键盘事件
+
+#### PanelHeader组件
+- **职责**：提供面板头部功能
+- **输入**：智能体信息和回调函数
+- **输出**：用户交互事件
+- **依赖**：下拉菜单、按钮组件
+
+**章节来源**
+- [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
+- [ChatMessage.tsx:46-50](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L46-L50)
+- [MessageInput.tsx:9-15](file://frontend/src/components/ai-assistant/MessageInput.tsx#L9-L15)
+- [PanelHeader.tsx:15-24](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L15-L24)
+
+## Hook系统
+
+### Hook设计原则
+
+Hook系统遵循单一职责原则，每个Hook专注于特定功能领域：
+
+#### useSSEHandler Hook
+- **专注领域**：SSE事件处理
+- **状态管理**：流式处理状态
+- **事件解析**：SSE事件格式解析
+- **UI更新**：触发状态更新
+
+#### useSessionManager Hook
+- **专注领域**：会话生命周期管理
+- **API交互**：与后端服务通信
+- **状态同步**：与全局状态同步
+- **错误处理**：统一的错误处理
+
+### Hook组合使用
+
+AI助手面板通过Hook组合实现复杂功能：
+
+```mermaid
+graph LR
+AIAssistantPanel[AIAssistantPanel]
+useSessionManager[useSessionManager]
+useSSEHandler[useSSEHandler]
+ChatMessage[ChatMessage]
+MessageInput[MessageInput]
+PanelHeader[PanelHeader]
+AIAssistantPanel --> useSessionManager
+AIAssistantPanel --> useSSEHandler
+AIAssistantPanel --> ChatMessage
+AIAssistantPanel --> MessageInput
+AIAssistantPanel --> PanelHeader
+useSessionManager --> API[API服务]
+useSSEHandler --> API
+```
+
+**图表来源**
+- [AIAssistantPanel.tsx:25-39](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L25-L39)
+
+**章节来源**
+- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
+- [useSessionManager.ts:12-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L179)
 
 ## 多模态内容支持
 
-系统新增了对多模态内容的完整支持，包括文本和图像的混合处理：
+系统保持了完整的多模态内容支持，包括文本和图像的混合处理：
 
 ### 内容类型定义
 
@@ -509,6 +638,7 @@ class StreamingState {
 +stepMap : Map~string, AgentStep~
 +multiAgent : MultiAgentData
 +assistantMsg : Message
++roundHasTools : boolean
 }
 class EventHandler {
 <<interface>>
@@ -519,7 +649,7 @@ SSEEventHandler --> EventHandler : uses
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:244-269](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L244-L269)
+- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
 
 ### 事件处理流程
 
@@ -546,7 +676,7 @@ SSEEventHandler --> EventHandler : uses
 - **error**：错误发生
 
 **章节来源**
-- [AIAssistantPanel.tsx:271-478](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L271-L478)
+- [useSSEHandler.ts:64-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L64-L297)
 
 ## 多智能体协作UI
 
@@ -611,141 +741,112 @@ MultiAgentSteps --> Tokens : contains
 
 ## 依赖关系分析
 
-系统各组件间的依赖关系清晰明确：
+系统各组件间的依赖关系更加清晰：
 
 ```mermaid
 graph TD
-subgraph "前端依赖"
-A[AIAssistantPanel.tsx] --> B[useAIAssistantStore.ts]
-A --> C[useCanvasStore.ts]
-A --> D[api.ts]
-A --> E[MultiAgentSteps.tsx]
-B --> F[Zustand]
-C --> G[@xyflow/react]
-D --> H[Axios]
-I[TheaterService] --> J[TheaterAPI]
-K[CanvasStore] --> I
-L[AIAssistantStore] --> K
+subgraph "AI助手模块"
+AIAssistantPanel[AIAssistantPanel.tsx]
+ChatMessage[ChatMessage.tsx]
+MessageInput[MessageInput.tsx]
+PanelHeader[PanelHeader.tsx]
+useSSEHandler[useSSEHandler.ts]
+useSessionManager[useSessionManager.ts]
+index[index.ts]
 end
-subgraph "后端依赖"
-M[chats.py] --> N[FastAPI]
-M --> O[SQLAlchemy]
-P[orchestrator.py] --> Q[agentscope]
-R[agent_executor.py] --> S[DialogAgent]
-T[models.py] --> U[SQLAlchemy ORM]
-V[theater.py] --> W[TheaterService]
-X[theater.py] --> Y[TheaterAPI]
+subgraph "状态管理"
+useAIAssistantStore[useAIAssistantStore.ts]
+useCanvasStore[useCanvasStore.ts]
 end
-subgraph "AI引擎依赖"
-Z[LLM提供者] --> AA[OpenAI]
-Z --> AB[Anthropic]
-Z --> AC[Gemini]
-Z --> AD[DashScope]
+subgraph "后端服务"
+chats[后台聊天路由]
+orchestrator[编排器]
+agent_executor[智能体执行器]
+theater[剧院服务]
 end
-A --> M
-M --> P
-P --> R
-R --> Z
-V --> X
+AIAssistantPanel --> ChatMessage
+AIAssistantPanel --> MessageInput
+AIAssistantPanel --> PanelHeader
+AIAssistantPanel --> useSSEHandler
+AIAssistantPanel --> useSessionManager
+ChatMessage --> useAIAssistantStore
+MessageInput --> useAIAssistantStore
+PanelHeader --> useAIAssistantStore
+useSSEHandler --> useAIAssistantStore
+useSessionManager --> useAIAssistantStore
+useSSEHandler --> useCanvasStore
+useSessionManager --> chats
+AIAssistantPanel --> useCanvasStore
 ```
 
 **图表来源**
-- [main.py:41-152](file://backend/main.py#L41-L152)
-- [AIAssistantPanel.tsx:1-15](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L15)
+- [AIAssistantPanel.tsx:10-12](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L10-L12)
+- [useSSEHandler.ts:4-6](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L4-L6)
 
 **章节来源**
-- [main.py:1-174](file://backend/main.py#L1-L174)
-- [models.py:1-200](file://backend/models.py#L1-L200)
+- [AIAssistantPanel.tsx:1-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L286)
+- [useSessionManager.ts:3-6](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L3-L6)
 
 ## 性能考虑
 
-系统在设计时充分考虑了性能优化：
+模块化架构带来了多项性能优化：
 
 ### 前端性能优化
-- **状态持久化**：使用localStorage减少重新加载时间
-- **组件懒加载**：动态导入大型组件
-- **内存管理**：及时清理事件监听器和定时器
-- **渲染优化**：使用React.memo和useCallback优化重渲染
-- **剧院会话缓存**：避免重复创建会话的开销
-- **智能事件处理**：只处理当前活跃剧院的画布更新
-- **流式渲染**：SSE事件的增量更新减少重绘
-- **多模态内容优化**：图像内容的延迟加载和缓存
+- **组件懒加载**：独立组件便于按需加载
+- **状态隔离**：Hook提供细粒度的状态管理
+- **渲染优化**：组件职责分离减少不必要的重渲染
+- **内存管理**：Hook自动管理事件监听器和定时器
+- **模块化缓存**：独立组件支持更好的缓存策略
+- **事件处理优化**：Hook集中处理事件提高效率
 
-### 后端性能优化
-- **异步处理**：全面使用async/await减少阻塞
-- **连接池**：数据库连接池管理
-- **缓存策略**：智能体和模型实例缓存
-- **流式响应**：SSE流式传输减少延迟
-- **剧院会话查询**：优化剧院相关查询性能
-- **工具调用优化**：智能体工具的按需加载
-- **多模态处理**：图像文件的高效处理和缓存
+### Hook性能优化
+- **状态引用**：使用useRef避免不必要的状态更新
+- **回调优化**：useCallback优化回调函数
+- **依赖管理**：精确的依赖数组减少重渲染
+- **异步处理**：Hook内部处理异步操作
+- **错误边界**：Hook提供统一的错误处理
 
-### 数据库优化
-- **索引优化**：关键字段建立索引
-- **查询优化**：批量操作和预加载
-- **事务管理**：原子性操作保证数据一致性
-- **剧院关联查询**：优化剧院与会话的关联查询
+### 组件性能优化
+- **条件渲染**：根据状态决定渲染内容
+- **虚拟滚动**：大量消息时的性能优化
+- **图片懒加载**：多模态内容的图片优化
+- **Markdown渲染**：高效的Markdown处理
+- **动画优化**：Framer Motion的性能优化
 
 ## 故障排除指南
 
-### 常见问题及解决方案
+### 模块化架构常见问题
 
-#### 1. 剧院切换失效
-**症状**：切换剧院后会话状态没有更新
+#### 1. 组件导入错误
+**症状**：组件无法正确导入
 **可能原因**：
-- 剧院ID检测逻辑错误
-- 会话缓存未正确保存
-- localStorage访问权限问题
+- 导出路径错误
+- 组件名称不匹配
+- 类型定义缺失
 
 **解决步骤**：
-1. 检查 switchTheater 方法的实现
-2. 验证 theaterSessions 缓存是否正确更新
-3. 确认 localStorage 中的缓存数据
+1. 检查index.ts导出路径
+2. 验证组件文件名和导出名称
+3. 确认类型定义正确
+4. 检查模块解析配置
+
+#### 2. Hook状态不同步
+**症状**：Hook状态与组件状态不一致
+**可能原因**：
+- Hook依赖数组错误
+- 状态更新时机问题
+- 异步操作处理不当
+
+**解决步骤**：
+1. 检查Hook的依赖数组
+2. 验证状态更新逻辑
+3. 确认异步操作的正确处理
 4. 查看控制台错误日志
 
-#### 2. 画布同步异常
-**症状**：画布更新后AI助手面板没有同步
+#### 3. 事件处理异常
+**症状**：SSE事件处理失败
 **可能原因**：
-- SSE事件处理错误
-- 剧院ID过滤逻辑问题
-- 画布状态合并冲突
-
-**解决步骤**：
-1. 检查 canvas_updated 事件处理器
-2. 验证剧院ID匹配逻辑
-3. 确认画布状态合并算法
-4. 查看画布同步日志
-
-#### 3. 多智能体协作失败
-**症状**：智能体间通信异常
-**可能原因**：
-- 智能体配置错误
-- LLM提供者连接问题
-- 数据库连接异常
-
-**解决步骤**：
-1. 验证智能体配置
-2. 检查LLM提供者设置
-3. 查看数据库连接状态
-4. 检查网络连接
-
-#### 4. 多模态内容显示问题
-**症状**：图像内容无法正确显示
-**可能原因**：
-- 图像文件路径错误
-- MIME类型识别失败
-- Base64编码问题
-
-**解决步骤**：
-1. 检查图像文件是否存在
-2. 验证文件路径和权限
-3. 确认MIME类型检测
-4. 检查Base64编码过程
-
-#### 5. SSE事件处理异常
-**症状**：流式响应中断或显示不完整
-**可能原因**：
-- 事件解析错误
+- 事件格式错误
 - 状态管理问题
 - 网络连接中断
 
@@ -755,59 +856,76 @@ V --> X
 3. 确认网络连接稳定性
 4. 查看事件处理日志
 
-#### 6. 画布集成问题
-**症状**：AI助手无法操作画布
+#### 4. 会话管理问题
+**症状**：会话状态管理异常
 **可能原因**：
-- 权限不足
-- 画布节点类型不匹配
-- 代理工具配置错误
+- API调用失败
+- 状态同步问题
+- 剧院切换逻辑错误
 
 **解决步骤**：
-1. 检查智能体的target_node_types配置
-2. 验证画布节点权限
-3. 确认代理工具可用性
-4. 查看代理工具日志
+1. 检查API响应状态
+2. 验证状态同步逻辑
+3. 确认剧院ID匹配
+4. 查看会话管理日志
+
+#### 5. 组件渲染问题
+**症状**：消息渲染异常
+**可能原因**：
+- Markdown渲染错误
+- 状态传递问题
+- 条件渲染逻辑错误
+
+**解决步骤**：
+1. 检查Markdown语法
+2. 验证状态传递
+3. 确认渲染条件
+4. 查看组件日志
+
+#### 6. Hook组合使用问题
+**症状**：多个Hook组合使用异常
+**可能原因**：
+- Hook依赖关系错误
+- 状态冲突
+- 事件处理冲突
+
+**解决步骤**：
+1. 检查Hook依赖关系
+2. 验证状态隔离
+3. 确认事件处理顺序
+4. 查看Hook组合日志
 
 **章节来源**
-- [AIAssistantPanel.tsx:54-62](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L54-L62)
-- [chats.py:223-226](file://backend/routers/chats.py#L223-L226)
+- [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
+- [useSSEHandler.ts:38-48](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L38-L48)
+- [useSessionManager.ts:30-46](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L30-L46)
 
 ## 结论
 
-AI助手面板增强项目展现了现代全栈应用的最佳实践，通过精心设计的架构和丰富的功能特性，为用户提供了强大的AI创作体验。
+AI助手面板增强项目经过重大重构，采用了全新的模块化架构设计，显著提升了代码质量和可维护性。通过拆分AI助手面板为专用组件和Hook系统，项目实现了更好的关注点分离和职责划分。
 
 ### 主要成就
-- **完整的AI对话系统**：支持实时流式响应和多轮对话
-- **多模态内容处理**：支持文本和图像的混合内容展示
-- **剧院会话缓存系统**：支持跨多个剧院的独立聊天会话状态管理
-- **智能剧院切换**：自动检测剧院变化并切换会话状态
-- **增强画布同步**：支持 canvas_updated SSE 事件，实现画布状态实时同步
-- **灵活的多智能体协作**：三种不同的协作策略满足不同场景需求
-- **深度的画布集成**：AI助手可以直接操作和编辑画布内容
-- **增强的SSE事件处理**：完整的事件状态跟踪和错误处理机制
-- **多智能体协作UI**：可视化的工作流展示和状态管理
-- **优秀的用户体验**：直观的界面设计和流畅的交互体验
-- **可靠的系统架构**：清晰的分层设计和完善的错误处理机制
-- **状态持久化增强**：所有剧院会话状态保存到localStorage
+- **模块化架构**：ChatMessage、MessageInput、PanelHeader等专用组件
+- **Hook系统**：useSSEHandler和useSessionManager实现关注点分离
+- **增强的可维护性**：清晰的组件职责划分
+- **改进的可测试性**：独立组件便于单元测试
+- **更好的扩展性**：Hook系统支持自定义扩展
+- **统一的导出接口**：通过index.ts提供统一访问
 
 ### 技术亮点
-- **前后端分离架构**：现代化的技术栈和清晰的职责划分
-- **状态管理优化**：Zustand提供了轻量级但功能强大的状态管理
-- **流式数据处理**：SSE技术实现实时数据传输
-- **智能体系统**：灵活的多智能体协作框架
-- **画布集成**：创新的AI与可视化工具结合
-- **剧院会话管理**：独特的剧院概念与AI助手的深度集成
-- **多模态内容支持**：完整的文本和图像处理能力
-- **事件驱动架构**：基于SSE的事件处理机制
+- **组件职责分离**：每个组件专注于特定功能
+- **Hook设计模式**：提供可复用的功能封装
+- **状态管理优化**：细粒度的状态控制
+- **事件处理增强**：完整的SSE事件处理机制
+- **模块化设计**：便于维护和扩展
+- **类型安全**：完整的TypeScript类型定义
 
 ### 未来发展方向
-- **性能进一步优化**：考虑引入Web Workers处理复杂计算
-- **AI能力扩展**：支持更多类型的AI模型和工具
-- **协作功能增强**：添加更多协作模式和权限管理
-- **移动端适配**：优化移动设备上的使用体验
-- **插件生态**：构建开放的插件系统支持第三方扩展
-- **剧院功能扩展**：支持更多剧院级别的创作功能
-- **多模态内容增强**：支持视频、音频等更多媒体类型
-- **AI能力扩展**：集成更多先进的AI模型和服务
+- **组件库扩展**：支持更多专用组件
+- **Hook生态**：构建更多的功能Hook
+- **性能优化**：进一步优化渲染性能
+- **测试覆盖**：增加单元测试覆盖率
+- **文档完善**：提供更详细的开发文档
+- **社区贡献**：支持第三方组件贡献
 
-该项目为AI创作工具的发展提供了宝贵的参考，展示了如何将复杂的AI技术与用户友好的界面设计相结合，创造出真正有价值的应用程序。
+这次重构为AI助手系统奠定了坚实的技术基础，展示了现代前端开发的最佳实践，为未来的功能扩展和技术演进提供了良好的架构支撑。

@@ -14,7 +14,8 @@ const NODE_TYPES = [
     icon: ScrollText, 
     color: 'text-node-blue', 
     bg: 'bg-node-blue/10',
-    data: { title: '新文本卡', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] }
+    data: { title: '新文本卡', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] },
+    dimensions: { width: 420, height: 320 }
   },
   { 
     type: 'image', 
@@ -23,7 +24,8 @@ const NODE_TYPES = [
     icon: ImageIcon, 
     color: 'text-node-green', 
     bg: 'bg-node-green/10',
-    data: { name: '新图片卡', description: '' }
+    data: { name: '新图片卡', description: '' },
+    dimensions: { width: 512, height: 384 }
   },
   { 
     type: 'video', 
@@ -32,7 +34,8 @@ const NODE_TYPES = [
     icon: Video, 
     color: 'text-node-yellow', 
     bg: 'bg-node-yellow/10',
-    data: { name: '新视频卡', description: '' }
+    data: { name: '新视频卡', description: '' },
+    dimensions: { width: 512, height: 384 }
   },
   { 
     type: 'storyboard', 

@@ -302,10 +302,20 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   return (
     <>
       <NodeResizer 
-        color="#1890FF" 
+        color="#202020" 
         isVisible={selected} 
         minWidth={256} 
         minHeight={192}
+        lineStyle={{ display: 'none' }}
+        handleStyle={{ 
+          width: '8px', 
+          height: '8px', 
+          borderRadius: '4px',
+          border: '1px solid #202020',
+          background: '#fff',
+          opacity: selected ? 1 : 0,
+          transition: 'opacity 0.2s'
+        }}
       />
       
       {/* 隐藏的文件输入 */}

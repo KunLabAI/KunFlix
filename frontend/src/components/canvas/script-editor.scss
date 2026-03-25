@@ -9,10 +9,12 @@
 
 // ── Default node sizing ──
 .react-flow__node:has(.script-editor-root) {
-  width: 420px;
+  // Remove fixed width to allow NodeResizer to work properly
+  min-width: 300px;
 
   > .script-node-wrapper {
     width: 100%;
+    height: 100%;
     transition: all 0.2s ease-in-out;
   }
 

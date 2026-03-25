@@ -57,8 +57,9 @@ function InfiniteCanvas() {
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getViewport } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
+  const [viewport, setViewportState] = useState({ x: 0, y: 0, zoom: 1 });
   
   const [menuState, setMenuState] = useState<{
     show: boolean;
@@ -339,6 +340,7 @@ function InfiniteCanvas() {
           onConnectEnd={onConnectEnd}
           onNodeDrag={onNodeDrag}
           onNodeDragStop={onNodeDragStop}
+          onMove={(_, viewport) => setViewportState(viewport)}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           defaultEdgeOptions={defaultEdgeOptions}
@@ -355,14 +357,14 @@ function InfiniteCanvas() {
           snapToGrid={snapToGrid}
           snapGrid={[20, 20]}
         >
-          <Background gap={80} size={1} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
+          <Background gap={60} size={2} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           
-          {/* Snap alignment lines */}
+          {/* Snap alignment lines - convert flow coordinates to screen coordinates */}
           {snapToGuides && alignmentLines.vertical !== null && (
             <div
               className="absolute top-0 bottom-0 w-px bg-primary/50 pointer-events-none z-50 transition-opacity"
               style={{
-                left: `${alignmentLines.vertical}px`,
+                left: `${alignmentLines.vertical * viewport.zoom + viewport.x}px`,
                 transform: 'translateX(-50%)',
               }}
             />
@@ -371,7 +373,7 @@ function InfiniteCanvas() {
             <div
               className="absolute left-0 right-0 h-px bg-primary/50 pointer-events-none z-50 transition-opacity"
               style={{
-                top: `${alignmentLines.horizontal}px`,
+                top: `${alignmentLines.horizontal * viewport.zoom + viewport.y}px`,
                 transform: 'translateY(-50%)',
               }}
             />

@@ -35,6 +35,8 @@ export function useCanvasDragDrop(snapToGrid: boolean) {
 
       // Dimension defaults by type (avoids if-else chain)
       const defaultDimensions: Record<string, { width: number; height: number }> = {
+        text: { width: 420, height: 320 },
+        image: { width: 512, height: 384 },
         character: { width: 512, height: 384 },
         video: { width: 512, height: 384 },
         storyboard: { width: 398, height: 256 },

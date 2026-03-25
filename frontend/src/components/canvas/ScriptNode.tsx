@@ -112,14 +112,24 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   return (
     <>
       <NodeResizer 
-        color="#251d38ff" 
+        color="#6d6d6dff" 
         isVisible={selected} 
         minWidth={300} 
-        minHeight={300} 
+        minHeight={200}
+        lineStyle={{ display: 'none' }}
+        handleStyle={{ 
+          width: '8px', 
+          height: '8px', 
+          borderRadius: '4px',
+          border: '1px solid #4d4d4dff',
+          background: '#fff',
+          opacity: selected ? 1 : 0,
+          transition: 'opacity 0.2s'
+        }}
       />
       <div 
         ref={nodeRef}
-        className={`script-node-wrapper w-full flex flex-col group relative`} 
+        className={`script-node-wrapper w-full h-full flex flex-col group relative`} 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >

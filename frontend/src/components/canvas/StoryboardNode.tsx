@@ -58,7 +58,17 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         color="#251d38ff" 
         isVisible={selected} 
         minWidth={398} 
-        minHeight={256} 
+        minHeight={256}
+        lineStyle={{ display: 'none' }}
+        handleStyle={{ 
+          width: '8px', 
+          height: '8px', 
+          borderRadius: '4px',
+          border: '1px solid #251d38ff',
+          background: '#fff',
+          opacity: selected ? 1 : 0,
+          transition: 'opacity 0.2s'
+        }}
       />
       <div 
         className={`w-full h-full flex flex-col group relative storyboard-node-wrapper`}
