@@ -21,6 +21,7 @@ class StreamContext:
     context_window: int
     thinking_mode: bool
     gemini_config: Dict[str, Any] | None = None  # Gemini 3.1 配置
+    xai_image_config: Dict[str, Any] | None = None  # xAI 图像生成配置
     tools: List[Dict[str, Any]] | None = None     # OpenAI-format tool definitions
 
 
@@ -43,6 +44,7 @@ class StreamResult:
     text_output_tokens: int = 0     # TEXT 模态输出 tokens
     image_output_tokens: int = 0    # IMAGE 模态输出 tokens
     search_query_count: int = 0     # Google Search 查询次数
+    generated_image_count: int = 0  # 生成的图片数量（xAI 按张计费）
     tool_calls: List[ToolCallResult] | None = None  # Collected tool calls from LLM
 
 
@@ -74,7 +76,7 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 # ============================================================
 # OpenAI 兼容供应商 (openai, azure, deepseek)
 # ============================================================
-@register_provider("openai", "deepseek", "xai")
+@register_provider("openai", "deepseek")
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """OpenAI/DeepSeek 流式调用（支持 tool calling）"""
     from openai import AsyncOpenAI
@@ -141,6 +143,278 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
             for tc in pending_tool_calls.values()
             if tc["name"]
         ]
+
+
+# ============================================================
+# xAI/Grok 供应商（独立处理推理模式 + 图像生成）
+# ============================================================
+
+# xAI 推理参数配置（模型关键词 → thinking_mode 开启时的 extra_body）
+# grok-3-mini: 支持 reasoning_effort，Chat Completions 返回 reasoning_content
+# grok-4/grok-4-fast-reasoning/grok-4.1+: 不支持 reasoning_effort（传递会 API 报错），
+#   始终内部推理但 Chat Completions 不返回 reasoning_content
+_XAI_REASONING_EXTRA = {
+    "grok-3-mini": {"reasoning_effort": "high"},
+}
+
+# xAI 图像模型集合（使用 /v1/images/generations 和 /v1/images/edits，非 chat completions）
+_XAI_IMAGE_MODELS = frozenset({"grok-imagine-image", "grok-imagine-image-pro"})
+
+
+async def _stream_xai_text(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """xAI/Grok 文本模型流式调用（推理模式 + tool calling）"""
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        api_key=ctx.api_key,
+        base_url=get_effective_base_url(ctx),
+    )
+
+    create_params = {
+        "model": ctx.model,
+        "messages": ctx.messages,
+        "temperature": ctx.temperature,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    ctx.tools and create_params.update(tools=ctx.tools)
+
+    # 推理参数注入（数据驱动：匹配模型关键词 → extra_body）
+    model_lower = ctx.model.lower()
+    extra = next(
+        (params for pattern, params in _XAI_REASONING_EXTRA.items() if pattern in model_lower),
+        None,
+    )
+    (ctx.thinking_mode and extra) and create_params.update(extra_body=extra)
+
+    # 日志
+    ctx.thinking_mode and logger.info(
+        f"xAI reasoning: model={ctx.model}, "
+        f"extra_body={extra or 'none (model always reasons internally)'}"
+    )
+
+    stream = await client.chat.completions.create(**create_params)
+
+    thinking_started = False
+    pending_tool_calls: dict[int, dict] = {}
+
+    async for chunk in stream:
+        # 检测 reasoning_content（grok-3-mini 返回，grok-4+ 保留前向兼容）
+        if ctx.thinking_mode and chunk.choices and hasattr(chunk.choices[0].delta, 'reasoning_content'):
+            rc = chunk.choices[0].delta.reasoning_content
+            if rc:
+                if not thinking_started:
+                    yield "<think>"
+                    thinking_started = True
+                result.reasoning_content += rc
+                yield rc
+
+        if chunk.choices and chunk.choices[0].delta.content:
+            if thinking_started:
+                yield "</think>"
+                thinking_started = False
+            content = chunk.choices[0].delta.content
+            result.full_response += content
+            yield content
+
+        # Collect tool_calls from delta
+        if chunk.choices and hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
+            for tc_delta in chunk.choices[0].delta.tool_calls:
+                idx = tc_delta.index
+                entry = pending_tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                tc_delta.id and entry.update(id=tc_delta.id)
+                (tc_delta.function and tc_delta.function.name) and entry.update(name=tc_delta.function.name)
+                (tc_delta.function and tc_delta.function.arguments) and entry.update(arguments=entry["arguments"] + tc_delta.function.arguments)
+
+        if hasattr(chunk, 'usage') and chunk.usage:
+            result.input_tokens = chunk.usage.prompt_tokens
+            result.output_tokens = chunk.usage.completion_tokens
+
+    if thinking_started:
+        yield "</think>"
+
+    # Convert collected tool calls to result
+    if pending_tool_calls:
+        result.tool_calls = [
+            ToolCallResult(id=tc["id"], name=tc["name"], arguments=tc["arguments"])
+            for tc in pending_tool_calls.values()
+            if tc["name"]
+        ]
+
+
+async def _stream_xai_image(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """xAI 图像模型处理（图像生成 + 图像编辑）
+
+    使用 /v1/images/generations (生成) 和 /v1/images/edits (编辑) 端点。
+    根据消息中是否包含 image_url 自动选择生成或编辑模式。
+    """
+    import base64
+    import httpx
+    from openai import AsyncOpenAI
+    from services.media_utils import save_inline_image, save_image_from_url
+
+    base_url = get_effective_base_url(ctx) or "https://api.x.ai/v1"
+
+    # 从 xai_image_config 提取配置参数
+    img_cfg = (ctx.xai_image_config or {}).get("image_config") or {}
+    aspect_ratio = img_cfg.get("aspect_ratio")
+    resolution = img_cfg.get("resolution")
+    n = img_cfg.get("n") or 1
+    response_format = img_cfg.get("response_format") or "b64_json"
+
+    # 从消息末尾提取 prompt 和源图片（用于编辑模式）
+    prompt_text, source_image_url = _extract_xai_user_input(ctx.messages)
+
+    logger.info(
+        f"xAI image: model={ctx.model}, mode={'edit' if source_image_url else 'generate'}, "
+        f"n={n}, aspect_ratio={aspect_ratio}, resolution={resolution}, format={response_format}"
+    )
+
+    # 图像编辑模式：使用 httpx POST /v1/images/edits（SDK images.edit 不兼容 xAI 的 JSON 格式）
+    if source_image_url:
+        headers = {
+            "Authorization": f"Bearer {ctx.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload: Dict[str, Any] = {
+            "model": ctx.model,
+            "prompt": prompt_text,
+            "image": {"url": source_image_url, "type": "image_url"},
+        }
+        aspect_ratio and payload.update(aspect_ratio=aspect_ratio)
+        resolution and payload.update(resolution=resolution)
+        n > 1 and payload.update(n=n)
+        response_format == "b64_json" and payload.update(response_format="b64_json")
+
+        async with httpx.AsyncClient(timeout=120) as http_client:
+            resp = await http_client.post(
+                f"{base_url}/images/edits",
+                headers=headers,
+                json=payload,
+            )
+            resp.status_code >= 400 and logger.error(
+                f"xAI image edit error {resp.status_code}: {resp.text[:500]}"
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        # 解析编辑响应
+        for item in data.get("data", []):
+            url = await _save_xai_image_item(item, response_format)
+            md = f"\n\n![image]({url})\n\n"
+            result.full_response += md
+            result.generated_image_count += 1
+            yield md
+
+        return
+
+    # 图像生成模式：使用 AsyncOpenAI SDK images.generate()
+    client = AsyncOpenAI(
+        api_key=ctx.api_key,
+        base_url=base_url,
+    )
+
+    generate_params: Dict[str, Any] = {
+        "model": ctx.model,
+        "prompt": prompt_text,
+        "n": n,
+        "response_format": response_format,
+    }
+    # xAI 扩展参数通过 extra_body 传递
+    extra_body: Dict[str, Any] = {}
+    aspect_ratio and extra_body.update(aspect_ratio=aspect_ratio)
+    resolution and extra_body.update(resolution=resolution)
+    extra_body and generate_params.update(extra_body=extra_body)
+
+    response = await client.images.generate(**generate_params)
+
+    for item in response.data:
+        url = await _save_xai_image_item_sdk(item, response_format)
+        md = f"\n\n![image]({url})\n\n"
+        result.full_response += md
+        result.generated_image_count += 1
+        yield md
+
+    logger.info(f"xAI image generated: {result.generated_image_count} images")
+
+
+def _extract_xai_user_input(messages: List[Dict[str, Any]]) -> tuple[str, str | None]:
+    """从消息列表末尾提取最后一条 user 消息的文本 prompt 和可选的源图片 URL。
+
+    Returns:
+        (prompt_text, source_image_url) — source_image_url 为 None 表示生成模式，否则编辑模式
+    """
+    # 内容类型提取器映射表
+    _PART_EXTRACTORS = {
+        "text": lambda p, ctx: ctx.update(prompt=p.get("text", "")),
+        "image_url": lambda p, ctx: ctx.update(image=p.get("image_url", {}).get("url")),
+    }
+
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        # 纯文本消息
+        if isinstance(content, str):
+            return content, None
+        # 多模态消息
+        if isinstance(content, list):
+            ctx: Dict[str, Any] = {"prompt": "", "image": None}
+            for part in content:
+                extractor = _PART_EXTRACTORS.get(part.get("type", ""))
+                extractor and extractor(part, ctx)
+            return ctx["prompt"], ctx["image"]
+        break
+
+    return "", None
+
+
+async def _save_xai_image_item(item: dict, response_format: str) -> str:
+    """保存 xAI API 返回的图像数据（httpx 响应格式）"""
+    import base64
+    from services.media_utils import save_inline_image, save_image_from_url
+
+    b64_data = item.get("b64_json")
+    url_data = item.get("url")
+
+    # b64_json 格式
+    if b64_data:
+        image_bytes = base64.b64decode(b64_data)
+        return save_inline_image("image/png", image_bytes)
+
+    # url 格式
+    if url_data:
+        return await save_image_from_url(url_data)
+
+    return ""
+
+
+async def _save_xai_image_item_sdk(item, response_format: str) -> str:
+    """保存 xAI SDK 返回的图像数据（OpenAI SDK ImagesResponse 格式）"""
+    import base64
+    from services.media_utils import save_inline_image, save_image_from_url
+
+    b64_data = getattr(item, "b64_json", None)
+    url_data = getattr(item, "url", None)
+
+    # b64_json 格式
+    if b64_data:
+        image_bytes = base64.b64decode(b64_data)
+        return save_inline_image("image/png", image_bytes)
+
+    # url 格式
+    if url_data:
+        return await save_image_from_url(url_data)
+
+    return ""
+
+
+@register_provider("xai")
+async def stream_xai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """xAI/Grok 统一分发器：根据模型类型路由到文本或图像处理器"""
+    handler = _stream_xai_image if ctx.model in _XAI_IMAGE_MODELS else _stream_xai_text
+    async for chunk in handler(ctx, result):
+        yield chunk
 
 
 @register_provider("azure")
@@ -654,6 +928,7 @@ async def stream_completion(
     thinking_mode: bool = False,
     gemini_config: Dict[str, Any] | None = None,
     tools: List[Dict[str, Any]] | None = None,
+    xai_image_config: Dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, StreamResult], None]:
     """
     统一的流式调用入口
@@ -671,6 +946,7 @@ async def stream_completion(
         context_window=context_window,
         thinking_mode=thinking_mode,
         gemini_config=gemini_config,
+        xai_image_config=xai_image_config,
         tools=tools,
     )
     result = StreamResult()

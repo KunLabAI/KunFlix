@@ -12,10 +12,11 @@ logger = logging.getLogger(__name__)
 # 计费维度映射表：dim_name -> (Agent 费率字段, scale)
 # scale=1_000_000 表示每 1M tokens 计费，scale=1 表示每次计费
 BILLING_DIMENSIONS = {
-    "input":        ("input_credit_per_1m",         1_000_000),
-    "text_output":  ("output_credit_per_1m",        1_000_000),
-    "image_output": ("image_output_credit_per_1m",  1_000_000),
-    "search":       ("search_credit_per_query",     1),
+    "input":            ("input_credit_per_1m",         1_000_000),
+    "text_output":      ("output_credit_per_1m",        1_000_000),
+    "image_output":     ("image_output_credit_per_1m",  1_000_000),
+    "search":           ("search_credit_per_query",     1),
+    "image_generation": ("image_credit_per_image",      1),  # xAI 按张计费
 }
 
 # 视频计费维度映射表：dim_name -> scale
@@ -328,10 +329,11 @@ def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
     )
 
     quantities = {
-        "input":        getattr(result, 'input_tokens', 0) or 0,
-        "text_output":  text_out,
-        "image_output": image_out,
-        "search":       getattr(result, 'search_query_count', 0) or 0,
+        "input":            getattr(result, 'input_tokens', 0) or 0,
+        "text_output":      text_out,
+        "image_output":     image_out,
+        "search":           getattr(result, 'search_query_count', 0) or 0,
+        "image_generation": getattr(result, 'generated_image_count', 0) or 0,
     }
 
     total = 0.0

@@ -64,6 +64,13 @@ interface TheaterSession {
   messages: Message[];
 }
 
+// 图像编辑上下文（从画布节点触发 AI 编辑）
+export interface ImageEditContext {
+  nodeId: string;
+  imageUrl: string;
+  nodeName: string;
+}
+
 interface AIAssistantState {
   // Panel visibility
   isOpen: boolean;
@@ -88,6 +95,9 @@ interface AIAssistantState {
   // Panel size and position
   panelSize: { width: number; height: number };
   panelPosition: { x: number; y: number };
+  
+  // Image edit context (from canvas node AI edit)
+  imageEditContext: ImageEditContext | null;
   
   // Actions
   setIsOpen: (isOpen: boolean) => void;
@@ -119,6 +129,10 @@ interface AIAssistantState {
   
   setPanelPosition: (position: { x: number; y: number }) => void;
   resetPanelPosition: () => void;
+  
+  // Image edit context
+  setImageEditContext: (ctx: ImageEditContext | null) => void;
+  clearImageEditContext: () => void;
 }
 
 const DEFAULT_MESSAGES: Message[] = [
@@ -142,6 +156,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       theaterSessions: {},
       panelSize: { ...DEFAULT_PANEL_SIZE },
       panelPosition: { ...DEFAULT_PANEL_POSITION },
+      imageEditContext: null,
 
       // Panel visibility
       setIsOpen: (isOpen: boolean) => set({ isOpen }),
@@ -232,6 +247,10 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       // Panel position
       setPanelPosition: (panelPosition: { x: number; y: number }) => set({ panelPosition }),
       resetPanelPosition: () => set({ panelPosition: { ...DEFAULT_PANEL_POSITION } }),
+
+      // Image edit context
+      setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext }),
+      clearImageEditContext: () => set({ imageEditContext: null }),
     }),
     {
       name: 'ai-assistant-storage',

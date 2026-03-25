@@ -4,8 +4,9 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { useCanvasStore, CharacterNodeData, CanvasNode } from '@/store/useCanvasStore';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { v4 as uuidv4 } from 'uuid';
 import { createPortal } from 'react-dom';
 
@@ -105,6 +106,16 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     e.stopPropagation();
     const currentFitMode = data.fitMode || 'cover';
     updateNodeData(id, { fitMode: currentFitMode === 'cover' ? 'contain' : 'cover' });
+  };
+
+  const handleAIEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    useAIAssistantStore.getState().setImageEditContext({
+      nodeId: id,
+      imageUrl: data.imageUrl || '',
+      nodeName: data.name || '未命名图片卡',
+    });
+    useAIAssistantStore.getState().setIsOpen(true);
   };
 
   const handleUploadClick = (e?: React.MouseEvent) => {
@@ -451,6 +462,17 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
         {/* 悬浮操作按钮，底部外侧 */}
         <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
+          <Button 
+            variant="secondary" 
+            size="icon" 
+            className="h-8 w-8 rounded-full shadow-md hover:bg-primary/10 hover:text-primary shrink-0 pointer-events-auto relative z-40" 
+            onClick={handleAIEdit} 
+            title="AI 编辑" 
+            aria-label="AI 编辑"
+            role="button"
+          >
+            <Sparkles className="h-4 w-4" />
+          </Button>
           <Button 
             variant="secondary" 
             size="icon" 

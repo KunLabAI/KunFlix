@@ -194,6 +194,46 @@ class GeminiConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# xAI 图像生成配置 schemas
+# ---------------------------------------------------------------------------
+class XAIImageConfig(BaseModel):
+    """xAI 图像生成参数配置"""
+    aspect_ratio: Optional[Literal[
+        "1:1", "16:9", "9:16", "4:3", "3:4",
+        "3:2", "2:3", "2:1", "1:2",
+        "19.5:9", "9:19.5", "20:9", "9:20", "auto"
+    ]] = None
+    resolution: Optional[Literal["1k", "2k"]] = None
+    n: Optional[int] = Field(None, ge=1, le=10)
+    response_format: Optional[Literal["url", "b64_json"]] = None
+
+
+class XAIImageGenConfig(BaseModel):
+    """xAI 图像生成 Agent 级配置"""
+    image_generation_enabled: bool = False
+    image_config: Optional[XAIImageConfig] = None
+
+
+# ---------------------------------------------------------------------------
+# Unified Image Config schemas (provider-agnostic)
+# ---------------------------------------------------------------------------
+class UnifiedImageConfig(BaseModel):
+    """统一图像生成参数（供应商无关）"""
+    aspect_ratio: Optional[str] = None  # "1:1","16:9","9:16","4:3","3:4","3:2","2:3" 等
+    quality: Optional[Literal["standard", "hd", "ultra"]] = None
+    batch_count: Optional[int] = Field(None, ge=1, le=10)
+    output_format: Optional[Literal["png", "jpeg", "webp"]] = None
+
+
+class UnifiedImageGenConfig(BaseModel):
+    """统一图像生成 Agent 级配置"""
+    image_generation_enabled: bool = False
+    image_provider_id: Optional[str] = None   # 图像生成供应商 ID（跨 Provider 支持）
+    image_model: Optional[str] = None          # 图像生成模型名
+    image_config: Optional[UnifiedImageConfig] = None
+
+
+# ---------------------------------------------------------------------------
 # Agent schemas
 # ---------------------------------------------------------------------------
 class AgentBase(BaseModel):
@@ -224,6 +264,11 @@ class AgentBase(BaseModel):
     enable_auto_review: bool = True
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
+    # xAI 图像生成配置
+    xai_image_config: Optional[XAIImageGenConfig] = None
+    image_credit_per_image: float = Field(default=0.0, ge=0.0)
+    # 统一图像生成配置（供应商无关）
+    image_config: Optional[UnifiedImageGenConfig] = None
     # 可控制的画布节点类型
     target_node_types: List[str] = Field(default_factory=list)
 
@@ -268,6 +313,11 @@ class AgentUpdate(BaseModel):
     enable_auto_review: Optional[bool] = None
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
+    # xAI 图像生成配置
+    xai_image_config: Optional[XAIImageGenConfig] = None
+    image_credit_per_image: Optional[float] = Field(None, ge=0.0)
+    # 统一图像生成配置（供应商无关）
+    image_config: Optional[UnifiedImageGenConfig] = None
     # 可控制的画布节点类型
     target_node_types: Optional[List[str]] = None
 
@@ -292,9 +342,9 @@ class AgentResponse(AgentBase):
     def none_to_list(cls, v):
         return v or []
 
-    @field_validator('gemini_config', mode='before')
+    @field_validator('gemini_config', 'xai_image_config', 'image_config', mode='before')
     @classmethod
-    def none_to_gemini_config(cls, v):
+    def none_to_provider_config(cls, v):
         return v or None
 
 
@@ -329,6 +379,8 @@ class ChatMessageBase(BaseModel):
 class ChatMessageCreate(ChatMessageBase):
     edit_last_image: bool = False
     theater_id: Optional[str] = None  # 画布上下文，用于启用画布工具
+    target_node_id: Optional[str] = None  # 指定更新的画布节点 ID（编辑模式）
+    edit_image_url: Optional[str] = None  # 来自画布节点的图片 URL（编辑模式）
 
 
 class ChatMessageResponse(ChatMessageBase):

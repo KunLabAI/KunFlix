@@ -20,6 +20,38 @@ export interface GeminiConfig {
   google_image_search_enabled?: boolean;  // Google 图片搜索开关
 }
 
+// ---------------------------------------------------------------------------
+// xAI 图像生成配置类型
+// ---------------------------------------------------------------------------
+export interface XAIImageConfig {
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "2:1" | "1:2" | "19.5:9" | "9:19.5" | "20:9" | "9:20" | "auto" | null;
+  resolution?: "1k" | "2k" | null;
+  n?: number | null;  // 每次生成张数 (1-10)
+  response_format?: "url" | "b64_json" | null;
+}
+
+export interface XAIImageGenConfig {
+  image_generation_enabled?: boolean;
+  image_config?: XAIImageConfig | null;
+}
+
+// ---------------------------------------------------------------------------
+// 统一图像生成配置（供应商无关）
+// ---------------------------------------------------------------------------
+export interface UnifiedImageConfig {
+  aspect_ratio?: string | null;
+  quality?: 'standard' | 'hd' | 'ultra' | null;
+  batch_count?: number | null;  // 1-10
+  output_format?: 'png' | 'jpeg' | 'webp' | null;
+}
+
+export interface UnifiedImageGenConfig {
+  image_generation_enabled: boolean;
+  image_provider_id?: string | null;  // 图像生成供应商 ID（跨 Provider 支持）
+  image_model?: string | null;        // 图像生成模型名
+  image_config?: UnifiedImageConfig | null;
+}
+
 export interface Agent {
   id?: string;
   name: string;
@@ -51,6 +83,11 @@ export interface Agent {
   enable_auto_review: boolean;
   // Gemini 3.1 配置
   gemini_config?: GeminiConfig;
+  // xAI 图像生成配置
+  xai_image_config?: XAIImageGenConfig;
+  // 统一图像生成配置
+  image_config?: UnifiedImageGenConfig;
+  image_credit_per_image?: number;
   created_at?: string;
   updated_at?: string;
 }

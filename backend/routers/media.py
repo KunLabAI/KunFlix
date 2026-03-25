@@ -17,6 +17,7 @@ from schemas import (
     BatchImageConfigRequest,
 )
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
+from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,12 @@ MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
 # 安全文件名：UUID + 已知媒体扩展名（图片 + 视频）
 _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov)$')
+
+# 纯 UUID（无扩展名）— LLM 模型可能在回复中截断文件扩展名
+_UUID_ONLY = re.compile(r'^[a-f0-9\-]{36}$')
+
+# 扩展名回退查找顺序
+_FALLBACK_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
 
 # 扩展名 -> MIME
 _EXT_MIME = {
@@ -46,21 +53,31 @@ _EXT_MIME = {
 
 @router.get("/{filename}")
 async def serve_media(filename: str):
-    """安全地提供媒体文件"""
+    """安全地提供媒体文件（支持无扩展名的 UUID 回退查找）"""
+    # 优先精确匹配（带扩展名）
     matched = _SAFE_FILENAME.match(filename)
-    if not matched:
-        raise HTTPException(status_code=400, detail="Invalid filename")
+    if matched:
+        filepath = MEDIA_DIR / filename
+        filepath.exists() or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
+        ext = filename.rsplit(".", 1)[-1]
+        return FileResponse(
+            filepath,
+            media_type=_EXT_MIME.get(ext, "application/octet-stream"),
+            headers={"Cache-Control": "public, max-age=31536000"},
+        )
 
-    filepath = MEDIA_DIR / filename
-    if not filepath.exists():
-        raise HTTPException(status_code=404, detail="File not found")
+    # 回退：纯 UUID（LLM 模型可能在回复中截断文件扩展名）
+    if _UUID_ONLY.match(filename):
+        for ext in _FALLBACK_EXTS:
+            candidate = MEDIA_DIR / f"{filename}.{ext}"
+            if candidate.exists():
+                return FileResponse(
+                    candidate,
+                    media_type=_EXT_MIME.get(ext, "application/octet-stream"),
+                    headers={"Cache-Control": "public, max-age=31536000"},
+                )
 
-    ext = filename.rsplit(".", 1)[-1]
-    return FileResponse(
-        filepath,
-        media_type=_EXT_MIME.get(ext, "application/octet-stream"),
-        headers={"Cache-Control": "public, max-age=31536000"},
-    )
+    raise HTTPException(status_code=400, detail="Invalid filename")
 
 
 @router.post("/upload")
@@ -97,8 +114,9 @@ async def batch_generate(
     批量图片生成 API
     
     使用指定智能体的配置（API key、模型）并行生成多张图片。
+    支持 Gemini 和 xAI 供应商。
     
-    - **agent_id**: 智能体 ID（需要是 Gemini 供应商且开启图片生成）
+    - **agent_id**: 智能体 ID
     - **prompts**: 提示词列表（1-8 条）
     - **config**: 图片生成配置（可选）
     - **max_concurrent**: 最大并发数（1-8，默认 4）
@@ -111,12 +129,21 @@ async def batch_generate(
     provider = await db.get(LLMProvider, agent.provider_id)
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Provider not found"))
     
-    # 验证供应商类型
-    (provider.provider_type.lower() == "gemini") or (_ for _ in ()).throw(
-        HTTPException(status_code=400, detail="Batch image generation only supports Gemini provider")
+    provider_type = provider.provider_type.lower()
+    handler = _BATCH_GENERATE_HANDLERS.get(provider_type)
+    handler or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Batch image generation not supported for provider: {provider_type}")
     )
-    
-    # 构建配置
+
+    return await handler(agent, provider, request)
+
+
+# ---------------------------------------------------------------------------
+# 批量生成供应商处理器映射表（避免 if-else 分支）
+# ---------------------------------------------------------------------------
+
+async def _batch_generate_gemini(agent: Agent, provider: LLMProvider, request: BatchImageGenerateRequest) -> BatchImageGenerateResponse:
+    """Gemini 批量图片生成处理器"""
     cfg = request.config or BatchImageConfigRequest()
     batch_config = BatchImageConfig(
         aspect_ratio=cfg.aspect_ratio,
@@ -125,14 +152,13 @@ async def batch_generate(
         google_search_enabled=cfg.google_search_enabled,
         google_image_search_enabled=cfg.google_image_search_enabled,
     )
-    
+
     # 处理模型名称（移除 "gemini/" 前缀）
     model = agent.model
     model.startswith("gemini/") and (model := model[7:])
-    
-    logger.info(f"Batch generate: agent={agent.name}, model={model}, prompts={len(request.prompts)}")
-    
-    # 调用批量生成服务
+
+    logger.info(f"Batch generate [gemini]: agent={agent.name}, model={model}, prompts={len(request.prompts)}")
+
     result = await batch_generate_images(
         api_key=provider.api_key,
         model=model,
@@ -140,7 +166,7 @@ async def batch_generate(
         config=batch_config,
         max_concurrent=request.max_concurrent,
     )
-    
+
     return BatchImageGenerateResponse(
         success=result.success,
         total_prompts=result.total_prompts,
@@ -160,3 +186,58 @@ async def batch_generate(
             for r in result.results
         ],
     )
+
+
+async def _batch_generate_xai(agent: Agent, provider: LLMProvider, request: BatchImageGenerateRequest) -> BatchImageGenerateResponse:
+    """xAI 批量图片生成处理器"""
+    # 从 agent 的 xai_image_config 中读取配置
+    agent_img_cfg = (agent.xai_image_config or {}).get("image_config") or {}
+
+    xai_config = XAIBatchImageConfig(
+        aspect_ratio=agent_img_cfg.get("aspect_ratio", "1:1"),
+        resolution=agent_img_cfg.get("resolution", "1k"),
+        n=1,  # 批量模式每个 prompt 生成 1 张，多 prompt 并行
+        response_format=agent_img_cfg.get("response_format", "b64_json"),
+    )
+
+    # 处理模型名称（移除 "xai/" 前缀）
+    model = agent.model
+    model.startswith("xai/") and (model := model[4:])
+
+    logger.info(f"Batch generate [xai]: agent={agent.name}, model={model}, prompts={len(request.prompts)}")
+
+    result = await batch_generate_xai_images(
+        api_key=provider.api_key,
+        model=model,
+        prompts=request.prompts,
+        config=xai_config,
+        base_url=provider.base_url,
+        max_concurrent=request.max_concurrent,
+    )
+
+    # 将 xAI 结果展平为统一的响应格式
+    return BatchImageGenerateResponse(
+        success=result.success,
+        total_prompts=result.total_prompts,
+        completed=result.completed,
+        failed=result.failed,
+        results=[
+            SingleImageResultResponse(
+                prompt_index=r.prompt_index,
+                prompt=r.prompt,
+                success=r.success,
+                image_url=r.image_urls[0] if r.image_urls else None,
+                text_response=None,
+                input_tokens=0,
+                output_tokens=0,
+                error=r.error,
+            )
+            for r in result.results
+        ],
+    )
+
+
+_BATCH_GENERATE_HANDLERS = {
+    "gemini": _batch_generate_gemini,
+    "xai": _batch_generate_xai,
+}

@@ -17,9 +17,11 @@ from services.llm_stream import stream_completion
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.base_tools import build_base_tool_defs, execute_base_tool
 from services.canvas_tools import build_canvas_tool_defs, execute_canvas_tool, CANVAS_TOOL_NAMES
+from services.image_gen_tools import build_image_gen_tool_def_list, execute_image_gen_tool, IMAGE_GEN_TOOL_NAME
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
+from services.image_config_adapter import resolve_image_configs
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,17 @@ def _image_file_to_data_url(path: str) -> str | None:
     data = file_path.read_bytes()
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"
+
+
+def _inject_image_to_message(msg: dict, data_url: str):
+    """将图片 data_url 注入到用户消息的 content 中"""
+    user_content = msg.get("content")
+    _builders = {
+        str:  lambda c: [{"type": "image_url", "image_url": {"url": data_url}}, {"type": "text", "text": c}],
+        list: lambda c: [{"type": "image_url", "image_url": {"url": data_url}}] + list(c),
+    }
+    builder = _builders.get(type(user_content), lambda c: [{"type": "image_url", "image_url": {"url": data_url}}])
+    msg["content"] = builder(user_content)
 
 
 router = APIRouter(
@@ -231,7 +244,7 @@ async def send_message(
     generator = (
         _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin, message.theater_id)
         if is_multi_agent else
-        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image, message.theater_id)
+        _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image, message.theater_id, message.target_node_id, message.edit_image_url)
     )
 
     return StreamingResponse(
@@ -334,14 +347,17 @@ async def _get_tool_result(
     agent: Agent, db: AsyncSession
 ) -> str:
     """Dispatch tool execution by name. Returns result string."""
-    # Canvas tools (async)
-    is_canvas_tool = tc_name in CANVAS_TOOL_NAMES and theater_id and agent.target_node_types
-    result = (
-        await execute_canvas_tool(tc_name, tc_args, theater_id, agent.target_node_types, db, agent_id=agent.id)
-        if is_canvas_tool
-        else _dispatch_standard_tool(tc_name, tc_args, active_skills_dir)
+    # 异步工具派发表（generate_image、未来可扩展更多异步工具）
+    _ASYNC_DISPATCHERS = {
+        IMAGE_GEN_TOOL_NAME: lambda: execute_image_gen_tool(tc_args, agent, db),
+    }
+    is_canvas = tc_name in CANVAS_TOOL_NAMES and theater_id and agent.target_node_types
+    async_handler = (
+        (lambda: execute_canvas_tool(tc_name, tc_args, theater_id, agent.target_node_types, db, agent_id=agent.id))
+        if is_canvas
+        else _ASYNC_DISPATCHERS.get(tc_name)
     )
-    return result
+    return await async_handler() if async_handler else _dispatch_standard_tool(tc_name, tc_args, active_skills_dir)
 
 
 def _dispatch_standard_tool(tc_name: str, tc_args: dict, active_skills_dir) -> str:
@@ -432,6 +448,8 @@ async def _generate_single_agent(
     is_admin: bool = False,
     edit_last_image: bool = False,
     theater_id: str | None = None,
+    target_node_id: str | None = None,
+    edit_image_url: str | None = None,
 ):
     """单智能体模式生成器"""
     # 获取历史消息
@@ -463,52 +481,53 @@ async def _generate_single_agent(
             content_val = deserialized
         messages.append({"role": role, "content": content_val})
 
-    # 如果用户请求编辑上一张图片，且当前为 Gemini 图片生成场景，则注入上一张图片为本轮输入
-    if edit_last_image and provider.provider_type == "gemini":
-        gemini_cfg = agent.gemini_config or {}
-        if gemini_cfg.get("image_generation_enabled"):
-            last_image_path = _get_last_image_path(history)
-            if last_image_path is not None:
-                data_url = _image_file_to_data_url(last_image_path)
-                if data_url:
-                    # 修改最后一条用户消息的 content，注入 image_url part
-                    if messages:
-                        last_msg = messages[-1]
-                        if last_msg.get("role") == "user":
-                            user_content = last_msg.get("content")
-                            if isinstance(user_content, str):
-                                parts = [
-                                    {"type": "image_url", "image_url": {"url": data_url}},
-                                    {"type": "text", "text": user_content},
-                                ]
-                            elif isinstance(user_content, list):
-                                parts = [{"type": "image_url", "image_url": {"url": data_url}}] + [
-                                    p for p in user_content
-                                ]
-                            else:
-                                parts = [{"type": "image_url", "image_url": {"url": data_url}}]
-                            last_msg["content"] = parts
+    # 如果用户请求编辑图片（来自画布节点或历史对话），注入图片为本轮输入
+    # 供应商 -> 图片生成启用判断函数映射表（优先使用统一配置）
+    _IMAGE_EDIT_ENABLED = {
+        "gemini": lambda a: (a.image_config or a.gemini_config or {}).get("image_generation_enabled"),
+        "xai": lambda a: (a.image_config or a.xai_image_config or {}).get("image_generation_enabled"),
+    }
+    _edit_checker = _IMAGE_EDIT_ENABLED.get(provider.provider_type.lower(), lambda a: False)
 
-    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools + canvas tools）
+    # 获取要编辑的图片：优先使用画布节点的 edit_image_url，否则回退到历史对话中的最后一张
+    _edit_image_data_url = None
+    _should_edit = _edit_checker(agent) and (edit_image_url or edit_last_image)
+    if _should_edit and edit_image_url:
+        # 从画布节点提供的 URL 加载
+        _local_path = str(MEDIA_DIR / edit_image_url.split("/api/media/")[-1]) if "/api/media/" in edit_image_url else None
+        _local_path and (_edit_image_data_url := _image_file_to_data_url(_local_path))
+    elif _should_edit and edit_last_image:
+        # 从历史对话中获取最后一张图片
+        last_image_path = _get_last_image_path(history)
+        last_image_path and (_edit_image_data_url := _image_file_to_data_url(last_image_path))
+
+    if _edit_image_data_url and messages:
+        last_msg = messages[-1]
+        (last_msg.get("role") == "user") and _inject_image_to_message(last_msg, _edit_image_data_url)
+
+    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools + canvas tools + image_gen）
     agent_tools = agent.tools or []
     tool_defs = None
     active_skills_dir = None
     base_defs = []
     canvas_defs = []
+    image_gen_defs = []
     # 注入画布工具（当 theater_id 和 target_node_types 都存在时）
     has_canvas_context = theater_id and agent.target_node_types
     canvas_defs = build_canvas_tool_defs(agent.target_node_types) if has_canvas_context else []
-    if agent_tools or canvas_defs:
+    # 注入图像生成工具（当统一配置启用且指定了 image_provider + image_model 时）
+    image_gen_defs = build_image_gen_tool_def_list(agent)
+    if agent_tools or canvas_defs or image_gen_defs:
         from skills_manager import get_active_skills_dir
         active_skills_dir = get_active_skills_dir()
         skill_prompt = build_skill_prompt(agent_tools, active_skills_dir)
         # 追加轻量索引到 system prompt
         (skill_prompt and messages and messages[0].get("role") == "system"
          and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
-        # 注册 base tools + load_skill 元工具 + canvas tools
+        # 注册 base tools + load_skill 元工具 + canvas tools + image_gen tools
         base_defs = build_base_tool_defs()
         skill_defs = [build_load_skill_tool_def(agent_tools)] if agent_tools else []
-        tool_defs = base_defs + canvas_defs + skill_defs
+        tool_defs = base_defs + canvas_defs + image_gen_defs + skill_defs
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -530,6 +549,7 @@ async def _generate_single_agent(
     MAX_TOOL_ROUNDS = 5
     loaded_skills: set[str] = set()  # 已加载的技能，防止重复调用
     all_tool_calls = []  # 记录所有执行的普通工具
+    tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
     generation_failed = False
     _SSE_START = {True: "skill_call", False: "tool_call"}
@@ -539,6 +559,8 @@ async def _generate_single_agent(
             is_last_round = _round == MAX_TOOL_ROUNDS
             current_tools = None if is_last_round else tool_defs
             result = None
+            # 通过适配器解析有效的图像配置
+            _eff_gemini, _eff_xai = resolve_image_configs(agent, provider.provider_type)
             async for chunk, result in stream_completion(
                 provider_type=provider.provider_type,
                 api_key=provider.api_key,
@@ -548,8 +570,9 @@ async def _generate_single_agent(
                 temperature=agent.temperature,
                 context_window=agent.context_window,
                 thinking_mode=agent.thinking_mode,
-                gemini_config=agent.gemini_config,
+                gemini_config=_eff_gemini,
                 tools=current_tools,
+                xai_image_config=_eff_xai,
             ):
                 yield _sse("text", {"chunk": chunk})
 
@@ -575,12 +598,19 @@ async def _generate_single_agent(
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
             await _append_tool_round(messages, result, active_skills_dir, is_anthropic, theater_id, agent, db)
 
+            # 累计 generate_image 工具产生的图片数（用于计费）
+            tool_generated_image_count += sum(
+                min(max(json.loads(tc.arguments).get("n", 1), 1), 4)
+                for tc in result.tool_calls
+                if tc.name == IMAGE_GEN_TOOL_NAME
+            )
+
             # 记录已加载的技能，更新 tool_defs（base tools + canvas tools 始终保留，load_skill enum 缩减）
             for tc in result.tool_calls:
                 tc.name == "load_skill" and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
             remaining = [s for s in agent_tools if s not in loaded_skills]
             skill_defs = [build_load_skill_tool_def(remaining)] if remaining else []
-            tool_defs = base_defs + canvas_defs + skill_defs
+            tool_defs = base_defs + canvas_defs + image_gen_defs + skill_defs
 
             # 发送 tool 完成事件 (skill_loaded 或 tool_result)
             for tc in result.tool_calls:
@@ -616,6 +646,12 @@ async def _generate_single_agent(
     )
     logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
     logger.info(f"Output chars: {len(result.full_response)}")
+
+    # 将 generate_image 工具累计的图片数合并到 result（供计费使用）
+    tool_generated_image_count and setattr(
+        result, 'generated_image_count',
+        getattr(result, 'generated_image_count', 0) + tool_generated_image_count,
+    )
 
     total_tokens = result.input_tokens + result.output_tokens
     (total_tokens > 0) and (
@@ -696,6 +732,33 @@ async def _generate_single_agent(
 
     # 发送计费信息和完成事件
     yield _sse("billing", billing_event)
+
+    # 画布图像桥接：图像生成后自动创建/更新画布节点
+    _image_enabled_check = {
+        "gemini": lambda a: (a.image_config or a.gemini_config or {}).get("image_generation_enabled"),
+        "xai":    lambda a: (a.image_config or a.xai_image_config or {}).get("image_generation_enabled"),
+    }
+    _node_types = set(agent.target_node_types or [])
+    _has_image_target = bool(_node_types & {"image", "character"})
+    _is_image_enabled = _image_enabled_check.get(provider.provider_type.lower(), lambda a: False)(agent)
+    _should_bridge = theater_id and _has_image_target and _is_image_enabled and result and result.full_response
+
+    if _should_bridge:
+        from services.image_canvas_bridge import bridge_images_to_canvas
+        try:
+            async with AsyncSessionLocal() as bridge_db:
+                bridge_actions = await bridge_images_to_canvas(
+                    response_text=result.full_response,
+                    theater_id=theater_id,
+                    target_node_id=target_node_id,
+                    agent=agent,
+                    db=bridge_db,
+                )
+                for action in bridge_actions:
+                    yield _sse("canvas_updated", {"theater_id": theater_id, "action": action})
+        except Exception as e:
+            logger.error(f"Image canvas bridge failed: {e}")
+
     yield _sse("done", {})
 
 

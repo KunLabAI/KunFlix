@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
@@ -21,6 +21,10 @@ export function AIAssistantPanel() {
   const setMessages = useAIAssistantStore((state) => state.setMessages);
   const setPanelSize = useAIAssistantStore((state) => state.setPanelSize);
   const setPanelPosition = useAIAssistantStore((state) => state.setPanelPosition);
+
+  // 图像编辑上下文
+  const imageEditContext = useAIAssistantStore((state) => state.imageEditContext);
+  const clearImageEditContext = useAIAssistantStore((state) => state.clearImageEditContext);
 
   // 会话管理
   const {
@@ -113,7 +117,15 @@ export function AIAssistantPanel() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ role: 'user', content, theater_id: theaterId }),
+          body: JSON.stringify({
+            role: 'user',
+            content,
+            theater_id: theaterId,
+            ...(imageEditContext && {
+              target_node_id: imageEditContext.nodeId,
+              edit_image_url: imageEditContext.imageUrl,
+            }),
+          }),
           signal: abortControllerRef.current.signal,
         });
 
@@ -160,9 +172,10 @@ export function AIAssistantPanel() {
           setMessages((prev) => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
       } finally {
         setIsLoading(false);
+        clearImageEditContext();
       }
     },
-    [sessionId, agentId, theaterId, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent]
+    [sessionId, agentId, theaterId, imageEditContext, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext]
   );
 
   // 调整面板大小
@@ -269,6 +282,24 @@ export function AIAssistantPanel() {
               ))}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* 图像编辑上下文横幅 */}
+            {imageEditContext && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20 text-sm shrink-0">
+                <ImageIcon className="h-4 w-4 text-primary shrink-0" />
+                <span className="truncate text-primary">
+                  编辑: {imageEditContext.nodeName}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 ml-auto shrink-0 hover:bg-primary/20"
+                  onClick={clearImageEditContext}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
 
             {/* 输入区域 */}
             <MessageInput onSend={handleSend} isLoading={isLoading} />

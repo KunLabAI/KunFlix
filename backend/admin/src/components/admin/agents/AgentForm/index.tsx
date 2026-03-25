@@ -47,6 +47,28 @@ const defaultGeminiConfig = {
   google_image_search_enabled: false,
 };
 
+const defaultXAIImageConfig = {
+  image_generation_enabled: false,
+  image_config: {
+    aspect_ratio: null,
+    resolution: null,
+    n: null,
+    response_format: null,
+  },
+};
+
+const defaultImageConfig = {
+  image_generation_enabled: false,
+  image_provider_id: null,
+  image_model: null,
+  image_config: {
+    aspect_ratio: null,
+    quality: null,
+    batch_count: null,
+    output_format: null,
+  },
+};
+
 export default function AgentForm({ 
   initialValues, 
   onSubmit, 
@@ -88,6 +110,9 @@ export default function AgentForm({
       max_subtasks: 10,
       enable_auto_review: true,
       gemini_config: defaultGeminiConfig,
+      xai_image_config: defaultXAIImageConfig,
+      image_config: defaultImageConfig,
+      image_credit_per_image: 0,
     },
   });
 
@@ -114,7 +139,7 @@ export default function AgentForm({
         thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools,
         tools: initialValues.tools || [],
-        target_node_types: initialValues.target_node_types || [],
+        target_node_types: (initialValues.target_node_types || []) as ("script" | "character" | "storyboard" | "video")[],
         input_credit_per_1m: Number(initialValues.input_credit_per_1m) || 0,
         output_credit_per_1m: Number(initialValues.output_credit_per_1m) || 0,
         image_output_credit_per_1m: Number(initialValues.image_output_credit_per_1m) || 0,
@@ -129,6 +154,9 @@ export default function AgentForm({
         max_subtasks: Number(initialValues.max_subtasks) || 10,
         enable_auto_review: initialValues.enable_auto_review !== false,
         gemini_config: initialValues.gemini_config || defaultGeminiConfig,
+        xai_image_config: initialValues.xai_image_config || defaultXAIImageConfig,
+        image_config: initialValues.image_config || defaultImageConfig,
+        image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
       };
       
       // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
@@ -165,6 +193,9 @@ export default function AgentForm({
         max_subtasks: 10,
         enable_auto_review: true,
         gemini_config: defaultGeminiConfig,
+        xai_image_config: defaultXAIImageConfig,
+        image_config: defaultImageConfig,
+        image_credit_per_image: 0,
       });
       isFormInitialized.current = true;
     }
@@ -192,7 +223,7 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, gemini_config, ...rest } = values;
+      const { tools_enabled, gemini_config, xai_image_config, image_config, ...rest } = values;
       
       // Clean up gemini_config
       let cleanedGeminiConfig = undefined;
@@ -216,10 +247,46 @@ export default function AgentForm({
         };
       }
 
+      // Clean up xai_image_config
+      let cleanedXAIImageConfig = undefined;
+      if (xai_image_config) {
+        const xaiImgCfg = xai_image_config.image_generation_enabled && xai_image_config.image_config ? {
+          aspect_ratio: xai_image_config.image_config.aspect_ratio || null,
+          resolution: xai_image_config.image_config.resolution || null,
+          n: xai_image_config.image_config.n || null,
+          response_format: xai_image_config.image_config.response_format || null,
+        } : null;
+
+        cleanedXAIImageConfig = {
+          image_generation_enabled: xai_image_config.image_generation_enabled || false,
+          image_config: xaiImgCfg,
+        };
+      }
+
+      // Clean up unified image_config
+      let cleanedImageConfig = undefined;
+      if (image_config) {
+        const imgCfg = image_config.image_generation_enabled && image_config.image_config ? {
+          aspect_ratio: image_config.image_config.aspect_ratio || null,
+          quality: image_config.image_config.quality || null,
+          batch_count: image_config.image_config.batch_count || null,
+          output_format: image_config.image_config.output_format || null,
+        } : null;
+
+        cleanedImageConfig = {
+          image_generation_enabled: image_config.image_generation_enabled || false,
+          image_provider_id: image_config.image_generation_enabled ? (image_config.image_provider_id || null) : null,
+          image_model: image_config.image_generation_enabled ? (image_config.image_model || null) : null,
+          image_config: imgCfg,
+        };
+      }
+
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
         gemini_config: cleanedGeminiConfig,
+        xai_image_config: cleanedXAIImageConfig,
+        image_config: cleanedImageConfig,
       };
       
       console.log('Submitting payload:', JSON.stringify(payload, null, 2));
