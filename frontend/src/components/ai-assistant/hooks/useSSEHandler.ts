@@ -3,6 +3,7 @@
 import { useCallback, useRef } from 'react';
 import { useAIAssistantStore, type Message, type AgentStep } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
+import { useAuth } from '@/context/AuthContext';
 import type { MultiAgentData } from '@/components/canvas/MultiAgentSteps';
 
 interface SSEEvent {
@@ -23,6 +24,7 @@ interface StreamingState {
 export function useSSEHandler() {
   const setMessages = useAIAssistantStore((state) => state.setMessages);
   const setIsLoading = useAIAssistantStore((state) => state.setIsOpen);
+  const { updateCredits } = useAuth();
   
   // SSE事件处理状态引用
   const streamingStateRef = useRef<StreamingState>({
@@ -245,6 +247,7 @@ export function useSSEHandler() {
           total_input_tokens?: number;
           total_output_tokens?: number;
           total_credit_cost?: number;
+          billing_status?: string;
         };
         if (state.multiAgent) {
           state.multiAgent.finalResult = d.result || '';
@@ -265,6 +268,33 @@ export function useSSEHandler() {
           }
           return prev;
         });
+        // 积分不足友好提醒（多智能体模式）
+        (d.billing_status === 'insufficient') && setMessages((prev) => [
+          ...prev,
+          { role: 'ai', content: '提示：您的积分余额已不足，本次消耗未能完全扣除。请及时充值以继续使用。', status: 'complete' },
+        ]);
+      },
+
+      // 计费信息（单智能体模式，在 done 之前收到）
+      billing: () => {
+        const d = data as {
+          credit_cost?: number;
+          remaining_credits?: number;
+          insufficient?: boolean;
+          frozen?: boolean;
+        };
+        // 实时更新用户积分余额
+        (d.remaining_credits !== undefined) && updateCredits(d.remaining_credits);
+        // 积分不足友好提醒
+        d.insufficient && setMessages((prev) => [
+          ...prev,
+          { role: 'ai', content: '提示：您的积分余额已不足，本次消耗未能扣除。请及时充值以继续使用。', status: 'complete' },
+        ]);
+        // 账户冻结提醒
+        d.frozen && setMessages((prev) => [
+          ...prev,
+          { role: 'ai', content: '提示：您的账户资金已被冻结，请联系管理员。', status: 'complete' },
+        ]);
       },
 
       // 画布更新
@@ -294,7 +324,7 @@ export function useSSEHandler() {
     };
 
     handlers[eventType]?.();
-  }, [setMessages, resetStreamingState]);
+  }, [setMessages, resetStreamingState, updateCredits]);
 
   return {
     parseSSELine,

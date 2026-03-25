@@ -4,7 +4,6 @@
 from typing import Dict, Tuple, Optional
 from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from decimal import Decimal
 import logging
 from models import User, CreditTransaction
 
@@ -57,24 +56,19 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
     Raises:
         BalanceFrozenError: 如果账户被冻结
     """
-    # 转换为 Decimal 进行比较
-    cost_decimal = Decimal(str(estimated_cost))
-    
     # 1. 尝试查询用户
     stmt = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
     result = await session.execute(stmt)
     row = result.first()
     
     if row:
-        current_balance = row.credits or Decimal('0.0')
+        current_balance = float(row.credits or 0)
         is_frozen = row.is_balance_frozen or False
         
         if is_frozen:
             raise BalanceFrozenError(f"User {user_id} balance is frozen")
         
-        if current_balance < cost_decimal:
-            return False
-        return True
+        return current_balance >= estimated_cost
 
     # 2. 尝试查询管理员
     from models import Admin
@@ -83,12 +77,8 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
     row_admin = result_admin.first()
     
     if row_admin:
-        current_balance = row_admin.credits or Decimal('0.0')
-        # 管理员暂无冻结逻辑
-        # 转换为 Decimal 进行比较
-        if current_balance < cost_decimal:
-            return False
-        return True
+        current_balance = float(row_admin.credits or 0)
+        return current_balance >= estimated_cost
 
     return False
 
@@ -118,14 +108,14 @@ async def refund_credits_atomic(
     if amount == 0:
         pass
 
-    amount_decimal = Decimal(str(amount))
+    amount_float = float(amount)
     
     # 1. 原子增加余额 (User)
     # UPDATE users SET credits = credits + :amount WHERE id = :id
     stmt = (
         update(User)
         .where(User.id == user_id)
-        .values(credits=User.credits + amount_decimal)
+        .values(credits=User.credits + amount_float)
         .execution_options(synchronize_session="fetch")
     )
     
@@ -137,7 +127,7 @@ async def refund_credits_atomic(
         stmt_admin = (
             update(Admin)
             .where(Admin.id == user_id)
-            .values(credits=Admin.credits + amount_decimal)
+            .values(credits=Admin.credits + amount_float)
             .execution_options(synchronize_session="fetch")
         )
         result_admin = await session.execute(stmt_admin)
@@ -145,12 +135,12 @@ async def refund_credits_atomic(
         if result_admin.rowcount > 0:
              balance_stmt = select(Admin.credits).where(Admin.id == user_id)
              balance_result = await session.execute(balance_stmt)
-             current_balance = balance_result.scalar()
-             balance_before = current_balance - amount_decimal
+             current_balance = float(balance_result.scalar() or 0)
+             balance_before = current_balance - amount_float
              
              transaction = CreditTransaction(
                 admin_id=user_id,
-                amount=amount_decimal,
+                amount=amount_float,
                 balance_before=balance_before,
                 balance_after=current_balance,
                 transaction_type="refund",
@@ -165,15 +155,15 @@ async def refund_credits_atomic(
     # 2. 获取更新后的余额 (User)
     balance_stmt = select(User.credits).where(User.id == user_id)
     balance_result = await session.execute(balance_stmt)
-    current_balance = balance_result.scalar()
+    current_balance = float(balance_result.scalar() or 0)
     
     # 推算退还前的余额
-    balance_before = current_balance - amount_decimal
+    balance_before = current_balance - amount_float
     
     # 3. 创建交易记录
     transaction = CreditTransaction(
         user_id=user_id,
-        amount=amount_decimal,  # 收入为正
+        amount=amount_float,  # 收入为正
         balance_before=balance_before,
         balance_after=current_balance,
         transaction_type="refund",
@@ -217,27 +207,18 @@ async def deduct_credits_atomic(
         # 这里选择记录以便追踪零成本调用
         pass
 
-    cost_decimal = Decimal(str(cost))
-    
-    # 0. 检查冻结状态 (Optional, UPDATE 条件里也可以加，但显式检查报错更友好)
-    # 为了性能，我们可以直接在 UPDATE 中判断，如果 UPDATE 失败再查原因。
-    # 但为了明确区分“余额不足”和“冻结”，先查一次或者在 UPDATE 中加条件并检查。
-    # 这里选择在 UPDATE 语句中加入 is_balance_frozen = False 条件
+    cost_float = float(cost)
     
     # 1. 原子更新余额
     # UPDATE users SET credits = credits - :cost WHERE id = :id AND credits >= :cost AND is_balance_frozen = False
-    # Check if user is admin first (admins have unlimited credits or separate logic, but here we treat them as users for billing if they have credits)
-    # But wait, admins are in 'admins' table, users in 'users' table.
-    # The deduct_credits_atomic function currently only updates 'User' table.
-    # If the user_id belongs to an admin, this will fail with rowcount=0.
     
     # Try updating User table first
     stmt = (
         update(User)
         .where(User.id == user_id)
-        .where(User.credits >= cost_decimal)
-        .where(User.is_balance_frozen == False) # 确保未冻结
-        .values(credits=User.credits - cost_decimal)
+        .where(User.credits >= cost_float)
+        .where(User.is_balance_frozen == False)  # 确保未冻结
+        .values(credits=User.credits - cost_float)
         .execution_options(synchronize_session="fetch")
     )
     
@@ -249,8 +230,8 @@ async def deduct_credits_atomic(
         stmt_admin = (
             update(Admin)
             .where(Admin.id == user_id)
-            .where(Admin.credits >= cost_decimal)
-            .values(credits=Admin.credits - cost_decimal)
+            .where(Admin.credits >= cost_float)
+            .values(credits=Admin.credits - cost_float)
             .execution_options(synchronize_session="fetch")
         )
         result_admin = await session.execute(stmt_admin)
@@ -259,12 +240,12 @@ async def deduct_credits_atomic(
              # It was an admin, and update succeeded
              balance_stmt = select(Admin.credits).where(Admin.id == user_id)
              balance_result = await session.execute(balance_stmt)
-             current_balance = balance_result.scalar()
-             balance_before = current_balance + cost_decimal
+             current_balance = float(balance_result.scalar() or 0)
+             balance_before = current_balance + cost_float
              
              transaction = CreditTransaction(
-                admin_id=user_id, # Use admin_id column
-                amount=-cost_decimal,
+                admin_id=user_id,  # Use admin_id column
+                amount=-cost_float,
                 balance_before=balance_before,
                 balance_after=current_balance,
                 transaction_type=transaction_type,
@@ -282,7 +263,7 @@ async def deduct_credits_atomic(
         if row:
              if row.is_balance_frozen:
                  raise BalanceFrozenError(f"User {user_id} balance is frozen")
-             if row.credits < cost_decimal:
+             if float(row.credits or 0) < cost_float:
                 logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
                 raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
         
@@ -292,7 +273,7 @@ async def deduct_credits_atomic(
         row_admin = res_check_admin.first()
         
         if row_admin:
-             if row_admin.credits < cost_decimal:
+             if float(row_admin.credits or 0) < cost_float:
                 logger.warning(f"Insufficient credits for admin {user_id}. Cost: {cost}")
                 raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
              # Add check for update failure even with sufficient credits
@@ -305,26 +286,17 @@ async def deduct_credits_atomic(
         raise Exception("Failed to deduct credits (unknown reason)")
     
     # 2. 获取更新后的余额（User）
-    # 注意：在高并发下，再次查询的余额可能已经发生变化，
-    # 但对于交易记录来说，我们更关心的是"这次扣除前的余额"和"扣除量"。
-    # balance_after = balance_before - cost
-    # 为了准确记录，我们可以重新查询当前余额。
-    # 或者，我们接受 transaction log 中的 balance 是近似值，只要总额对得上。
-    # 更严谨的做法是利用 RETURNING 子句 (PostgreSQL/Oracle)，但 SQLite/MySQL 旧版不支持。
-    # 这里我们再查一次，虽然可能包含其他并发事务的影响，但在审计上是可以接受的。
-    
-    # We only reach here if User update succeeded
     balance_stmt = select(User.credits).where(User.id == user_id)
     balance_result = await session.execute(balance_stmt)
-    current_balance = balance_result.scalar()
+    current_balance = float(balance_result.scalar() or 0)
     
     # 推算扣除前的余额 (仅供参考)
-    balance_before = current_balance + cost_decimal
+    balance_before = current_balance + cost_float
     
     # 3. 创建交易记录
     transaction = CreditTransaction(
         user_id=user_id,
-        amount=-cost_decimal,  # 支出为负
+        amount=-cost_float,  # 支出为负
         balance_before=balance_before,
         balance_after=current_balance,
         transaction_type=transaction_type,

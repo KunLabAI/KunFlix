@@ -260,9 +260,26 @@ async def generate_with_template(
             detail=f"Failed to parse AI response as JSON: {str(e)}"
         )
     
-    # 8. 计算费用（复用现有计费逻辑）
-    from services.billing import calculate_credit_cost
-    credit_cost, _ = calculate_credit_cost(final_result, agent)
+    # 8. 计算费用并扣除积分（复用现有计费逻辑）
+    from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
+    credit_cost, billing_metadata = calculate_credit_cost(final_result, agent)
+
+    # 执行原子扣费
+    try:
+        (credit_cost > 0) and await deduct_credits_atomic(
+            user_id=_current.id,
+            cost=credit_cost,
+            session=db,
+            metadata=billing_metadata,
+            transaction_type="consumption"
+        )
+        await db.commit()
+    except InsufficientCreditsError:
+        logger.warning(f"Credits depleted for user {_current.id} in prompt_templates. Cost: {credit_cost}")
+    except BalanceFrozenError:
+        logger.warning(f"Balance frozen for user {_current.id} in prompt_templates")
+    except Exception as e:
+        logger.error(f"Failed to deduct credits in prompt_templates: {e}")
     
     return AIGenerateResponse(
         success=True,

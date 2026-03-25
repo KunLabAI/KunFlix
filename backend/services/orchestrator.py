@@ -16,7 +16,7 @@ import logging
 
 from models import Agent, TaskExecution, SubTask, User, CreditTransaction
 from services.agent_executor import AgentExecutor, ExecutionResult
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.llm_stream import StreamResult
 
 logger = logging.getLogger(__name__)
@@ -653,6 +653,7 @@ class DynamicOrchestrator:
                 "total_input_tokens": task_execution.total_input_tokens,
                 "total_output_tokens": task_execution.total_output_tokens,
                 "total_credit_cost": task_execution.total_credit_cost,
+                "billing_status": (task_execution.execution_metadata or {}).get("billing_status", "success"),
                 "result": final_result
             })
 
@@ -858,6 +859,7 @@ Provide a cohesive final result that integrates all outputs:"""
         task_execution.result = {"final_result": final_result} if final_result else None
 
         # Deduct credits from user
+        billing_status = "success"
         if total_cost > 0:
             try:
                 # 使用原子扣费
@@ -879,11 +881,18 @@ Provide a cohesive final result that integrates all outputs:"""
                     transaction_type="deduction"
                 )
             except InsufficientCreditsError:
-                logger.error(f"Insufficient credits for user {user_id} in orchestrator finalize. Cost: {total_cost}")
-                # 记录失败状态，或者允许透支（取决于业务策略）
-                # 这里我们记录错误，但无法回滚已经完成的任务消耗
-                pass
+                billing_status = "insufficient"
+                logger.warning(f"Credits depleted for user {user_id} in orchestrator finalize. Cost: {total_cost}")
+            except BalanceFrozenError:
+                billing_status = "frozen"
+                logger.warning(f"Balance frozen for user {user_id} in orchestrator finalize")
             except Exception as e:
+                billing_status = "error"
                 logger.error(f"Failed to deduct credits in orchestrator: {e}")
+
+        task_execution.execution_metadata = {
+            **(task_execution.execution_metadata or {}),
+            "billing_status": billing_status,
+        }
 
         await self.db.commit()

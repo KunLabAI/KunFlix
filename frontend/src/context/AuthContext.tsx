@@ -33,6 +33,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (accessToken: string, refreshToken: string, user: User) => void;
   logout: () => void;
+  updateCredits: (credits: number) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -40,6 +41,7 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
   login: () => {},
   logout: () => {},
+  updateCredits: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -91,8 +93,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     router.push("/login");
   }, [router]);
 
+  const updateCredits = useCallback((credits: number) => {
+    setUser((prev) => {
+      const updated = prev ? { ...prev, credits } : prev;
+      updated && localStorage.setItem("user", JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateCredits }}>
       {children}
     </AuthContext.Provider>
   );

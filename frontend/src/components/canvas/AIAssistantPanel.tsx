@@ -117,7 +117,16 @@ export function AIAssistantPanel() {
           signal: abortControllerRef.current.signal,
         });
 
-        !response.ok && (() => { throw new Error(`HTTP ${response.status}`); })();
+        // 友好处理 HTTP 错误（特别是 402 积分不足）
+        const _ERROR_MESSAGES: Record<number, string> = {
+          402: '积分余额不足，请充值后继续使用',
+          401: '登录已过期，请重新登录',
+          403: '无权访问该功能',
+          429: '请求过于频繁，请稍后再试',
+        };
+        !response.ok && (() => {
+          throw new Error(_ERROR_MESSAGES[response.status] || `请求失败 (${response.status})`);
+        })();
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();

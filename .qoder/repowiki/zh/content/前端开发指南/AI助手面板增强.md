@@ -103,7 +103,7 @@ useSessionManager --> chats
 - [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
 
 **章节来源**
-- [AIAssistantPanel.tsx:1-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L286)
+- [AIAssistantPanel.tsx:1-295](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L295)
 - [index.ts:1-22](file://frontend/src/components/ai-assistant/index.ts#L1-L22)
 
 ## 核心组件
@@ -160,7 +160,7 @@ AIAssistantPanel --> useSessionManager : uses
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:14-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L14-L286)
+- [AIAssistantPanel.tsx:14-295](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L14-L295)
 - [ChatMessage.tsx:46-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L46-L126)
 - [MessageInput.tsx:9-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L9-L110)
 - [PanelHeader.tsx:15-123](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L15-L123)
@@ -208,12 +208,12 @@ useSSEHandler --> useCanvasStore : uses
 ```
 
 **图表来源**
-- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
+- [useSSEHandler.ts:23-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L335)
 - [useSessionManager.ts:12-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L179)
 
 **章节来源**
 - [AIAssistantPanel.tsx:25-39](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L25-L39)
-- [useSSEHandler.ts:1-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L305)
+- [useSSEHandler.ts:1-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L335)
 - [useSessionManager.ts:1-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L179)
 
 ## 架构概览
@@ -250,7 +250,7 @@ ChatMessage->>User : 显示消息
 **图表来源**
 - [AIAssistantPanel.tsx:246-265](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L246-L265)
 - [useSessionManager.ts:110-131](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L110-L131)
-- [useSSEHandler.ts:61-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L61-L297)
+- [useSSEHandler.ts:61-327](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L61-L327)
 
 **章节来源**
 - [AIAssistantPanel.tsx:82-157](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L82-L157)
@@ -408,10 +408,10 @@ SSEEventHandler --> EventHandlers : uses
 ```
 
 **图表来源**
-- [useSSEHandler.ts:23-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L297)
+- [useSSEHandler.ts:23-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L335)
 
 **章节来源**
-- [useSSEHandler.ts:1-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L305)
+- [useSSEHandler.ts:1-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L335)
 
 ### useSessionManager Hook
 
@@ -557,7 +557,7 @@ useSSEHandler --> API
 - [AIAssistantPanel.tsx:25-39](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L25-L39)
 
 **章节来源**
-- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
+- [useSSEHandler.ts:23-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L335)
 - [useSessionManager.ts:12-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L179)
 
 ## 多模态内容支持
@@ -649,7 +649,7 @@ SSEEventHandler --> EventHandler : uses
 ```
 
 **图表来源**
-- [useSSEHandler.ts:23-305](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L305)
+- [useSSEHandler.ts:23-335](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L23-L335)
 
 ### 事件处理流程
 
@@ -676,7 +676,7 @@ SSEEventHandler --> EventHandler : uses
 - **error**：错误发生
 
 **章节来源**
-- [useSSEHandler.ts:64-297](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L64-L297)
+- [useSSEHandler.ts:64-327](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L64-L327)
 
 ## 多智能体协作UI
 
@@ -784,7 +784,7 @@ AIAssistantPanel --> useCanvasStore
 - [useSSEHandler.ts:4-6](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L4-L6)
 
 **章节来源**
-- [AIAssistantPanel.tsx:1-286](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L286)
+- [AIAssistantPanel.tsx:1-295](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L295)
 - [useSessionManager.ts:3-6](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L3-L6)
 
 ## 性能考虑

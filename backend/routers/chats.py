@@ -18,7 +18,7 @@ from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, 
 from services.base_tools import build_base_tool_defs, execute_base_tool
 from services.canvas_tools import build_canvas_tool_defs, execute_canvas_tool, CANVAS_TOOL_NAMES
 from services.orchestrator import DynamicOrchestrator
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient
 from services.media_utils import MEDIA_DIR
 
 logger = logging.getLogger(__name__)
@@ -220,9 +220,9 @@ async def send_message(
         or agent.search_credit_per_query > 0
     )
 
-    # 3. 积分预检查：付费智能体且余额不足则拒绝（管理员也需要检查以便调试）
+    # 3. 积分预检查：付费智能体且余额不足则友好拒绝
     if is_paid_agent and (current_user.credits or 0) <= 0:
-        raise HTTPException(status_code=402, detail="积分余额不足")
+        raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
 
     # 4. 判断是否为 Leader 多智能体模式
     is_multi_agent = agent.is_leader and agent.member_agent_ids
@@ -599,8 +599,6 @@ async def _generate_single_agent(
                     yield _sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
 
-        yield _sse("done", {})
-
     except Exception as e:
         generation_failed = True
         logger.error(f"LLM generation failed: {e}")
@@ -609,36 +607,38 @@ async def _generate_single_agent(
     # 生成失败时不保存消息也不扣费
     if generation_failed or not result:
         logger.info(f"{'='*60} (no billing - generation {'failed' if generation_failed else 'empty'})\n")
+        yield _sse("done", {})
         return
 
     # 输出统计日志
-    if result.reasoning_content:
-        logger.info(f"\nThinking: {result.reasoning_content[:300]}{'...' if len(result.reasoning_content) > 300 else ''}")
-    
+    result.reasoning_content and logger.info(
+        f"\nThinking: {result.reasoning_content[:300]}{'...' if len(result.reasoning_content) > 300 else ''}"
+    )
     logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
     logger.info(f"Output chars: {len(result.full_response)}")
-    
-    if result.input_tokens > 0 or result.output_tokens > 0:
-        total_tokens = result.input_tokens + result.output_tokens
-        logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}")
-        logger.info(f"  text_out={result.text_output_tokens}, image_out={result.image_output_tokens}, search={result.search_query_count}")
-        logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%")
-    
+
+    total_tokens = result.input_tokens + result.output_tokens
+    (total_tokens > 0) and (
+        logger.info(f"Tokens: {result.input_tokens} in / {result.output_tokens} out = {total_tokens}"),
+        logger.info(f"  text_out={result.text_output_tokens}, image_out={result.image_output_tokens}, search={result.search_query_count}"),
+        logger.info(f"Context usage: {total_tokens / agent.context_window * 100:.1f}%"),
+    )
     logger.info(f"{'='*60}\n")
 
     # 保存助手消息、更新统计、扣费（仅在生成成功后执行）
+    billing_event = {"credit_cost": 0}
     async with AsyncSessionLocal() as session:
         try:
-            # Prepare content for assistant
-            if loaded_skills or all_tool_calls:
-                assistant_data = {
+            # Prepare content for assistant（映射表驱动，避免 if-else）
+            _content_builders = {
+                True: lambda: json.dumps({
                     "text": result.full_response,
                     "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
                     "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls]
-                }
-                final_content = json.dumps(assistant_data, ensure_ascii=False)
-            else:
-                final_content = result.full_response
+                }, ensure_ascii=False),
+                False: lambda: result.full_response,
+            }
+            final_content = _content_builders[bool(loaded_skills or all_tool_calls)]()
 
             assistant_msg = ChatMessage(
                 session_id=session_id,
@@ -651,8 +651,7 @@ async def _generate_single_agent(
             from sqlalchemy import func as sa_func
             s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
             s = s_result.scalars().first()
-            if s:
-                s.updated_at = sa_func.now()
+            s and setattr(s, 'updated_at', sa_func.now())
 
             # 查询实体并更新统计（映射表驱动，避免 if-else）
             entity_model_map = {True: Admin, False: User}
@@ -665,58 +664,39 @@ async def _generate_single_agent(
                 entity.total_input_chars = (entity.total_input_chars or 0) + input_chars
                 entity.total_output_chars = (entity.total_output_chars or 0) + len(result.full_response)
 
-                # 积分扣费（映射表驱动多维度计费，仅在生成成功后扣费）
-                credit_cost, billing_metadata = calculate_credit_cost(result, agent)
-                if credit_cost > 0:
-                    try:
-                        # 区分 User 和 Admin
-                        # 目前 deduct_credits_atomic 仅支持 User 模型
-                        # Admin 暂时维持原状，或者 Admin 也需要原子扣费？
-                        # Admin 表也有 credits 字段，逻辑类似。
-                        # 为了安全，我们也应该为 Admin 实现原子扣费，或者复用逻辑。
-                        # 由于 deduct_credits_atomic 硬编码了 User 模型，我们需要稍微修改一下或者只对 User 使用。
-                        
-                        if not is_admin:
-                            # 对普通用户使用原子扣费
-                            await deduct_credits_atomic(
-                                user_id=entity_id,
-                                cost=credit_cost,
-                                session=session,
-                                metadata=billing_metadata,
-                                transaction_type="consumption"
-                            )
-                        else:
-                            # Admin 保持原有逻辑 (或者后续升级 Admin 扣费)
-                            balance_before = entity.credits or 0
-                            # Admin 允许透支？或者也检查？暂时保持原样
-                            entity.credits = max(0, balance_before - credit_cost)
-                            tx_kwargs = {
-                                "admin_id": entity_id,
-                                "agent_id": agent.id,
-                                "session_id": session_id,
-                                "transaction_type": "deduction",
-                                "amount": -credit_cost,
-                                "balance_before": balance_before,
-                                "balance_after": entity.credits,
-                                "input_tokens": result.input_tokens,
-                                "output_tokens": result.output_tokens,
-                                "metadata_json": billing_metadata,
-                            }
-                            session.add(CreditTransaction(**tx_kwargs))
-                            logger.info(f"Admin Credits: -{credit_cost:.4f} ({balance_before:.2f} -> {entity.credits:.2f})")
-                            
-                    except InsufficientCreditsError:
-                        logger.error(f"Insufficient credits for user {entity_id} after completion. This should be caught earlier.")
-                        # 虽然生成完成了，但扣费失败。
-                        # 这种情况下，我们可能需要记录欠费，或者只是 log error。
-                        # 由于是事后扣费，这里抛出异常也无法回滚 LLM 的消耗。
-                        pass
-                    except Exception as e:
-                         logger.error(f"Error deducting credits: {e}")
+            # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
+            credit_cost, billing_metadata = calculate_credit_cost(result, agent)
+            billing_event["credit_cost"] = round(credit_cost, 6)
+
+            try:
+                (credit_cost > 0) and await deduct_credits_atomic(
+                    user_id=entity_id,
+                    cost=credit_cost,
+                    session=session,
+                    metadata=billing_metadata,
+                    transaction_type="consumption"
+                )
+            except InsufficientCreditsError:
+                billing_event["insufficient"] = True
+                logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
+            except BalanceFrozenError:
+                billing_event["frozen"] = True
+                logger.warning(f"Balance frozen for {entity_id}")
 
             await session.commit()
+
+            # 查询最新余额
+            balance_result = await session.execute(
+                select(entity_model.credits).where(entity_model.id == entity_id)
+            )
+            billing_event["remaining_credits"] = round(float(balance_result.scalar() or 0), 4)
+
         except Exception as e:
-            logger.error(f"Failed to save message: {e}")
+            logger.error(f"Failed to save message/billing: {e}")
+
+    # 发送计费信息和完成事件
+    yield _sse("billing", billing_event)
+    yield _sse("done", {})
 
 
 @router.delete("/{session_id}/messages")
