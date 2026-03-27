@@ -8,7 +8,7 @@ import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 
 // 导入拆分后的组件
-import { PanelHeader, MessageInput, ChatMessage, ContextUsageBar } from '@/components/ai-assistant';
+import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 
 export function AIAssistantPanel() {
@@ -25,6 +25,9 @@ export function AIAssistantPanel() {
   // 图像编辑上下文
   const imageEditContext = useAIAssistantStore((state) => state.imageEditContext);
   const clearImageEditContext = useAIAssistantStore((state) => state.clearImageEditContext);
+
+  // 上下文使用统计
+  const contextUsage = useAIAssistantStore((state) => state.contextUsage);
 
   // 会话管理
   const {
@@ -50,14 +53,7 @@ export function AIAssistantPanel() {
   const constraintsRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
 
-  // ESC关闭面板
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      e.key === 'Escape' && isOpen && setIsOpen(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, setIsOpen]);
+  // 注：ESC关闭面板功能已移除
 
   // 自动滚动到底部
   useEffect(() => {
@@ -179,7 +175,7 @@ export function AIAssistantPanel() {
   );
 
   // 调整面板大小
-  const handleResizeStart = (e: React.PointerEvent, direction: 'left' | 'bottom' | 'corner') => {
+  const handleResizeStart = (e: React.PointerEvent, direction: 'left' | 'right' | 'top' | 'bottom' | 'corner-nw' | 'corner-ne' | 'corner-sw' | 'corner-se') => {
     e.preventDefault();
     e.stopPropagation();
 
@@ -192,8 +188,22 @@ export function AIAssistantPanel() {
       const deltaX = moveEvent.clientX - startX;
       const deltaY = moveEvent.clientY - startY;
 
-      const newWidth = (direction === 'left' || direction === 'corner') ? Math.max(300, startWidth - deltaX) : startWidth;
-      const newHeight = (direction === 'bottom' || direction === 'corner') ? Math.max(400, startHeight + deltaY) : startHeight;
+      let newWidth = startWidth;
+      let newHeight = startHeight;
+
+      // 处理宽度调整
+      if (direction === 'left' || direction === 'corner-nw' || direction === 'corner-sw') {
+        newWidth = Math.max(300, startWidth - deltaX);
+      } else if (direction === 'right' || direction === 'corner-ne' || direction === 'corner-se') {
+        newWidth = Math.max(300, startWidth + deltaX);
+      }
+
+      // 处理高度调整
+      if (direction === 'top' || direction === 'corner-nw' || direction === 'corner-ne') {
+        newHeight = Math.max(400, startHeight - deltaY);
+      } else if (direction === 'bottom' || direction === 'corner-sw' || direction === 'corner-se') {
+        newHeight = Math.max(400, startHeight + deltaY);
+      }
 
       setPanelSize({ width: newWidth, height: newHeight });
     };
@@ -242,34 +252,38 @@ export function AIAssistantPanel() {
             dragConstraints={constraintsRef}
             dragMomentum={false}
             dragElastic={0}
+            onDragStart={() => {
+              // 拖拽开始时禁止文本选择
+              document.body.style.userSelect = 'none';
+            }}
             onDragEnd={(_, info) => {
+              // 拖拽结束后恢复文本选择
+              document.body.style.userSelect = '';
               setPanelPosition({ x: panelPosition.x + info.offset.x, y: panelPosition.y + info.offset.y });
             }}
-            initial={{ opacity: 0, width: 48, height: 48, borderRadius: 24, x: panelPosition.x, y: panelPosition.y }}
+            initial={{ opacity: 0, scale: 0.95 }}
             animate={{
               opacity: 1,
+              scale: 1,
               width: panelSize.width,
               height: panelSize.height,
-              borderRadius: 12,
               x: panelPosition.x,
               y: panelPosition.y,
             }}
-            exit={{ opacity: 0, width: 48, height: 48, borderRadius: 24 }}
+            exit={{ opacity: 0, scale: 0.95 }}
             transition={{
-              duration: 0.3,
-              ease: 'easeInOut',
+              opacity: { duration: 0.15 },
+              scale: { duration: 0.2, ease: 'easeOut' },
+              width: { duration: 0.25, ease: 'easeOut' },
+              height: { duration: 0.25, ease: 'easeOut' },
               x: { duration: 0 },
               y: { duration: 0 },
             }}
             className="pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default"
-            style={{ touchAction: 'none' }}
+            style={{ touchAction: 'none', borderRadius: 12 }}
           >
             {/* 头部 */}
             <PanelHeader
-              agentName={agentName}
-              availableAgents={availableAgents}
-              isLoadingAgents={isLoadingAgents}
-              onSwitchAgent={switchAgent}
               onClearSession={clearSession}
               onClose={() => setIsOpen(false)}
               onDragStart={(e) => dragControls.start(e)}
@@ -301,24 +315,57 @@ export function AIAssistantPanel() {
               </div>
             )}
 
-            {/* 上下文使用统计 */}
-            <ContextUsageBar />
+            {/* 输入区域（包含Agent选择器、上下文统计和发送按钮） */}
+            <MessageInput
+              onSend={handleSend}
+              isLoading={isLoading}
+              agentName={agentName}
+              availableAgents={availableAgents}
+              isLoadingAgents={isLoadingAgents}
+              onSwitchAgent={switchAgent}
+              contextUsage={contextUsage}
+            />
 
-            {/* 输入区域 */}
-            <MessageInput onSend={handleSend} isLoading={isLoading} />
-
-            {/* 调整大小手柄 */}
+            {/* 调整大小手柄 - 四边和四角 */}
+            {/* 左边 */}
             <div
-              className="absolute left-0 top-0 bottom-4 w-1 cursor-ew-resize hover:bg-primary/50 transition-colors z-50"
+              className="absolute left-0 top-4 bottom-4 w-1 cursor-ew-resize hover:bg-primary/50 transition-colors z-50"
               onPointerDown={(e) => handleResizeStart(e, 'left')}
             />
+            {/* 右边 */}
             <div
-              className="absolute bottom-0 left-4 right-0 h-1 cursor-ns-resize hover:bg-primary/50 transition-colors z-50"
+              className="absolute right-0 top-4 bottom-4 w-1 cursor-ew-resize hover:bg-primary/50 transition-colors z-50"
+              onPointerDown={(e) => handleResizeStart(e, 'right')}
+            />
+            {/* 顶部 */}
+            <div
+              className="absolute top-0 left-4 right-4 h-1 cursor-ns-resize hover:bg-primary/50 transition-colors z-50"
+              onPointerDown={(e) => handleResizeStart(e, 'top')}
+            />
+            {/* 底部 */}
+            <div
+              className="absolute bottom-0 left-4 right-4 h-1 cursor-ns-resize hover:bg-primary/50 transition-colors z-50"
               onPointerDown={(e) => handleResizeStart(e, 'bottom')}
             />
+            {/* 左上角 */}
+            <div
+              className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize hover:bg-primary/50 transition-colors z-50 rounded-br-lg"
+              onPointerDown={(e) => handleResizeStart(e, 'corner-nw')}
+            />
+            {/* 右上角 */}
+            <div
+              className="absolute top-0 right-0 w-4 h-4 cursor-ne-resize hover:bg-primary/50 transition-colors z-50 rounded-bl-lg"
+              onPointerDown={(e) => handleResizeStart(e, 'corner-ne')}
+            />
+            {/* 左下角 */}
             <div
               className="absolute bottom-0 left-0 w-4 h-4 cursor-sw-resize hover:bg-primary/50 transition-colors z-50 rounded-tr-lg"
-              onPointerDown={(e) => handleResizeStart(e, 'corner')}
+              onPointerDown={(e) => handleResizeStart(e, 'corner-sw')}
+            />
+            {/* 右下角 */}
+            <div
+              className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize hover:bg-primary/50 transition-colors z-50 rounded-tl-lg"
+              onPointerDown={(e) => handleResizeStart(e, 'corner-se')}
             />
           </motion.div>
         )}

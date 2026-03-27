@@ -1,10 +1,17 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Send, Loader2, Paperclip } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Send, Loader2, ChevronDown, Battery, BatteryMedium, BatteryLow, BatteryWarning, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import type { AgentInfo, ContextUsage } from '@/store/useAIAssistantStore';
 
 interface MessageInputProps {
   onSend: (content: string) => void;
@@ -12,6 +19,13 @@ interface MessageInputProps {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  // Agent selector props
+  agentName?: string;
+  availableAgents?: AgentInfo[];
+  isLoadingAgents?: boolean;
+  onSwitchAgent?: (agent: AgentInfo) => void;
+  // Context usage props
+  contextUsage?: ContextUsage | null;
 }
 
 export function MessageInput({
@@ -20,14 +34,28 @@ export function MessageInput({
   disabled = false,
   placeholder = '输入你的想法...',
   className,
+  agentName = 'AI 助手',
+  availableAgents = [],
+  isLoadingAgents = false,
+  onSwitchAgent,
+  contextUsage,
 }: MessageInputProps) {
   const [inputValue, setInputValue] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 发送后重新聚焦输入框
   useEffect(() => {
-    !isLoading && inputRef.current?.focus();
+    !isLoading && textareaRef.current?.focus();
   }, [isLoading]);
+
+  // 自动调整高度
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    }
+  }, [inputValue]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -35,16 +63,23 @@ export function MessageInput({
       const content = inputValue.trim();
       content && onSend(content);
       setInputValue('');
+      // 重置高度
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
       // 发送后立即重新聚焦
-      inputRef.current?.focus();
+      textareaRef.current?.focus();
     },
     [inputValue, onSend]
   );
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       // Enter发送，Shift+Enter换行
-      e.key === 'Enter' && !e.shiftKey && handleSubmit(e);
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e);
+      }
     },
     [handleSubmit]
   );
@@ -52,58 +87,248 @@ export function MessageInput({
   const isInputEmpty = !inputValue.trim();
   const isDisabled = disabled || isLoading;
 
+  // 计算上下文使用率
+  const contextPercentage = contextUsage && contextUsage.contextWindow > 0
+    ? (contextUsage.usedTokens / contextUsage.contextWindow) * 100
+    : 0;
+
+  // 获取电池图标和颜色
+  const getBatteryIcon = () => {
+    if (contextPercentage >= 90) return <BatteryWarning className="h-4 w-4 text-red-500" />;
+    if (contextPercentage >= 70) return <BatteryLow className="h-4 w-4 text-amber-500" />;
+    if (contextPercentage >= 40) return <BatteryMedium className="h-4 w-4 text-emerald-500" />;
+    return <Battery className="h-4 w-4 text-emerald-500" />;
+  };
+
   return (
     <div className={cn('p-3 border-t bg-background', className)}>
-      <form onSubmit={handleSubmit} className="flex items-center gap-2">
-        <div className="flex items-center gap-1">
-          {/* 可选：附件按钮 */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+      <form onSubmit={handleSubmit} className="relative">
+        {/* 输入框区域 */}
+        <div className="relative bg-muted/50 rounded-2xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
+          <textarea
+            ref={textareaRef}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            className="w-full bg-transparent border-0 resize-none outline-none text-sm text-foreground placeholder:text-muted-foreground/60 min-h-[60px] max-h-[120px] py-3 px-3 pb-6"
+            rows={1}
+            autoFocus
             disabled={isDisabled}
-            title="添加附件"
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
+          />
+          {/* Enter提示 - 输入框内左下角 */}
+          <div className="absolute bottom-2 left-3 flex items-center gap-1">
+            <span className="text-[10px] text-muted-foreground/40">
+              Enter 发送
+            </span>
+            <span className="text-[10px] text-muted-foreground/30">·</span>
+            <span className="text-[10px] text-muted-foreground/40">
+              Shift + Enter 换行
+            </span>
+          </div>
         </div>
-        <Input
-          ref={inputRef}
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          className="flex-1"
-          autoFocus
-          disabled={isDisabled}
-        />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={isInputEmpty || isDisabled}
-          className={cn(
-            'transition-all duration-200',
-            !isInputEmpty && !isDisabled && 'bg-primary hover:bg-primary/90'
-          )}
-        >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="h-4 w-4" />
-          )}
-        </Button>
+
+        {/* 底部工具栏：Agent选择器 + 上下文 + 发送按钮 */}
+        <div className="flex items-center justify-between mt-2">
+          {/* 左侧：Agent选择器（下拉栏样式） */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-sm font-medium hover:bg-primary/10 flex items-center gap-2"
+                disabled={isLoadingAgents}
+              >
+                <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                </div>
+                <span className="text-foreground">{agentName}</span>
+                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
+                选择智能体
+              </div>
+              {availableAgents.map((agent) => (
+                <DropdownMenuItem
+                  key={agent.id}
+                  onClick={() => onSwitchAgent?.(agent)}
+                  className="text-xs cursor-pointer py-2"
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <span className="font-medium">{agent.name}</span>
+                    {agent.description && (
+                      <span className="text-[10px] text-muted-foreground line-clamp-1">
+                        {agent.description}
+                      </span>
+                    )}
+                    {agent.target_node_types && agent.target_node_types.length > 0 && (
+                      <span className="text-[10px] text-muted-foreground/70">
+                        支持: {agent.target_node_types.join(', ')}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              {availableAgents.length === 0 && (
+                <div className="p-3 text-xs text-muted-foreground text-center">
+                  暂无可用智能体
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* 右侧：上下文电池图标 + 发送按钮 */}
+          <div className="flex items-center gap-1">
+            {/* 上下文电池图标（带hover面板） */}
+            {contextUsage && (
+              <ContextBatteryIcon
+                contextUsage={contextUsage}
+                isLoading={isLoading}
+              />
+            )}
+
+            {/* 发送按钮（纯图标） */}
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isInputEmpty || isDisabled}
+              className={cn(
+                'h-8 w-8 rounded-lg transition-all duration-200',
+                isInputEmpty || isDisabled
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
+              )}
+              title={isLoading ? '发送中...' : '发送'}
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
       </form>
-      <div className="flex items-center justify-between mt-1.5 px-1">
-        <span className="text-[10px] text-muted-foreground/60">
-          Enter 发送 / Shift + Enter 换行
-        </span>
+    </div>
+  );
+}
+
+// 上下文电池图标组件（带hover详细面板）
+interface ContextBatteryIconProps {
+  contextUsage: ContextUsage;
+  isLoading: boolean;
+}
+
+function ContextBatteryIcon({ contextUsage, isLoading }: ContextBatteryIconProps) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  const percentage = contextUsage.contextWindow > 0
+    ? (contextUsage.usedTokens / contextUsage.contextWindow) * 100
+    : 0;
+  const clampedPercentage = Math.min(percentage, 100);
+  const remainingTokens = Math.max(0, contextUsage.contextWindow - contextUsage.usedTokens);
+
+  // 获取电池图标
+  const getBatteryIcon = () => {
+    if (percentage >= 90) return <BatteryWarning className="h-4 w-4 text-red-500" />;
+    if (percentage >= 70) return <BatteryLow className="h-4 w-4 text-amber-500" />;
+    if (percentage >= 40) return <BatteryMedium className="h-4 w-4 text-emerald-500" />;
+    return <Battery className="h-4 w-4 text-emerald-500" />;
+  };
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-lg hover:bg-muted relative"
+        title={`上下文: ${percentage.toFixed(0)}%`}
+      >
+        {getBatteryIcon()}
+        {/* 消耗动画效果 */}
         {isLoading && (
-          <span className="text-[10px] text-primary/60 animate-pulse">
-            AI 正在响应...
-          </span>
+          <motion.div
+            className="absolute inset-0 rounded-lg bg-primary/10"
+            animate={{
+              scale: [1, 1.1, 1],
+              opacity: [0.3, 0.6, 0.3],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
         )}
-      </div>
+      </Button>
+
+      {/* Hover展开的详细信息面板 - 向上展开但偏左 */}
+      <AnimatePresence>
+        {isHovered && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute bottom-full mb-2 right-0 z-[100] bg-popover border border-border/50 rounded-lg shadow-lg p-3 min-w-[180px]"
+          >
+            <div className="space-y-2">
+              {/* 标题 */}
+              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                上下文使用统计
+              </div>
+
+              {/* 进度条 */}
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full ${
+                    percentage >= 90 ? 'bg-red-500' : percentage >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${clampedPercentage}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+
+              {/* 详细数据 */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                <div className="text-muted-foreground">已使用</div>
+                <div className="text-right font-medium tabular-nums">
+                  {contextUsage.usedTokens.toLocaleString()}
+                </div>
+
+                <div className="text-muted-foreground">上限</div>
+                <div className="text-right font-medium tabular-nums">
+                  {contextUsage.contextWindow.toLocaleString()}
+                </div>
+
+                <div className="text-muted-foreground">剩余</div>
+                <div className="text-right font-medium tabular-nums text-emerald-500">
+                  {remainingTokens.toLocaleString()}
+                </div>
+
+                <div className="text-muted-foreground">使用率</div>
+                <div className={`text-right font-medium tabular-nums ${
+                  percentage >= 90 ? 'text-red-500' : percentage >= 70 ? 'text-amber-500' : 'text-emerald-500'
+                }`}>
+                  {percentage.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+
+            {/* 小三角箭头 - 向下指向，偏右 */}
+            <div className="absolute -bottom-1 right-3 w-2 h-2 bg-popover border-r border-b border-border/50 rotate-45" />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

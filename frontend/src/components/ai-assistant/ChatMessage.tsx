@@ -3,6 +3,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
 import { ToolCallIndicator } from './ToolCallIndicator';
@@ -49,10 +50,36 @@ interface ChatMessageProps {
   className?: string;
 }
 
+// 浮动跳跃的三点加载动画
+function FloatingLoadingDots() {
+  return (
+    <div className="flex items-center gap-1 h-5">
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-primary/60"
+          animate={{
+            y: [0, -6, 0],
+            opacity: [0.4, 1, 0.4],
+          }}
+          transition={{
+            duration: 0.8,
+            repeat: Infinity,
+            delay: i * 0.15,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function ChatMessage({ message, isLoading, className }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   const isAiThinking = isStreaming && !message.content && !message.skill_calls?.length && !message.tool_calls?.length;
+  // 判断是否显示加载动画：正在加载且是最后一条AI消息
+  const showLoadingDots = isLoading && !isUser && isStreaming;
 
   return (
     <div
@@ -67,7 +94,7 @@ export function ChatMessage({ message, isLoading, className }: ChatMessageProps)
           'max-w-[85%] rounded-2xl px-3 py-2 text-sm',
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'text-secondary-foreground rounded-tl-sm'
+            : 'bg-muted/60 text-secondary-foreground rounded-tl-sm border border-border/30'
         )}
       >
         {/* 用户消息 */}
@@ -116,6 +143,13 @@ export function ChatMessage({ message, isLoading, className }: ChatMessageProps)
                 creditCost={message.multi_agent.creditCost}
                 className="mb-2"
               />
+            )}
+
+            {/* 加载动画 - 浮动跳跃三点 */}
+            {showLoadingDots && (
+              <div className="pt-1">
+                <FloatingLoadingDots />
+              </div>
             )}
           </div>
         )}
