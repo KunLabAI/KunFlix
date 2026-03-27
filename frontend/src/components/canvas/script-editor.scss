@@ -84,12 +84,56 @@
   }
 }
 
+// ── Custom scrollbar mixin ──
+@mixin custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    transition: background 0.2s ease;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@mixin custom-scrollbar-dark {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+  }
+}
+
 // ── Editor content area ──
 .script-editor-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  @include custom-scrollbar;
 
   .tiptap.ProseMirror {
     padding: 0.375rem 0.75rem;
@@ -159,7 +203,8 @@
     padding: 0.5rem 0.75rem;
     background: transparent;
     transition: none;
-    
+    flex-shrink: 0;
+
     h3 {
       font-size: 1.125rem; /* text-lg */
       font-weight: 700;    /* font-bold */
@@ -174,8 +219,16 @@
 
   .script-node__content {
     padding: 0;
-    height: auto;
-    overflow: visible;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    @include custom-scrollbar;
+
+    // 确保 ProseMirror 内容区域正确填充
+    .script-editor-content {
+      height: 100%;
+    }
   }
 }
 
@@ -193,6 +246,21 @@
     flex-direction: column;
     overflow: hidden;
     padding: 0;
+
+    // 确保编辑器内容区域可以滚动
+    .script-editor-root {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .script-editor-content {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
   }
 }
 
@@ -212,6 +280,17 @@
   p.is-editor-empty:first-child::before,
   p.is-empty::before {
     color: var(--tt-gray-dark-300, rgba(255, 255, 255, 0.35));
+  }
+}
+
+// ── Dark mode scrollbar styles ──
+.dark {
+  .script-editor-content {
+    @include custom-scrollbar-dark;
+  }
+
+  .script-node-wrapper[data-editing="false"] .script-node__content {
+    @include custom-scrollbar-dark;
   }
 }
 

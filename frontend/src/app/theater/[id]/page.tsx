@@ -19,7 +19,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
 
-import { useCanvasStore, CanvasNode } from '@/store/useCanvasStore';
+import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData } from '@/store/useCanvasStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
 import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/ScriptNode';
@@ -30,7 +30,7 @@ import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid } from 'lucide-react';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film } from 'lucide-react';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import { useCanvasSnapping } from './hooks/useCanvasSnapping';
 
@@ -74,6 +74,11 @@ function InfiniteCanvas() {
     sourceNodeId: null,
     sourceHandleId: null,
   });
+
+  // File drag and drop state
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [dragFileType, setDragFileType] = useState<'text' | 'image' | 'video' | null>(null);
+  const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
 
   const { 
     nodes, edges, isLoading, isSaving, isDirty, lastSavedAt,
@@ -156,10 +161,18 @@ function InfiniteCanvas() {
 
   // Node type default data registry (avoids switch/case)
   const nodeDefaultData: Record<string, Record<string, unknown>> = {
-    script: { title: '新文本卡', tags: [] },
-    character: { name: '新图片卡', description: '' },
+    text: { title: '新文本卡', content: null, tags: [] },
+    image: { name: '新图片卡', description: '', imageUrl: '', fitMode: 'cover' },
     storyboard: { shotNumber: '001', description: '', duration: 5 },
-    video: { name: '新视频卡', description: '' },
+    video: { name: '新视频卡', description: '', videoUrl: '', fitMode: 'cover' },
+  };
+
+  // Default dimensions by node type (consistent with sidebar drag)
+  const nodeDefaultDimensions: Record<string, { width: number; height: number }> = {
+    text: { width: 400, height: 300 },
+    image: { width: 512, height: 384 },
+    video: { width: 512, height: 384 },
+    storyboard: { width: 398, height: 256 },
   };
 
   const handleAddNodeFromMenu = (type: string) => {
@@ -172,11 +185,14 @@ function InfiniteCanvas() {
 
     const newNodeId = uuidv4();
     const data = nodeDefaultData[type] || { label: `${type} node` };
+    const dimensions = nodeDefaultDimensions[type];
 
     const newNode = {
       id: newNodeId,
       type,
       position,
+      width: dimensions?.width,
+      height: dimensions?.height,
       data,
     } as CanvasNode;
 
@@ -258,15 +274,331 @@ function InfiniteCanvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, saveToBackend]);
 
+  // File type detection helpers
+  const getFileType = (file: File): 'text' | 'image' | 'video' | null => {
+    const type = file.type;
+    const name = file.name.toLowerCase();
+    
+    // Text files
+    const textTypes = ['text/plain', 'text/markdown', 'application/pdf'];
+    const textExts = ['.txt', '.md', '.markdown', '.pdf'];
+    
+    // Image files
+    const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+    const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+    
+    // Video files
+    const videoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/quicktime', 'video/x-ms-wmv', 'video/x-flv'];
+    const videoExts = ['.mp4', '.webm', '.ogg', '.avi', '.mov', '.wmv', '.flv', '.mkv'];
+    
+    if (textTypes.some(t => type.includes(t)) || textExts.some(ext => name.endsWith(ext))) return 'text';
+    if (imageTypes.some(t => type.includes(t)) || imageExts.some(ext => name.endsWith(ext))) return 'image';
+    if (videoTypes.some(t => type.includes(t)) || videoExts.some(ext => name.endsWith(ext))) return 'video';
+    
+    return null;
+  };
+
+  // Read text file content
+  const readTextFile = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target?.result as string || '');
+      reader.onerror = (e) => reject(e);
+      reader.readAsText(file);
+    });
+  };
+
+  // Create node from file
+  const createNodeFromFile = async (file: File, position: { x: number; y: number }) => {
+    const fileType = getFileType(file);
+    const fileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+    
+    switch (fileType) {
+      case 'text': {
+        let content: string;
+        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+        
+        // File size limit for text files: 10MB
+        const MAX_TEXT_FILE_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_TEXT_FILE_SIZE) {
+          alert('文本文件大小不能超过 10MB');
+          return;
+        }
+        
+        if (isPdf) {
+          // PDF files cannot be parsed in browser, show placeholder
+          content = `[PDF 文件: ${file.name}]\n\nPDF 文件内容需要在服务器端解析。文件已作为附件上传。`;
+        } else {
+          try {
+            content = await readTextFile(file);
+          } catch {
+            content = `无法读取文件: ${file.name}`;
+          }
+        }
+        
+        // Character limit: 100,000 characters (approximately 50,000 Chinese characters or 100,000 English characters)
+        const MAX_CHARACTERS = 100000;
+        const originalLength = content.length;
+        if (content.length > MAX_CHARACTERS) {
+          content = content.substring(0, MAX_CHARACTERS) + 
+            `\n\n[文件内容已截断，原文件共 ${originalLength.toLocaleString()} 字符，超出最大限制 ${MAX_CHARACTERS.toLocaleString()} 字符]`;
+        }
+        
+        const newNode: CanvasNode = {
+          id: `text-${uuidv4()}`,
+          type: 'text',
+          position,
+          width: 400,
+          height: 300,
+          data: {
+            title: fileName,
+            content: {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: content }]
+                }
+              ]
+            },
+            tags: isPdf ? ['pdf'] : ['imported'],
+          } as ScriptNodeData,
+        };
+        addNode(newNode);
+        break;
+      }
+      
+      case 'image': {
+        // Validate file size (5MB max)
+        if (file.size > 5 * 1024 * 1024) {
+          alert('图片大小不能超过 5MB');
+          return;
+        }
+        
+        const objectUrl = URL.createObjectURL(file);
+        const newNode: CanvasNode = {
+          id: `image-${uuidv4()}`,
+          type: 'image',
+          position,
+          width: 512,
+          height: 384,
+          data: {
+            name: fileName,
+            description: '',
+            imageUrl: objectUrl,
+            uploading: true,
+            fitMode: 'cover',
+          } as CharacterNodeData,
+        };
+        addNode(newNode);
+        
+        // Upload the file
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
+          
+          const token = localStorage.getItem('access_token');
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          }
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
+            xhr.onload = () => {
+              try {
+                let res;
+                if (xhr.responseText) {
+                  res = JSON.parse(xhr.responseText);
+                }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  resolve(res || {});
+                } else {
+                  resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
+                }
+              } catch {
+                resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
+              }
+            };
+            xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
+            xhr.send(formData);
+          });
+          
+          if (response.error) {
+            throw new Error(response.error);
+          }
+          
+          // Update node with uploaded URL
+          const { updateNodeData } = useCanvasStore.getState();
+          URL.revokeObjectURL(objectUrl);
+          updateNodeData(newNode.id, { imageUrl: response.url, uploading: false } as Partial<CharacterNodeData>);
+        } catch (error: any) {
+          console.error('Upload error:', error);
+          const { updateNodeData } = useCanvasStore.getState();
+          updateNodeData(newNode.id, { uploading: false } as Partial<CharacterNodeData>);
+          alert(`上传失败: ${error.message || '请重试'}`);
+        }
+        break;
+      }
+      
+      case 'video': {
+        // Validate file size (500MB max)
+        if (file.size > 500 * 1024 * 1024) {
+          alert('视频大小不能超过 500MB');
+          return;
+        }
+        
+        const objectUrl = URL.createObjectURL(file);
+        const newNode: CanvasNode = {
+          id: `video-${uuidv4()}`,
+          type: 'video',
+          position,
+          width: 512,
+          height: 384,
+          data: {
+            name: fileName,
+            description: '',
+            videoUrl: objectUrl,
+            uploading: true,
+            fitMode: 'cover',
+          } as VideoNodeData,
+        };
+        addNode(newNode);
+        
+        // Upload the file
+        try {
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
+          
+          const token = localStorage.getItem('access_token');
+          if (token) {
+            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+          }
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
+            xhr.onload = () => {
+              try {
+                let res;
+                if (xhr.responseText) {
+                  res = JSON.parse(xhr.responseText);
+                }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  resolve(res || {});
+                } else {
+                  resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
+                }
+              } catch {
+                resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
+              }
+            };
+            xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
+            xhr.send(formData);
+          });
+          
+          if (response.error) {
+            throw new Error(response.error);
+          }
+          
+          // Update node with uploaded URL
+          const { updateNodeData } = useCanvasStore.getState();
+          URL.revokeObjectURL(objectUrl);
+          updateNodeData(newNode.id, { videoUrl: response.url, uploading: false } as Partial<VideoNodeData>);
+        } catch (error: any) {
+          console.error('Upload error:', error);
+          const { updateNodeData } = useCanvasStore.getState();
+          updateNodeData(newNode.id, { uploading: false } as Partial<VideoNodeData>);
+          alert(`上传失败: ${error.message || '请重试'}`);
+        }
+        break;
+      }
+      
+      default:
+        alert(`不支持的文件类型: ${file.name}`);
+    }
+  };
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+    
+    // Check if this is internal node drag (from sidebar/asset library) - takes priority
+    const hasReactFlowData = event.dataTransfer.types.includes('application/reactflow');
+    
+    // Check if dragging files from outside (external file drag)
+    const hasFiles = event.dataTransfer.types.includes('Files');
+    
+    // Priority: internal node drag > external file drag
+    if (hasReactFlowData) {
+      // Internal node drag from sidebar/asset library
+      event.dataTransfer.dropEffect = 'move';
+      setIsDraggingFile(false);
+      setDragFileType(null);
+    } else if (hasFiles) {
+      // External file drag from OS file manager
+      event.dataTransfer.dropEffect = 'copy';
+      setIsDraggingFile(true);
+      setDragPosition({ x: event.clientX, y: event.clientY });
+      
+      // Detect file type from the first file
+      const files = event.dataTransfer.items;
+      if (files.length > 0) {
+        const file = files[0].getAsFile();
+        if (file) {
+          setDragFileType(getFileType(file));
+        }
+      }
+    } else {
+      event.dataTransfer.dropEffect = 'move';
+    }
+  }, []);
+
+  const onDragLeave = useCallback((event: React.DragEvent) => {
+    // Only hide if leaving the wrapper, not entering a child
+    const rect = reactFlowWrapper.current?.getBoundingClientRect();
+    if (rect) {
+      const { clientX, clientY } = event;
+      if (
+        clientX <= rect.left ||
+        clientX >= rect.right ||
+        clientY <= rect.top ||
+        clientY >= rect.bottom
+      ) {
+        setIsDraggingFile(false);
+        setDragFileType(null);
+      }
+    }
   }, []);
 
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
+      setIsDraggingFile(false);
+      setDragFileType(null);
 
+      // Handle external file drop
+      const files = event.dataTransfer.files;
+      if (files.length > 0) {
+        const position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+        
+        // Process each file
+        Array.from(files).forEach((file, index) => {
+          // Offset position for multiple files
+          const filePosition = {
+            x: position.x + index * 50,
+            y: position.y + index * 50,
+          };
+          createNodeFromFile(file, filePosition);
+        });
+        return;
+      }
+
+      // Handle internal node drag (existing logic)
       const type = event.dataTransfer.getData('application/reactflow');
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const dimensionsStr = event.dataTransfer.getData('application/reactflow-dimensions');
@@ -280,7 +612,8 @@ function InfiniteCanvas() {
 
       // Dimension defaults by type (avoids if-else chain)
       const defaultDimensions: Record<string, { width: number; height: number }> = {
-        character: { width: 512, height: 384 },
+        text: { width: 400, height: 300 },
+        image: { width: 512, height: 384 },
         video: { width: 512, height: 384 },
         storyboard: { width: 398, height: 256 },
       };
@@ -327,10 +660,54 @@ function InfiniteCanvas() {
     );
   }
 
+  // Get icon for file type
+  const getFileTypeIcon = () => {
+    switch (dragFileType) {
+      case 'text': return <FileText className="w-8 h-8 text-blue-500" />;
+      case 'image': return <Image className="w-8 h-8 text-emerald-500" />;
+      case 'video': return <Film className="w-8 h-8 text-purple-500" />;
+      default: return <FileText className="w-8 h-8 text-muted-foreground" />;
+    }
+  };
+
+  // Get label for file type
+  const getFileTypeLabel = () => {
+    switch (dragFileType) {
+      case 'text': return '文本文件';
+      case 'image': return '图像文件';
+      case 'video': return '视频文件';
+      default: return '文件';
+    }
+  };
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       <Sidebar />
-      <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
+      <div 
+        className="flex-1 h-full relative" 
+        ref={reactFlowWrapper}
+        onDragLeave={onDragLeave}
+      >
+        {/* File drag overlay */}
+        {isDraggingFile && (
+          <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <div 
+              className="bg-card border-2 border-primary border-dashed rounded-xl p-8 shadow-2xl flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200"
+              style={{
+                position: 'absolute',
+                left: dragPosition.x - 100,
+                top: dragPosition.y - 80,
+                pointerEvents: 'none',
+              }}
+            >
+              {getFileTypeIcon()}
+              <div className="text-center">
+                <p className="text-lg font-semibold text-foreground">释放以创建 {getFileTypeLabel()}节点</p>
+                <p className="text-sm text-muted-foreground mt-1">支持拖拽多个文件</p>
+              </div>
+            </div>
+          </div>
+        )}
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -455,13 +832,17 @@ function InfiniteCanvas() {
             <div className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
               创建连接的节点
             </div>
-            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('script')}>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('text')}>
               <ScrollText className="w-4 h-4 mr-2 text-indigo-500" />
               文本卡
             </Button>
-            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('character')}>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('image')}>
               <User className="w-4 h-4 mr-2 text-emerald-500" />
               图片卡
+            </Button>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('video')}>
+              <Film className="w-4 h-4 mr-2 text-purple-500" />
+              视频卡
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('storyboard')}>
               <Clapperboard className="w-4 h-4 mr-2 text-amber-500" />

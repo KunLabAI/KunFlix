@@ -237,7 +237,6 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         .edge-handle-wrapper {
           position: absolute;
           z-index: 60;
-          pointer-events: none; /* 让包装器本身不阻挡鼠标事件 */
           display: flex;
           align-items: center;
           justify-content: center;
@@ -245,10 +244,10 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         }
         
         .edge-handle-wrapper.left {
-          left: -10px; top: 10%; bottom: 10%; width: 20px;
+          left: -12px; top: 50%; transform: translateY(-50%); width: 16px; height: 40px;
         }
         .edge-handle-wrapper.right {
-          right: -10px; top: 10%; bottom: 10%; width: 20px;
+          right: -12px; top: 50%; transform: translateY(-50%); width: 16px; height: 40px;
           z-index: 50; /* 确保拖拽手柄在操作按钮上层 */
         }
 
@@ -305,12 +304,13 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           min-width: unset !important;
           min-height: unset !important;
           border-radius: 0 !important;
-          transform: none !important;
           position: absolute !important;
           top: 0 !important;
           left: 0 !important;
           right: 0 !important;
           bottom: 0 !important;
+          transform: none !important;
+          margin: 0 !important;
           pointer-events: auto !important; /* 确保原生的 handle 能够响应拖拽事件 */
           z-index: 30 !important;
         }
