@@ -242,7 +242,7 @@ async def send_message(
 
     # 5. 根据模式选择生成器
     generator = (
-        _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin, message.theater_id)
+        _generate_multi_agent(db, agent, message.content, entity_id, session_id, is_admin, message.theater_id, message.edit_last_image, message.target_node_id, message.edit_image_url)
         if is_multi_agent else
         _generate_single_agent(db, agent, message.content, entity_id, session_id, is_admin, message.edit_last_image, message.theater_id, message.target_node_id, message.edit_image_url)
     )
@@ -266,16 +266,72 @@ async def _generate_multi_agent(
     session_id: str,
     is_admin: bool = False,
     theater_id: str | None = None,
+    edit_last_image: bool = False,
+    target_node_id: str | None = None,
+    edit_image_url: str | None = None,
 ):
-    """多智能体协作模式生成器"""
+    """多智能体协作模式生成器（统一架构：自动区分简单/复杂任务）"""
     logger.info(f"\n{'='*60}")
     logger.info(f"[Multi-Agent] Leader: {agent.name} (ID: {agent.id})")
-    logger.info(f"Coordination mode: {agent.coordination_modes}")
     logger.info(f"Member agents: {agent.member_agent_ids}")
     logger.info(f"Session: {session_id} | {'Admin' if is_admin else 'User'}: {entity_id}")
     logger.info(f"Task: {content}")
     logger.info(f"{'='*60}\n")
 
+    # Task analysis: classify simple vs complex
+    orchestrator = DynamicOrchestrator(db)
+    analysis = await orchestrator.analyze_task(agent.id, content)
+    logger.info(f"[Multi-Agent] Task analysis: is_simple={analysis.is_simple}")
+
+    # Route: simple → single-agent (full tool/canvas/skill support)
+    #        complex → multi-agent orchestration
+    _generators = {
+        True: lambda: _generate_single_agent(
+            db, agent, content, entity_id, session_id, is_admin,
+            edit_last_image, theater_id, target_node_id, edit_image_url
+        ),
+        False: lambda: _execute_complex_multi_agent(
+            orchestrator, db, agent, content, entity_id, session_id,
+            is_admin, theater_id, analysis
+        ),
+    }
+    async for chunk in _generators[analysis.is_simple]():
+        yield chunk
+
+
+async def _save_multi_agent_message(session_id: str, final_result: str):
+    """保存多智能体协作的助手消息"""
+    async with AsyncSessionLocal() as session:
+        try:
+            assistant_msg = ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=final_result,
+            )
+            session.add(assistant_msg)
+
+            from sqlalchemy import func as sa_func
+            s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+            s = s_result.scalars().first()
+            s and setattr(s, 'updated_at', sa_func.now())
+
+            await session.commit()
+        except Exception as e:
+            logger.error(f"Failed to save multi-agent message: {e}")
+
+
+async def _execute_complex_multi_agent(
+    orchestrator: DynamicOrchestrator,
+    db: AsyncSession,
+    agent: Agent,
+    content: str,
+    entity_id: str,
+    session_id: str,
+    is_admin: bool,
+    theater_id: str | None,
+    analysis,
+):
+    """执行复杂任务的多智能体协作"""
     # 获取历史消息（不包含刚发送的用户消息，因为已经commit了）
     history_result = await db.execute(
         select(ChatMessage)
@@ -283,63 +339,56 @@ async def _generate_multi_agent(
         .order_by(ChatMessage.created_at.asc())
     )
     history = history_result.scalars().all()
-    
+
     # 构建历史消息列表（排除最后一条，即刚发送的用户消息）
     history_messages = []
     for msg in history[:-1]:
         role = msg.role if msg.role in ["user", "assistant"] else "user"
         deserialized = _deserialize_content(msg.content)
-        if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
-            content_val = deserialized.get("text") or ""
-        else:
-            content_val = deserialized
+        content_val = (
+            deserialized.get("text") or ""
+            if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized
+            else deserialized
+        )
         history_messages.append({"role": role, "content": content_val})
 
-    orchestrator = DynamicOrchestrator(db)
-    coordination_mode = (agent.coordination_modes or ["pipeline"])[0]
-    
     final_result = None
+    billing_data = {}
     async for event in orchestrator.execute(
         task_description=content,
         user_id=entity_id,
         leader_agent_id=agent.id,
         session_id=session_id,
         theater_id=theater_id,
-        coordination_mode=coordination_mode,
         max_iterations=agent.max_subtasks or 5,
         enable_review=agent.enable_auto_review or False,
-        history_messages=history_messages
+        history_messages=history_messages,
+        pre_analysis=analysis,
     ):
-        # 记录事件（过滤高频chunk事件）
-        event.event_type != "subtask_chunk" and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
-        
-        # 保存最终结果用于存储助手消息
-        if event.event_type == "task_completed":
-            final_result = event.data.get("result", "")
-        
+        # 记录事件（过滤高频chunk和text事件）
+        event.event_type not in ("subtask_chunk", "text") and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
+
+        # 捕获最终结果和计费信息
+        (event.event_type == "task_completed") and (
+            final_result := event.data.get("result", ""),
+            billing_data.update({
+                "credit_cost": event.data.get("total_credit_cost", 0),
+                "billing_status": event.data.get("billing_status", "success"),
+                "context_usage": event.data.get("context_usage"),
+            }),
+        )
+
         yield event.to_sse()
 
+    # 发送计费事件和完成事件
+    yield _sse("billing", {
+        "credit_cost": billing_data.get("credit_cost", 0),
+        "context_usage": billing_data.get("context_usage"),
+    })
+    yield _sse("done", {})
+
     # 保存最终的助手消息
-    if final_result:
-        async with AsyncSessionLocal() as session:
-            try:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    role="assistant",
-                    content=final_result,
-                )
-                session.add(assistant_msg)
-
-                # 更新会话时间戳
-                from sqlalchemy import func as sa_func
-                s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
-                s = s_result.scalars().first()
-                if s:
-                    s.updated_at = sa_func.now()
-
-                await session.commit()
-            except Exception as e:
-                logger.error(f"Failed to save multi-agent message: {e}")
+    final_result and await _save_multi_agent_message(session_id, final_result)
 
 
 async def _get_tool_result(
@@ -662,7 +711,13 @@ async def _generate_single_agent(
     logger.info(f"{'='*60}\n")
 
     # 保存助手消息、更新统计、扣费（仅在生成成功后执行）
-    billing_event = {"credit_cost": 0}
+    billing_event = {
+        "credit_cost": 0,
+        "context_usage": {
+            "used_tokens": result.input_tokens + result.output_tokens,
+            "context_window": agent.context_window,
+        },
+    }
     async with AsyncSessionLocal() as session:
         try:
             # Prepare content for assistant（映射表驱动，避免 if-else）

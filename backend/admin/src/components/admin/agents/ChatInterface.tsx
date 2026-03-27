@@ -308,6 +308,9 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                   assistantMsg.content = (assistantMsg.content as string) + `\n\nError: ${data.message}`;
                 },
                 // Multi agent events
+                task_analyzed: () => {
+                  // No-op: simple tasks flow into text events; complex tasks flow into subtask_created
+                },
                 subtask_created: () => {
                   multiAgent = multiAgent || { steps, finalResult: '', totalTokens: { input: 0, output: 0 }, creditCost: 0 };
                   const step: AgentStep = {
@@ -345,11 +348,13 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                   step && (step.status = 'failed', step.error = data.error);
                 },
                 task_completed: () => {
-                  multiAgent!.finalResult = data.result || '';
-                  multiAgent!.totalTokens = { input: data.total_input_tokens || 0, output: data.total_output_tokens || 0 };
-                  multiAgent!.creditCost = data.total_credit_cost || 0;
-                  assistantMsg.content = data.result || '';
-                  assistantMsg.multi_agent = { ...multiAgent!, steps: [...steps] };
+                  multiAgent && (
+                    multiAgent.finalResult = data.result || '',
+                    multiAgent.totalTokens = { input: data.total_input_tokens || 0, output: data.total_output_tokens || 0 },
+                    multiAgent.creditCost = data.total_credit_cost || 0,
+                    assistantMsg.multi_agent = { ...multiAgent, steps: [...steps] }
+                  );
+                  assistantMsg.content = data.result || assistantMsg.content;
                 },
                 task_failed: () => {
                   assistantMsg.content = `[Error] ${data.error}`;

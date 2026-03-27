@@ -12,7 +12,6 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { COORDINATION_MODES } from '@/constants/agent';
 import { Agent } from '@/types';
 
 interface LeaderConfigProps {
@@ -21,7 +20,7 @@ interface LeaderConfigProps {
 }
 
 const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents = [] }) => {
-  const { control, watch, setValue } = useFormContext();
+  const { control, watch } = useFormContext();
   const isLeader = watch('is_leader');
   const currentAgentId = watch('id');
 
@@ -35,7 +34,7 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
         <div>
           <span className="text-sm font-medium">Leader 模式</span>
           <p className="text-xs text-muted-foreground mt-1">
-            启用后可协调其他智能体完成复杂任务
+            启用后可智能协调其他智能体完成复杂任务，简单任务直接回复
           </p>
         </div>
         <FormField
@@ -57,51 +56,6 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
 
       {isLeader && (
         <div className="space-y-6 pt-4 border-t">
-          {/* Coordination Modes */}
-          <FormField
-            control={control}
-            name="coordination_modes"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>协作模式</FormLabel>
-                <FormDescription>选择支持的协作方式</FormDescription>
-                <div className="grid grid-cols-1 gap-2 mt-2">
-                  {COORDINATION_MODES.map((mode) => (
-                    <FormItem
-                      key={mode.value}
-                      className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-3 shadow-sm"
-                    >
-                      <FormControl>
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary mt-0.5"
-                          checked={field.value?.includes(mode.value)}
-                          onChange={(e) => {
-                            const current = field.value || [];
-                            const updated = e.target.checked
-                              ? [...current, mode.value]
-                              : current.filter((v: string) => v !== mode.value);
-                            field.onChange(updated);
-                          }}
-                          disabled={disabled}
-                        />
-                      </FormControl>
-                      <div className="flex-1">
-                        <FormLabel className="font-medium cursor-pointer">
-                          {mode.label}
-                        </FormLabel>
-                        <p className="text-xs text-muted-foreground">
-                          {mode.description}
-                        </p>
-                      </div>
-                    </FormItem>
-                  ))}
-                </div>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
           {/* Member Agents */}
           <FormField
             control={control}

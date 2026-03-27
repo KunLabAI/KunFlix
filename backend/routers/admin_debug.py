@@ -271,7 +271,6 @@ async def _generate_multi_agent_debug(
     """多智能体调试模式生成器"""
     logger.info(f"\n{'='*60}")
     logger.info(f"[Admin Debug Multi-Agent] Leader: {agent.name} (ID: {agent.id})")
-    logger.info(f"Coordination mode: {agent.coordination_modes}")
     logger.info(f"Member agents: {agent.member_agent_ids}")
     logger.info(f"Session: {session_id} | Admin: {admin_id}")
     logger.info(f"Task: {content}")
@@ -290,14 +289,14 @@ async def _generate_multi_agent_debug(
     for msg in history[:-1]:
         role = msg.role if msg.role in ["user", "assistant"] else "user"
         deserialized = _deserialize_content(msg.content)
-        if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
-            content_val = deserialized.get("text") or ""
-        else:
-            content_val = deserialized
+        content_val = (
+            deserialized.get("text") or ""
+            if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized
+            else deserialized
+        )
         history_messages.append({"role": role, "content": content_val})
 
     orchestrator = DynamicOrchestrator(db)
-    coordination_mode = (agent.coordination_modes or ["pipeline"])[0]
     
     final_result = None
     async for event in orchestrator.execute(
@@ -305,17 +304,19 @@ async def _generate_multi_agent_debug(
         user_id=admin_id,
         leader_agent_id=agent.id,
         session_id=session_id,
-        coordination_mode=coordination_mode,
         max_iterations=agent.max_subtasks or 5,
         enable_review=agent.enable_auto_review or False,
         history_messages=history_messages
     ):
-        event.event_type != "subtask_chunk" and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
+        event.event_type not in ("subtask_chunk", "text") and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
         
-        if event.event_type == "task_completed":
-            final_result = event.data.get("result", "")
+        (event.event_type == "task_completed") and (final_result := event.data.get("result", ""))
         
         yield event.to_sse()
+
+    # 发送完成事件
+    from routers.chats import _sse
+    yield _sse("done", {})
 
     # 保存最终的助手消息
     if final_result:
@@ -328,12 +329,10 @@ async def _generate_multi_agent_debug(
                 )
                 session.add(assistant_msg)
 
-                # 更新会话时间戳
                 from sqlalchemy import func as sa_func
                 s_result = await session.execute(select(AdminDebugSession).filter(AdminDebugSession.id == session_id))
                 s = s_result.scalars().first()
-                if s:
-                    s.updated_at = sa_func.now()
+                s and setattr(s, 'updated_at', sa_func.now())
 
                 await session.commit()
             except Exception as e:

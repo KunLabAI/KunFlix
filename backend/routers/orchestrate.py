@@ -51,7 +51,6 @@ async def execute_orchestration(
                 leader_agent_id=request.leader_agent_id,
                 session_id=request.session_id,
                 theater_id=request.theater_id,
-                coordination_mode=request.coordination_mode,
                 max_iterations=request.options.max_iterations,
                 enable_review=request.options.enable_review,
             ):

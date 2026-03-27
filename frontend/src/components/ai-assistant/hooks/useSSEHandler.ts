@@ -24,6 +24,7 @@ interface StreamingState {
 export function useSSEHandler() {
   const setMessages = useAIAssistantStore((state) => state.setMessages);
   const setIsLoading = useAIAssistantStore((state) => state.setIsOpen);
+  const setContextUsage = useAIAssistantStore((state) => state.setContextUsage);
   const { updateCredits } = useAuth();
   
   // SSE事件处理状态引用
@@ -64,7 +65,12 @@ export function useSSEHandler() {
     const state = streamingStateRef.current;
 
     const handlers: Record<string, () => void> = {
-      // 单智能体：流式文本
+      // Leader 任务分析完成（简单任务无需多智能体UI，复杂任务后续由 subtask_created 初始化）
+      task_analyzed: () => {
+        // No-op: simple tasks flow into text events; complex tasks flow into subtask_created
+      },
+
+      // 流式文本（单智能体 + 多智能体简单任务共用）
       text: () => {
         const chunk = (data as { chunk?: string })?.chunk || '';
         const isNewRound = state.roundHasTools;
@@ -240,7 +246,7 @@ export function useSSEHandler() {
         });
       },
 
-      // 多智能体：任务完成
+      // 多智能体：任务完成（简单任务: multiAgent 为 null; 复杂任务: 更新 multiAgent 数据）
       task_completed: () => {
         const d = data as {
           result?: string;
@@ -248,12 +254,22 @@ export function useSSEHandler() {
           total_output_tokens?: number;
           total_credit_cost?: number;
           billing_status?: string;
+          context_usage?: { used_tokens: number; context_window: number };
         };
+
+        // 更新上下文使用统计
+        d.context_usage && setContextUsage({
+          usedTokens: d.context_usage.used_tokens,
+          contextWindow: d.context_usage.context_window,
+        });
+
+        // 复杂任务：更新 multiAgent 统计信息
         if (state.multiAgent) {
           state.multiAgent.finalResult = d.result || '';
           state.multiAgent.totalTokens = { input: d.total_input_tokens || 0, output: d.total_output_tokens || 0 };
           state.multiAgent.creditCost = d.total_credit_cost || 0;
         }
+
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'ai') {
@@ -282,7 +298,13 @@ export function useSSEHandler() {
           remaining_credits?: number;
           insufficient?: boolean;
           frozen?: boolean;
+          context_usage?: { used_tokens: number; context_window: number };
         };
+        // 更新上下文使用统计
+        d.context_usage && setContextUsage({
+          usedTokens: d.context_usage.used_tokens,
+          contextWindow: d.context_usage.context_window,
+        });
         // 实时更新用户积分余额
         (d.remaining_credits !== undefined) && updateCredits(d.remaining_credits);
         // 积分不足友好提醒
@@ -324,7 +346,7 @@ export function useSSEHandler() {
     };
 
     handlers[eventType]?.();
-  }, [setMessages, resetStreamingState, updateCredits]);
+  }, [setMessages, resetStreamingState, updateCredits, setContextUsage]);
 
   return {
     parseSSELine,

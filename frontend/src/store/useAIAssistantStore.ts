@@ -71,6 +71,12 @@ export interface ImageEditContext {
   nodeName: string;
 }
 
+// 上下文使用统计
+export interface ContextUsage {
+  usedTokens: number;
+  contextWindow: number;
+}
+
 interface AIAssistantState {
   // Panel visibility
   isOpen: boolean;
@@ -98,6 +104,9 @@ interface AIAssistantState {
   
   // Image edit context (from canvas node AI edit)
   imageEditContext: ImageEditContext | null;
+  
+  // Context usage stats
+  contextUsage: ContextUsage | null;
   
   // Actions
   setIsOpen: (isOpen: boolean) => void;
@@ -133,6 +142,9 @@ interface AIAssistantState {
   // Image edit context
   setImageEditContext: (ctx: ImageEditContext | null) => void;
   clearImageEditContext: () => void;
+  
+  // Context usage
+  setContextUsage: (usage: ContextUsage | null) => void;
 }
 
 const DEFAULT_MESSAGES: Message[] = [
@@ -157,6 +169,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       panelSize: { ...DEFAULT_PANEL_SIZE },
       panelPosition: { ...DEFAULT_PANEL_POSITION },
       imageEditContext: null,
+      contextUsage: null,
 
       // Panel visibility
       setIsOpen: (isOpen: boolean) => set({ isOpen }),
@@ -191,6 +204,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
             agentId: savedSession.agentId,
             agentName: savedSession.agentName,
             messages: savedSession.messages,
+            contextUsage: null,
           });
         } else {
           set({
@@ -199,6 +213,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
             agentId: null,
             agentName: 'AI 助手',
             messages: [...DEFAULT_MESSAGES],
+            contextUsage: null,
           });
         }
       },
@@ -229,12 +244,14 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         sessionId: null, 
         agentId: null, 
         agentName: 'AI 助手',
-        messages: [...DEFAULT_MESSAGES] 
+        messages: [...DEFAULT_MESSAGES],
+        contextUsage: null,
       }),
       
       // 清空消息但保留会话（用于清空对话功能）
       clearMessagesKeepSession: () => set({ 
-        messages: [...DEFAULT_MESSAGES] 
+        messages: [...DEFAULT_MESSAGES],
+        contextUsage: null,
       }),
 
       // Agents
@@ -251,6 +268,9 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       // Image edit context
       setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext }),
       clearImageEditContext: () => set({ imageEditContext: null }),
+
+      // Context usage
+      setContextUsage: (contextUsage: ContextUsage | null) => set({ contextUsage }),
     }),
     {
       name: 'ai-assistant-storage',

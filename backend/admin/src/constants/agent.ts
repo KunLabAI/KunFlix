@@ -1,7 +1,5 @@
 export const COORDINATION_MODES = [
-  { label: '流水线', value: 'pipeline', description: '顺序或并行执行任务' },
-  { label: '计划', value: 'plan', description: '任务分解与依赖调度' },
-  { label: '讨论', value: 'discussion', description: '多智能体多轮讨论协作' },
+  { label: '统一协作', value: 'unified', description: '智能判断简单/复杂任务，自动选择回答方式' },
 ];
 
 export const DEFAULT_AGENT_VALUES = {
@@ -21,7 +19,7 @@ export const DEFAULT_AGENT_VALUES = {
   search_credit_per_query: 0,
   // Leader defaults
   is_leader: false,
-  coordination_modes: [],
+  coordination_modes: ['unified'],
   member_agent_ids: [],
   max_subtasks: 10,
   enable_auto_review: true,

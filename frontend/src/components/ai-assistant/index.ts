@@ -15,6 +15,7 @@ export { ChatMessage } from './ChatMessage';
 // 面板组件
 export { PanelHeader } from './PanelHeader';
 export { MessageInput } from './MessageInput';
+export { ContextUsageBar } from './ContextUsageBar';
 
 // Hooks
 export { useSSEHandler } from './hooks/useSSEHandler';

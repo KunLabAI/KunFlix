@@ -8,7 +8,7 @@ import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 
 // 导入拆分后的组件
-import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
+import { PanelHeader, MessageInput, ChatMessage, ContextUsageBar } from '@/components/ai-assistant';
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 
 export function AIAssistantPanel() {
@@ -300,6 +300,9 @@ export function AIAssistantPanel() {
                 </Button>
               </div>
             )}
+
+            {/* 上下文使用统计 */}
+            <ContextUsageBar />
 
             {/* 输入区域 */}
             <MessageInput onSend={handleSend} isLoading={isLoading} />
