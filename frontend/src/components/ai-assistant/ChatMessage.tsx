@@ -12,7 +12,7 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import MultiAgentSteps from '@/components/canvas/MultiAgentSteps';
 import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAIAssistantStore';
 
-/* Markdown组件配置：自定义代码块样式 */
+/* Markdown组件配置：自定义代码块和图片样式 */
 const markdownComponents = {
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => {
     const isInline = !className;
@@ -42,11 +42,19 @@ const markdownComponents = {
     );
   },
   pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
+  // 过滤空 src 的图片，避免浏览器警告
+  img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+    const isValidSrc = typeof src === 'string' && src.trim() !== '';
+    return isValidSrc ? (
+      <img src={src} alt={alt || ''} {...props} className={cn("max-w-full h-auto rounded-lg", props.className)} />
+    ) : null;
+  },
 };
 
 interface ChatMessageProps {
   message: Message;
   isLoading?: boolean;
+  isLast?: boolean;
   className?: string;
 }
 
@@ -74,12 +82,14 @@ function FloatingLoadingDots() {
   );
 }
 
-export function ChatMessage({ message, isLoading, className }: ChatMessageProps) {
+export function ChatMessage({ message, isLoading, isLast, className }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   const isAiThinking = isStreaming && !message.content && !message.skill_calls?.length && !message.tool_calls?.length;
-  // 判断是否显示加载动画：正在加载且是最后一条AI消息
-  const showLoadingDots = isLoading && !isUser && isStreaming;
+  // 等待动画显示逻辑：
+  // 仅在用户发送消息后、AI还未开始回复时显示（此时消息列表末尾有独立的等待气泡）
+  // AI开始流式输出后，不再显示等待动画
+  const showLoadingDots = false;
 
   return (
     <div
@@ -94,7 +104,7 @@ export function ChatMessage({ message, isLoading, className }: ChatMessageProps)
           'max-w-[85%] rounded-2xl px-3 py-2 text-sm',
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'bg-muted/60 text-secondary-foreground rounded-tl-sm border border-border/30'
+            : 'text-secondary-foreground'
         )}
       >
         {/* 用户消息 */}

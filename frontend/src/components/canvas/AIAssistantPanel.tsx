@@ -6,12 +6,16 @@ import { Sparkles, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import { useAuth } from '@/context/AuthContext';
 
 // 导入拆分后的组件
 import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 
 export function AIAssistantPanel() {
+  // 登录状态
+  const { isAuthenticated } = useAuth();
+  
   // 面板状态
   const isOpen = useAIAssistantStore((state) => state.isOpen);
   const messages = useAIAssistantStore((state) => state.messages);
@@ -60,10 +64,10 @@ export function AIAssistantPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
-  // 初始化加载Agent列表
+  // 初始化加载Agent列表（仅在已登录时）
   useEffect(() => {
-    loadAgents();
-  }, [loadAgents]);
+    isAuthenticated && loadAgents();
+  }, [loadAgents, isAuthenticated]);
 
   // 面板打开时初始化会话
   useEffect(() => {
@@ -294,8 +298,38 @@ export function AIAssistantPanel() {
             {/* 消息列表 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10">
               {messages.map((msg, i) => (
-                <ChatMessage key={i} message={msg} isLoading={isLoading} />
+                <ChatMessage 
+                  key={i} 
+                  message={msg} 
+                  isLoading={isLoading}
+                  isLast={i === messages.length - 1 && (!isLoading || msg.role === 'ai')}
+                />
               ))}
+              {/* 等待动画：用户发送消息后，AI还未开始回复时显示 */}
+              {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && (
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl px-3 py-2 text-sm text-secondary-foreground">
+                    <div className="flex items-center gap-1 h-5">
+                      {[0, 1, 2].map((i) => (
+                        <motion.span
+                          key={i}
+                          className="w-1.5 h-1.5 rounded-full bg-primary/60"
+                          animate={{
+                            y: [0, -6, 0],
+                            opacity: [0.4, 1, 0.4],
+                          }}
+                          transition={{
+                            duration: 0.8,
+                            repeat: Infinity,
+                            delay: i * 0.15,
+                            ease: "easeInOut",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 

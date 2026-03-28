@@ -88,7 +88,7 @@ export function MessageInput({
     <div className={cn('p-3 border-t bg-background', className)}>
       <form onSubmit={handleSubmit} className="relative">
         {/* 输入框区域 */}
-        <div className="relative bg-muted/50 rounded-2xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
+        <div className="relative bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200">
           <textarea
             ref={textareaRef}
             value={inputValue}
@@ -100,16 +100,7 @@ export function MessageInput({
             autoFocus
             disabled={isDisabled}
           />
-          {/* Enter提示 - 输入框内左下角 */}
-          <div className="absolute bottom-2 left-3 flex items-center gap-1">
-            <span className="text-[10px] text-muted-foreground/40">
-              Enter 发送
-            </span>
-            <span className="text-[10px] text-muted-foreground/30">·</span>
-            <span className="text-[10px] text-muted-foreground/40">
-              Shift + Enter 换行
-            </span>
-          </div>
+
         </div>
 
         {/* 底部工具栏：Agent选择器 + 上下文 + 发送按钮 */}

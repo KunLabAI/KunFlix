@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ interface TypewriterTextProps {
   className?: string;
 }
 
-/* Markdown组件配置：自定义代码块样式 */
+/* Markdown组件配置：自定义代码块和图片样式 */
 const markdownComponents = {
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => {
     const isInline = !className;
@@ -41,6 +41,13 @@ const markdownComponents = {
     );
   },
   pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
+  // 过滤空 src 的图片，避免浏览器警告
+  img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+    const isValidSrc = typeof src === 'string' && src.trim() !== '';
+    return isValidSrc ? (
+      <img src={src} alt={alt || ''} {...props} className={cn("max-w-full h-auto rounded-lg", props.className)} />
+    ) : null;
+  },
 };
 
 export function TypewriterText({
@@ -48,17 +55,6 @@ export function TypewriterText({
   isStreaming,
   className,
 }: TypewriterTextProps) {
-  const [showCursor, setShowCursor] = useState(true);
-
-  // 光标闪烁动画
-  useEffect(() => {
-    const cursorInterval = setInterval(() => {
-      setShowCursor((prev) => !prev);
-    }, 530);
-
-    return () => clearInterval(cursorInterval);
-  }, []);
-
   return (
     <div className={cn('relative', className)}>
       <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7 inline">
@@ -66,15 +62,6 @@ export function TypewriterText({
           {content}
         </ReactMarkdown>
       </div>
-      {isStreaming && (
-        <span
-          className={cn(
-            'inline-block w-2 h-4 ml-0.5 bg-primary rounded-sm align-middle',
-            'transition-opacity duration-100'
-          )}
-          style={{ opacity: showCursor ? 1 : 0.3 }}
-        />
-      )}
     </div>
   );
 }
