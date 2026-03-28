@@ -7,6 +7,9 @@
 @use "../tiptap-node/heading-node/heading-node";
 @use "../tiptap-node/paragraph-node/paragraph-node";
 
+// Edge handle styles - 统一的节点拖拽手柄样式
+@use "edge-handle";
+
 // ── Default node sizing ──
 .react-flow__node:has(.script-editor-root) {
   // Remove fixed width to allow NodeResizer to work properly

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BaseEdge, EdgeProps, getBezierPath, EdgeLabelRenderer } from '@xyflow/react';
+import { EdgeProps, getBezierPath } from '@xyflow/react';
 import { useCanvasStore } from '@/store/useCanvasStore';
 
 export function CustomEdge({
@@ -26,66 +26,74 @@ export function CustomEdge({
   const deleteEdge = useCanvasStore((state) => state.deleteEdge);
   const [isHovered, setIsHovered] = React.useState(false);
 
-  const onEdgeClick = (evt: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const onEdgeClick = (evt: React.MouseEvent) => {
     evt.stopPropagation();
     deleteEdge(id);
   };
 
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+  };
+
+  // 从传入的 style 中获取颜色，或使用默认值
+  const baseStroke = (style?.stroke as string) || '#868686';
+  const baseStrokeWidth = typeof style?.strokeWidth === 'number' ? style.strokeWidth : 2;
+  const isActive = selected || isHovered;
+  const activeColor = '#ff6b6b';
+
+
   return (
-    <>
-      <BaseEdge 
-        path={edgePath} 
-        markerEnd={markerEnd} 
-        style={{
-          ...style,
-          strokeWidth: selected || isHovered ? 3 : 2,
-          stroke: selected || isHovered ? '#8b5cf6' : '#6366F1', // Primary color with selected state
-        }} 
-      />
-      {/* 隐形的宽轨道，用于增加鼠标 hover 的感应面积，8px 范围 */}
+    <g className="react-flow__edge-path-group">
+      {/* 隐形的宽轨道，用于增加鼠标 hover 的感应面积 */}
       <path
         d={edgePath}
         fill="none"
-        strokeOpacity={0}
-        strokeWidth={16}
-        className="cursor-pointer"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onTouchStart={() => setIsHovered(true)}
-        onTouchEnd={() => {
-          setTimeout(() => setIsHovered(false), 2000);
-        }}
+        stroke="transparent"
+        strokeWidth={20}
+        style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       />
-      <EdgeLabelRenderer>
-        <div
-          className="nodrag nopan absolute pointer-events-auto flex items-center justify-center transition-opacity duration-200 ease-out z-[5]"
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY - 12}px)`,
-            opacity: isHovered || selected ? 1 : 0,
-            pointerEvents: isHovered || selected ? 'all' : 'none',
-          }}
-          onMouseEnter={() => setIsHovered(true)}
-          onMouseLeave={() => setIsHovered(false)}
+      
+      {/* 实际可见的连线 */}
+      <path
+        d={edgePath}
+        fill="none"
+        stroke={isActive ? activeColor : baseStroke}
+        strokeWidth={isActive ? baseStrokeWidth + 1 : baseStrokeWidth}
+        strokeLinecap="round"
+        markerEnd={markerEnd}
+        style={{ pointerEvents: 'none' }}
+      />
+      
+      {/* 删除按钮 - 使用 foreignObject 直接在 SVG 中渲染 */}
+      {isActive && (
+        <foreignObject
+          x={labelX - 12}
+          y={labelY - 12}
+          width={24}
+          height={24}
+          requiredExtensions="http://www.w3.org/1999/xhtml"
         >
-          <div className="w-4 h-4 flex items-center justify-center">
-            <button
-              className="w-4 h-4 bg-transparent border-0 flex items-center justify-center text-[#FF4D4F] hover:scale-110 transition-transform duration-200 ease-out cursor-pointer"
-              onClick={onEdgeClick}
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                onEdgeClick(e as unknown as React.MouseEvent<HTMLButtonElement, MouseEvent>);
-              }}
-              title="删除连线"
-            >
-              <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="15" y1="9" x2="9" y2="15"></line>
-                <line x1="9" y1="9" x2="15" y2="15"></line>
-              </svg>
-            </button>
-          </div>
-        </div>
-      </EdgeLabelRenderer>
-    </>
+          <button
+            onClick={onEdgeClick}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+            className="w-6 h-6 bg-white dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-500 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:scale-125 transition-all duration-150 cursor-pointer shadow-lg"
+            style={{ pointerEvents: 'auto' }}
+            title="删除连线"
+          >
+            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </foreignObject>
+      )}
+    </g>
   );
 }

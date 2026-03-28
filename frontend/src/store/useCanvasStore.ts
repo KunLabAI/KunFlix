@@ -247,7 +247,7 @@ export const useCanvasStore = create<CanvasState>()(
           return;
         }
 
-        const newEdges = addEdge({ ...connection, type: 'default', animated: true }, edges);
+        const newEdges = addEdge({ ...connection, type: 'custom', animated: true }, edges);
         
         set({ edges: newEdges, isDirty: true });
         get().takeSnapshot();

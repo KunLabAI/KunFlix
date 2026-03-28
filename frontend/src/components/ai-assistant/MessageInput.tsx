@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Loader2, ChevronDown, Battery, BatteryMedium, BatteryLow, BatteryWarning, Sparkles } from 'lucide-react';
+import { Send, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -11,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import type { AgentInfo, ContextUsage } from '@/store/useAIAssistantStore';
+import type { AgentInfo } from '@/store/useAIAssistantStore';
 
 interface MessageInputProps {
   onSend: (content: string) => void;
@@ -24,8 +23,7 @@ interface MessageInputProps {
   availableAgents?: AgentInfo[];
   isLoadingAgents?: boolean;
   onSwitchAgent?: (agent: AgentInfo) => void;
-  // Context usage props
-  contextUsage?: ContextUsage | null;
+
 }
 
 export function MessageInput({
@@ -38,7 +36,6 @@ export function MessageInput({
   availableAgents = [],
   isLoadingAgents = false,
   onSwitchAgent,
-  contextUsage,
 }: MessageInputProps) {
   const [inputValue, setInputValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -87,19 +84,6 @@ export function MessageInput({
   const isInputEmpty = !inputValue.trim();
   const isDisabled = disabled || isLoading;
 
-  // 计算上下文使用率
-  const contextPercentage = contextUsage && contextUsage.contextWindow > 0
-    ? (contextUsage.usedTokens / contextUsage.contextWindow) * 100
-    : 0;
-
-  // 获取电池图标和颜色
-  const getBatteryIcon = () => {
-    if (contextPercentage >= 90) return <BatteryWarning className="h-4 w-4 text-red-500" />;
-    if (contextPercentage >= 70) return <BatteryLow className="h-4 w-4 text-amber-500" />;
-    if (contextPercentage >= 40) return <BatteryMedium className="h-4 w-4 text-emerald-500" />;
-    return <Battery className="h-4 w-4 text-emerald-500" />;
-  };
-
   return (
     <div className={cn('p-3 border-t bg-background', className)}>
       <form onSubmit={handleSubmit} className="relative">
@@ -140,9 +124,6 @@ export function MessageInput({
                 className="h-8 px-2 text-sm font-medium hover:bg-primary/10 flex items-center gap-2"
                 disabled={isLoadingAgents}
               >
-                <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="h-3 w-3 text-primary" />
-                </div>
                 <span className="text-foreground">{agentName}</span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
@@ -180,16 +161,8 @@ export function MessageInput({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* 右侧：上下文电池图标 + 发送按钮 */}
+          {/* 右侧：发送按钮 */}
           <div className="flex items-center gap-1">
-            {/* 上下文电池图标（带hover面板） */}
-            {contextUsage && (
-              <ContextBatteryIcon
-                contextUsage={contextUsage}
-                isLoading={isLoading}
-              />
-            )}
-
             {/* 发送按钮（纯图标） */}
             <Button
               type="submit"
@@ -212,123 +185,6 @@ export function MessageInput({
           </div>
         </div>
       </form>
-    </div>
-  );
-}
-
-// 上下文电池图标组件（带hover详细面板）
-interface ContextBatteryIconProps {
-  contextUsage: ContextUsage;
-  isLoading: boolean;
-}
-
-function ContextBatteryIcon({ contextUsage, isLoading }: ContextBatteryIconProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  const percentage = contextUsage.contextWindow > 0
-    ? (contextUsage.usedTokens / contextUsage.contextWindow) * 100
-    : 0;
-  const clampedPercentage = Math.min(percentage, 100);
-  const remainingTokens = Math.max(0, contextUsage.contextWindow - contextUsage.usedTokens);
-
-  // 获取电池图标
-  const getBatteryIcon = () => {
-    if (percentage >= 90) return <BatteryWarning className="h-4 w-4 text-red-500" />;
-    if (percentage >= 70) return <BatteryLow className="h-4 w-4 text-amber-500" />;
-    if (percentage >= 40) return <BatteryMedium className="h-4 w-4 text-emerald-500" />;
-    return <Battery className="h-4 w-4 text-emerald-500" />;
-  };
-
-  return (
-    <div
-      className="relative"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-lg hover:bg-muted relative"
-        title={`上下文: ${percentage.toFixed(0)}%`}
-      >
-        {getBatteryIcon()}
-        {/* 消耗动画效果 */}
-        {isLoading && (
-          <motion.div
-            className="absolute inset-0 rounded-lg bg-primary/10"
-            animate={{
-              scale: [1, 1.1, 1],
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          />
-        )}
-      </Button>
-
-      {/* Hover展开的详细信息面板 - 向上展开但偏左 */}
-      <AnimatePresence>
-        {isHovered && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute bottom-full mb-2 right-0 z-[100] bg-popover border border-border/50 rounded-lg shadow-lg p-3 min-w-[180px]"
-          >
-            <div className="space-y-2">
-              {/* 标题 */}
-              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                上下文使用统计
-              </div>
-
-              {/* 进度条 */}
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <motion.div
-                  className={`h-full rounded-full ${
-                    percentage >= 90 ? 'bg-red-500' : percentage >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
-                  }`}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${clampedPercentage}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-
-              {/* 详细数据 */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-                <div className="text-muted-foreground">已使用</div>
-                <div className="text-right font-medium tabular-nums">
-                  {contextUsage.usedTokens.toLocaleString()}
-                </div>
-
-                <div className="text-muted-foreground">上限</div>
-                <div className="text-right font-medium tabular-nums">
-                  {contextUsage.contextWindow.toLocaleString()}
-                </div>
-
-                <div className="text-muted-foreground">剩余</div>
-                <div className="text-right font-medium tabular-nums text-emerald-500">
-                  {remainingTokens.toLocaleString()}
-                </div>
-
-                <div className="text-muted-foreground">使用率</div>
-                <div className={`text-right font-medium tabular-nums ${
-                  percentage >= 90 ? 'text-red-500' : percentage >= 70 ? 'text-amber-500' : 'text-emerald-500'
-                }`}>
-                  {percentage.toFixed(1)}%
-                </div>
-              </div>
-            </div>
-
-            {/* 小三角箭头 - 向下指向，偏右 */}
-            <div className="absolute -bottom-1 right-3 w-2 h-2 bg-popover border-r border-b border-border/50 rotate-45" />
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

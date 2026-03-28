@@ -48,7 +48,7 @@ const edgeTypes = {
 const defaultEdgeOptions = {
   type: 'custom',
   animated: true,
-  style: { stroke: '#6366F1', strokeWidth: 2 },
+  style: { stroke: '#868686ff', strokeWidth: 2 },
 };
 
 function InfiniteCanvas() {

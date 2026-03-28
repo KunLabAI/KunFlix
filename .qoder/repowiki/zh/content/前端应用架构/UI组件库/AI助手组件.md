@@ -84,14 +84,14 @@ API --> Panel
 ```
 
 **图表来源**
-- [AIAssistantPanel.tsx:1-329](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L329)
-- [ChatMessage.tsx:1-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L126)
-- [MessageInput.tsx:1-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L110)
+- [AIAssistantPanel.tsx:1-376](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L376)
+- [ChatMessage.tsx:1-160](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L160)
+- [MessageInput.tsx:1-335](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L335)
 - [ThinkingIndicator.tsx:1-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L1-L56)
 - [ToolCallIndicator.tsx:1-109](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L1-L109)
 - [SkillCallIndicator.tsx:1-55](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx#L1-L55)
 - [TypewriterText.tsx:1-81](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L81)
-- [ContextUsageBar.tsx:1-42](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L1-L42)
+- [ContextUsageBar.tsx:1-141](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L1-L141)
 - [useSSEHandler.ts:1-357](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L357)
 - [useSessionManager.ts:1-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L179)
 - [useAIAssistantStore.ts:1-294](file://frontend/src/store/useAIAssistantStore.ts#L1-L294)
@@ -99,7 +99,7 @@ API --> Panel
 - [api.ts:1-84](file://frontend/src/lib/api.ts#L1-L84)
 
 **章节来源**
-- [AIAssistantPanel.tsx:1-329](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L329)
+- [AIAssistantPanel.tsx:1-376](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L376)
 - [index.ts:1-23](file://frontend/src/components/ai-assistant/index.ts#L1-L23)
 
 ## 核心组件
@@ -113,10 +113,10 @@ API --> Panel
 - API 工具：统一请求头注入、401 自动刷新、请求队列与重试
 
 **章节来源**
-- [AIAssistantPanel.tsx:14-329](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L14-L329)
-- [ChatMessage.tsx:52-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L52-L126)
-- [MessageInput.tsx:17-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L17-L110)
-- [ContextUsageBar.tsx:16-42](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L16-L42)
+- [AIAssistantPanel.tsx:14-376](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L14-L376)
+- [ChatMessage.tsx:52-160](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L52-L160)
+- [MessageInput.tsx:17-335](file://frontend/src/components/ai-assistant/MessageInput.tsx#L17-L335)
+- [ContextUsageBar.tsx:16-141](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L16-L141)
 - [useSSEHandler.ts:24-357](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L24-L357)
 - [useSessionManager.ts:12-179](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L179)
 - [useAIAssistantStore.ts:74-294](file://frontend/src/store/useAIAssistantStore.ts#L74-L294)
@@ -161,32 +161,40 @@ P-->>U : 结束加载态
 
 ### 上下文使用统计栏
 - 实时token使用监控：显示当前使用的token数量与上下文窗口限制的比例
-- 可视化进度条：根据使用百分比动态改变颜色（绿色<50%，琥珀色<80%，红色≥80%）
-- 数值格式化：超过1000的token数以K为单位显示，提升可读性
-- 状态反馈：提供用户友好的资源使用状态提示，帮助用户了解模型上下文限制
+- **电池式可视化系统**：重构为四格电池图标，提供更直观的使用状态反馈
+- **颜色编码**：根据使用百分比动态改变电池颜色（绿色<40%，琥珀色<70%，红色≥90%）
+- **悬浮详情面板**：鼠标悬停显示详细的使用统计信息，包括进度条和数值
+- **动画效果**：使用 Framer Motion 实现平滑的进度条动画和悬浮展开效果
+- **数值格式化**：超过1000的token数以K为单位显示，提升可读性
 
 ```mermaid
 flowchart TD
 Start(["接收context_usage数据"]) --> Calc["计算使用百分比"]
-Calc --> Color{"百分比阈值"}
-Color --> |>=80%| Red["红色背景<br/>高使用风险"]
-Color --> |>=50%| Amber["琥珀色背景<br/>中等使用风险"]
-Color --> |<50%| Green["绿色背景<br/>低使用风险"]
-Red --> Format["格式化token数值"]
-Amber --> Format
-Green --> Format
-Format --> Render["渲染进度条"]
+Calc --> Battery["生成四格电池图标"]
+Battery --> Color{"百分比阈值"}
+Color --> |>=90%| Red["红色电池<br/>高使用风险"]
+Color --> |>=70%| Amber["琥珀色电池<br/>中等使用风险"]
+Color --> |>=40%| Medium["中等电量电池<br/>正常使用"]
+Color --> |<40%| Green["绿色电池<br/>低使用风险"]
+Red --> Hover["悬浮展开详情面板"]
+Amber --> Hover
+Medium --> Hover
+Green --> Hover
+Hover --> Details["显示详细统计信息"]
+Details --> Format["格式化token数值"]
+Format --> Render["渲染电池和进度条"]
 Render --> End(["显示统计信息"])
 ```
 
 **图表来源**
-- [ContextUsageBar.tsx:6-42](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L6-L42)
+- [ContextUsageBar.tsx:6-141](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L6-L141)
 - [useSSEHandler.ts:260-264](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L260-L264)
 
 **章节来源**
-- [ContextUsageBar.tsx:16-42](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L16-L42)
+- [ContextUsageBar.tsx:16-141](file://frontend/src/components/ai-assistant/ContextUsageBar.tsx#L16-L141)
 
 ### 消息组件设计
+- **浮动加载动画**：新增浮动跳跃的三点加载动画，提供更生动的加载反馈
 - 文本消息渲染：支持 Markdown 渲染与代码块高亮；流式渲染使用打字机效果光标
 - 思考过程显示：当消息处于流式且无内容/工具/技能调用时，显示"AI 正在思考"指示器
 - 工具调用指示器：可展开查看参数与结果，区分执行中/已完成状态
@@ -244,13 +252,15 @@ MultiAgentData --> AgentStep : "包含"
 - [useAIAssistantStore.ts:74-78](file://frontend/src/store/useAIAssistantStore.ts#L74-L78)
 
 **章节来源**
-- [ChatMessage.tsx:52-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L52-L126)
+- [ChatMessage.tsx:52-160](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L52-L160)
 - [TypewriterText.tsx:50-81](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L50-L81)
 - [ThinkingIndicator.tsx:13-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L13-L56)
 - [ToolCallIndicator.tsx:20-109](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L20-L109)
 - [SkillCallIndicator.tsx:18-55](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx#L18-L55)
 
 ### 输入处理与交互逻辑
+- **多行可调整高度**：输入框支持自动调整高度，最大高度120px，提供更好的写作体验
+- **智能体选择器**：集成下拉菜单，支持在对话过程中切换不同的AI智能体
 - 支持 Enter 发送、Shift+Enter 换行
 - 发送后自动聚焦输入框，加载态禁用发送按钮
 - 面板打开时自动滚动到底部，保持最佳阅读体验
@@ -275,7 +285,7 @@ Error --> Done
 - [AIAssistantPanel.tsx:87-179](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L87-L179)
 
 **章节来源**
-- [MessageInput.tsx:17-110](file://frontend/src/components/ai-assistant/MessageInput.tsx#L17-L110)
+- [MessageInput.tsx:17-335](file://frontend/src/components/ai-assistant/MessageInput.tsx#L17-L335)
 - [AIAssistantPanel.tsx:62-65](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L62-L65)
 - [AIAssistantPanel.tsx:53-60](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L53-L60)
 

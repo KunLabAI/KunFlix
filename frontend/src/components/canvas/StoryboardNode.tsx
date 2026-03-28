@@ -185,107 +185,26 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           </Button>
         </div>
 
-        <div className="edge-handle-wrapper left">
-          <div className="edge-handle-inner">
-            <div className="edge-handle-line" />
-            <div className="edge-handle-dot" />
-          </div>
+        {/* Left Edge */}
+        <div className="edge-handle-wrapper left group/handle pointer-events-auto">
           <Handle type="target" position={Position.Left} id="left-target" />
           <Handle type="source" position={Position.Left} id="left-source" />
-        </div>
-        
-        <div className="edge-handle-wrapper right">
           <div className="edge-handle-inner">
             <div className="edge-handle-line" />
             <div className="edge-handle-dot" />
           </div>
+        </div>
+
+        {/* Right Edge */}
+        <div className="edge-handle-wrapper right group/handle pointer-events-auto">
           <Handle type="target" position={Position.Right} id="right-target" />
           <Handle type="source" position={Position.Right} id="right-source" />
+          <div className="edge-handle-inner">
+            <div className="edge-handle-line" />
+            <div className="edge-handle-dot" />
+          </div>
         </div>
       </div>
-
-      {/* 优化后的节点边缘拖拽热区 */}
-      <style>{`
-        .edge-handle-wrapper {
-          position: absolute;
-          z-index: 60;
-          pointer-events: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-        
-        .edge-handle-wrapper.left {
-          left: -10px; top: 10%; bottom: 10%; width: 20px;
-        }
-        .edge-handle-wrapper.right {
-          right: -10px; top: 10%; bottom: 10%; width: 20px;
-          z-index: 50;
-        }
-
-        .edge-handle-inner {
-          position: absolute;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-          z-index: 10;
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-
-        .edge-handle-wrapper.left .edge-handle-inner,
-        .edge-handle-wrapper.right .edge-handle-inner {
-          width: 6px; height: 24px;
-        }
-
-        .edge-handle-line {
-          position: absolute;
-          background: #1890FF;
-          border-radius: 2px;
-        }
-
-        .edge-handle-wrapper.left .edge-handle-line,
-        .edge-handle-wrapper.right .edge-handle-line {
-          width: 2px; height: 100%;
-          background: #1890FF;
-        }
-
-        .edge-handle-dot {
-          width: 8px;
-          height: 8px;
-          background: #1890FF;
-          border-radius: 50%;
-          box-shadow: 0 0 4px #1890FF40;
-          position: absolute;
-          z-index: 25;
-        }
-
-        .storyboard-node-wrapper:hover .edge-handle-inner,
-        .edge-handle-wrapper:hover .edge-handle-inner {
-          opacity: 1 !important;
-        }
-
-        .edge-handle-wrapper .react-flow__handle {
-          width: 100% !important;
-          height: 100% !important;
-          background: transparent !important;
-          border: none !important;
-          min-width: unset !important;
-          min-height: unset !important;
-          border-radius: 0 !important;
-          transform: none !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          pointer-events: auto !important;
-          z-index: 30 !important;
-          cursor: crosshair !important;
-        }
-      `}</style>
 
       {isEditorOpen && (
         <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm p-6 flex" onKeyDown={(e) => {

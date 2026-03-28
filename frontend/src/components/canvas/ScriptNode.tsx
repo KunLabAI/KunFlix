@@ -208,119 +208,29 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
       {/* 悬浮操作按钮，底部外侧 */}
       <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
-        <Button 
-          variant="secondary" 
-          size="icon" 
-          className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-          onClick={handleDuplicate} 
-          title="创建副本" 
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40"
+          onClick={handleDuplicate}
+          title="创建副本"
           aria-label="创建副本"
           role="button"
         >
           <Copy className="h-4 w-4" />
         </Button>
-        <Button 
-          variant="secondary" 
-          size="icon" 
-          className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" 
-          onClick={handleDelete} 
-          title="删除" 
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40"
+          onClick={handleDelete}
+          title="删除"
           aria-label="删除"
           role="button"
         >
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-
-      {/* 优化后的节点边缘拖拽热区 */}
-      <style>{`
-        .edge-handle-wrapper {
-          position: absolute;
-          z-index: 60;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-        
-        .edge-handle-wrapper.left {
-          left: -12px; top: 50%; transform: translateY(-50%); width: 16px; height: 40px;
-        }
-        .edge-handle-wrapper.right {
-          right: -12px; top: 50%; transform: translateY(-50%); width: 16px; height: 40px;
-          z-index: 50; /* 确保拖拽手柄在操作按钮上层 */
-        }
-
-        .edge-handle-inner {
-          position: absolute;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          pointer-events: none;
-          z-index: 10;
-          opacity: 0;
-          transition: opacity 0.2s;
-        }
-
-        .edge-handle-wrapper.left .edge-handle-inner,
-        .edge-handle-wrapper.right .edge-handle-inner {
-          width: 6px; height: 24px;
-        }
-
-        .edge-handle-line {
-          position: absolute;
-          background: #1890FF;
-          border-radius: 2px;
-        }
-
-        .edge-handle-wrapper.left .edge-handle-line,
-        .edge-handle-wrapper.right .edge-handle-line {
-          width: 2px; height: 100%;
-          background: #1890FF;
-        }
-
-        .edge-handle-dot {
-          width: 8px;
-          height: 8px;
-          background: #1890FF;
-          border-radius: 50%;
-          box-shadow: 0 0 4px #1890FF40;
-          position: absolute;
-          z-index: 25;
-        }
-
-        .script-node-wrapper:hover .edge-handle-inner,
-        .edge-handle-wrapper:hover .edge-handle-inner {
-          opacity: 1 !important;
-        }
-
-
-        /* 隐藏原生的 handle，将事件代理给外部包装器 */
-        .edge-handle-wrapper .react-flow__handle {
-          width: 100% !important;
-          height: 100% !important;
-          background: transparent !important;
-          border: none !important;
-          min-width: unset !important;
-          min-height: unset !important;
-          border-radius: 0 !important;
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          right: 0 !important;
-          bottom: 0 !important;
-          transform: none !important;
-          margin: 0 !important;
-          pointer-events: auto !important; /* 确保原生的 handle 能够响应拖拽事件 */
-          z-index: 30 !important;
-        }
-
-        .edge-handle-wrapper:hover .react-flow__handle,
-        .edge-handle-wrapper .react-flow__handle:hover,
-        .group:hover .react-flow__handle {
-          background: transparent !important;
-        }
-      `}</style>
 
       {/* Right Edge */}
       <div className="edge-handle-wrapper right group/handle pointer-events-auto">

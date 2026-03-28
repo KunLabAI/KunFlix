@@ -287,6 +287,8 @@ export function AIAssistantPanel() {
               onClearSession={clearSession}
               onClose={() => setIsOpen(false)}
               onDragStart={(e) => dragControls.start(e)}
+              contextUsage={contextUsage}
+              isLoading={isLoading}
             />
 
             {/* 消息列表 */}
@@ -315,7 +317,7 @@ export function AIAssistantPanel() {
               </div>
             )}
 
-            {/* 输入区域（包含Agent选择器、上下文统计和发送按钮） */}
+            {/* 输入区域（包含Agent选择器和发送按钮） */}
             <MessageInput
               onSend={handleSend}
               isLoading={isLoading}
@@ -323,7 +325,6 @@ export function AIAssistantPanel() {
               availableAgents={availableAgents}
               isLoadingAgents={isLoadingAgents}
               onSwitchAgent={switchAgent}
-              contextUsage={contextUsage}
             />
 
             {/* 调整大小手柄 - 四边和四角 */}
