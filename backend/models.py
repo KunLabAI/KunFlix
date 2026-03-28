@@ -178,6 +178,9 @@ class ChatSession(Base):
     user_id = Column(String(36), nullable=True, index=True)  # 可存储用户或管理员 ID
     theater_id = Column(String(36), ForeignKey("theaters.id"), nullable=True, index=True)  # 关联画布/剧场
 
+    # 上下文使用统计（累计 token 使用量）
+    total_tokens_used = Column(BigInteger, default=0)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

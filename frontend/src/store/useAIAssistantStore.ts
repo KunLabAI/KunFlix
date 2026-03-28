@@ -62,6 +62,7 @@ interface TheaterSession {
   agentId: string | null;
   agentName: string;
   messages: Message[];
+  contextUsage: ContextUsage | null;
 }
 
 // 图像编辑上下文（从画布节点触发 AI 编辑）
@@ -190,6 +191,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
                 agentId: state.agentId,
                 agentName: state.agentName,
                 messages: state.messages,
+                contextUsage: state.contextUsage,
               }
             }
           }));
@@ -204,7 +206,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
             agentId: savedSession.agentId,
             agentName: savedSession.agentName,
             messages: savedSession.messages,
-            contextUsage: null,
+            contextUsage: savedSession.contextUsage,
           });
         } else {
           set({

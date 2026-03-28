@@ -292,14 +292,14 @@ async def _generate_multi_agent(
         ),
         False: lambda: _execute_complex_multi_agent(
             orchestrator, db, agent, content, entity_id, session_id,
-            is_admin, theater_id, analysis
+            is_admin, theater_id, analysis, edit_image_url, target_node_id
         ),
     }
     async for chunk in _generators[analysis.is_simple]():
         yield chunk
 
 
-async def _save_multi_agent_message(session_id: str, final_result: str):
+async def _save_multi_agent_message(session_id: str, final_result: str, tokens_used: int = 0):
     """保存多智能体协作的助手消息"""
     async with AsyncSessionLocal() as session:
         try:
@@ -314,6 +314,7 @@ async def _save_multi_agent_message(session_id: str, final_result: str):
             s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
             s = s_result.scalars().first()
             s and setattr(s, 'updated_at', sa_func.now())
+            tokens_used > 0 and s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + tokens_used)
 
             await session.commit()
         except Exception as e:
@@ -330,6 +331,8 @@ async def _execute_complex_multi_agent(
     is_admin: bool,
     theater_id: str | None,
     analysis,
+    edit_image_url: str | None = None,
+    target_node_id: str | None = None,
 ):
     """执行复杂任务的多智能体协作"""
     # 获取历史消息（不包含刚发送的用户消息，因为已经commit了）
@@ -351,6 +354,41 @@ async def _execute_complex_multi_agent(
             else deserialized
         )
         history_messages.append({"role": role, "content": content_val})
+
+    # 图片编辑上下文注入：将画布节点的图片注入到历史消息的最后一条用户消息
+    edit_image_data_url = None
+    if edit_image_url:
+        # 提取文件名：支持多种 URL 格式
+        # - /api/media/xxx.png
+        # - http://localhost:8000/api/media/xxx.png
+        # - xxx.png (纯文件名)
+        filename = None
+        if "/api/media/" in edit_image_url:
+            filename = edit_image_url.split("/api/media/")[-1].split("?")[0]  # 移除可能的查询参数
+        elif "/media/" in edit_image_url:
+            filename = edit_image_url.split("/media/")[-1].split("?")[0]
+        elif edit_image_url.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+            # 纯文件名或相对路径
+            filename = edit_image_url.split("/")[-1]
+        
+        if filename:
+            _local_path = str(MEDIA_DIR / filename)
+            edit_image_data_url = _image_file_to_data_url(_local_path)
+            edit_image_data_url and logger.info(f"[Multi-Agent] Injected edit image: {filename}")
+    
+    # 将图片注入到最后一条用户消息或添加新的用户消息
+    if edit_image_data_url and history_messages:
+        # 找到最后一条用户消息并注入图片
+        for i in range(len(history_messages) - 1, -1, -1):
+            if history_messages[i].get("role") == "user":
+                _inject_image_to_message(history_messages[i], edit_image_data_url)
+                break
+        else:
+            # 如果没有用户消息，创建一个包含图片的用户消息
+            history_messages.append({
+                "role": "user",
+                "content": [{"type": "image_url", "image_url": {"url": edit_image_data_url}}]
+            })
 
     final_result = None
     billing_data = {}
@@ -380,15 +418,26 @@ async def _execute_complex_multi_agent(
 
         yield event.to_sse()
 
-    # 发送计费事件和完成事件
+    # 保存最终的助手消息，并更新累计 token 使用量
+    context_usage = billing_data.get("context_usage") or {}
+    tokens_used = context_usage.get("used_tokens", 0)
+    final_result and await _save_multi_agent_message(session_id, final_result, tokens_used)
+
+    # 发送计费事件（在保存后发送，确保包含累计值）
+    # 重新查询会话获取累计 token 使用量
+    async with AsyncSessionLocal() as db_session:
+        s_result = await db_session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+        s = s_result.scalars().first()
+        total_tokens = (s.total_tokens_used or 0) if s else tokens_used
+    
     yield _sse("billing", {
         "credit_cost": billing_data.get("credit_cost", 0),
-        "context_usage": billing_data.get("context_usage"),
+        "context_usage": {
+            "used_tokens": total_tokens,
+            "context_window": agent.context_window,
+        },
     })
     yield _sse("done", {})
-
-    # 保存最终的助手消息
-    final_result and await _save_multi_agent_message(session_id, final_result)
 
 
 async def _get_tool_result(
@@ -738,11 +787,12 @@ async def _generate_single_agent(
             )
             session.add(assistant_msg)
 
-            # 更新会话时间戳
+            # 更新会话时间戳和累计 token 使用量
             from sqlalchemy import func as sa_func
             s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
             s = s_result.scalars().first()
             s and setattr(s, 'updated_at', sa_func.now())
+            s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
 
             # 查询实体并更新统计（映射表驱动，避免 if-else）
             entity_model_map = {True: Admin, False: User}
@@ -775,6 +825,14 @@ async def _generate_single_agent(
                 logger.warning(f"Balance frozen for {entity_id}")
 
             await session.commit()
+
+            # 更新 billing_event 中的 context_usage 为累计值
+            s and billing_event.update({
+                "context_usage": {
+                    "used_tokens": s.total_tokens_used or 0,
+                    "context_window": agent.context_window,
+                }
+            })
 
             # 查询最新余额
             balance_result = await session.execute(
@@ -834,6 +892,10 @@ async def clear_session_messages(
     # 删除该会话的所有消息
     from sqlalchemy import delete
     result = await db.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+
+    # 重置会话的累计 token 使用量
+    chat_session.total_tokens_used = 0
+
     await db.commit()
 
     deleted_count = result.rowcount

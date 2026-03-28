@@ -365,6 +365,7 @@ class ChatSessionResponse(ChatSessionBase):
     id: str
     user_id: Optional[str] = None
     theater_id: Optional[str] = None
+    total_tokens_used: int = 0  # 累计 token 使用量
     created_at: Any
     updated_at: Optional[Any] = None
 
