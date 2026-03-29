@@ -82,6 +82,8 @@ cover/
 
 # DB
 *.db
+*.db-shm
+*.db-wal
 
 # images
 backend/media/*.jpeg

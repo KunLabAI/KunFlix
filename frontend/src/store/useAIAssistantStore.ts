@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export type MessageRole = 'user' | 'ai';
 export type MessageStatus = 'streaming' | 'complete';
+export type ScrollBehavior = 'instant' | 'smooth';
 
 // 技能调用
 export interface SkillCall {
@@ -109,6 +110,10 @@ interface AIAssistantState {
   // Context usage stats
   contextUsage: ContextUsage | null;
   
+  // Virtual scroll settings
+  scrollBehavior: ScrollBehavior;
+  overscanCount: number;
+  
   // Actions
   setIsOpen: (isOpen: boolean) => void;
   toggleOpen: () => void;
@@ -146,6 +151,10 @@ interface AIAssistantState {
   
   // Context usage
   setContextUsage: (usage: ContextUsage | null) => void;
+  
+  // Virtual scroll settings
+  setScrollBehavior: (behavior: ScrollBehavior) => void;
+  setOverscanCount: (count: number) => void;
 }
 
 const DEFAULT_MESSAGES: Message[] = [
@@ -171,6 +180,8 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       panelPosition: { ...DEFAULT_PANEL_POSITION },
       imageEditContext: null,
       contextUsage: null,
+      scrollBehavior: 'smooth',
+      overscanCount: 5,
 
       // Panel visibility
       setIsOpen: (isOpen: boolean) => set({ isOpen }),
@@ -273,6 +284,10 @@ export const useAIAssistantStore = create<AIAssistantState>()(
 
       // Context usage
       setContextUsage: (contextUsage: ContextUsage | null) => set({ contextUsage }),
+      
+      // Virtual scroll settings
+      setScrollBehavior: (scrollBehavior: ScrollBehavior) => set({ scrollBehavior }),
+      setOverscanCount: (overscanCount: number) => set({ overscanCount }),
     }),
     {
       name: 'ai-assistant-storage',
@@ -289,6 +304,8 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         theaterSessions: state.theaterSessions,
         panelSize: state.panelSize,
         panelPosition: state.panelPosition,
+        scrollBehavior: state.scrollBehavior,
+        overscanCount: state.overscanCount,
       }),
     }
   )

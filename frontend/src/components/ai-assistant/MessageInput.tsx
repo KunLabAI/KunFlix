@@ -82,7 +82,7 @@ export function MessageInput({
   );
 
   const isInputEmpty = !inputValue.trim();
-  const isDisabled = disabled || isLoading;
+  const isDisabled = disabled; // 移除 isLoading 限制，允许用户在 AI 生成时输入
 
   return (
     <div className={cn('p-3 border-t bg-background', className)}>

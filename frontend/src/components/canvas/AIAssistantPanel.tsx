@@ -4,17 +4,33 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { Sparkles, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, createAuthFetch } from '@/context/AuthContext';
 
 // 导入拆分后的组件
 import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
+import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
+import { usePerformanceMonitor } from '@/components/ai-assistant';
 
 export function AIAssistantPanel() {
   // 登录状态
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, refreshToken, logout } = useAuth();
+  
+  // 创建带有自动token刷新的fetch包装器
+  const authFetch = React.useMemo(
+    () => createAuthFetch(refreshToken, logout),
+    [refreshToken, logout]
+  );
   
   // 面板状态
   const isOpen = useAIAssistantStore((state) => state.isOpen);
@@ -51,18 +67,30 @@ export function AIAssistantPanel() {
 
   // 本地状态
   const [isLoading, setIsLoading] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  const [showReloginDialog, setShowReloginDialog] = useState(false);
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
+  const { ref: virtualListRef, scrollToBottom: scrollToBottomVirtual } = useVirtualListRef();
+
+  // 虚拟滚动配置
+  const scrollBehavior = useAIAssistantStore((state) => state.scrollBehavior);
+  const overscanCount = useAIAssistantStore((state) => state.overscanCount);
 
   // 注：ESC关闭面板功能已移除
 
-  // 自动滚动到底部
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen]);
+  // 性能监控
+  usePerformanceMonitor({
+    onLongTask: (duration) => {
+      if (duration > 200) {
+        console.warn(`[AIAssistantPanel] Long task detected: ${duration}ms`);
+      }
+    },
+    enableFPS: true,
+  });
 
   // 初始化加载Agent列表（仅在已登录时）
   useEffect(() => {
@@ -109,13 +137,11 @@ export function AIAssistantPanel() {
       abortControllerRef.current = new AbortController();
 
       try {
-        const token = localStorage.getItem('access_token');
         const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
-        const response = await fetch(`${apiBase}/api/chats/${currentSessionId}/messages`, {
+        const response = await authFetch(`${apiBase}/api/chats/${currentSessionId}/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             role: 'user',
@@ -129,16 +155,20 @@ export function AIAssistantPanel() {
           signal: abortControllerRef.current.signal,
         });
 
-        // 友好处理 HTTP 错误（特别是 402 积分不足）
-        const _ERROR_MESSAGES: Record<number, string> = {
-          402: '积分余额不足，请充值后继续使用',
-          401: '登录已过期，请重新登录',
-          403: '无权访问该功能',
-          429: '请求过于频繁，请稍后再试',
-        };
-        !response.ok && (() => {
+        // 处理 HTTP 错误
+        if (!response.ok) {
+          // 401错误且token刷新失败，显示重新登录弹窗
+          if (response.status === 401) {
+            setShowReloginDialog(true);
+            throw new Error('LOGIN_EXPIRED');
+          }
+          const _ERROR_MESSAGES: Record<number, string> = {
+            402: '积分余额不足，请充值后继续使用',
+            403: '无权访问该功能',
+            429: '请求过于频繁，请稍后再试',
+          };
           throw new Error(_ERROR_MESSAGES[response.status] || `请求失败 (${response.status})`);
-        })();
+        }
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -168,7 +198,9 @@ export function AIAssistantPanel() {
         }
       } catch (err) {
         const isAbort = (err as Error).name === 'AbortError';
-        !isAbort &&
+        const isLoginExpired = (err as Error).message === 'LOGIN_EXPIRED';
+        // 登录过期不显示错误消息（弹窗已处理）
+        !isAbort && !isLoginExpired &&
           setMessages((prev) => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
       } finally {
         setIsLoading(false);
@@ -295,42 +327,37 @@ export function AIAssistantPanel() {
               isLoading={isLoading}
             />
 
-            {/* 消息列表 */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/10">
-              {messages.map((msg, i) => (
-                <ChatMessage 
-                  key={i} 
-                  message={msg} 
-                  isLoading={isLoading}
-                  isLast={i === messages.length - 1 && (!isLoading || msg.role === 'ai')}
-                />
-              ))}
-              {/* 等待动画：用户发送消息后，AI还未开始回复时显示 */}
-              {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && (
-                <div className="flex justify-start">
-                  <div className="max-w-[85%] rounded-2xl px-3 py-2 text-sm text-secondary-foreground">
-                    <div className="flex items-center gap-1 h-5">
-                      {[0, 1, 2].map((i) => (
-                        <motion.span
-                          key={i}
-                          className="w-1.5 h-1.5 rounded-full bg-primary/60"
-                          animate={{
-                            y: [0, -6, 0],
-                            opacity: [0.4, 1, 0.4],
-                          }}
-                          transition={{
-                            duration: 0.8,
-                            repeat: Infinity,
-                            delay: i * 0.15,
-                            ease: "easeInOut",
-                          }}
-                        />
-                      ))}
-                    </div>
+            {/* 消息列表 - 使用虚拟滚动 */}
+            <div className="flex-1 relative bg-muted/10 h-full min-h-0">
+              <VirtualMessageList
+                ref={virtualListRef}
+                messages={messages}
+                renderItem={(message, index) => (
+                  <div className="px-4 py-2">
+                    <ChatMessage
+                      message={message}
+                      isLoading={isLoading}
+                      isLast={index === messages.length - 1 && (!isLoading || message.role === 'ai')}
+                    />
                   </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
+                )}
+                overscan={overscanCount}
+                scrollBehavior={scrollBehavior}
+                onScrollToBottom={(atBottom) => {
+                  setIsAtBottom(atBottom);
+                  setShowScrollButton(!atBottom && messages.length > 5);
+                }}
+                isLoading={isLoading}
+              />
+              
+              {/* 回到最新按钮 */}
+              <ScrollToBottomButton
+                isVisible={showScrollButton}
+                onClick={() => {
+                  scrollToBottomVirtual('smooth');
+                }}
+                hasNewMessages={isLoading && !isAtBottom}
+              />
             </div>
 
             {/* 图像编辑上下文横幅 */}
@@ -405,6 +432,34 @@ export function AIAssistantPanel() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 重新登录弹窗 */}
+      <Dialog open={showReloginDialog} onOpenChange={setShowReloginDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>登录已过期</DialogTitle>
+            <DialogDescription>
+              您的登录状态已过期，请重新登录以继续使用AI助手功能。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowReloginDialog(false)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => {
+                setShowReloginDialog(false);
+                logout();
+              }}
+            >
+              重新登录
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
