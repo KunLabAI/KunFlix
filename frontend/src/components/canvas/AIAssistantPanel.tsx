@@ -70,17 +70,53 @@ export function AIAssistantPanel() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showReloginDialog, setShowReloginDialog] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isSnapping, setIsSnapping] = useState(false);
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const { ref: virtualListRef, scrollToBottom: scrollToBottomVirtual } = useVirtualListRef();
 
+  // 约束面板位置到可视区域内
+  const constrainToViewport = useCallback((x: number, y: number, width: number, height: number) => {
+    const padding = 20; // 边缘安全距离
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // 计算允许的范围（确保面板完全可见）
+    const minX = padding - viewportWidth + width;
+    const maxX = -padding;
+    const minY = padding;
+    const maxY = viewportHeight - height - padding;
+    
+    return {
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
+    };
+  }, []);
+
   // 虚拟滚动配置
   const scrollBehavior = useAIAssistantStore((state) => state.scrollBehavior);
   const overscanCount = useAIAssistantStore((state) => state.overscanCount);
 
-  // 注：ESC关闭面板功能已移除
+  // ESC 最小化面板（避免与节点编辑冲突）
+  useEffect(() => {
+    const handleEscapeKey = (e: KeyboardEvent) => {
+      // 检查是否有活动的输入元素或可编辑元素
+      const activeElement = document.activeElement;
+      const isInputActive = activeElement?.tagName === 'INPUT' || 
+                           activeElement?.tagName === 'TEXTAREA' ||
+                           activeElement?.getAttribute('contenteditable') === 'true';
+      
+      // 只在面板打开且无输入焦点时响应 ESC
+      const shouldMinimize = isOpen && e.key === 'Escape' && !isInputActive;
+      shouldMinimize && setIsOpen(false);
+    };
+
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [isOpen, setIsOpen]);
 
   // 性能监控
   usePerformanceMonitor({
@@ -219,6 +255,8 @@ export function AIAssistantPanel() {
     const startY = e.clientY;
     const startWidth = panelSize.width;
     const startHeight = panelSize.height;
+    const startPosX = panelPosition.x;
+    const startPosY = panelPosition.y;
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -226,22 +264,28 @@ export function AIAssistantPanel() {
 
       let newWidth = startWidth;
       let newHeight = startHeight;
+      let newPosX = startPosX;
+      let newPosY = startPosY;
 
-      // 处理宽度调整
-      if (direction === 'left' || direction === 'corner-nw' || direction === 'corner-sw') {
-        newWidth = Math.max(300, startWidth - deltaX);
-      } else if (direction === 'right' || direction === 'corner-ne' || direction === 'corner-se') {
-        newWidth = Math.max(300, startWidth + deltaX);
-      }
+      // 处理宽度调整（左侧：保持右边界不变；右侧：保持左边界不变）
+      const isLeftSide = direction === 'left' || direction === 'corner-nw' || direction === 'corner-sw';
+      const isRightSide = direction === 'right' || direction === 'corner-ne' || direction === 'corner-se';
+      
+      isLeftSide && (newWidth = Math.max(300, startWidth - deltaX), newPosX = startPosX + (startWidth - newWidth));
+      isRightSide && (newWidth = Math.max(300, startWidth + deltaX), newPosX = startPosX + (newWidth - startWidth));
 
-      // 处理高度调整
-      if (direction === 'top' || direction === 'corner-nw' || direction === 'corner-ne') {
-        newHeight = Math.max(400, startHeight - deltaY);
-      } else if (direction === 'bottom' || direction === 'corner-sw' || direction === 'corner-se') {
-        newHeight = Math.max(400, startHeight + deltaY);
-      }
+      // 处理高度调整（顶部：高度增加时位置上移）
+      const isTopSide = direction === 'top' || direction === 'corner-nw' || direction === 'corner-ne';
+      const isBottomSide = direction === 'bottom' || direction === 'corner-sw' || direction === 'corner-se';
+      
+      isTopSide && (newHeight = Math.max(400, startHeight - deltaY), newPosY = startPosY + (startHeight - newHeight));
+      isBottomSide && (newHeight = Math.max(400, startHeight + deltaY));
+
+      // 约束位置到可视区域
+      const constrained = constrainToViewport(newPosX, newPosY, newWidth, newHeight);
 
       setPanelSize({ width: newWidth, height: newHeight });
+      setPanelPosition(constrained);
     };
 
     const onPointerUp = () => {
@@ -291,11 +335,29 @@ export function AIAssistantPanel() {
             onDragStart={() => {
               // 拖拽开始时禁止文本选择
               document.body.style.userSelect = 'none';
+              setIsDragging(true);
+              setIsSnapping(false);
             }}
             onDragEnd={(_, info) => {
               // 拖拽结束后恢复文本选择
               document.body.style.userSelect = '';
-              setPanelPosition({ x: panelPosition.x + info.offset.x, y: panelPosition.y + info.offset.y });
+              setIsDragging(false);
+              
+              // 计算新位置
+              const rawX = panelPosition.x + info.offset.x;
+              const rawY = panelPosition.y + info.offset.y;
+              
+              // 约束到可视区域
+              const constrained = constrainToViewport(rawX, rawY, panelSize.width, panelSize.height);
+              
+              // 检查是否需要吸附动画
+              const needsSnap = constrained.x !== rawX || constrained.y !== rawY;
+              needsSnap && setIsSnapping(true);
+              
+              setPanelPosition(constrained);
+              
+              // 吸附动画完成后重置状态
+              needsSnap && setTimeout(() => setIsSnapping(false), 300);
             }}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{
@@ -312,8 +374,8 @@ export function AIAssistantPanel() {
               scale: { duration: 0.2, ease: 'easeOut' },
               width: { duration: 0.25, ease: 'easeOut' },
               height: { duration: 0.25, ease: 'easeOut' },
-              x: { duration: 0 },
-              y: { duration: 0 },
+              x: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
+              y: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
             }}
             className="pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default"
             style={{ touchAction: 'none', borderRadius: 12 }}
