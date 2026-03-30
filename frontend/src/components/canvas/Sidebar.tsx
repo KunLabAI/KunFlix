@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Layers, Plus, ScrollText, Image as ImageIcon, Video, 
-  Table2, GripVertical, File, Film, ImagePlus, FileText
+  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useCanvasStore, CharacterNodeData, VideoNodeData } from '@/store/useCanvasStore';
+import { useResourceStore } from '@/store/useResourceStore';
 
 const NODE_TYPES = [
   { 
@@ -49,48 +49,30 @@ const NODE_TYPES = [
   },
 ];
 
+// 拖拽数据映射表：资源类型 -> 画布节点类型 + 数据结构
+const DRAG_DATA_BUILDERS: Record<string, (asset: { url: string; name: string }) => { nodeType: string; data: Record<string, unknown> }> = {
+  image: (a) => ({ nodeType: 'image', data: { name: a.name, imageUrl: a.url } }),
+  video: (a) => ({ nodeType: 'video', data: { name: a.name, videoUrl: a.url } }),
+  audio: (a) => ({ nodeType: 'text', data: { title: a.name, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: a.url }] }] } } }),
+};
+
 export const Sidebar = () => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'others'>('images');
+  const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'music'>('images');
   let timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Get all nodes from the store
-  const nodes = useCanvasStore((state) => state.nodes);
+  // 从 Resource Store 获取账号级别资源
+  const { assets, isLoading, fetchAssets } = useResourceStore();
 
-  // Compute assets from nodes
-  const { ASSET_IMAGES, ASSET_VIDEOS, ASSET_OTHERS } = useMemo(() => {
-    const images: any[] = [];
-    const videos: any[] = [];
-    const others: any[] = [];
+  // 面板打开时懒加载资源
+  useEffect(() => {
+    activeMenu === 'assets' && assets.length === 0 && fetchAssets();
+  }, [activeMenu]);
 
-    nodes.forEach(node => {
-      if (node.type === 'image') {
-        const charData = node.data as CharacterNodeData;
-        if (charData.imageUrl) {
-          images.push({
-            id: `img-${node.id}`,
-            type: 'image',
-            url: charData.imageUrl,
-            name: charData.name || '未命名图片',
-          });
-        }
-      } else if (node.type === 'video') {
-        const videoData = node.data as VideoNodeData;
-        if (videoData.videoUrl) {
-          videos.push({
-            id: `vid-${node.id}`,
-            type: 'video',
-            url: videoData.videoUrl,
-            name: videoData.name || '未命名视频',
-          });
-        }
-      }
-      // Assuming other document types or scripts could be collected here if needed
-      // else if (node.type === 'script' && hasFileAttachment) { ... }
-    });
-
-    return { ASSET_IMAGES: images, ASSET_VIDEOS: videos, ASSET_OTHERS: others };
-  }, [nodes]);
+  // 按类型分组资源
+  const ASSET_IMAGES = useMemo(() => assets.filter(a => a.file_type === 'image'), [assets]);
+  const ASSET_VIDEOS = useMemo(() => assets.filter(a => a.file_type === 'video'), [assets]);
+  const ASSET_AUDIO = useMemo(() => assets.filter(a => a.file_type === 'audio'), [assets]);
 
   const handleMouseEnter = (menu: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -105,12 +87,8 @@ export const Sidebar = () => {
 
   const onDragStart = (event: React.DragEvent, nodeType: string, data?: any, initialDimensions?: {width: number, height: number}) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
-    if (data) {
-        event.dataTransfer.setData('application/reactflow-data', JSON.stringify(data));
-    }
-    if (initialDimensions) {
-        event.dataTransfer.setData('application/reactflow-dimensions', JSON.stringify(initialDimensions));
-    }
+    data && event.dataTransfer.setData('application/reactflow-data', JSON.stringify(data));
+    initialDimensions && event.dataTransfer.setData('application/reactflow-dimensions', JSON.stringify(initialDimensions));
     event.dataTransfer.effectAllowed = 'move';
 
     // Create semi-transparent custom drag image
@@ -128,10 +106,15 @@ export const Sidebar = () => {
 
     // Cleanup drag image
     setTimeout(() => {
-      if (document.body.contains(dragPreview)) {
-        document.body.removeChild(dragPreview);
-      }
+      document.body.contains(dragPreview) && document.body.removeChild(dragPreview);
     }, 0);
+  };
+
+  const onAssetDragStart = (event: React.DragEvent, asset: { file_type: string | null; url: string; original_name: string | null; filename: string }) => {
+    const builder = DRAG_DATA_BUILDERS[asset.file_type ?? ''];
+    const name = asset.original_name || asset.filename;
+    const info = builder?.({ url: asset.url, name }) ?? { nodeType: 'text', data: { title: name } };
+    onDragStart(event, info.nodeType, info.data);
   };
 
   return (
@@ -225,38 +208,45 @@ export const Sidebar = () => {
                 视频
               </button>
               <button 
-                onClick={() => setActiveAssetTab('others')}
+                onClick={() => setActiveAssetTab('music')}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all",
-                  activeAssetTab === 'others' ? "bg-background text-node-blue shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  activeAssetTab === 'music' ? "bg-background text-node-blue shadow-sm" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <FileText className="w-3.5 h-3.5" />
-                其他
+                <Music className="w-3.5 h-3.5" />
+                音乐
               </button>
             </div>
 
             {/* Content Area */}
             <div className="max-h-[300px] min-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
               
+              {/* Loading state */}
+              {isLoading && (
+                <div className="flex items-center justify-center min-h-[280px]">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
               {/* Image Tab */}
-              {activeAssetTab === 'images' && (
+              {!isLoading && activeAssetTab === 'images' && (
                 <div className="grid grid-cols-2 gap-2">
                   {ASSET_IMAGES.length > 0 ? ASSET_IMAGES.map((asset) => (
                     <div 
                       key={asset.id} 
                       draggable
-                      onDragStart={(e) => onDragStart(e, asset.type, { name: asset.name, imageUrl: asset.url })}
+                      onDragStart={(e) => onAssetDragStart(e, asset)}
                       className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-green/50 transition-colors h-[80px] flex items-center justify-center"
                     >
                       <img 
                         src={asset.url} 
-                        alt={asset.name} 
+                        alt={asset.original_name || asset.filename} 
                         loading="lazy"
                         className="w-full h-full object-contain p-1"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-black/50 backdrop-blur-sm p-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
-                        <span className="text-[10px] text-white font-medium truncate block">{asset.name}</span>
+                        <span className="text-[10px] text-white font-medium truncate block">{asset.original_name || asset.filename}</span>
                       </div>
                     </div>
                   )) : (
@@ -269,13 +259,13 @@ export const Sidebar = () => {
               )}
 
               {/* Video Tab */}
-              {activeAssetTab === 'videos' && (
+              {!isLoading && activeAssetTab === 'videos' && (
                 <div className="grid grid-cols-2 gap-2">
                   {ASSET_VIDEOS.length > 0 ? ASSET_VIDEOS.map((asset) => (
                     <div 
                       key={asset.id} 
                       draggable
-                      onDragStart={(e) => onDragStart(e, asset.type, { name: asset.name, videoUrl: asset.url })}
+                      onDragStart={(e) => onAssetDragStart(e, asset)}
                       className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-yellow/50 transition-colors h-[80px] flex items-center justify-center bg-black/80"
                     >
                       <video 
@@ -291,7 +281,7 @@ export const Sidebar = () => {
                         </div>
                       </div>
                       <div className="absolute inset-x-0 bottom-0 bg-black/50 backdrop-blur-sm p-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
-                        <span className="text-[10px] text-white font-medium truncate block">{asset.name}</span>
+                        <span className="text-[10px] text-white font-medium truncate block">{asset.original_name || asset.filename}</span>
                       </div>
                     </div>
                   )) : (
@@ -303,31 +293,45 @@ export const Sidebar = () => {
                 </div>
               )}
 
-              {/* Other Tab */}
-              {activeAssetTab === 'others' && (
+              {/* Music Tab */}
+              {!isLoading && activeAssetTab === 'music' && (
                 <div className="flex flex-col gap-2">
-                  {ASSET_OTHERS.length > 0 ? ASSET_OTHERS.map((asset) => (
+                  {ASSET_AUDIO.length > 0 ? ASSET_AUDIO.map((asset) => (
                     <div 
                       key={asset.id} 
                       draggable
-                      onDragStart={(e) => onDragStart(e, asset.type, { title: asset.name, content: { type: 'doc', content: [{ type: 'paragraph' }] } })}
+                      onDragStart={(e) => onAssetDragStart(e, asset)}
                       className="group flex items-center gap-3 p-2.5 rounded-lg border border-border/50 cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-blue/50 transition-colors"
                     >
                       <div className="p-1.5 rounded-md bg-node-blue/10 shrink-0">
-                        <File className="w-4 h-4 text-node-blue" />
+                        <Music className="w-4 h-4 text-node-blue" />
                       </div>
-                      <span className="text-xs font-medium text-foreground flex-1 truncate">{asset.name}</span>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="text-xs font-medium text-foreground truncate">{asset.original_name || asset.filename}</span>
+                        <audio src={asset.url} preload="none" controls className="w-full h-6 mt-1 [&::-webkit-media-controls-panel]:bg-transparent" />
+                      </div>
                     </div>
                   )) : (
                     <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
-                      <FileText className="w-8 h-8 mb-2 opacity-20" />
-                      <span className="text-xs">暂无其他资源</span>
+                      <Music className="w-8 h-8 mb-2 opacity-20" />
+                      <span className="text-xs">暂无音乐资源</span>
                     </div>
                   )}
                 </div>
               )}
 
             </div>
+
+            {/* 管理资源链接 */}
+            <a
+              href="/resources"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-secondary/50"
+            >
+              <ExternalLink className="w-3 h-3" />
+              管理资源
+            </a>
           </div>
         </div>
       </div>

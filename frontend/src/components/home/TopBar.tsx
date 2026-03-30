@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Search, Menu, User, Sun, Moon } from "lucide-react";
 import { Button, Dropdown, Avatar, Input, Drawer } from "antd";
 import { useTheme } from "@/context/ThemeContext";
@@ -10,6 +11,7 @@ import { motion } from "framer-motion";
 export default function TopBar() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [menuVisible, setMenuVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
 
@@ -101,10 +103,12 @@ export default function TopBar() {
         className="bg-background"
       >
         <div className="flex flex-col gap-2">
-          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors">
+          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors"
+            onClick={() => { setMenuVisible(false); router.push("/"); }}>
             首页
           </Button>
-          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors">
+          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors"
+            onClick={() => { setMenuVisible(false); router.push("/resources"); }}>
             我的库
           </Button>
           <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors">

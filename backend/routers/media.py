@@ -1,20 +1,25 @@
 """媒体文件服务路由"""
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
 from fastapi.responses import FileResponse
 from pathlib import Path
 import re
 import logging
 import uuid
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from database import get_db
-from models import Agent, LLMProvider
+from models import Agent, LLMProvider, Asset, generate_uuid
+from auth import get_current_active_user
 from schemas import (
     BatchImageGenerateRequest,
     BatchImageGenerateResponse,
     SingleImageResultResponse,
     BatchImageConfigRequest,
+    AssetResponse,
+    AssetListResponse,
 )
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
@@ -23,10 +28,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/media", tags=["media"])
 
+# 按文件类型的上传大小限制（字节）
+_MAX_UPLOAD_SIZES = {
+    "image": 50 * 1024 * 1024,    # 50MB
+    "video": 500 * 1024 * 1024,   # 500MB
+    "audio": 100 * 1024 * 1024,   # 100MB
+}
+_MAX_UPLOAD_LABELS = { "image": "50MB", "video": "500MB", "audio": "100MB" }
+
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
-# 安全文件名：UUID + 已知媒体扩展名（图片 + 视频）
-_SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov)$')
+# 安全文件名：UUID + 已知媒体扩展名（图片 + 视频 + 音频）
+_SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov|mp3|wav|ogg)$')
 
 # 纯 UUID（无扩展名）— LLM 模型可能在回复中截断文件扩展名
 _UUID_ONLY = re.compile(r'^[a-f0-9\-]{36}$')
@@ -50,6 +63,210 @@ _EXT_MIME = {
     "wav": "audio/wav"
 }
 
+# MIME 前缀 -> 文件类型分类（避免 if-else）
+_MIME_CATEGORY = {"image/": "image", "audio/": "audio", "video/": "video"}
+
+# file_type 筛选映射表（避免 if-else）
+_TYPE_FILTERS = {
+    None: lambda q: q,
+    "all": lambda q: q,
+    "image": lambda q: q.where(Asset.file_type == "image"),
+    "video": lambda q: q.where(Asset.file_type == "video"),
+    "audio": lambda q: q.where(Asset.file_type == "audio"),
+}
+
+
+def _derive_file_type(mime: str) -> str:
+    """从 MIME 类型派生文件分类"""
+    for prefix, category in _MIME_CATEGORY.items():
+        if mime.startswith(prefix):
+            return category
+    return "other"
+
+
+def _asset_to_response(asset: Asset) -> AssetResponse:
+    """将 Asset ORM 对象转换为响应模型"""
+    resp = AssetResponse.model_validate(asset)
+    resp.url = f"/api/media/{asset.filename}"
+    return resp
+
+
+@router.post("/upload")
+async def upload_media(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """上传媒体文件，创建 Asset 记录关联当前用户，返回文件 URL 和资源详情"""
+    file.filename or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="No file uploaded")
+    )
+
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    ext in _EXT_MIME or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+    )
+
+    MEDIA_DIR.mkdir(exist_ok=True)
+    new_filename = f"{uuid.uuid4()}.{ext}"
+    filepath = MEDIA_DIR / new_filename
+
+    contents = await file.read()
+
+    # 按文件类型校验大小限制（在 try 外部，避免被 except 吞掉）
+    file_type = _derive_file_type(_EXT_MIME[ext])
+    max_size = _MAX_UPLOAD_SIZES.get(file_type, 50 * 1024 * 1024)
+    max_label = _MAX_UPLOAD_LABELS.get(file_type, "50MB")
+    len(contents) <= max_size or (_ for _ in ()).throw(
+        HTTPException(status_code=413, detail=f"文件大小超出限制（{file_type} 最大 {max_label}），当前 {len(contents) / 1024 / 1024:.1f}MB")
+    )
+
+    try:
+        filepath.write_bytes(contents)
+        logger.info(f"Uploaded file saved: {new_filename} ({len(contents)} bytes)")
+    except Exception as e:
+        logger.error(f"Error saving uploaded file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save file")
+
+    # 创建 Asset 数据库记录
+    mime = _EXT_MIME[ext]
+    asset = Asset(
+        id=generate_uuid(),
+        user_id=current_user.id,
+        filename=new_filename,
+        original_name=file.filename,
+        file_path=new_filename,
+        file_type=_derive_file_type(mime),
+        mime_type=mime,
+        size=len(contents),
+    )
+    db.add(asset)
+    await db.commit()
+    await db.refresh(asset)
+
+    return {"url": f"/api/media/{new_filename}", "asset": _asset_to_response(asset)}
+
+
+# ---------------------------------------------------------------------------
+# 资源 CRUD 端点（账号级别）— 必须在 /{filename} 之前注册，避免路由被通配符拦截
+# ---------------------------------------------------------------------------
+
+@router.get("/assets", response_model=AssetListResponse)
+async def list_assets(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    file_type: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """获取当前用户的资源列表（分页，可按类型筛选）"""
+    base = select(Asset).where(Asset.user_id == current_user.id)
+
+    # 应用类型筛选（映射表模式）
+    apply_filter = _TYPE_FILTERS.get(file_type, _TYPE_FILTERS[None])
+    base = apply_filter(base)
+
+    # 计算总数
+    count_q = select(func.count()).select_from(base.subquery())
+    total = await db.scalar(count_q) or 0
+
+    # 分页查询
+    query = base.order_by(Asset.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
+    assets = result.scalars().all()
+
+    return AssetListResponse(
+        items=[_asset_to_response(a) for a in assets],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.put("/assets/{asset_id}")
+async def update_asset(
+    asset_id: str,
+    original_name: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """更新资源（重命名和/或替换文件）"""
+    # 查询并验证所有权
+    result = await db.execute(
+        select(Asset).where(Asset.id == asset_id, Asset.user_id == current_user.id)
+    )
+    asset = result.scalars().first()
+    asset or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Asset not found"))
+
+    # 重命名
+    original_name and setattr(asset, "original_name", original_name)
+
+    # 替换文件
+    if file and file.filename:
+        ext = file.filename.rsplit(".", 1)[-1].lower()
+        ext in _EXT_MIME or (_ for _ in ()).throw(
+            HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+        )
+
+        MEDIA_DIR.mkdir(exist_ok=True)
+        new_filename = f"{uuid.uuid4()}.{ext}"
+        filepath = MEDIA_DIR / new_filename
+
+        try:
+            contents = await file.read()
+            filepath.write_bytes(contents)
+        except Exception as e:
+            logger.error(f"Error saving replacement file: {e}")
+            raise HTTPException(status_code=500, detail="Failed to save file")
+
+        # 删除旧文件
+        old_path = MEDIA_DIR / asset.filename
+        old_path.unlink(missing_ok=True)
+
+        # 更新记录
+        mime = _EXT_MIME[ext]
+        asset.filename = new_filename
+        asset.file_path = new_filename
+        asset.mime_type = mime
+        asset.file_type = _derive_file_type(mime)
+        asset.size = len(contents)
+
+    await db.commit()
+    await db.refresh(asset)
+
+    return _asset_to_response(asset)
+
+
+@router.delete("/assets/{asset_id}")
+async def delete_asset(
+    asset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """硬删除资源（删除数据库记录 + 文件系统文件）"""
+    result = await db.execute(
+        select(Asset).where(Asset.id == asset_id, Asset.user_id == current_user.id)
+    )
+    asset = result.scalars().first()
+    asset or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Asset not found"))
+
+    filename = asset.filename
+
+    # 先删数据库记录
+    await db.delete(asset)
+    await db.commit()
+
+    # 再删文件系统文件
+    (MEDIA_DIR / filename).unlink(missing_ok=True)
+    logger.info(f"Hard deleted asset: {asset_id} / {filename}")
+
+    return {"detail": "Asset deleted"}
+
+
+# ---------------------------------------------------------------------------
+# 通配符路由 — 必须放在所有具体路径之后，否则会拦截 /assets 等路径
+# ---------------------------------------------------------------------------
 
 @router.get("/{filename}")
 async def serve_media(filename: str):
@@ -78,31 +295,6 @@ async def serve_media(filename: str):
                 )
 
     raise HTTPException(status_code=400, detail="Invalid filename")
-
-
-@router.post("/upload")
-async def upload_media(file: UploadFile = File(...)):
-    """上传媒体文件（支持图片等），返回文件 URL"""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file uploaded")
-    
-    ext = file.filename.rsplit(".", 1)[-1].lower()
-    if ext not in _EXT_MIME:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
-        
-    MEDIA_DIR.mkdir(exist_ok=True)
-    new_filename = f"{uuid.uuid4()}.{ext}"
-    filepath = MEDIA_DIR / new_filename
-    
-    try:
-        contents = await file.read()
-        filepath.write_bytes(contents)
-        logger.info(f"Uploaded file saved: {new_filename} ({len(contents)} bytes)")
-    except Exception as e:
-        logger.error(f"Error saving uploaded file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save file")
-        
-    return {"url": f"/api/media/{new_filename}"}
 
 
 @router.post("/batch-generate", response_model=BatchImageGenerateResponse)

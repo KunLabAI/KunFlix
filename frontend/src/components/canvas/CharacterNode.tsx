@@ -147,8 +147,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
     try {
       const xhr = new XMLHttpRequest();
-      // Use direct backend URL to bypass Next.js 10MB middleware proxy limit
-      xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
+      xhr.open('POST', '/api/media/upload');
       
       // Attach Auth token if available
       const token = localStorage.getItem('access_token');

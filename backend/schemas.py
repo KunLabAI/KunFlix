@@ -841,6 +841,37 @@ class AdminDebugSessionResponse(AdminDebugSessionBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ---------------------------------------------------------------------------
+# Asset Management schemas (资源管理)
+# ---------------------------------------------------------------------------
+class AssetResponse(BaseModel):
+    """单个资源响应"""
+    id: str
+    user_id: str
+    filename: str
+    original_name: Optional[str] = None
+    file_type: Optional[str] = None
+    mime_type: Optional[str] = None
+    size: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration: Optional[float] = None
+    url: str = ""  # 由路由层填充: /api/media/{filename}
+    metadata_json: Optional[Dict[str, Any]] = None
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssetListResponse(BaseModel):
+    """资源分页列表响应"""
+    items: List[AssetResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class AdminDebugMessageBase(BaseModel):
     role: str
     content: Any  # str 或 List[Dict] (多模态消息)

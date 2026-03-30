@@ -30,7 +30,7 @@ import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film } from 'lucide-react';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film, Music } from 'lucide-react';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import { useCanvasSnapping } from './hooks/useCanvasSnapping';
 
@@ -77,7 +77,7 @@ function InfiniteCanvas() {
 
   // File drag and drop state
   const [isDraggingFile, setIsDraggingFile] = useState(false);
-  const [dragFileType, setDragFileType] = useState<'text' | 'image' | 'video' | null>(null);
+  const [dragFileType, setDragFileType] = useState<'text' | 'image' | 'video' | 'audio' | null>(null);
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
 
   const { 
@@ -274,28 +274,22 @@ function InfiniteCanvas() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [undo, redo, saveToBackend]);
 
-  // File type detection helpers
-  const getFileType = (file: File): 'text' | 'image' | 'video' | null => {
-    const type = file.type;
+  // File type detection (映射表模式)
+  const FILE_TYPE_MATCHERS: Array<{ type: 'text' | 'image' | 'video' | 'audio'; mimes: string[]; exts: string[] }> = [
+    { type: 'text', mimes: ['text/plain', 'text/markdown', 'application/pdf'], exts: ['.txt', '.md', '.markdown', '.pdf'] },
+    { type: 'image', mimes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'], exts: ['.png', '.jpg', '.jpeg', '.webp', '.gif'] },
+    { type: 'video', mimes: ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/quicktime', 'video/x-ms-wmv', 'video/x-flv'], exts: ['.mp4', '.webm', '.avi', '.mov', '.wmv', '.flv', '.mkv'] },
+    { type: 'audio', mimes: ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/flac', 'audio/aac', 'audio/x-m4a'], exts: ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'] },
+  ];
+
+  const getFileType = (file: File): 'text' | 'image' | 'video' | 'audio' | null => {
+    const mime = file.type;
     const name = file.name.toLowerCase();
-    
-    // Text files
-    const textTypes = ['text/plain', 'text/markdown', 'application/pdf'];
-    const textExts = ['.txt', '.md', '.markdown', '.pdf'];
-    
-    // Image files
-    const imageTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
-    const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
-    
-    // Video files
-    const videoTypes = ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/quicktime', 'video/x-ms-wmv', 'video/x-flv'];
-    const videoExts = ['.mp4', '.webm', '.ogg', '.avi', '.mov', '.wmv', '.flv', '.mkv'];
-    
-    if (textTypes.some(t => type.includes(t)) || textExts.some(ext => name.endsWith(ext))) return 'text';
-    if (imageTypes.some(t => type.includes(t)) || imageExts.some(ext => name.endsWith(ext))) return 'image';
-    if (videoTypes.some(t => type.includes(t)) || videoExts.some(ext => name.endsWith(ext))) return 'video';
-    
-    return null;
+    return (
+      FILE_TYPE_MATCHERS.find(
+        (m) => m.mimes.some((t) => mime.includes(t)) || m.exts.some((ext) => name.endsWith(ext))
+      )?.type ?? null
+    );
   };
 
   // Read text file content
@@ -305,6 +299,30 @@ function InfiniteCanvas() {
       reader.onload = (e) => resolve(e.target?.result as string || '');
       reader.onerror = (e) => reject(e);
       reader.readAsText(file);
+    });
+  };
+
+  // 通用文件上传（XHR，避免重复代码）
+  const uploadFile = (file: File): Promise<{ url?: string; error?: string }> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/media/upload');
+      const token = localStorage.getItem('access_token');
+      token && xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      const formData = new FormData();
+      formData.append('file', file);
+      xhr.onload = () => {
+        try {
+          const res = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+          xhr.status >= 200 && xhr.status < 300
+            ? resolve(res)
+            : resolve({ error: res?.detail || res?.error || `上传失败 (HTTP ${xhr.status})` });
+        } catch {
+          resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
+        }
+      };
+      xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
+      xhr.send(formData);
     });
   };
 
@@ -369,9 +387,9 @@ function InfiniteCanvas() {
       }
       
       case 'image': {
-        // Validate file size (5MB max)
-        if (file.size > 5 * 1024 * 1024) {
-          alert('图片大小不能超过 5MB');
+        // Validate file size (50MB max)
+        if (file.size > 50 * 1024 * 1024) {
+          alert('图片大小不能超过 50MB');
           return;
         }
         
@@ -392,44 +410,9 @@ function InfiniteCanvas() {
         };
         addNode(newNode);
         
-        // Upload the file
         try {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
-          
-          const token = localStorage.getItem('access_token');
-          if (token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          }
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
-            xhr.onload = () => {
-              try {
-                let res;
-                if (xhr.responseText) {
-                  res = JSON.parse(xhr.responseText);
-                }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  resolve(res || {});
-                } else {
-                  resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
-                }
-              } catch {
-                resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
-              }
-            };
-            xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
-            xhr.send(formData);
-          });
-          
-          if (response.error) {
-            throw new Error(response.error);
-          }
-          
-          // Update node with uploaded URL
+          const response = await uploadFile(file);
+          response.error && (() => { throw new Error(response.error); })();
           const { updateNodeData } = useCanvasStore.getState();
           URL.revokeObjectURL(objectUrl);
           updateNodeData(newNode.id, { imageUrl: response.url, uploading: false } as Partial<CharacterNodeData>);
@@ -466,44 +449,9 @@ function InfiniteCanvas() {
         };
         addNode(newNode);
         
-        // Upload the file
         try {
-          const xhr = new XMLHttpRequest();
-          xhr.open('POST', 'http://127.0.0.1:8000/api/media/upload');
-          
-          const token = localStorage.getItem('access_token');
-          if (token) {
-            xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-          }
-          
-          const formData = new FormData();
-          formData.append('file', file);
-          
-          const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
-            xhr.onload = () => {
-              try {
-                let res;
-                if (xhr.responseText) {
-                  res = JSON.parse(xhr.responseText);
-                }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  resolve(res || {});
-                } else {
-                  resolve({ error: res?.error || `上传失败 (HTTP ${xhr.status})` });
-                }
-              } catch {
-                resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
-              }
-            };
-            xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
-            xhr.send(formData);
-          });
-          
-          if (response.error) {
-            throw new Error(response.error);
-          }
-          
-          // Update node with uploaded URL
+          const response = await uploadFile(file);
+          response.error && (() => { throw new Error(response.error); })();
           const { updateNodeData } = useCanvasStore.getState();
           URL.revokeObjectURL(objectUrl);
           updateNodeData(newNode.id, { videoUrl: response.url, uploading: false } as Partial<VideoNodeData>);
@@ -512,6 +460,46 @@ function InfiniteCanvas() {
           const { updateNodeData } = useCanvasStore.getState();
           updateNodeData(newNode.id, { uploading: false } as Partial<VideoNodeData>);
           alert(`上传失败: ${error.message || '请重试'}`);
+        }
+        break;
+      }
+
+      case 'audio': {
+        // Validate file size (100MB max)
+        if (file.size > 100 * 1024 * 1024) {
+          alert('音频大小不能超过 100MB');
+          return;
+        }
+
+        try {
+          const response = await uploadFile(file);
+          response.error && (() => { throw new Error(response.error); })();
+
+          // 音频上传后创建文本节点（与侧边栏行为一致）
+          const newNode: CanvasNode = {
+            id: `text-${uuidv4()}`,
+            type: 'text',
+            position,
+            width: 400,
+            height: 200,
+            data: {
+              title: fileName,
+              content: {
+                type: 'doc',
+                content: [
+                  {
+                    type: 'paragraph',
+                    content: [{ type: 'text', text: response.url || '' }],
+                  },
+                ],
+              },
+              tags: ['audio'],
+            } as ScriptNodeData,
+          };
+          addNode(newNode);
+        } catch (error: any) {
+          console.error('Audio upload error:', error);
+          alert(`音频上传失败: ${error.message || '请重试'}`);
         }
         break;
       }
@@ -586,15 +574,34 @@ function InfiniteCanvas() {
           y: event.clientY,
         });
         
-        // Process each file
-        Array.from(files).forEach((file, index) => {
-          // Offset position for multiple files
-          const filePosition = {
-            x: position.x + index * 50,
-            y: position.y + index * 50,
-          };
-          createNodeFromFile(file, filePosition);
+        // 按类型分组并限制批量数量（映射表模式）
+        const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20 };
+        const TYPE_NAMES: Record<string, string> = { video: '视频', image: '图片', audio: '音频', text: '文本' };
+        const grouped: Record<string, File[]> = {};
+        Array.from(files).forEach((file) => {
+          const t = getFileType(file) ?? 'unknown';
+          (grouped[t] = grouped[t] || []).push(file);
         });
+
+        const allowed: File[] = [];
+        const rejected: string[] = [];
+        Object.entries(grouped).forEach(([type, list]) => {
+          const limit = BATCH_LIMITS[type] ?? 20;
+          allowed.push(...list.slice(0, limit));
+          list.length > limit && rejected.push(`${TYPE_NAMES[type] ?? '文件'}最多 ${limit} 个，已跳过 ${list.length - limit} 个`);
+        });
+        rejected.length > 0 && alert(rejected.join('\n'));
+
+        // 串行上传避免并发写入 SQLite 冲突
+        (async () => {
+          for (let i = 0; i < allowed.length; i++) {
+            const filePosition = {
+              x: position.x + i * 50,
+              y: position.y + i * 50,
+            };
+            await createNodeFromFile(allowed[i], filePosition);
+          }
+        })();
         return;
       }
 
@@ -660,25 +667,19 @@ function InfiniteCanvas() {
     );
   }
 
-  // Get icon for file type
-  const getFileTypeIcon = () => {
-    switch (dragFileType) {
-      case 'text': return <FileText className="w-8 h-8 text-blue-500" />;
-      case 'image': return <Image className="w-8 h-8 text-emerald-500" />;
-      case 'video': return <Film className="w-8 h-8 text-purple-500" />;
-      default: return <FileText className="w-8 h-8 text-muted-foreground" />;
-    }
+  // 拖拽提示映射表（避免 switch-case）
+  const FILE_TYPE_ICONS: Record<string, React.ReactNode> = {
+    text: <FileText className="w-8 h-8 text-blue-500" />,
+    image: <Image className="w-8 h-8 text-emerald-500" />,
+    video: <Film className="w-8 h-8 text-purple-500" />,
+    audio: <Music className="w-8 h-8 text-amber-500" />,
+  };
+  const FILE_TYPE_LABELS: Record<string, string> = {
+    text: '文本文件', image: '图像文件', video: '视频文件', audio: '音频文件',
   };
 
-  // Get label for file type
-  const getFileTypeLabel = () => {
-    switch (dragFileType) {
-      case 'text': return '文本文件';
-      case 'image': return '图像文件';
-      case 'video': return '视频文件';
-      default: return '文件';
-    }
-  };
+  const getFileTypeIcon = () => FILE_TYPE_ICONS[dragFileType ?? ''] ?? <FileText className="w-8 h-8 text-muted-foreground" />;
+  const getFileTypeLabel = () => FILE_TYPE_LABELS[dragFileType ?? ''] ?? '文件';
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">

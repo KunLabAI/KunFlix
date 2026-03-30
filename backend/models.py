@@ -129,18 +129,24 @@ class TheaterEdge(Base):
 
 
 class Asset(Base):
+    """用户媒体资源表 - 账号级别共享，跨剧场通用"""
     __tablename__ = "assets"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    type = Column(String)  # image, audio, voice, video
-    content_hash = Column(String, index=True)  # MD5 for deduplication
-    url = Column(String)
-    prompt = Column(Text)
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)        # UUID 文件名 (xxx.png)
+    original_name = Column(String(255), nullable=True)     # 用户原始文件名
+    file_path = Column(String(500), nullable=False)        # 存储路径 (同 filename)
+    file_type = Column(String(50), nullable=True)          # image / video / audio
+    mime_type = Column(String(100), nullable=True)         # image/png 等
+    size = Column(Integer, nullable=True)                  # 字节数
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    duration = Column(Float, nullable=True)                # 音视频时长(秒)
+    metadata_json = Column(JSON, nullable=True)
 
-    # Cache management
-    last_accessed = Column(DateTime(timezone=True), server_default=func.now())
-    file_path = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class LLMProvider(Base):
