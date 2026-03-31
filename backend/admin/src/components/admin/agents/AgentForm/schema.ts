@@ -65,12 +65,13 @@ export const agentFormSchema = z.object({
   image_config: unifiedImageGenConfigSchema,
   image_credit_per_image: z.number().min(0, "不能为负数").default(0),
 }).refine((data) => {
-  if (data.tools_enabled && (!data.tools || data.tools.length === 0)) {
-    return false;
-  }
-  return true;
+  // 启用能力时，至少需要选择一个技能、启用图像生成或画布工具
+  const hasSkills = (data.tools?.length ?? 0) > 0;
+  const hasImageGen = !!data.image_config?.image_generation_enabled;
+  const hasCanvas = (data.target_node_types?.length ?? 0) > 0;
+  return !data.tools_enabled || hasSkills || hasImageGen || hasCanvas;
 }, {
-  message: "启用工具时至少选择一个工具",
+  message: "启用能力时至少开启一项工具或功能",
   path: ["tools"],
 });
 

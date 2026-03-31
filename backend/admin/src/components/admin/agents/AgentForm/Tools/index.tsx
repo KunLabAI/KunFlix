@@ -20,7 +20,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
         <div>
           <span className="text-sm font-medium">能力</span>
           <p className="text-xs text-muted-foreground mt-1">
-            启用以允许智能体访问外部原生技能或连接 MCP 客户端。
+            启用以允许智能体访问外部技能、工具或连接 MCP 客户端。
           </p>
         </div>
         <FormField
@@ -44,7 +44,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
         <div className="space-y-2">
           <Skills disabled={disabled} />
           <MCPClients disabled={disabled} />
-          <ToolCapabilities />
+          <ToolCapabilities disabled={disabled} />
         </div>
       ) : (
         <p className="text-xs text-muted-foreground border-t pt-4">

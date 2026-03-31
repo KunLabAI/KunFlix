@@ -12,7 +12,6 @@ import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
 import Parameters from './Parameters';
 import Tools from './Tools';
-import NodeTypes from './NodeTypes';
 import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
 
@@ -107,6 +106,8 @@ export default function AgentForm({
   useEffect(() => {
     if (initialValues) {
       const hasTools = !!(initialValues.tools && initialValues.tools.length > 0);
+      const hasImageGen = !!initialValues.image_config?.image_generation_enabled;
+      const hasCanvas = !!(initialValues.target_node_types && initialValues.target_node_types.length > 0);
       const formData = {
         name: initialValues.name || '',
         description: initialValues.description || '',
@@ -117,7 +118,7 @@ export default function AgentForm({
         temperature: Number(initialValues.temperature) || 0.7,
         context_window: Number(initialValues.context_window) || 4096,
         thinking_mode: Boolean(initialValues.thinking_mode),
-        tools_enabled: hasTools,
+        tools_enabled: hasTools || hasImageGen || hasCanvas,
         tools: initialValues.tools || [],
         target_node_types: (initialValues.target_node_types || []) as ("script" | "character" | "storyboard" | "video")[],
         input_credit_per_1m: Number(initialValues.input_credit_per_1m) || 0,
@@ -274,9 +275,6 @@ export default function AgentForm({
               <Section title="能力">
                 <Tools disabled={loading} />
               </Section>
-              <Section title="画布节点控制">
-                <NodeTypes disabled={loading} />
-              </Section>
               <Section title="协作配置" className="mb-0">
                 <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
               </Section>
@@ -302,10 +300,6 @@ export default function AgentForm({
             <div className="h-px bg-border"></div>
 
             <Tools disabled={loading} />
-
-            <div className="h-px bg-border"></div>
-
-            <NodeTypes disabled={loading} />
 
             <div className="h-px bg-border"></div>
 
