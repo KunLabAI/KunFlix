@@ -5,40 +5,12 @@ const emptyStringToNull = (val: unknown) => {
   return val;
 };
 
-// Gemini 3.1 配置 schema
-const geminiImageConfigSchema = z.object({
-  aspect_ratio: z.preprocess(emptyStringToNull, z.enum(["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]).optional().nullable()),
-  image_size: z.preprocess(emptyStringToNull, z.enum(["4K", "2K", "1024", "512", "auto"]).optional().nullable()),
-  output_format: z.preprocess(emptyStringToNull, z.enum(["png", "jpeg", "webp"]).optional().nullable()),
-  batch_count: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(1).max(8).optional().nullable()),
-  max_person_images: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(0).max(4).optional().nullable()),
-  max_object_images: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(0).max(10).optional().nullable()),
-}).optional().nullable();
-
+// Gemini 3.1 配置 schema（仅保留思考、媒体、搜索相关字段）
 const geminiConfigSchema = z.object({
   thinking_level: z.preprocess(emptyStringToNull, z.enum(["high", "medium", "low", "minimal"]).optional().nullable()),
   media_resolution: z.preprocess(emptyStringToNull, z.enum(["ultra_high", "high", "medium", "low"]).optional().nullable()),
-  image_generation_enabled: z.boolean().optional().default(false),
-  image_config: geminiImageConfigSchema,
   google_search_enabled: z.boolean().optional().default(false),
   google_image_search_enabled: z.boolean().optional().default(false),
-}).optional().nullable();
-
-// xAI 图像生成配置 schema
-const xaiImageConfigSchema = z.object({
-  aspect_ratio: z.preprocess(emptyStringToNull, z.enum([
-    "1:1", "16:9", "9:16", "4:3", "3:4",
-    "3:2", "2:3", "2:1", "1:2",
-    "19.5:9", "9:19.5", "20:9", "9:20", "auto",
-  ]).optional().nullable()),
-  resolution: z.preprocess(emptyStringToNull, z.enum(["1k", "2k"]).optional().nullable()),
-  n: z.preprocess(val => val === "" ? null : val, z.coerce.number().min(1).max(10).optional().nullable()),
-  response_format: z.preprocess(emptyStringToNull, z.enum(["url", "b64_json"]).optional().nullable()),
-}).optional().nullable();
-
-const xaiImageGenConfigSchema = z.object({
-  image_generation_enabled: z.boolean().optional().default(false),
-  image_config: xaiImageConfigSchema,
 }).optional().nullable();
 
 // 统一图像生成配置 schema（供应商无关）
@@ -89,8 +61,6 @@ export const agentFormSchema = z.object({
   enable_auto_review: z.boolean().optional().default(true),
   // Gemini 3.1 配置
   gemini_config: geminiConfigSchema,
-  // xAI 图像生成配置
-  xai_image_config: xaiImageGenConfigSchema,
   // 统一图像生成配置
   image_config: unifiedImageGenConfigSchema,
   image_credit_per_image: z.number().min(0, "不能为负数").default(0),

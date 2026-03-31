@@ -1,6 +1,6 @@
 import useSWR from 'swr';
 import { fetcher } from '@/lib/api-utils';
-import type { ToolProviderInfo, AgentToolUsage, ToolStats } from '@/types';
+import type { ToolProviderInfo, AgentToolUsage, ToolStats, ImageProviderCapabilities } from '@/types';
 
 export function useToolRegistry() {
   const { data, error, isLoading } = useSWR<ToolProviderInfo[]>(
@@ -25,4 +25,12 @@ export function useToolStats() {
     { refreshInterval: 30_000 },
   );
   return { stats: data, isLoading, isError: error, mutate };
+}
+
+export function useImageCapabilities() {
+  const { data, error, isLoading } = useSWR<ImageProviderCapabilities>(
+    '/admin/tools/image-capabilities',
+    fetcher,
+  );
+  return { capabilities: data, isLoading, isError: error };
 }

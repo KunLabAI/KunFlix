@@ -1,38 +1,11 @@
 // ---------------------------------------------------------------------------
-// Gemini 3.1 配置类型
+// Gemini 3.1 配置类型（仅思考、媒体、搜索）
 // ---------------------------------------------------------------------------
-export interface GeminiImageConfig {
-  aspect_ratio?: "auto" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | null;
-  image_size?: "4K" | "2K" | "1024" | "512" | "auto" | null;
-  output_format?: "png" | "jpeg" | "webp" | null;  // 输出格式
-  batch_count?: number | null;  // 批量生成数量 (1-8)
-  // 参考图片数量限制配置
-  max_person_images?: number | null;  // 角色参考图片最大数量 (0-4)
-  max_object_images?: number | null;  // 高保真对象图片最大数量 (0-10)
-}
-
 export interface GeminiConfig {
   thinking_level?: "high" | "medium" | "low" | "minimal" | null;
   media_resolution?: "ultra_high" | "high" | "medium" | "low" | null;
-  image_generation_enabled?: boolean;  // 图片生成开关
-  image_config?: GeminiImageConfig | null;
-  google_search_enabled?: boolean;  // Google 搜索开关
-  google_image_search_enabled?: boolean;  // Google 图片搜索开关
-}
-
-// ---------------------------------------------------------------------------
-// xAI 图像生成配置类型
-// ---------------------------------------------------------------------------
-export interface XAIImageConfig {
-  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "2:1" | "1:2" | "19.5:9" | "9:19.5" | "20:9" | "9:20" | "auto" | null;
-  resolution?: "1k" | "2k" | null;
-  n?: number | null;  // 每次生成张数 (1-10)
-  response_format?: "url" | "b64_json" | null;
-}
-
-export interface XAIImageGenConfig {
-  image_generation_enabled?: boolean;
-  image_config?: XAIImageConfig | null;
+  google_search_enabled?: boolean;
+  google_image_search_enabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,8 +56,6 @@ export interface Agent {
   enable_auto_review: boolean;
   // Gemini 3.1 配置
   gemini_config?: GeminiConfig;
-  // xAI 图像生成配置
-  xai_image_config?: XAIImageGenConfig;
   // 统一图像生成配置
   image_config?: UnifiedImageGenConfig;
   image_credit_per_image?: number;
@@ -338,3 +309,15 @@ export interface ToolExecutionListResponse {
   skip: number;
   limit: number;
 }
+
+// ---------------------------------------------------------------------------
+// Image Provider Capabilities types
+// ---------------------------------------------------------------------------
+export interface ImageProviderCapability {
+  aspect_ratios: string[];
+  qualities: string[];
+  output_formats: string[];
+  batch_count: { min: number; max: number };
+}
+
+export type ImageProviderCapabilities = Record<string, ImageProviderCapability>;

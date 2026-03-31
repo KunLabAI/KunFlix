@@ -1,7 +1,11 @@
 """
 ImageGenProvider — AI image generation tool.
 
-Migrated from services/image_gen_tools.py.
+Supports multiple providers (xAI, Gemini, ...) via dispatch map.
+Adding a new provider requires:
+  1. A handler function with the standard signature
+  2. An entry in _IMAGE_GENERATORS
+  3. An entry in _TOOL_GEN_PROVIDERS
 """
 from __future__ import annotations
 
@@ -17,7 +21,11 @@ from services.xai_image_gen import (
     batch_generate_xai_images,
     XAIBatchImageConfig,
 )
-from services.image_config_adapter import to_provider_config
+from services.batch_image_gen import (
+    batch_generate_images,
+    BatchImageConfig,
+)
+from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
@@ -30,20 +38,28 @@ IMAGE_GEN_TOOL_NAME = "generate_image"
 # Image-only models that cannot have tool calling
 _IMAGE_ONLY_MODELS = frozenset({"grok-imagine-image", "grok-imagine-image-pro"})
 
-# Aspect ratio options (superset of all providers)
+# Aspect ratio options (superset fallback for registry / unknown providers)
 _ASPECT_RATIO_ENUM = [
     "auto", "1:1", "16:9", "9:16", "4:3", "3:4",
     "3:2", "2:3", "2:1", "1:2",
 ]
 
-# Only providers that support tool-based image generation
-_TOOL_GEN_PROVIDERS = frozenset({"xai"})
+# Providers that support tool-based image generation
+_TOOL_GEN_PROVIDERS = frozenset({"xai", "gemini"})
 
 # ---------------------------------------------------------------------------
-# Tool Definition
+# Tool Definition (dynamic per provider)
 # ---------------------------------------------------------------------------
 
-def _build_image_gen_tool_def() -> dict:
+def _build_image_gen_tool_def(provider_type: str = "") -> dict:
+    """Build the OpenAI-format tool definition for generate_image.
+
+    The aspect_ratio enum is tailored to the configured provider's
+    supported values when *provider_type* is given.
+    """
+    caps = IMAGE_PROVIDER_CAPABILITIES.get(provider_type, {})
+    aspect_ratios = caps.get("aspect_ratios", _ASPECT_RATIO_ENUM)
+
     return {
         "type": "function",
         "function": {
@@ -68,7 +84,7 @@ def _build_image_gen_tool_def() -> dict:
                     },
                     "aspect_ratio": {
                         "type": "string",
-                        "enum": _ASPECT_RATIO_ENUM,
+                        "enum": aspect_ratios,
                         "description": "Image aspect ratio. Default is auto.",
                     },
                     "n": {
@@ -97,7 +113,7 @@ def _check_agent_eligible(agent: Agent) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Provider-dispatched image generation
+# Provider-dispatched image generation handlers
 # ---------------------------------------------------------------------------
 
 async def _generate_via_xai(
@@ -121,8 +137,30 @@ async def _generate_via_xai(
     return [url for r in result.results for url in r.image_urls]
 
 
+async def _generate_via_gemini(
+    api_key: str, base_url: str | None, model: str,
+    prompt: str, config: dict, n: int,
+) -> list[str]:
+    img_cfg = config.get("image_config") or {}
+    gemini_config = BatchImageConfig(
+        aspect_ratio=img_cfg.get("aspect_ratio") or "auto",
+        image_size=img_cfg.get("image_size") or "2K",
+        output_format=img_cfg.get("output_format") or "png",
+    )
+    # Gemini generates 1 image per prompt call; duplicate prompt for n images
+    result = await batch_generate_images(
+        api_key=api_key,
+        model=model,
+        prompts=[prompt] * n,
+        config=gemini_config,
+    )
+    return [r.image_url for r in result.results if r.image_url]
+
+
+# Handler dispatch map (no if-chains)
 _IMAGE_GENERATORS: dict[str, Any] = {
     "xai": _generate_via_xai,
+    "gemini": _generate_via_gemini,
 }
 
 
@@ -192,7 +230,7 @@ class ImageGenProvider:
     """Provider for AI image generation tool."""
 
     display_name = "图像生成"
-    description = "AI 图像生成（文本到图像）"
+    description = "AI 图像生成（文本到图像，支持多供应商）"
     condition = "需要启用 image_config 且供应商支持 tool-based 生成"
 
     @property
@@ -203,7 +241,7 @@ class ImageGenProvider:
         eligible = _check_agent_eligible(ctx.agent)
         provider_type = await ctx.resolve_image_provider_type() if eligible else None
         is_tool_gen = provider_type and provider_type in _TOOL_GEN_PROVIDERS
-        return [_build_image_gen_tool_def()] if is_tool_gen else []
+        return [_build_image_gen_tool_def(provider_type)] if is_tool_gen else []
 
     async def execute(self, name: str, args: dict, ctx: ToolContext) -> str:
         return await _execute_image_gen_tool(args, ctx.agent, ctx.db)
@@ -212,7 +250,7 @@ class ImageGenProvider:
         return None
 
     def get_tool_metadata(self) -> list[dict]:
-        """Return static metadata for registry display."""
+        """Return static metadata for registry display (uses superset)."""
         d = _build_image_gen_tool_def()
         return [
             {

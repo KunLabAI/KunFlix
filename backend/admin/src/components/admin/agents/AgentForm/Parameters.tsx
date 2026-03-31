@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LLMProvider } from '@/types';
+import { useImageCapabilities } from '@/hooks/useToolRegistry';
 
 // Gemini 3.1 配置选项（使用映射表避免 if-else）
 const THINKING_LEVELS = [
@@ -36,72 +37,23 @@ const MEDIA_RESOLUTIONS = [
   { value: "ultra_high", label: "超高 - 最高精度 (v1alpha)" },
 ];
 
-const ASPECT_RATIOS = [
-  { value: "auto", label: "自动" },
-  { value: "16:9", label: "16:9 (宽屏)" },
-  { value: "4:3", label: "4:3 (标准)" },
-  { value: "1:1", label: "1:1 (方形)" },
-  { value: "3:4", label: "3:4 (竖屏)" },
-  { value: "9:16", label: "9:16 (手机)" },
-];
+// 宽高比显示标签映射表（避免 if-else）
+const ASPECT_RATIO_LABELS: Record<string, string> = {
+  "auto": "自动", "1:1": "1:1 (方形)", "16:9": "16:9 (宽屏)", "9:16": "9:16 (手机)",
+  "4:3": "4:3 (标准)", "3:4": "3:4 (竖屏)", "3:2": "3:2", "2:3": "2:3",
+  "2:1": "2:1 (超宽)", "1:2": "1:2 (超高)", "19.5:9": "19.5:9", "9:19.5": "9:19.5",
+  "20:9": "20:9", "9:20": "9:20",
+};
 
-const IMAGE_SIZES = [
-  { value: "auto", label: "自动" },
-  { value: "512", label: "512" },
-  { value: "1024", label: "1K" },
-  { value: "2K", label: "2K" },
-  { value: "4K", label: "4K (最高质量)" },
-];
+// 画质显示标签映射表
+const QUALITY_LABELS: Record<string, string> = {
+  "standard": "标准 (Standard)", "hd": "高清 (HD)", "ultra": "超高清 (Ultra)",
+};
 
-// xAI 图像生成配置选项
-const XAI_ASPECT_RATIOS = [
-  { value: "1:1", label: "1:1 (方形)" },
-  { value: "16:9", label: "16:9 (宽屏)" },
-  { value: "9:16", label: "9:16 (手机)" },
-  { value: "4:3", label: "4:3 (标准)" },
-  { value: "3:4", label: "3:4 (竖屏)" },
-  { value: "3:2", label: "3:2" },
-  { value: "2:3", label: "2:3" },
-  { value: "2:1", label: "2:1 (超宽)" },
-  { value: "1:2", label: "1:2 (超高)" },
-  { value: "auto", label: "自动" },
-];
-
-const XAI_RESOLUTIONS = [
-  { value: "1k", label: "1K (标准)" },
-  { value: "2k", label: "2K (高清)" },
-];
-
-const XAI_RESPONSE_FORMATS = [
-  { value: "b64_json", label: "Base64 (推荐)" },
-  { value: "url", label: "URL (临时链接)" },
-];
-
-// 统一图像生成配置选项（供应商无关）
-const UNIFIED_ASPECT_RATIOS = [
-  { value: "auto", label: "自动" },
-  { value: "1:1", label: "1:1 (方形)" },
-  { value: "16:9", label: "16:9 (宽屏)" },
-  { value: "9:16", label: "9:16 (手机)" },
-  { value: "4:3", label: "4:3 (标准)" },
-  { value: "3:4", label: "3:4 (竖屏)" },
-  { value: "3:2", label: "3:2" },
-  { value: "2:3", label: "2:3" },
-  { value: "2:1", label: "2:1 (超宽)" },
-  { value: "1:2", label: "1:2 (超高)" },
-];
-
-const UNIFIED_QUALITIES = [
-  { value: "standard", label: "标准 (Standard)" },
-  { value: "hd", label: "高清 (HD)" },
-  { value: "ultra", label: "超高清 (Ultra)" },
-];
-
-const UNIFIED_OUTPUT_FORMATS = [
-  { value: "png", label: "PNG" },
-  { value: "jpeg", label: "JPEG" },
-  { value: "webp", label: "WebP" },
-];
+// 输出格式显示标签映射表
+const OUTPUT_FORMAT_LABELS: Record<string, string> = {
+  "png": "PNG", "jpeg": "JPEG", "webp": "WebP",
+};
 
 // 积分定价维度映射表（避免 if-else）
 const COST_DIMENSIONS = [
@@ -117,11 +69,11 @@ const COST_DIMENSIONS = [
 ] as const;
 
 // 维度组可见性规则映射（避免 if-else 分支）
-const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; isXAI: boolean; searchEnabled: boolean; xaiImageEnabled: boolean; agentType: string }) => boolean> = {
+const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; isXAI: boolean; searchEnabled: boolean; imageEnabled: boolean; agentType: string }) => boolean> = {
   base: () => true,
   gemini: ({ isGemini }) => isGemini,
   gemini_search: ({ isGemini, searchEnabled }) => isGemini && searchEnabled,
-  xai_image: ({ isXAI, xaiImageEnabled }) => isXAI && xaiImageEnabled,
+  xai_image: ({ imageEnabled }) => imageEnabled,
   video: ({ agentType }) => agentType === 'video',
 };
 
@@ -137,9 +89,24 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const providerId = watch('provider_id');
   const model = watch('model');
   const searchEnabled = watch('gemini_config.google_search_enabled');
-  const xaiImageEnabled = watch('xai_image_config.image_generation_enabled');
   const unifiedImageEnabled = watch('image_config.image_generation_enabled');
   const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
+
+  // 图像供应商能力（动态加载）
+  const { capabilities: imageCapabilities } = useImageCapabilities();
+
+  // 当前选中的图像供应商类型
+  const imageProviderId = watch('image_config.image_provider_id');
+  const imageProviderType = useMemo(() => {
+    const p = (providers || []).find(p => p.id === imageProviderId);
+    return p?.provider_type?.toLowerCase() || '';
+  }, [imageProviderId, providers]);
+
+  // 当前图像供应商的能力
+  const currentImageCaps = useMemo(
+    () => imageCapabilities?.[imageProviderType],
+    [imageCapabilities, imageProviderType],
+  );
 
   // 当前选中的供应商
   const currentProvider = useMemo(() =>
@@ -157,7 +124,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const hasAnyCost = Object.keys(modelCosts).length > 0;
 
   // 根据可见性规则过滤定价维度（映射表驱动，避免 if-else）
-  const visibilityCtx = { isGemini: !!isGeminiProvider, isXAI: !!isXAIProvider, searchEnabled: !!searchEnabled, xaiImageEnabled: !!(xaiImageEnabled || unifiedImageEnabled), agentType: watch('agent_type') || 'text' };
+  const visibilityCtx = { isGemini: !!isGeminiProvider, isXAI: !!isXAIProvider, searchEnabled: !!searchEnabled, imageEnabled: !!unifiedImageEnabled, agentType: watch('agent_type') || 'text' };
   const visibleDimensions = COST_DIMENSIONS.filter(
     dim => GROUP_VISIBILITY[dim.group]?.(visibilityCtx) ?? true
   );
@@ -259,94 +226,6 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               )}
             />
 
-            <div className="pt-2 border-t">
-              {/* 图片生成开关 */}
-              <div className="flex justify-between items-center mb-3">
-                <Label className="text-xs font-medium text-muted-foreground">图片生成</Label>
-                <FormField
-                  control={control}
-                  name="gemini_config.image_generation_enabled"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <div className="flex items-center space-x-2">
-                          <Switch
-                            checked={field.value || false}
-                            onCheckedChange={field.onChange}
-                            disabled={disabled}
-                          />
-                          <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
-                        </div>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              {/* 图片配置 - 仅在开启时显示 */}
-              {watch('gemini_config.image_generation_enabled') && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* 宽高比 */}
-                    <FormField
-                      control={control}
-                      name="gemini_config.image_config.aspect_ratio"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground">宽高比</FormLabel>
-                          <FormControl>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value || ""}
-                              disabled={disabled}
-                            >
-                              <SelectTrigger className="bg-background">
-                                <SelectValue placeholder="选择" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ASPECT_RATIOS.map(opt => (
-                                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* 图片尺寸 */}
-                    <FormField
-                      control={control}
-                      name="gemini_config.image_config.image_size"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs text-muted-foreground">图片尺寸</FormLabel>
-                          <FormControl>
-                            <Select
-                              onValueChange={field.onChange}
-                              value={field.value || ""}
-                              disabled={disabled}
-                            >
-                              <SelectTrigger className="bg-background">
-                                <SelectValue placeholder="选择" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {IMAGE_SIZES.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Google 搜索开关 */}
             <div className="flex justify-between items-center pt-2 border-t">
               <Label className="text-xs font-medium text-muted-foreground">Google 搜索</Label>
@@ -371,155 +250,6 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">这些配置仅对 Gemini 3.1 系列模型生效。</p>
-        </div>
-      )}
-
-      {/* xAI 图像生成配置区块 - 仅在选择 xAI 供应商时显示 */}
-      {isXAIProvider && (
-        <div className="rounded-xl border bg-card p-5 border-orange-200 dark:border-orange-800">
-          <Label className="text-sm font-medium mb-4 block text-orange-600 dark:text-orange-400">xAI 图像生成配置</Label>
-          <div className="space-y-4">
-            {/* 图片生成开关 */}
-            <div className="flex justify-between items-center">
-              <Label className="text-xs font-medium text-muted-foreground">图片生成</Label>
-              <FormField
-                control={control}
-                name="xai_image_config.image_generation_enabled"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <div className="flex items-center space-x-2">
-                        <Switch
-                          checked={field.value || false}
-                          onCheckedChange={field.onChange}
-                          disabled={disabled}
-                        />
-                        <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
-                      </div>
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* 图片配置 - 仅在开启时显示 */}
-            {watch('xai_image_config.image_generation_enabled') && (
-              <div className="space-y-4 pt-2 border-t">
-                <div className="grid grid-cols-2 gap-4">
-                  {/* 宽高比 */}
-                  <FormField
-                    control={control}
-                    name="xai_image_config.image_config.aspect_ratio"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">宽高比</FormLabel>
-                        <FormControl>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                            disabled={disabled}
-                          >
-                            <SelectTrigger className="bg-background">
-                              <SelectValue placeholder="选择" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {XAI_ASPECT_RATIOS.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* 分辨率 */}
-                  <FormField
-                    control={control}
-                    name="xai_image_config.image_config.resolution"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">分辨率</FormLabel>
-                        <FormControl>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                            disabled={disabled}
-                          >
-                            <SelectTrigger className="bg-background">
-                              <SelectValue placeholder="选择" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {XAI_RESOLUTIONS.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  {/* 每次生成张数 */}
-                  <FormField
-                    control={control}
-                    name="xai_image_config.image_config.n"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">每次生成张数 (1-10)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            value={field.value ?? ""}
-                            onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))}
-                            min={1}
-                            max={10}
-                            className="bg-background"
-                            disabled={disabled}
-                            placeholder="默认 1"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* 响应格式 */}
-                  <FormField
-                    control={control}
-                    name="xai_image_config.image_config.response_format"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs text-muted-foreground">响应格式</FormLabel>
-                        <FormControl>
-                          <Select
-                            onValueChange={field.onChange}
-                            value={field.value || ""}
-                            disabled={disabled}
-                          >
-                            <SelectTrigger className="bg-background">
-                              <SelectValue placeholder="选择" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {XAI_RESPONSE_FORMATS.map(opt => (
-                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">这些配置仅对 xAI Grok 图像模型生效 (grok-imagine-image / grok-imagine-image-pro)。</p>
         </div>
       )}
 
@@ -624,7 +354,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               />
 
               <div className="grid grid-cols-2 gap-4">
-                {/* 宽高比 */}
+                {/* 宽高比 — 根据供应商能力动态渲染 */}
                 <FormField
                   control={control}
                   name="image_config.image_config.aspect_ratio"
@@ -635,14 +365,14 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                         <Select
                           onValueChange={field.onChange}
                           value={field.value || ""}
-                          disabled={disabled}
+                          disabled={disabled || !currentImageCaps}
                         >
                           <SelectTrigger className="bg-background">
-                            <SelectValue placeholder="选择" />
+                            <SelectValue placeholder={currentImageCaps ? "选择" : "请先选择供应商"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {UNIFIED_ASPECT_RATIOS.map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            {(currentImageCaps?.aspect_ratios || []).map(v => (
+                              <SelectItem key={v} value={v}>{ASPECT_RATIO_LABELS[v] || v}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -652,7 +382,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                   )}
                 />
 
-                {/* 画质 */}
+                {/* 画质 — 根据供应商能力动态渲染 */}
                 <FormField
                   control={control}
                   name="image_config.image_config.quality"
@@ -663,14 +393,14 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                         <Select
                           onValueChange={field.onChange}
                           value={field.value || ""}
-                          disabled={disabled}
+                          disabled={disabled || !currentImageCaps}
                         >
                           <SelectTrigger className="bg-background">
-                            <SelectValue placeholder="选择" />
+                            <SelectValue placeholder={currentImageCaps ? "选择" : "请先选择供应商"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {UNIFIED_QUALITIES.map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            {(currentImageCaps?.qualities || []).map(v => (
+                              <SelectItem key={v} value={v}>{QUALITY_LABELS[v] || v}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -682,57 +412,62 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                {/* 批量生成张数 */}
+                {/* 批量生成张数 — 根据供应商能力动态限制 */}
                 <FormField
                   control={control}
                   name="image_config.image_config.batch_count"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground">每次生成张数 (1-10)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          value={field.value ?? ""}
-                          onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))}
-                          min={1}
-                          max={10}
-                          className="bg-background"
-                          disabled={disabled}
-                          placeholder="默认 1"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const batchMax = currentImageCaps?.batch_count?.max ?? 10;
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">每次生成张数 (1-{batchMax})</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            value={field.value ?? ""}
+                            onChange={e => field.onChange(e.target.value === '' ? null : Number(e.target.value))}
+                            min={1}
+                            max={batchMax}
+                            className="bg-background"
+                            disabled={disabled}
+                            placeholder="默认 1"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
-                {/* 输出格式 */}
-                <FormField
-                  control={control}
-                  name="image_config.image_config.output_format"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground">输出格式</FormLabel>
-                      <FormControl>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value || ""}
-                          disabled={disabled}
-                        >
-                          <SelectTrigger className="bg-background">
-                            <SelectValue placeholder="选择" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {UNIFIED_OUTPUT_FORMATS.map(opt => (
-                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* 输出格式 — 根据供应商能力动态渲染，无选项时隐藏 */}
+                {(currentImageCaps?.output_formats?.length ?? 0) > 0 && (
+                  <FormField
+                    control={control}
+                    name="image_config.image_config.output_format"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs text-muted-foreground">输出格式</FormLabel>
+                        <FormControl>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value || ""}
+                            disabled={disabled}
+                          >
+                            <SelectTrigger className="bg-background">
+                              <SelectValue placeholder="选择" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(currentImageCaps?.output_formats || []).map(v => (
+                                <SelectItem key={v} value={v}>{OUTPUT_FORMAT_LABELS[v] || v}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </div>
             </div>
           )}

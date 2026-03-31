@@ -46,6 +46,25 @@ _OUTPUT_FORMAT_SUPPORTED: dict[str, set[str]] = {
 
 
 # ---------------------------------------------------------------------------
+# Provider capabilities (consumed by admin API + tool definition builder)
+# ---------------------------------------------------------------------------
+IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
+    "gemini": {
+        "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["gemini"]),
+        "qualities": ["standard", "hd", "ultra"],
+        "output_formats": sorted(_OUTPUT_FORMAT_SUPPORTED["gemini"]),
+        "batch_count": {"min": 1, "max": _BATCH_MAP["gemini"]["max"]},
+    },
+    "xai": {
+        "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["xai"]),
+        "qualities": ["standard", "hd"],
+        "output_formats": [],
+        "batch_count": {"min": 1, "max": _BATCH_MAP["xai"]["max"]},
+    },
+}
+
+
+# ---------------------------------------------------------------------------
 # Per-provider adapters
 # ---------------------------------------------------------------------------
 def _adapt_to_gemini(unified: dict) -> dict:

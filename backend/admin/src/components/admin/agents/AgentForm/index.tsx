@@ -34,27 +34,8 @@ const Section = ({ title, children, className }: { title: string, children: Reac
 const defaultGeminiConfig = {
   thinking_level: null,
   media_resolution: null,
-  image_generation_enabled: false,
-  image_config: {
-    aspect_ratio: null,
-    image_size: null,
-    output_format: null,
-    batch_count: null,
-    max_person_images: null,
-    max_object_images: null,
-  },
   google_search_enabled: false,
   google_image_search_enabled: false,
-};
-
-const defaultXAIImageConfig = {
-  image_generation_enabled: false,
-  image_config: {
-    aspect_ratio: null,
-    resolution: null,
-    n: null,
-    response_format: null,
-  },
 };
 
 const defaultImageConfig = {
@@ -110,7 +91,6 @@ export default function AgentForm({
       max_subtasks: 10,
       enable_auto_review: true,
       gemini_config: defaultGeminiConfig,
-      xai_image_config: defaultXAIImageConfig,
       image_config: defaultImageConfig,
       image_credit_per_image: 0,
     },
@@ -154,7 +134,6 @@ export default function AgentForm({
         max_subtasks: Number(initialValues.max_subtasks) || 10,
         enable_auto_review: initialValues.enable_auto_review !== false,
         gemini_config: initialValues.gemini_config || defaultGeminiConfig,
-        xai_image_config: initialValues.xai_image_config || defaultXAIImageConfig,
         image_config: initialValues.image_config || defaultImageConfig,
         image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
       };
@@ -193,7 +172,6 @@ export default function AgentForm({
         max_subtasks: 10,
         enable_auto_review: true,
         gemini_config: defaultGeminiConfig,
-        xai_image_config: defaultXAIImageConfig,
         image_config: defaultImageConfig,
         image_credit_per_image: 0,
       });
@@ -223,69 +201,35 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, gemini_config, xai_image_config, image_config, ...rest } = values;
+      const { tools_enabled, gemini_config, image_config, ...rest } = values;
       
-      // Clean up gemini_config
-      let cleanedGeminiConfig = undefined;
-      if (gemini_config) {
-        const imageConfig = gemini_config.image_generation_enabled && gemini_config.image_config ? {
-            aspect_ratio: gemini_config.image_config.aspect_ratio || null,
-            image_size: gemini_config.image_config.image_size || null,
-            output_format: gemini_config.image_config.output_format || null,
-            batch_count: gemini_config.image_config.batch_count || null,
-            max_person_images: gemini_config.image_config.max_person_images || null,
-            max_object_images: gemini_config.image_config.max_object_images || null,
-        } : null;
-
-        cleanedGeminiConfig = {
-          thinking_level: gemini_config.thinking_level || null,
-          media_resolution: gemini_config.media_resolution || null,
-          image_generation_enabled: gemini_config.image_generation_enabled || false,
-          google_search_enabled: gemini_config.google_search_enabled || false,
-          google_image_search_enabled: gemini_config.google_image_search_enabled || false,
-          image_config: imageConfig
-        };
-      }
-
-      // Clean up xai_image_config
-      let cleanedXAIImageConfig = undefined;
-      if (xai_image_config) {
-        const xaiImgCfg = xai_image_config.image_generation_enabled && xai_image_config.image_config ? {
-          aspect_ratio: xai_image_config.image_config.aspect_ratio || null,
-          resolution: xai_image_config.image_config.resolution || null,
-          n: xai_image_config.image_config.n || null,
-          response_format: xai_image_config.image_config.response_format || null,
-        } : null;
-
-        cleanedXAIImageConfig = {
-          image_generation_enabled: xai_image_config.image_generation_enabled || false,
-          image_config: xaiImgCfg,
-        };
-      }
+      // Clean up gemini_config（仅保留思考、媒体、搜索字段）
+      const cleanedGeminiConfig = gemini_config ? {
+        thinking_level: gemini_config.thinking_level || null,
+        media_resolution: gemini_config.media_resolution || null,
+        google_search_enabled: gemini_config.google_search_enabled || false,
+        google_image_search_enabled: gemini_config.google_image_search_enabled || false,
+      } : undefined;
 
       // Clean up unified image_config
-      let cleanedImageConfig = undefined;
-      if (image_config) {
-        const imgCfg = image_config.image_generation_enabled && image_config.image_config ? {
-          aspect_ratio: image_config.image_config.aspect_ratio || null,
-          quality: image_config.image_config.quality || null,
-          batch_count: image_config.image_config.batch_count || null,
-          output_format: image_config.image_config.output_format || null,
-        } : null;
+      const imgCfg = image_config?.image_generation_enabled && image_config.image_config ? {
+        aspect_ratio: image_config.image_config.aspect_ratio || null,
+        quality: image_config.image_config.quality || null,
+        batch_count: image_config.image_config.batch_count || null,
+        output_format: image_config.image_config.output_format || null,
+      } : null;
 
-        cleanedImageConfig = {
-          image_generation_enabled: image_config.image_generation_enabled || false,
-          image_provider_id: image_config.image_generation_enabled ? (image_config.image_provider_id || null) : null,
-          image_model: image_config.image_generation_enabled ? (image_config.image_model || null) : null,
-          image_config: imgCfg,
-        };
-      }
+      const cleanedImageConfig = image_config ? {
+        image_generation_enabled: image_config.image_generation_enabled || false,
+        image_provider_id: image_config.image_generation_enabled ? (image_config.image_provider_id || null) : null,
+        image_model: image_config.image_generation_enabled ? (image_config.image_model || null) : null,
+        image_config: imgCfg,
+      } : undefined;
 
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
         gemini_config: cleanedGeminiConfig,
-        xai_image_config: cleanedXAIImageConfig,
         image_config: cleanedImageConfig,
       };
       

@@ -11,6 +11,7 @@ from auth import require_admin
 from database import get_db
 from models import Admin, Agent, ToolExecution
 from services.tool_manager import ToolManager
+from services.image_config_adapter import IMAGE_PROVIDER_CAPABILITIES
 
 router = APIRouter(
     prefix="/api/admin/tools",
@@ -180,3 +181,15 @@ async def get_tool_executions(
         "skip": skip,
         "limit": limit,
     }
+
+
+# ---------------------------------------------------------------------------
+# 5. 图像供应商能力 — 返回每个图像供应商支持的参数选项
+# ---------------------------------------------------------------------------
+
+@router.get("/image-capabilities")
+async def get_image_capabilities(
+    _admin: Admin = Depends(require_admin),
+):
+    """返回图像生成供应商的能力描述（宽高比、画质、输出格式、批量数限制）。"""
+    return IMAGE_PROVIDER_CAPABILITIES
