@@ -1,11 +1,10 @@
 """
-Canvas tools — CRUD operations for theater nodes.
+CanvasProvider — CRUD operations for theater canvas nodes.
 
-Architecture:
-- Tool definitions: OpenAI-format dicts for LLM registration
-- Execution functions: async database operations
-- Dispatcher: lookup-map based routing (no if chains)
+Migrated from services/canvas_tools.py.
 """
+from __future__ import annotations
+
 import json
 import logging
 import uuid
@@ -15,6 +14,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import TheaterNode, TheaterEdge
+from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-CANVAS_TOOL_NAMES = {"list_canvas_nodes", "get_canvas_node", "create_canvas_node", "update_canvas_node", "delete_canvas_node"}
+CANVAS_TOOL_NAMES_SET = frozenset({
+    "list_canvas_nodes", "get_canvas_node", "create_canvas_node",
+    "update_canvas_node", "delete_canvas_node",
+})
 
 # Legacy node type migration mapping (old -> new)
 NODE_TYPE_MIGRATION = {
@@ -32,8 +35,8 @@ NODE_TYPE_MIGRATION = {
 
 
 def _migrate_node_type(node_type: str) -> str:
-    """Migrate legacy node type names to current names."""
     return NODE_TYPE_MIGRATION.get(node_type, node_type)
+
 
 # Node type definitions with descriptions for Agent understanding
 NODE_TYPE_INFO = {
@@ -84,8 +87,8 @@ NODE_TYPE_INFO = {
 
 # Schema for validation (simplified)
 NODE_TYPE_SCHEMA = {
-    "text":     {"title": str, "content": str, "tags": list},
-    "image":  {"name": str, "description": str, "imageUrl": str, "fitMode": str},
+    "text":       {"title": str, "content": str, "tags": list},
+    "image":      {"name": str, "description": str, "imageUrl": str, "fitMode": str},
     "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
     "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any},
 }
@@ -96,47 +99,35 @@ _DEFAULT_X_OFFSET = 460
 
 
 def _estimate_text_node_size(data: dict) -> tuple[int, int]:
-    """Estimate appropriate node dimensions for text content."""
     content = data.get("content", "") or ""
     content_len = len(content)
-    # ~35 CJK chars per line at 420px width, 14px font
     line_count = max(content.count('\n') + 1, content_len // 35 + 1)
-    chrome_px = 120  # title bar + padding + margins
+    chrome_px = 120
     estimated_height = line_count * 24 + chrome_px
     return 420, max(300, min(800, estimated_height))
+
 
 # ---------------------------------------------------------------------------
 # Tool Definitions (OpenAI format)
 # ---------------------------------------------------------------------------
 
 def _build_node_type_description() -> str:
-    """Build a detailed description of node types for the Agent."""
     lines = ["节点类型说明："]
     for node_type, info in NODE_TYPE_INFO.items():
         lines.append(f"\n**{node_type}**: {info['description']}")
         lines.append("字段说明：")
         for field, desc in info['fields'].items():
             lines.append(f"  - {field}: {desc}")
-        if "example" in info:
-            lines.append("示例：")
-            lines.append(f"  {info['example']}")
+        lines.append("示例：") if "example" in info else None
+        ("example" in info) and lines.append(f"  {info['example']}")
     return "\n".join(lines)
 
 
-def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
-    """Return OpenAI-format tool definitions for canvas tools.
-    
-    Args:
-        target_node_types: List of node types this agent can control.
-    
-    Returns:
-        List of 5 tool definitions with node_type enums restricted to target_node_types.
-    """
-    # Migrate legacy node type names to current names
+def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
     migrated_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
     type_enum = migrated_types or list(NODE_TYPE_SCHEMA.keys())
     node_type_desc = _build_node_type_description()
-    
+
     return [
         {
             "type": "function",
@@ -163,10 +154,7 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "get_canvas_node",
-                "description": (
-                    "获取指定节点的完整详情。"
-                    "返回节点的所有数据字段。"
-                ),
+                "description": "获取指定节点的完整详情。返回节点的所有数据字段。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -241,9 +229,7 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "delete_canvas_node",
-                "description": (
-                    "从画布上删除节点。同时会删除与该节点相连的所有连线。"
-                ),
+                "description": "从画布上删除节点。同时会删除与该节点相连的所有连线。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -260,23 +246,19 @@ def build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Execution Functions
+# Execution helpers
 # ---------------------------------------------------------------------------
 
 def _json_result(data: Any) -> str:
-    """Serialize result to JSON string."""
     return json.dumps(data, ensure_ascii=False, default=str)
 
 
 def _error_result(message: str) -> str:
-    """Return a JSON error message."""
     return _json_result({"error": message})
 
 
 def _node_summary(node: TheaterNode) -> dict:
-    """Extract summary fields from a node."""
     data = node.data or {}
-    # Key fields vary by type
     key_fields_map = {
         "text": ["title", "tags"],
         "image": ["name"],
@@ -285,7 +267,7 @@ def _node_summary(node: TheaterNode) -> dict:
     }
     key_fields = key_fields_map.get(node.node_type, [])
     summary_data = {k: data.get(k) for k in key_fields if k in data}
-    
+
     return {
         "id": node.id,
         "node_type": node.node_type,
@@ -295,7 +277,6 @@ def _node_summary(node: TheaterNode) -> dict:
 
 
 def _node_full(node: TheaterNode) -> dict:
-    """Convert node to full dict representation."""
     return {
         "id": node.id,
         "theater_id": node.theater_id,
@@ -312,27 +293,25 @@ def _node_full(node: TheaterNode) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Async execution functions
+# ---------------------------------------------------------------------------
+
 async def _exec_list_nodes(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
-    """List nodes, optionally filtered by node_type."""
     node_type_filter = _migrate_node_type(args.get("node_type", "")) if args.get("node_type") else None
-    
-    # Migrate target_node_types for validation
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
-    
+
     query = select(TheaterNode).where(TheaterNode.theater_id == theater_id)
-    
-    # Apply type filter if specified and valid
+
     valid_filter = node_type_filter and node_type_filter in migrated_target_types
     query = query.where(TheaterNode.node_type == node_type_filter) if valid_filter else query
-    
-    # Only list nodes of types we can control
     query = query.where(TheaterNode.node_type.in_(migrated_target_types)) if migrated_target_types else query
-    
+
     result = await db.execute(query.order_by(TheaterNode.created_at))
     nodes = result.scalars().all()
-    
+
     return _json_result({
         "count": len(nodes),
         "nodes": [_node_summary(n) for n in nodes],
@@ -342,20 +321,16 @@ async def _exec_list_nodes(
 async def _exec_get_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
-    """Get full details of a single node."""
     node_id = args.get("node_id", "")
-    
-    # Migrate target_node_types for validation
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
-    
+
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
         TheaterNode.theater_id == theater_id,
     )
     result = await db.execute(query)
     node = result.scalar_one_or_none()
-    
-    # Validation
+
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot access node of type '{node.node_type}'")
         if migrated_target_types and node.node_type not in migrated_target_types
@@ -366,15 +341,12 @@ async def _exec_get_node(
 async def _exec_create_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession, agent_id: str | None = None
 ) -> str:
-    """Create a new node on the canvas."""
     node_type = _migrate_node_type(args.get("node_type", ""))
     data = args.get("data", {})
     position_x = args.get("position_x")
     position_y = args.get("position_y")
-    
-    # Migrate target_node_types for validation
+
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
-    # Validate node_type
     type_allowed = node_type in migrated_target_types
     return _error_result(f"Node type '{node_type}' not allowed") if not type_allowed else await _do_create_node(
         node_type, data, position_x, position_y, theater_id, agent_id, db
@@ -385,16 +357,13 @@ async def _do_create_node(
     node_type: str, data: dict, position_x: float | None, position_y: float | None,
     theater_id: str, agent_id: str | None, db: AsyncSession
 ) -> str:
-    """Actual node creation logic."""
-    # Auto-calculate position if not specified
     final_x, final_y = position_x, position_y
     needs_auto_position = position_x is None or position_y is None
-    
+
     auto_x, auto_y = await _calculate_auto_position(theater_id, db) if needs_auto_position else (0, 0)
     final_x = final_x if final_x is not None else auto_x
     final_y = final_y if final_y is not None else auto_y
-    
-    # Dynamic size estimation for text nodes, default for others
+
     _size_estimators = {"text": _estimate_text_node_size}
     estimator = _size_estimators.get(node_type)
     width, height = estimator(data) if estimator else (_DEFAULT_NODE_WIDTH, _DEFAULT_NODE_HEIGHT)
@@ -411,11 +380,11 @@ async def _do_create_node(
         data=data,
         created_by_agent_id=agent_id,
     )
-    
+
     db.add(node)
     await db.commit()
     await db.refresh(node)
-    
+
     logger.info("Created node %s (type=%s) in theater %s", node.id, node_type, theater_id)
     return _json_result({
         "success": True,
@@ -424,11 +393,10 @@ async def _do_create_node(
 
 
 async def _calculate_auto_position(theater_id: str, db: AsyncSession) -> tuple[float, float]:
-    """Calculate auto position for new node (to the right of existing nodes)."""
     query = select(func.max(TheaterNode.position_x)).where(TheaterNode.theater_id == theater_id)
     result = await db.execute(query)
     max_x = result.scalar()
-    
+
     new_x = (max_x + _DEFAULT_X_OFFSET) if max_x is not None else 100
     return new_x, 100
 
@@ -436,22 +404,17 @@ async def _calculate_auto_position(theater_id: str, db: AsyncSession) -> tuple[f
 async def _exec_update_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
-    """Update an existing node's data (merge)."""
     node_id = args.get("node_id", "")
     new_data = args.get("data", {})
-    
-    # Migrate target_node_types for validation
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
-    
-    # Fetch node
+
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
         TheaterNode.theater_id == theater_id,
     )
     result = await db.execute(query)
     node = result.scalar_one_or_none()
-    
-    # Validation
+
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot update node of type '{node.node_type}'")
         if node.node_type not in migrated_target_types
@@ -460,15 +423,13 @@ async def _exec_update_node(
 
 
 async def _do_update_node(node: TheaterNode, new_data: dict, db: AsyncSession) -> str:
-    """Actual node update logic."""
-    # Filter out None values to prevent overwriting existing data
     filtered_new_data = {k: v for k, v in new_data.items() if v is not None}
     merged_data = {**(node.data or {}), **filtered_new_data}
     node.data = merged_data
-    
+
     await db.commit()
     await db.refresh(node)
-    
+
     logger.info("Updated node %s", node.id)
     return _json_result({
         "success": True,
@@ -479,21 +440,16 @@ async def _do_update_node(node: TheaterNode, new_data: dict, db: AsyncSession) -
 async def _exec_delete_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
-    """Delete a node and its associated edges."""
     node_id = args.get("node_id", "")
-    
-    # Migrate target_node_types for validation
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
-    
-    # Fetch node
+
     query = select(TheaterNode).where(
         TheaterNode.id == node_id,
         TheaterNode.theater_id == theater_id,
     )
     result = await db.execute(query)
     node = result.scalar_one_or_none()
-    
-    # Validation
+
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot delete node of type '{node.node_type}'")
         if node.node_type not in migrated_target_types
@@ -502,18 +458,15 @@ async def _exec_delete_node(
 
 
 async def _do_delete_node(node: TheaterNode, node_id: str, theater_id: str, db: AsyncSession) -> str:
-    """Actual node deletion logic."""
-    # Delete associated edges
     edge_delete = delete(TheaterEdge).where(
         TheaterEdge.theater_id == theater_id,
         (TheaterEdge.source_node_id == node_id) | (TheaterEdge.target_node_id == node_id)
     )
     await db.execute(edge_delete)
-    
-    # Delete node
+
     await db.delete(node)
     await db.commit()
-    
+
     logger.info("Deleted node %s and associated edges", node_id)
     return _json_result({
         "success": True,
@@ -522,7 +475,7 @@ async def _do_delete_node(node: TheaterNode, node_id: str, theater_id: str, db: 
 
 
 # ---------------------------------------------------------------------------
-# Dispatcher (lookup map)
+# Executor lookup map
 # ---------------------------------------------------------------------------
 
 _EXECUTORS: dict[str, callable] = {
@@ -534,56 +487,62 @@ _EXECUTORS: dict[str, callable] = {
 }
 
 
-async def execute_canvas_tool(
-    tool_name: str,
-    args: dict,
-    theater_id: str,
-    target_node_types: list[str],
-    db: AsyncSession,
-    agent_id: str | None = None,
-) -> str:
-    """Execute a canvas tool by name.
-    
-    Args:
-        tool_name: One of CANVAS_TOOL_NAMES.
-        args: Tool arguments from LLM.
-        theater_id: Current theater scope.
-        target_node_types: Node types this agent can control.
-        db: Async database session.
-        agent_id: Optional agent ID for tracking node creation.
-    
-    Returns:
-        JSON string result.
-    """
-    executor = _EXECUTORS.get(tool_name)
-    
-    # Unknown tool
-    unknown = not executor
-    return _error_result(f"Unknown canvas tool: {tool_name}") if unknown else await _run_executor(
-        executor, tool_name, args, theater_id, target_node_types, db, agent_id
-    )
-
-
 async def _run_executor(
-    executor: callable,
-    tool_name: str,
-    args: dict,
-    theater_id: str,
-    target_node_types: list[str],
-    db: AsyncSession,
-    agent_id: str | None,
+    executor: callable, tool_name: str, args: dict,
+    theater_id: str, target_node_types: list[str],
+    db: AsyncSession, agent_id: str | None,
 ) -> str:
-    """Run the executor with appropriate arguments."""
     try:
-        # create_canvas_node needs agent_id
         needs_agent_id = tool_name == "create_canvas_node"
         result = (
             await executor(args, theater_id, target_node_types, db, agent_id)
             if needs_agent_id
             else await executor(args, theater_id, target_node_types, db)
         )
-        logger.info("execute_canvas_tool(%s) -> %d chars", tool_name, len(result))
+        logger.info("CanvasProvider.execute(%s) -> %d chars", tool_name, len(result))
         return result
     except Exception as exc:
         logger.error("Canvas tool error (%s): %s", tool_name, exc)
         return _error_result(f"Tool execution failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# CanvasProvider class
+# ---------------------------------------------------------------------------
+
+class CanvasProvider:
+    """Provider for theater canvas node CRUD tools."""
+
+    display_name = "画布工具"
+    description = "画布节点的增删改查（text/image/video/storyboard）"
+    condition = "需要 theater_id 且 target_node_types 非空"
+
+    @property
+    def tool_names(self) -> frozenset[str]:
+        return CANVAS_TOOL_NAMES_SET
+
+    async def build_defs(self, ctx: ToolContext) -> list[dict]:
+        has_context = ctx.theater_id and ctx.agent.target_node_types
+        return _build_canvas_tool_defs(ctx.agent.target_node_types) if has_context else []
+
+    async def execute(self, name: str, args: dict, ctx: ToolContext) -> str:
+        executor = _EXECUTORS.get(name)
+        return _error_result(f"Unknown canvas tool: {name}") if not executor else await _run_executor(
+            executor, name, args, ctx.theater_id, ctx.agent.target_node_types, ctx.db, agent_id=ctx.agent.id
+        )
+
+    def rebuild_defs(self, ctx: ToolContext) -> list[dict] | None:
+        return None
+
+    def get_tool_metadata(self) -> list[dict]:
+        """Return full-capability metadata (all node types) for registry display."""
+        all_types = list(NODE_TYPE_SCHEMA.keys())
+        defs = _build_canvas_tool_defs(all_types)
+        return [
+            {
+                "name": d["function"]["name"],
+                "description": d["function"]["description"],
+                "parameters": d["function"]["parameters"],
+            }
+            for d in defs
+        ]

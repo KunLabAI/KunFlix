@@ -20,7 +20,8 @@ import {
   FileCode2,
   Film,
   Blocks,
-  ServerCog
+  ServerCog,
+  Wrench
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -70,6 +71,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: 'MCP 客户端',
       href: '/admin/mcp',
       icon: ServerCog,
+    },
+    {
+      title: '工具管理',
+      href: '/admin/tools',
+      icon: Wrench,
     },
     {
       title: '视频生成',

@@ -16,10 +16,8 @@ from services.chat_utils import (
 )
 from services.chat_tool_dispatch import append_tool_round
 from services.llm_stream import stream_completion
+from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
-from services.base_tools import build_base_tool_defs
-from services.canvas_tools import build_canvas_tool_defs, CANVAS_TOOL_NAMES
-from services.image_gen_tools import build_image_gen_tool_def_list, IMAGE_GEN_TOOL_NAME
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_image_configs
@@ -95,36 +93,22 @@ async def generate_single_agent(
         (last_msg.get("role") == "user") and inject_image_to_message(last_msg, _edit_image_data_url)
         logger.info(f"Injected image into user message: {_img_filename or 'history_image'}")
 
-    # Tool Wrapper: 注入轻量技能索引 + 准备工具定义（load_skill + base tools + canvas tools + image_gen）
-    agent_tools = agent.tools or []
-    tool_defs = None
-    active_skills_dir = None
-    base_defs = []
-    canvas_defs = []
-    image_gen_defs = []
-    # 注入画布工具（当 theater_id 和 target_node_types 都存在时）
-    has_canvas_context = theater_id and agent.target_node_types
-    canvas_defs = build_canvas_tool_defs(agent.target_node_types) if has_canvas_context else []
-    # 注入图像生成工具（当统一配置启用且指定了 image_provider + image_model 时）
-    # 仅支持工具化生成的供应商才注册（如 xAI）；Gemini 等使用 response_modalities 原生生成
-    _TOOL_GEN_PROVIDERS = {"xai"}
-    image_gen_defs = build_image_gen_tool_def_list(agent)
-    if image_gen_defs:
-        _img_provider_id = (agent.image_config or {}).get("image_provider_id")
-        _img_prov_result = await db.execute(select(LLMProvider).filter(LLMProvider.id == _img_provider_id))
-        _img_prov = _img_prov_result.scalar_one_or_none()
-        image_gen_defs = image_gen_defs if (_img_prov and _img_prov.provider_type.lower() in _TOOL_GEN_PROVIDERS) else []
-    if agent_tools or canvas_defs or image_gen_defs:
-        from skills_manager import get_active_skills_dir
-        active_skills_dir = get_active_skills_dir()
-        skill_prompt = build_skill_prompt(agent_tools, active_skills_dir)
-        # 追加轻量索引到 system prompt
-        (skill_prompt and messages and messages[0].get("role") == "system"
-         and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
-        # 注册 base tools + load_skill 元工具 + canvas tools + image_gen tools
-        base_defs = build_base_tool_defs()
-        skill_defs = [build_load_skill_tool_def(agent_tools)] if agent_tools else []
-        tool_defs = base_defs + canvas_defs + image_gen_defs + skill_defs
+    # 工具管理器 — 构建工具定义
+    tool_manager = ToolManager()
+    ctx = ToolContext(theater_id=theater_id, agent=agent, db=db,
+                      session_id=session_id, user_id=entity_id, is_admin=is_admin)
+    agent_skills = agent.tools or []
+    loaded_skills: set[str] = set()
+    tool_defs = await tool_manager.build_tool_defs(ctx)
+
+    # 技能系统（与工具同级，独立编排）
+    remaining_skills = list(agent_skills)
+    remaining_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(remaining_skills)])
+
+    # 注入轻量技能索引到 system prompt
+    skill_prompt = build_skill_prompt(agent_skills, ctx.active_skills_dir) if agent_skills else ""
+    (skill_prompt and messages and messages[0].get("role") == "system"
+     and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -137,14 +121,13 @@ async def generate_single_agent(
     logger.info(f"Session: {session_id} | {'Admin' if is_admin else 'User'}: {entity_id}")
     logger.info(f"History: {len(history)} | Input chars: {input_chars}")
     logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
-    logger.info(f"Skills: {agent_tools or 'none'}")
+    logger.info(f"Skills: {agent.tools or 'none'}")
     logger.info(f"Current message: {content}")
     logger.info(f"{'-'*60}")
 
-    # 调用 LLM 流式接口（含工具调用循环：load_skill + base tools）
+    # 调用 LLM 流式接口（含工具调用循环）
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     MAX_TOOL_ROUNDS = 5
-    loaded_skills: set[str] = set()  # 已加载的技能，防止重复调用
     all_tool_calls = []  # 记录所有执行的普通工具
     tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
@@ -193,7 +176,7 @@ async def generate_single_agent(
 
             # 执行工具调用并追加结果到消息
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
-            await append_tool_round(messages, result, active_skills_dir, is_anthropic, theater_id, agent, db)
+            await append_tool_round(messages, result, tool_manager, ctx, is_anthropic)
 
             # 累计 generate_image 工具产生的图片数（用于计费）
             tool_generated_image_count += sum(
@@ -202,12 +185,15 @@ async def generate_single_agent(
                 if tc.name == IMAGE_GEN_TOOL_NAME
             )
 
-            # 记录已加载的技能，更新 tool_defs（base tools + canvas tools 始终保留，load_skill enum 缩减）
+            # 追踪已加载的技能
             for tc in result.tool_calls:
-                tc.name == "load_skill" and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
-            remaining = [s for s in agent_tools if s not in loaded_skills]
-            skill_defs = [build_load_skill_tool_def(remaining)] if remaining else []
-            tool_defs = base_defs + canvas_defs + image_gen_defs + skill_defs
+                (tc.name == "load_skill") and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+
+            # 重建工具定义（技能 enum 自动缩减）
+            remaining_skills = [s for s in agent_skills if s not in loaded_skills]
+            rebuilt_tool_defs = tool_manager.rebuild_after_round(ctx)
+            tool_defs = (rebuilt_tool_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            tool_defs = tool_defs or None
 
             # 发送 tool 完成事件 (skill_loaded 或 tool_result)
             for tc in result.tool_calls:
@@ -371,4 +357,5 @@ async def generate_single_agent(
         except Exception as e:
             logger.error(f"Image canvas bridge failed: {e}")
 
+    yield sse("done", {})
     yield sse("done", {})

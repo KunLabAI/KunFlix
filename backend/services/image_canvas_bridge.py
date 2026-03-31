@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import TheaterNode, Agent
-from services.canvas_tools import (
+from services.tool_manager.providers.canvas import (
     _do_create_node,
     _do_update_node,
     _calculate_auto_position,

@@ -3,10 +3,13 @@ Skill prompt builder — Tool Wrapper pattern implementation.
 
 Architecture:
 - System prompt contains a LIGHTWEIGHT skill index (name + description only)
-- A `load_skill` meta-tool is registered alongside base execution tools
-- Skills are tutorials: they teach the LLM when/how to use base tools
+- A `load_skill` meta-tool is registered alongside execution tools
+- Skills are tutorials: they teach the LLM how to perform specific tasks
 - load_skill returns the FULL SKILL.md content (instructions, examples, references)
 - Normal conversations cost ~0 extra tokens; skill-heavy conversations load on demand
+
+This module is INDEPENDENT of the tool_manager — skills and tools are
+peer-level concepts orchestrated together by the chat generation layer.
 """
 import logging
 from pathlib import Path
@@ -15,23 +18,24 @@ import frontmatter as fm
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Prompt templates
+# ---------------------------------------------------------------------------
+
 _SKILL_INDEX_HEADER = (
     "# Available Skills\n"
     "You have the following skills installed. "
-    "Each skill is a tutorial that teaches you how to use your base tools "
-    "(read_file, list_directory) for specific tasks.\n"
+    "Each skill is a tutorial that teaches you how to perform specific tasks.\n"
     "You MUST call `load_skill` BEFORE attempting any skill-related task — "
     "do NOT tell the user you cannot do it; load the skill first and follow its instructions.\n"
 )
 
 _SKILL_INDEX_ITEM = "- **{name}**: {description}"
 
-_BASE_TOOLS_NOTE = (
-    "\n## Base Tools\n"
-    "- **read_file**: Read file content (supports line ranges)\n"
-    "- **list_directory**: List directory structure\n"
-)
 
+# ---------------------------------------------------------------------------
+# Skill prompt builder
+# ---------------------------------------------------------------------------
 
 def build_skill_prompt(
     skill_names: list[str],
@@ -41,13 +45,6 @@ def build_skill_prompt(
 
     Only includes skill name and one-line description — NOT the full body.
     The LLM uses load_skill() to fetch full content when needed.
-
-    Args:
-        skill_names: List of skill names to include.
-        active_skills_dir: Path to the active_skills directory.
-
-    Returns:
-        Lightweight skill index string, or empty string if no skills found.
     """
     items: list[str] = []
 
@@ -66,21 +63,15 @@ def build_skill_prompt(
         except Exception as exc:
             logger.warning("Failed to index skill '%s': %s", skill_name, exc)
 
-    return (_SKILL_INDEX_HEADER + "\n".join(items) + _BASE_TOOLS_NOTE) if items else ""
+    return (_SKILL_INDEX_HEADER + "\n".join(items)) if items else ""
 
+
+# ---------------------------------------------------------------------------
+# Skill content loader
+# ---------------------------------------------------------------------------
 
 def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
-    """Load the full SKILL.md content for a skill (called by load_skill tool).
-
-    Returns the complete markdown body with instructions, examples, and references.
-
-    Args:
-        skill_name: The skill name to load.
-        active_skills_dir: Path to the active_skills directory.
-
-    Returns:
-        Full SKILL.md content string, or error message if not found.
-    """
+    """Load the full SKILL.md content for a skill (called by load_skill tool)."""
     skill_md_path = active_skills_dir / skill_name / "SKILL.md"
     if not skill_md_path.exists():
         return f"Skill '{skill_name}' not found."
@@ -90,7 +81,6 @@ def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
         name = str(post.get("name", skill_name))
         body = (post.content or "").strip()
 
-        # List references if the directory exists
         refs_dir = active_skills_dir / skill_name / "references"
         refs_listing = ""
         if refs_dir.is_dir():
@@ -106,16 +96,14 @@ def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
         return f"Error loading skill '{skill_name}': {exc}"
 
 
+# ---------------------------------------------------------------------------
+# Tool definition builder
+# ---------------------------------------------------------------------------
+
 def build_load_skill_tool_def(skill_names: list[str]) -> dict:
     """Build the OpenAI-format tool definition for the load_skill meta-tool.
 
     The enum is restricted to only the skills configured for this agent.
-
-    Args:
-        skill_names: List of available skill names for the enum constraint.
-
-    Returns:
-        OpenAI-format tool definition dict.
     """
     return {
         "type": "function",

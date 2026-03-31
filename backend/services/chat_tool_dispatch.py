@@ -3,50 +3,53 @@ Chat tool dispatch: execute tool calls and append results to messages.
 
 Handles both Anthropic and OpenAI message formats for tool call responses.
 Shared by chats.py (with theater_id) and admin_debug.py (theater_id=None).
+
+- Managed tools (base, canvas, image_gen) are delegated to ToolManager.
+- load_skill is dispatched independently (skill system is a peer-level concept).
+- Every execution is logged to the tool_executions table (non-blocking).
 """
 import json
 import logging
+import time
+from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from services.tool_execution_logger import record_tool_execution
 
-from models import Agent
-from services.skill_tools import load_skill_content
-from services.base_tools import execute_base_tool
-from services.canvas_tools import CANVAS_TOOL_NAMES, execute_canvas_tool
-from services.image_gen_tools import IMAGE_GEN_TOOL_NAME, execute_image_gen_tool
+if TYPE_CHECKING:
+    from services.tool_manager import ToolManager
+    from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
 
 
 async def get_tool_result(
-    tc_name: str, tc_args: dict, active_skills_dir, theater_id: str | None,
-    agent: Agent, db: AsyncSession
+    tool_manager: "ToolManager", tc_name: str, tc_args: dict, ctx: "ToolContext",
 ) -> str:
-    """Dispatch tool execution by name. Returns result string."""
-    _ASYNC_DISPATCHERS = {
-        IMAGE_GEN_TOOL_NAME: lambda: execute_image_gen_tool(tc_args, agent, db),
-    }
-    is_canvas = tc_name in CANVAS_TOOL_NAMES and theater_id and agent.target_node_types
-    async_handler = (
-        (lambda: execute_canvas_tool(tc_name, tc_args, theater_id, agent.target_node_types, db, agent_id=agent.id))
-        if is_canvas
-        else _ASYNC_DISPATCHERS.get(tc_name)
-    )
-    return await async_handler() if async_handler else dispatch_standard_tool(tc_name, tc_args, active_skills_dir)
+    """Dispatch tool execution with timing and logging."""
+    start = time.perf_counter()
+    status = "success"
+    try:
+        # Skill dispatch (peer-level, NOT a managed provider)
+        result = (
+            _execute_skill(tc_name, tc_args, ctx)
+            if tc_name == "load_skill"
+            else await tool_manager.execute_tool(tc_name, tc_args, ctx)
+        )
+    except Exception as exc:
+        result = f"Error: {exc}"
+        status = "error"
+    duration_ms = int((time.perf_counter() - start) * 1000)
+    record_tool_execution(tc_name, tc_args, result, status, duration_ms, ctx)
+    return result
 
 
-def dispatch_standard_tool(tc_name: str, tc_args: dict, active_skills_dir) -> str:
-    """Dispatch standard (sync) tools."""
-    _DISPATCH = {
-        "load_skill": lambda args: load_skill_content(args.get("skill_name", ""), active_skills_dir),
-    }
-    handler = _DISPATCH.get(tc_name) or (lambda args: execute_base_tool(tc_name, args))
-    return handler(tc_args)
+def _execute_skill(tc_name: str, tc_args: dict, ctx: "ToolContext") -> str:
+    from services.skill_tools import load_skill_content
+    return load_skill_content(tc_args.get("skill_name", ""), ctx.active_skills_dir)
 
 
 async def append_tool_round(
-    messages: list, result, active_skills_dir, is_anthropic: bool,
-    theater_id: str | None, agent: Agent, db: AsyncSession
+    messages: list, result, tool_manager: "ToolManager", ctx: "ToolContext", is_anthropic: bool,
 ):
     """Execute tool calls and append results to messages.
 
@@ -56,12 +59,11 @@ async def append_tool_round(
         True: _append_anthropic_tool_round,
         False: _append_openai_tool_round,
     }
-    await _FORMAT_HANDLERS[is_anthropic](messages, result, active_skills_dir, theater_id, agent, db)
+    await _FORMAT_HANDLERS[is_anthropic](messages, result, tool_manager, ctx)
 
 
 async def _append_anthropic_tool_round(
-    messages: list, result, active_skills_dir,
-    theater_id: str | None, agent: Agent, db: AsyncSession
+    messages: list, result, tool_manager: "ToolManager", ctx: "ToolContext",
 ):
     """Anthropic format: assistant content blocks + user tool_result blocks."""
     assistant_blocks = []
@@ -76,7 +78,7 @@ async def _append_anthropic_tool_round(
     tool_results = []
     for tc in result.tool_calls:
         args = json.loads(tc.arguments)
-        content = await get_tool_result(tc.name, args, active_skills_dir, theater_id, agent, db)
+        content = await get_tool_result(tool_manager, tc.name, args, ctx)
         logger.info(f"  {tc.name}({args}) → {len(content)} chars")
         tool_results.append({
             "type": "tool_result", "tool_use_id": tc.id, "content": content,
@@ -86,8 +88,7 @@ async def _append_anthropic_tool_round(
 
 
 async def _append_openai_tool_round(
-    messages: list, result, active_skills_dir,
-    theater_id: str | None, agent: Agent, db: AsyncSession
+    messages: list, result, tool_manager: "ToolManager", ctx: "ToolContext",
 ):
     """OpenAI format: assistant message with tool_calls + tool role messages."""
     assistant_msg = {
@@ -106,7 +107,7 @@ async def _append_openai_tool_round(
 
     for tc in result.tool_calls:
         args = json.loads(tc.arguments)
-        content = await get_tool_result(tc.name, args, active_skills_dir, theater_id, agent, db)
+        content = await get_tool_result(tool_manager, tc.name, args, ctx)
         logger.info(f"  {tc.name}({args}) → {len(content)} chars")
         messages.append({
             "role": "tool", "tool_call_id": tc.id, "content": content,

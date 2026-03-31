@@ -1,9 +1,10 @@
 """
-generate_image tool — 让文本模型（grok-3, gemini 等）按需调用图像生成。
+ImageGenProvider — AI image generation tool.
 
-支持跨供应商：文本模型和图像模型可来自不同 Provider。
-遵循 base_tools.py / canvas_tools.py 的模式：定义 + 执行 + 派发。
+Migrated from services/image_gen_tools.py.
 """
+from __future__ import annotations
+
 import json
 import logging
 from typing import Any
@@ -17,6 +18,7 @@ from services.xai_image_gen import (
     XAIBatchImageConfig,
 )
 from services.image_config_adapter import to_provider_config
+from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -25,21 +27,23 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 IMAGE_GEN_TOOL_NAME = "generate_image"
 
-# 纯图像模型集合（这些模型不支持 tool calling，不应作为主文本模型）
+# Image-only models that cannot have tool calling
 _IMAGE_ONLY_MODELS = frozenset({"grok-imagine-image", "grok-imagine-image-pro"})
 
-# 统一宽高比选项（所有供应商的超集）
+# Aspect ratio options (superset of all providers)
 _ASPECT_RATIO_ENUM = [
     "auto", "1:1", "16:9", "9:16", "4:3", "3:4",
     "3:2", "2:3", "2:1", "1:2",
 ]
 
+# Only providers that support tool-based image generation
+_TOOL_GEN_PROVIDERS = frozenset({"xai"})
+
 # ---------------------------------------------------------------------------
 # Tool Definition
 # ---------------------------------------------------------------------------
 
-def build_image_gen_tool_def() -> dict:
-    """Return OpenAI-format tool definition for generate_image."""
+def _build_image_gen_tool_def() -> dict:
     return {
         "type": "function",
         "function": {
@@ -80,14 +84,8 @@ def build_image_gen_tool_def() -> dict:
     }
 
 
-def build_image_gen_tool_def_list(agent: Agent) -> list[dict]:
-    """Return [tool_def] if agent is eligible for generate_image, else [].
-
-    Eligibility:
-    - image_config.image_generation_enabled is True
-    - image_config.image_provider_id and image_config.image_model are set
-    - Agent's main model is NOT an image-only model
-    """
+def _check_agent_eligible(agent: Agent) -> bool:
+    """Check basic eligibility: image_config enabled, provider set, model set, not image-only."""
     cfg = agent.image_config or {}
     _checks = (
         cfg.get("image_generation_enabled"),
@@ -95,7 +93,7 @@ def build_image_gen_tool_def_list(agent: Agent) -> list[dict]:
         cfg.get("image_model"),
         agent.model not in _IMAGE_ONLY_MODELS,
     )
-    return [build_image_gen_tool_def()] if all(_checks) else []
+    return all(_checks)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +104,6 @@ async def _generate_via_xai(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int,
 ) -> list[str]:
-    """Generate images via xAI provider."""
     img_cfg = config.get("image_config") or {}
     xai_config = XAIBatchImageConfig(
         aspect_ratio=img_cfg.get("aspect_ratio") or "auto",
@@ -121,11 +118,9 @@ async def _generate_via_xai(
         config=xai_config,
         base_url=base_url,
     )
-    # Flatten all image URLs from all prompt results
     return [url for r in result.results for url in r.image_urls]
 
 
-# 供应商 → 生成器映射表
 _IMAGE_GENERATORS: dict[str, Any] = {
     "xai": _generate_via_xai,
 }
@@ -135,14 +130,7 @@ _IMAGE_GENERATORS: dict[str, Any] = {
 # Tool Execution
 # ---------------------------------------------------------------------------
 
-async def execute_image_gen_tool(
-    args: dict, agent: Agent, db: AsyncSession,
-) -> str:
-    """Execute the generate_image tool.
-
-    Looks up image provider from DB, dispatches to the correct generator,
-    returns markdown image references.
-    """
+async def _execute_image_gen_tool(args: dict, agent: Agent, db: AsyncSession) -> str:
     prompt = args.get("prompt", "")
     aspect_ratio = args.get("aspect_ratio")
     n = min(max(args.get("n", 1), 1), 4)
@@ -151,44 +139,85 @@ async def execute_image_gen_tool(
     provider_id = cfg.get("image_provider_id")
     model = cfg.get("image_model", "")
 
-    # DB lookup for image provider
     result = await db.execute(
         select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
     )
     provider = result.scalar_one_or_none()
 
-    if not provider:
-        return json.dumps({"error": f"Image provider {provider_id} not found or inactive"})
+    return json.dumps({"error": f"Image provider {provider_id} not found or inactive"}) if not provider else (
+        await _do_generate(provider, model, prompt, aspect_ratio, n, cfg)
+    )
 
-    # Resolve image config via adapter (unified → provider-specific)
+
+async def _do_generate(provider, model: str, prompt: str, aspect_ratio: str | None, n: int, cfg: dict) -> str:
     adapted = to_provider_config(provider.provider_type.lower(), cfg)
 
-    # Override aspect_ratio if tool args specified
     _img_cfg = (adapted.get("image_config") or {}).copy() if adapted else {}
     aspect_ratio and _img_cfg.update(aspect_ratio=aspect_ratio)
     adapted_with_override = {**adapted, "image_config": _img_cfg} if adapted else {"image_config": _img_cfg}
 
-    # Dispatch to provider-specific generator
     generator = _IMAGE_GENERATORS.get(provider.provider_type.lower())
-    if not generator:
-        return json.dumps({"error": f"Unsupported image provider type: {provider.provider_type}"})
+    return json.dumps({"error": f"Unsupported image provider type: {provider.provider_type}"}) if not generator else (
+        await _run_generator(generator, provider, model, prompt, adapted_with_override, n)
+    )
 
+
+async def _run_generator(generator, provider, model: str, prompt: str, config: dict, n: int) -> str:
     try:
         image_urls = await generator(
             api_key=provider.api_key,
             base_url=provider.base_url,
             model=model,
             prompt=prompt,
-            config=adapted_with_override,
+            config=config,
             n=n,
         )
     except Exception as e:
         logger.error("generate_image tool error: %s", e)
         return json.dumps({"error": f"Image generation failed: {str(e)}"})
 
-    if not image_urls:
-        return "No images were generated. The request may have been filtered by content moderation."
+    return (
+        "No images were generated. The request may have been filtered by content moderation."
+        if not image_urls
+        else f"Generated {len(image_urls)} image(s):\n\n"
+             + "\n\n".join(f"![image]({url})" for url in image_urls)
+    )
 
-    # Format as markdown image references
-    images_md = "\n\n".join(f"![image]({url})" for url in image_urls)
-    return f"Generated {len(image_urls)} image(s):\n\n{images_md}"
+
+# ---------------------------------------------------------------------------
+# ImageGenProvider class
+# ---------------------------------------------------------------------------
+
+class ImageGenProvider:
+    """Provider for AI image generation tool."""
+
+    display_name = "图像生成"
+    description = "AI 图像生成（文本到图像）"
+    condition = "需要启用 image_config 且供应商支持 tool-based 生成"
+
+    @property
+    def tool_names(self) -> frozenset[str]:
+        return frozenset({IMAGE_GEN_TOOL_NAME})
+
+    async def build_defs(self, ctx: ToolContext) -> list[dict]:
+        eligible = _check_agent_eligible(ctx.agent)
+        provider_type = await ctx.resolve_image_provider_type() if eligible else None
+        is_tool_gen = provider_type and provider_type in _TOOL_GEN_PROVIDERS
+        return [_build_image_gen_tool_def()] if is_tool_gen else []
+
+    async def execute(self, name: str, args: dict, ctx: ToolContext) -> str:
+        return await _execute_image_gen_tool(args, ctx.agent, ctx.db)
+
+    def rebuild_defs(self, ctx: ToolContext) -> list[dict] | None:
+        return None
+
+    def get_tool_metadata(self) -> list[dict]:
+        """Return static metadata for registry display."""
+        d = _build_image_gen_tool_def()
+        return [
+            {
+                "name": d["function"]["name"],
+                "description": d["function"]["description"],
+                "parameters": d["function"]["parameters"],
+            }
+        ]

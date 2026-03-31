@@ -453,3 +453,23 @@ class AdminDebugMessage(Base):
     content = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ToolExecution(Base):
+    """工具执行日志 — 记录每次工具调用的详细信息"""
+    __tablename__ = "tool_executions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    tool_name = Column(String(100), nullable=False, index=True)
+    provider_name = Column(String(50), nullable=False, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True, index=True)
+    session_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(String(36), nullable=True, index=True)
+    is_admin = Column(Boolean, default=False)
+    theater_id = Column(String(36), nullable=True)
+    arguments = Column(JSON, nullable=True)
+    result_summary = Column(Text, nullable=True)
+    status = Column(String(20), default="success", index=True)
+    error_message = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)

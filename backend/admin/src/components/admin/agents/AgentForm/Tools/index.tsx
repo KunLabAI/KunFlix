@@ -8,6 +8,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import Skills from './Skills';
 import MCPClients from './MCPClients';
+import ToolCapabilities from './ToolCapabilities';
 
 const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const { control, watch } = useFormContext();
@@ -43,6 +44,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
         <div className="space-y-2">
           <Skills disabled={disabled} />
           <MCPClients disabled={disabled} />
+          <ToolCapabilities />
         </div>
       ) : (
         <p className="text-xs text-muted-foreground border-t pt-4">

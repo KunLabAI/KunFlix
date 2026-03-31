@@ -279,3 +279,62 @@ export interface VideoCreateRequest {
     fast_pretreatment?: boolean;  // MiniMax: 快速预处理
   };
 }
+
+// ---------------------------------------------------------------------------
+// Tool Management types
+// ---------------------------------------------------------------------------
+export interface ToolMetadata {
+  name: string;
+  description: string;
+  parameters: Record<string, any>;
+}
+
+export interface ToolProviderInfo {
+  provider_name: string;
+  display_name: string;
+  description: string;
+  condition: string;
+  tools: ToolMetadata[];
+}
+
+export interface AgentToolUsage {
+  agent_id: string;
+  agent_name: string;
+  skills: string[];
+  canvas_enabled: boolean;
+  canvas_node_types: string[];
+  image_gen_enabled: boolean;
+}
+
+export interface ToolStats {
+  total_executions: number;
+  total_errors: number;
+  error_rate: number;
+  avg_duration_ms: number | null;
+  by_tool: { tool_name: string; count: number; avg_duration_ms: number | null }[];
+  by_provider: { provider_name: string; count: number }[];
+}
+
+export interface ToolExecution {
+  id: string;
+  tool_name: string;
+  provider_name: string;
+  agent_id: string | null;
+  session_id: string | null;
+  user_id: string | null;
+  is_admin: boolean;
+  theater_id: string | null;
+  arguments: Record<string, any> | null;
+  result_summary: string | null;
+  status: 'success' | 'error';
+  error_message: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface ToolExecutionListResponse {
+  items: ToolExecution[];
+  total: number;
+  skip: number;
+  limit: number;
+}

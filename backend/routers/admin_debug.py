@@ -24,12 +24,11 @@ from schemas import (
 )
 from auth import get_current_active_admin, is_admin_entity
 from services.llm_stream import stream_completion
-from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
-from services.base_tools import build_base_tool_defs
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, CreditTransaction as BillingCreditTransaction
 from services.image_config_adapter import resolve_image_configs
-from services.image_gen_tools import build_image_gen_tool_def_list, IMAGE_GEN_TOOL_NAME
+from services.tool_manager import ToolManager, ToolContext, IMAGE_GEN_TOOL_NAME
+from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
 from services.chat_utils import (
     sse, serialize_content, deserialize_content,
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
@@ -327,21 +326,22 @@ async def _generate_single_agent_debug(
                 last_msg = messages[-1]
                 (last_msg.get("role") == "user") and inject_image_to_message(last_msg, data_url)
 
-    # 工具配置
-    agent_tools = agent.tools or []
-    tool_defs = None
-    active_skills_dir = None
-    base_defs = []
-    image_gen_defs = build_image_gen_tool_def_list(agent)
-    if agent_tools or image_gen_defs:
-        from skills_manager import get_active_skills_dir
-        active_skills_dir = get_active_skills_dir()
-        skill_prompt = build_skill_prompt(agent_tools, active_skills_dir)
-        (skill_prompt and messages and messages[0].get("role") == "system"
-         and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
-        base_defs = build_base_tool_defs()
-        skill_defs = [build_load_skill_tool_def(agent_tools)] if agent_tools else []
-        tool_defs = base_defs + image_gen_defs + skill_defs
+    # 工具配置（统一工具管理器，调试模式 theater_id=None）
+    tool_manager = ToolManager()
+    ctx = ToolContext(theater_id=None, agent=agent, db=db,
+                      session_id=session_id, user_id=admin_id, is_admin=True)
+    agent_skills = agent.tools or []
+    loaded_skills: set[str] = set()
+    tool_defs = await tool_manager.build_tool_defs(ctx)
+
+    # 技能系统（与工具同级，独立编排）
+    remaining_skills = list(agent_skills)
+    remaining_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(remaining_skills)])
+
+    # 注入轻量技能索引到 system prompt
+    skill_prompt = build_skill_prompt(agent_skills, ctx.active_skills_dir) if agent_skills else ""
+    (skill_prompt and messages and messages[0].get("role") == "system"
+     and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
 
     # 计算输入字符数
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -354,14 +354,13 @@ async def _generate_single_agent_debug(
     logger.info(f"Session: {session_id} | Admin: {admin_id}")
     logger.info(f"History: {len(history)} | Input chars: {input_chars}")
     logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
-    logger.info(f"Skills: {agent_tools or 'none'}")
+    logger.info(f"Skills: {agent.tools or 'none'}")
     logger.info(f"Current message: {content}")
     logger.info(f"{'-'*60}")
 
     # 调用 LLM 流式接口
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     MAX_TOOL_ROUNDS = 5
-    loaded_skills: set[str] = set()
     all_tool_calls = []
     tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
@@ -409,9 +408,9 @@ async def _generate_single_agent_debug(
                 )
                 yield sse(_SSE_START[is_skill], event_data)
 
-            # 执行工具调用并追加结果到消息（调试模式不使用画布，theater_id=None）
+            # 执行工具调用并追加结果到消息
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
-            await append_tool_round(messages, result, active_skills_dir, is_anthropic, None, agent, db)
+            await append_tool_round(messages, result, tool_manager, ctx, is_anthropic)
 
             # 累计 generate_image 工具产生的图片数（用于计费）
             tool_generated_image_count += sum(
@@ -420,12 +419,15 @@ async def _generate_single_agent_debug(
                 if tc.name == IMAGE_GEN_TOOL_NAME
             )
 
-            # 记录已加载的技能
+            # 追踪已加载的技能
             for tc in result.tool_calls:
-                tc.name == "load_skill" and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
-            remaining = [s for s in agent_tools if s not in loaded_skills]
-            skill_defs = [build_load_skill_tool_def(remaining)] if remaining else []
-            tool_defs = base_defs + image_gen_defs + skill_defs
+                (tc.name == "load_skill") and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+
+            # 重建工具定义（技能 enum 自动缩减）
+            remaining_skills = [s for s in agent_skills if s not in loaded_skills]
+            rebuilt_tool_defs = tool_manager.rebuild_after_round(ctx)
+            tool_defs = (rebuilt_tool_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            tool_defs = tool_defs or None
 
             # 发送 tool 完成事件
             for tc in result.tool_calls:
