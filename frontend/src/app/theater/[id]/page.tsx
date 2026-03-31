@@ -33,6 +33,7 @@ import { Card } from '@/components/ui/card';
 import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film, Music } from 'lucide-react';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import { useCanvasSnapping } from './hooks/useCanvasSnapping';
+import { useNodeDragToAI } from './hooks/useNodeDragToAI';
 
 const nodeTypes = {
   text: ScriptNode,
@@ -92,7 +93,30 @@ function InfiniteCanvas() {
   } = useCanvasStore();
 
   const { isLayouting, handleAutoLayout } = useAutoLayout();
-  const { alignmentLines, onNodeDrag, onNodeDragStop } = useCanvasSnapping(snapToGuides);
+  const { alignmentLines, onNodeDrag: onSnappingDrag, onNodeDragStop: onSnappingDragStop } = useCanvasSnapping(snapToGuides);
+  const { onNodeDragStart: onAIDragStart, onNodeDrag: onAIDrag, onNodeDragStop: onAIDragStop } = useNodeDragToAI();
+
+  // 组合拖拽回调：对齐吸附 + AI面板检测
+  const composedOnNodeDragStart = useCallback(
+    (event: React.MouseEvent, node: any, nodes: any[]) => {
+      onAIDragStart(event, node);
+    },
+    [onAIDragStart]
+  );
+  const composedOnNodeDrag = useCallback(
+    (event: React.MouseEvent, node: any, nodes: any[]) => {
+      onSnappingDrag(event, node);
+      onAIDrag(event, node);
+    },
+    [onSnappingDrag, onAIDrag]
+  );
+  const composedOnNodeDragStop = useCallback(
+    (event: React.MouseEvent, node: any, nodes: any[]) => {
+      onSnappingDragStop();
+      onAIDragStop(event, node);
+    },
+    [onSnappingDragStop, onAIDragStop]
+  );
 
   // Auto-save logic
   useEffect(() => {
@@ -716,8 +740,9 @@ function InfiniteCanvas() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onConnectEnd={onConnectEnd}
-          onNodeDrag={onNodeDrag}
-          onNodeDragStop={onNodeDragStop}
+          onNodeDragStart={composedOnNodeDragStart}
+          onNodeDrag={composedOnNodeDrag}
+          onNodeDragStop={composedOnNodeDragStop}
           onMove={(_, viewport) => setViewportState(viewport)}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}

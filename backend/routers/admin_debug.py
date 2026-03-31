@@ -12,9 +12,6 @@ from sqlalchemy import delete
 from typing import List, Optional, Any
 import logging
 import json
-import base64
-import mimetypes
-import re
 
 from database import get_db, AsyncSessionLocal
 from models import (
@@ -27,80 +24,19 @@ from schemas import (
 )
 from auth import get_current_active_admin, is_admin_entity
 from services.llm_stream import stream_completion
-from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
-from services.base_tools import build_base_tool_defs, execute_base_tool
-from services.canvas_tools import build_canvas_tool_defs, CANVAS_TOOL_NAMES
+from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
+from services.base_tools import build_base_tool_defs
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, CreditTransaction as BillingCreditTransaction
-from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_image_configs
-from services.image_gen_tools import build_image_gen_tool_def_list, execute_image_gen_tool, IMAGE_GEN_TOOL_NAME
+from services.image_gen_tools import build_image_gen_tool_def_list, IMAGE_GEN_TOOL_NAME
+from services.chat_utils import (
+    sse, serialize_content, deserialize_content,
+    get_last_image_path, image_file_to_data_url, inject_image_to_message,
+)
+from services.chat_tool_dispatch import append_tool_round
 
 logger = logging.getLogger(__name__)
-
-
-def _sse(event: str, data: dict) -> str:
-    """Format a Server-Sent Event."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
-def _serialize_content(content: Any) -> str:
-    """序列化消息内容：列表转 JSON 字符串，字符串保持原样"""
-    return json.dumps(content, ensure_ascii=False) if isinstance(content, list) else str(content)
-
-
-def _deserialize_content(content: str) -> Any:
-    """反序列化消息内容：尝试解析 JSON，失败则返回原字符串"""
-    try:
-        parsed = json.loads(content)
-        return parsed if isinstance(parsed, (list, dict)) else content
-    except (json.JSONDecodeError, TypeError):
-        return content
-
-
-_IMAGE_MD_PATTERN = re.compile(r"!\[image\]\((/api/media/[^)]+)\)")
-
-
-def _get_last_image_path(history) -> str | None:
-    """从历史消息中找到最后一张助手图片对应的本地文件路径"""
-    for msg in reversed(history):
-        if getattr(msg, "role", None) != "assistant":
-            continue
-        content = getattr(msg, "content", "") or ""
-        if not isinstance(content, str):
-            continue
-        m = _IMAGE_MD_PATTERN.search(content)
-        if m:
-            url = m.group(1)  # /api/media/xxxx.png
-            filename = url.rsplit("/", 1)[-1]
-            return str(MEDIA_DIR / filename)
-    return None
-
-
-def _image_file_to_data_url(path: str) -> str | None:
-    """读取本地图片文件并转换为 data URL，供 Gemini image_url 使用"""
-    from pathlib import Path
-
-    file_path = Path(path)
-    if not file_path.exists():
-        return None
-
-    mime, _ = mimetypes.guess_type(str(file_path))
-    mime = mime or "image/png"
-    data = file_path.read_bytes()
-    b64 = base64.b64encode(data).decode("ascii")
-    return f"data:{mime};base64,{b64}"
-
-
-def _inject_image_to_message(msg: dict, data_url: str):
-    """将图片 data_url 注入到用户消息的 content 中"""
-    user_content = msg.get("content")
-    _builders = {
-        str:  lambda c: [{"type": "image_url", "image_url": {"url": data_url}}, {"type": "text", "text": c}],
-        list: lambda c: [{"type": "image_url", "image_url": {"url": data_url}}] + list(c),
-    }
-    builder = _builders.get(type(user_content), lambda c: [{"type": "image_url", "image_url": {"url": data_url}}])
-    msg["content"] = builder(user_content)
 
 
 router = APIRouter(
@@ -194,7 +130,7 @@ async def get_debug_session_messages(
     # 反序列化多模态消息内容
     messages_resp = []
     for msg in result.scalars().all():
-        deserialized = _deserialize_content(msg.content)
+        deserialized = deserialize_content(msg.content)
         if msg.role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
             messages_resp.append({
                 "id": msg.id,
@@ -242,7 +178,7 @@ async def send_debug_message(
     user_msg = AdminDebugMessage(
         session_id=session_id, 
         role="user", 
-        content=_serialize_content(message.content)
+        content=serialize_content(message.content)
     )
     db.add(user_msg)
     await db.commit()
@@ -288,7 +224,7 @@ async def _generate_multi_agent_debug(
     history_messages = []
     for msg in history[:-1]:
         role = msg.role if msg.role in ["user", "assistant"] else "user"
-        deserialized = _deserialize_content(msg.content)
+        deserialized = deserialize_content(msg.content)
         content_val = (
             deserialized.get("text") or ""
             if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized
@@ -315,8 +251,7 @@ async def _generate_multi_agent_debug(
         yield event.to_sse()
 
     # 发送完成事件
-    from routers.chats import _sse
-    yield _sse("done", {})
+    yield sse("done", {})
 
     # 保存最终的助手消息
     if final_result:
@@ -370,7 +305,7 @@ async def _generate_single_agent_debug(
 
     for msg in history:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
-        deserialized = _deserialize_content(msg.content)
+        deserialized = deserialize_content(msg.content)
         if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
             content_val = deserialized.get("text") or ""
         else:
@@ -385,22 +320,19 @@ async def _generate_single_agent_debug(
     }
     _edit_checker = _IMAGE_EDIT_ENABLED.get(provider.provider_type.lower(), lambda a: False)
     if edit_last_image and _edit_checker(agent):
-        last_image_path = _get_last_image_path(history)
+        last_image_path = get_last_image_path(history)
         if last_image_path is not None:
-            data_url = _image_file_to_data_url(last_image_path)
+            data_url = image_file_to_data_url(last_image_path)
             if data_url and messages:
                 last_msg = messages[-1]
-                (last_msg.get("role") == "user") and _inject_image_to_message(last_msg, data_url)
+                (last_msg.get("role") == "user") and inject_image_to_message(last_msg, data_url)
 
     # 工具配置
     agent_tools = agent.tools or []
     tool_defs = None
     active_skills_dir = None
     base_defs = []
-    canvas_defs = []
     image_gen_defs = build_image_gen_tool_def_list(agent)
-    has_canvas_context = False  # 调试模式不使用画布上下文
-    canvas_defs = []
     if agent_tools or image_gen_defs:
         from skills_manager import get_active_skills_dir
         active_skills_dir = get_active_skills_dir()
@@ -457,7 +389,7 @@ async def _generate_single_agent_debug(
                 tools=current_tools,
                 xai_image_config=_eff_xai,
             ):
-                yield _sse("text", {"chunk": chunk})
+                yield sse("text", {"chunk": chunk})
 
             # 无 tool_calls → 直接结束
             if not (result and result.tool_calls):
@@ -475,11 +407,11 @@ async def _generate_single_agent_debug(
                     if is_skill else
                     {"tool_name": tc.name, "arguments": args}
                 )
-                yield _sse(_SSE_START[is_skill], event_data)
+                yield sse(_SSE_START[is_skill], event_data)
 
-            # 执行工具调用并追加结果到消息
+            # 执行工具调用并追加结果到消息（调试模式不使用画布，theater_id=None）
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
-            await _append_tool_round_debug(messages, result, active_skills_dir, is_anthropic, agent, db)
+            await append_tool_round(messages, result, active_skills_dir, is_anthropic, None, agent, db)
 
             # 累计 generate_image 工具产生的图片数（用于计费）
             tool_generated_image_count += sum(
@@ -504,14 +436,14 @@ async def _generate_single_agent_debug(
                     if is_skill else
                     {"tool_name": tc.name, "success": True}
                 )
-                yield _sse(_SSE_END[is_skill], event_data)
+                yield sse(_SSE_END[is_skill], event_data)
 
-        yield _sse("done", {})
+        yield sse("done", {})
 
     except Exception as e:
         generation_failed = True
         logger.error(f"LLM generation failed: {e}")
-        yield _sse("error", {"message": str(e)})
+        yield sse("error", {"message": str(e)})
 
     # 生成失败时不保存消息
     if generation_failed or not result:
@@ -599,93 +531,6 @@ async def _generate_single_agent_debug(
             await session.commit()
         except Exception as e:
             logger.error(f"Failed to save debug message: {e}")
-
-
-async def _append_tool_round_debug(
-    messages: list, result, active_skills_dir, is_anthropic: bool,
-    agent: Agent, db: AsyncSession
-):
-    """执行工具调用并追加结果到消息（调试模式）"""
-    _FORMAT_HANDLERS = {
-        True: _append_anthropic_tool_round_debug,
-        False: _append_openai_tool_round_debug,
-    }
-    await _FORMAT_HANDLERS[is_anthropic](messages, result, active_skills_dir, agent, db)
-
-
-async def _append_anthropic_tool_round_debug(
-    messages: list, result, active_skills_dir,
-    agent: Agent, db: AsyncSession
-):
-    """Anthropic format: assistant content blocks + user tool_result blocks（调试模式）"""
-    import json
-    assistant_blocks = []
-    result.full_response and assistant_blocks.append({"type": "text", "text": result.full_response})
-    for tc in result.tool_calls:
-        args = json.loads(tc.arguments)
-        assistant_blocks.append({
-            "type": "tool_use", "id": tc.id, "name": tc.name, "input": args,
-        })
-    messages.append({"role": "assistant", "content": assistant_blocks})
-
-    tool_results = []
-    for tc in result.tool_calls:
-        args = json.loads(tc.arguments)
-        content = await _get_tool_result_debug(tc.name, args, active_skills_dir, agent, db)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
-        tool_results.append({
-            "type": "tool_result", "tool_use_id": tc.id, "content": content,
-        })
-    messages.append({"role": "user", "content": tool_results})
-    result.full_response = ""
-
-
-async def _append_openai_tool_round_debug(
-    messages: list, result, active_skills_dir,
-    agent: Agent, db: AsyncSession
-):
-    """OpenAI format: assistant message with tool_calls + tool role messages（调试模式）"""
-    import json
-    assistant_msg = {
-        "role": "assistant",
-        "content": result.full_response or None,
-        "tool_calls": [
-            {
-                "id": tc.id, "type": "function",
-                "function": {"name": tc.name, "arguments": tc.arguments},
-                "thought_signature": tc.thought_signature,
-            }
-            for tc in result.tool_calls
-        ],
-    }
-    messages.append(assistant_msg)
-
-    for tc in result.tool_calls:
-        args = json.loads(tc.arguments)
-        content = await _get_tool_result_debug(tc.name, args, active_skills_dir, agent, db)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
-        messages.append({
-            "role": "tool", "tool_call_id": tc.id, "content": content,
-        })
-    result.full_response = ""
-
-
-async def _get_tool_result_debug(
-    tc_name: str, tc_args: dict, active_skills_dir, agent: Agent, db: AsyncSession
-) -> str:
-    """Dispatch tool execution by name（调试模式 - 不包含画布工具）"""
-    # 异步工具派发表
-    _ASYNC_DISPATCHERS = {
-        IMAGE_GEN_TOOL_NAME: lambda: execute_image_gen_tool(tc_args, agent, db),
-    }
-    async_handler = _ASYNC_DISPATCHERS.get(tc_name)
-    if async_handler:
-        return await async_handler()
-    _DISPATCH = {
-        "load_skill": lambda args: load_skill_content(args.get("skill_name", ""), active_skills_dir),
-    }
-    handler = _DISPATCH.get(tc_name) or (lambda args: execute_base_tool(tc_name, args))
-    return handler(tc_args)
 
 
 @router.delete("/sessions/{session_id}")

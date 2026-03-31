@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Sparkles, X, ImageIcon } from 'lucide-react';
+import { Sparkles, X, ImageIcon, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,6 +21,21 @@ import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistan
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
 import { usePerformanceMonitor } from '@/components/ai-assistant';
+import { NodePreviewCard } from '@/components/ai-assistant/NodePreviewCard';
+import type { NodeAttachment } from '@/store/useAIAssistantStore';
+
+// 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
+const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment, userMsg: string) => string> = {
+  text: (a, msg) => `[引用文本卡「${a.label}」]\n内容摘要：${a.excerpt || '（空）'}\n\n${msg}`,
+  image: (a, msg) => `[引用图片卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}${msg}`,
+  video: (a, msg) => `[引用视频卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}${msg}`,
+  storyboard: (a, msg) => `[引用分镜卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}时长：${a.meta?.duration ?? ''}秒\n\n${msg}`,
+};
+
+function buildAttachmentContext(attachment: NodeAttachment, userMessage: string): string {
+  const builder = ATTACHMENT_CONTEXT_BUILDERS[attachment.nodeType];
+  return builder?.(attachment, userMessage) ?? `[引用节点「${attachment.label}」]\n\n${userMessage}`;
+}
 
 export function AIAssistantPanel() {
   // 登录状态
@@ -45,6 +60,11 @@ export function AIAssistantPanel() {
   // 图像编辑上下文
   const imageEditContext = useAIAssistantStore((state) => state.imageEditContext);
   const clearImageEditContext = useAIAssistantStore((state) => state.clearImageEditContext);
+
+  // 节点附件（从画布拖拽）
+  const nodeAttachment = useAIAssistantStore((state) => state.nodeAttachment);
+  const clearNodeAttachment = useAIAssistantStore((state) => state.clearNodeAttachment);
+  const isDragOverPanel = useAIAssistantStore((state) => state.isDragOverPanel);
 
   // 上下文使用统计
   const contextUsage = useAIAssistantStore((state) => state.contextUsage);
@@ -168,6 +188,9 @@ export function AIAssistantPanel() {
       setMessages((prev) => [...prev, { role: 'user', content, status: 'complete' }]);
       setIsLoading(true);
 
+      // 构建附件上下文（拼入消息正文，确保 AI 能感知节点内容）
+      const attachmentContext = nodeAttachment ? buildAttachmentContext(nodeAttachment, content) : content;
+
       // 取消之前的请求
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
@@ -181,11 +204,16 @@ export function AIAssistantPanel() {
           },
           body: JSON.stringify({
             role: 'user',
-            content,
+            content: attachmentContext,
             theater_id: theaterId,
             ...(imageEditContext && {
               target_node_id: imageEditContext.nodeId,
               edit_image_url: imageEditContext.imageUrl,
+            }),
+            ...(nodeAttachment && {
+              target_node_id: nodeAttachment.nodeId,
+              // 图片/视频节点复用 edit_image_url（后端已支持）
+              ...(nodeAttachment.thumbnailUrl && { edit_image_url: nodeAttachment.thumbnailUrl }),
             }),
           }),
           signal: abortControllerRef.current.signal,
@@ -241,9 +269,10 @@ export function AIAssistantPanel() {
       } finally {
         setIsLoading(false);
         clearImageEditContext();
+        clearNodeAttachment();
       }
     },
-    [sessionId, agentId, theaterId, imageEditContext, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext]
+    [sessionId, agentId, theaterId, imageEditContext, nodeAttachment, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachment]
   );
 
   // 调整面板大小
@@ -377,8 +406,9 @@ export function AIAssistantPanel() {
               x: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
               y: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
             }}
-            className="pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default"
+            className={`pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default ${isDragOverPanel ? 'ring-2 ring-primary' : ''}`}
             style={{ touchAction: 'none', borderRadius: 12 }}
+            data-ai-panel-dropzone
           >
             {/* 头部 */}
             <PanelHeader
@@ -391,6 +421,22 @@ export function AIAssistantPanel() {
 
             {/* 消息列表 - 使用虚拟滚动 */}
             <div className="flex-1 relative bg-muted/10 h-full min-h-0">
+              {/* 拖拽悬停覆盖层 */}
+              <AnimatePresence>
+                {isDragOverPanel && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute inset-0 z-30 bg-primary/10 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none"
+                  >
+                    <Paperclip className="h-8 w-8 text-primary mb-2" />
+                    <span className="text-sm font-medium text-primary">释放以附加到对话</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               <VirtualMessageList
                 ref={virtualListRef}
                 messages={messages}
@@ -440,6 +486,11 @@ export function AIAssistantPanel() {
               </div>
             )}
 
+            {/* 节点附件预览 */}
+            {nodeAttachment && (
+              <NodePreviewCard attachment={nodeAttachment} onClear={clearNodeAttachment} />
+            )}
+
             {/* 输入区域（包含Agent选择器和发送按钮） */}
             <MessageInput
               onSend={handleSend}
@@ -448,6 +499,7 @@ export function AIAssistantPanel() {
               availableAgents={availableAgents}
               isLoadingAgents={isLoadingAgents}
               onSwitchAgent={switchAgent}
+              placeholder={nodeAttachment ? '描述你对这个节点的需求...' : undefined}
             />
 
             {/* 调整大小手柄 - 四边和四角 */}

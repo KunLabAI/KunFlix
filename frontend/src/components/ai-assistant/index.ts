@@ -29,6 +29,7 @@ export { MessageChunk, useMessageChunking } from './MessageChunk';
 export { PanelHeader } from './PanelHeader';
 export { MessageInput } from './MessageInput';
 export { ContextUsageBar } from './ContextUsageBar';
+export { NodePreviewCard } from './NodePreviewCard';
 
 // Hooks
 export { useSSEHandler } from './hooks/useSSEHandler';

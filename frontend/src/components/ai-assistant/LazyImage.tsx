@@ -71,12 +71,12 @@ export function LazyImage({
   }
 
   return (
-    <div className={cn('relative overflow-hidden', className)}>
+    <span className={cn('relative overflow-hidden block', className)}>
       {/* 占位符 */}
       {!isLoaded && !hasError && (
-        <div
+        <span
           className={cn(
-            'absolute inset-0 bg-muted animate-pulse rounded-lg',
+            'absolute inset-0 bg-muted animate-pulse rounded-lg block',
             placeholderClassName
           )}
         />
@@ -99,11 +99,11 @@ export function LazyImage({
       
       {/* 错误状态 */}
       {hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded-lg text-muted-foreground text-xs">
+        <span className="absolute inset-0 flex items-center justify-center bg-muted rounded-lg text-muted-foreground text-xs">
           图片加载失败
-        </div>
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 

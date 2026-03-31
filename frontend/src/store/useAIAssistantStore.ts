@@ -73,6 +73,16 @@ export interface ImageEditContext {
   nodeName: string;
 }
 
+// 拖拽附件节点数据（从画布拖拽到 AI 面板）
+export interface NodeAttachment {
+  nodeId: string;
+  nodeType: string;       // 'text' | 'image' | 'video' | 'storyboard'
+  label: string;          // 显示标题
+  excerpt: string;        // 文本摘要或描述
+  thumbnailUrl: string | null;  // 图片/视频缩略图URL
+  meta: Record<string, unknown>; // 额外元数据
+}
+
 // 上下文使用统计
 export interface ContextUsage {
   usedTokens: number;
@@ -106,6 +116,12 @@ interface AIAssistantState {
   
   // Image edit context (from canvas node AI edit)
   imageEditContext: ImageEditContext | null;
+  
+  // Node attachment (from canvas drag to AI panel)
+  nodeAttachment: NodeAttachment | null;
+  
+  // Drag-over visual feedback
+  isDragOverPanel: boolean;
   
   // Context usage stats
   contextUsage: ContextUsage | null;
@@ -149,6 +165,13 @@ interface AIAssistantState {
   setImageEditContext: (ctx: ImageEditContext | null) => void;
   clearImageEditContext: () => void;
   
+  // Node attachment
+  setNodeAttachment: (attachment: NodeAttachment | null) => void;
+  clearNodeAttachment: () => void;
+  
+  // Drag-over state
+  setIsDragOverPanel: (isDragging: boolean) => void;
+  
   // Context usage
   setContextUsage: (usage: ContextUsage | null) => void;
   
@@ -179,6 +202,8 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       panelSize: { ...DEFAULT_PANEL_SIZE },
       panelPosition: { ...DEFAULT_PANEL_POSITION },
       imageEditContext: null,
+      nodeAttachment: null,
+      isDragOverPanel: false,
       contextUsage: null,
       scrollBehavior: 'smooth',
       overscanCount: 5,
@@ -278,9 +303,16 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       setPanelPosition: (panelPosition: { x: number; y: number }) => set({ panelPosition }),
       resetPanelPosition: () => set({ panelPosition: { ...DEFAULT_PANEL_POSITION } }),
 
-      // Image edit context
-      setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext }),
+      // Image edit context (互斥：清除 nodeAttachment)
+      setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext, nodeAttachment: null }),
       clearImageEditContext: () => set({ imageEditContext: null }),
+
+      // Node attachment (互斥：清除 imageEditContext)
+      setNodeAttachment: (nodeAttachment: NodeAttachment | null) => set({ nodeAttachment, imageEditContext: null }),
+      clearNodeAttachment: () => set({ nodeAttachment: null }),
+      
+      // Drag-over state
+      setIsDragOverPanel: (isDragOverPanel: boolean) => set({ isDragOverPanel }),
 
       // Context usage
       setContextUsage: (contextUsage: ContextUsage | null) => set({ contextUsage }),
