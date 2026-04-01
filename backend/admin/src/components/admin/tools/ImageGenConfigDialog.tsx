@@ -10,7 +10,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -20,8 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Agent, LLMProvider, ImageProviderCapability } from '@/types';
-import { useUpdateAgent } from '@/hooks/useAgents';
+import { LLMProvider, ImageProviderCapability, ImageGenToolConfigData } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
 
 // 标签映射表
@@ -40,23 +38,24 @@ const OUTPUT_FORMAT_LABELS: Record<string, string> = {
 };
 
 interface ImageGenConfigDialogProps {
-  agent: Agent | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
   providers: LLMProvider[];
   imageCapabilities?: Record<string, ImageProviderCapability>;
+  initialConfig?: ImageGenToolConfigData;
+  onSaveConfig: (config: ImageGenToolConfigData) => Promise<void>;
 }
 
 export default function ImageGenConfigDialog({
-  agent,
   open,
   onOpenChange,
   onSaved,
   providers,
   imageCapabilities,
+  initialConfig,
+  onSaveConfig,
 }: ImageGenConfigDialogProps) {
-  const { updateAgent } = useUpdateAgent();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
 
@@ -69,9 +68,9 @@ export default function ImageGenConfigDialog({
   const [batchCount, setBatchCount] = useState<number | null>(null);
   const [outputFormat, setOutputFormat] = useState<string>('');
 
-  // 从 agent 数据初始化表单
+  // 从初始配置数据初始化表单
   useEffect(() => {
-    const cfg = agent?.image_config;
+    const cfg = initialConfig;
     setEnabled(!!cfg?.image_generation_enabled);
     setProviderId(cfg?.image_provider_id || '');
     setModel(cfg?.image_model || '');
@@ -79,7 +78,7 @@ export default function ImageGenConfigDialog({
     setQuality(cfg?.image_config?.quality || '');
     setBatchCount(cfg?.image_config?.batch_count ?? null);
     setOutputFormat(cfg?.image_config?.output_format || '');
-  }, [agent]);
+  }, [initialConfig]);
 
   // 当前选中供应商类型
   const providerType = useMemo(() => {
@@ -102,22 +101,21 @@ export default function ImageGenConfigDialog({
   );
 
   const handleSave = async () => {
-    const id = agent?.id;
     setSaving(true);
     try {
-      const imageConfig: Record<string, unknown> = {
+      const config: ImageGenToolConfigData = {
         image_generation_enabled: enabled,
         image_provider_id: enabled ? (providerId || null) : null,
         image_model: enabled ? (model || null) : null,
         image_config: enabled ? {
           aspect_ratio: aspectRatio || null,
-          quality: quality || null,
+          quality: (quality as 'standard' | 'hd' | 'ultra') || null,
           batch_count: batchCount,
-          output_format: outputFormat || null,
+          output_format: (outputFormat as 'png' | 'jpeg' | 'webp') || null,
         } : null,
       };
-      await updateAgent(id!, { image_config: imageConfig as any });
-      toast({ title: '保存成功', description: `${agent?.name} 的图像生成配置已更新` });
+      await onSaveConfig(config);
+      toast({ title: '保存成功', description: '图像生成工具配置已更新' });
       onSaved();
       onOpenChange(false);
     } catch (e: any) {
@@ -135,9 +133,9 @@ export default function ImageGenConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>配置图像生成 — {agent?.name}</DialogTitle>
+          <DialogTitle>配置图像生成工具</DialogTitle>
           <DialogDescription>
-            设置该智能体的 generate_image 工具参数
+            设置全局 generate_image 工具参数（所有智能体共享此配置）
           </DialogDescription>
         </DialogHeader>
 
@@ -203,7 +201,7 @@ export default function ImageGenConfigDialog({
                       <SelectValue placeholder={caps ? "选择" : "请先选择供应商"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(caps?.aspect_ratios || []).map(v => (
+                      {(caps?.aspect_ratios || []).map((v: string) => (
                         <SelectItem key={v} value={v}>{ASPECT_RATIO_LABELS[v] || v}</SelectItem>
                       ))}
                     </SelectContent>
@@ -222,7 +220,7 @@ export default function ImageGenConfigDialog({
                       <SelectValue placeholder={caps ? "选择" : "请先选择供应商"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(caps?.qualities || []).map(v => (
+                      {(caps?.qualities || []).map((v: string) => (
                         <SelectItem key={v} value={v}>{QUALITY_LABELS[v] || v}</SelectItem>
                       ))}
                     </SelectContent>
@@ -233,18 +231,22 @@ export default function ImageGenConfigDialog({
               <div className="grid grid-cols-2 gap-3">
                 {/* 批量生成数量 */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">
-                    每次生成张数 (1-{caps?.batch_count?.max ?? 10})
-                  </Label>
-                  <Input
-                    type="number"
-                    value={batchCount ?? ''}
-                    onChange={e => setBatchCount(e.target.value === '' ? null : Number(e.target.value))}
-                    min={1}
-                    max={caps?.batch_count?.max ?? 10}
-                    className="bg-background"
-                    placeholder="默认 1"
-                  />
+                  <Label className="text-xs text-muted-foreground">每次生成张数</Label>
+                  <Select
+                    value={batchCount === null || batchCount === 0 ? 'auto' : String(batchCount)}
+                    onValueChange={val => setBatchCount(val === 'auto' ? 0 : Number(val))}
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="选择" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">自动（智能体决定）</SelectItem>
+                      <SelectItem value="1">1 张</SelectItem>
+                      <SelectItem value="2">2 张</SelectItem>
+                      <SelectItem value="3">3 张</SelectItem>
+                      <SelectItem value="4">4 张</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* 输出格式 */}
@@ -259,7 +261,7 @@ export default function ImageGenConfigDialog({
                         <SelectValue placeholder="选择" />
                       </SelectTrigger>
                       <SelectContent>
-                        {(caps?.output_formats || []).map(v => (
+                        {(caps?.output_formats || []).map((v: string) => (
                           <SelectItem key={v} value={v}>{OUTPUT_FORMAT_LABELS[v] || v}</SelectItem>
                         ))}
                       </SelectContent>

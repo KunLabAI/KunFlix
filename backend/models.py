@@ -455,6 +455,18 @@ class AdminDebugMessage(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ToolConfig(Base):
+    """工具级别配置 — 存储工具的全局配置参数"""
+    __tablename__ = "tool_configs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    tool_name = Column(String(100), unique=True, nullable=False, index=True)  # 如 "generate_image"
+    config = Column(JSON, default=dict)  # 工具特定配置
+    is_enabled = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class ToolExecution(Base):
     """工具执行日志 — 记录每次工具调用的详细信息"""
     __tablename__ = "tool_executions"

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
-    from models import Agent, LLMProvider
+    from models import Agent, LLMProvider, ToolConfig
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,7 @@ class ToolContext:
     _active_skills_dir: Path | None = field(default=None, repr=False)
     _image_provider_type: str | None = field(default=None, repr=False)
     _image_provider_resolved: bool = field(default=False, repr=False)
+    _global_image_config: dict | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------
     # Lazy accessors
@@ -53,6 +54,18 @@ class ToolContext:
         self._active_skills_dir = get_active_skills_dir()
         return self._active_skills_dir
 
+    async def get_global_image_config(self) -> dict:
+        """获取全局图像生成配置（从 ToolConfig 表，带缓存）。"""
+        if self._global_image_config is not None:
+            return self._global_image_config
+        from models import ToolConfig
+        result = await self.db.execute(
+            select(ToolConfig).where(ToolConfig.tool_name == "generate_image")
+        )
+        tool_config = result.scalar_one_or_none()
+        self._global_image_config = (tool_config.config if tool_config else {}) or {}
+        return self._global_image_config
+
     async def resolve_image_provider_type(self) -> str | None:
         """Resolve the image provider's provider_type from DB (cached after first call)."""
         return self._image_provider_type if self._image_provider_resolved else await self._do_resolve_image_provider()
@@ -60,7 +73,9 @@ class ToolContext:
     async def _do_resolve_image_provider(self) -> str | None:
         from models import LLMProvider
         self._image_provider_resolved = True
-        provider_id = (self.agent.image_config or {}).get("image_provider_id")
+        # 从全局 ToolConfig 读取配置
+        global_config = await self.get_global_image_config()
+        provider_id = global_config.get("image_provider_id")
         result = provider_id and await self.db.execute(
             select(LLMProvider).filter(LLMProvider.id == provider_id)
         )

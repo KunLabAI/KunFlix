@@ -172,6 +172,35 @@ def resolve_image_configs(
     return resolver(adapted) if has_unified else (agent.gemini_config, agent.xai_image_config)
 
 
+def resolve_global_image_configs(
+    global_config: dict,
+    agent,
+    provider_type: str,
+) -> tuple[dict | None, dict | None]:
+    """使用全局 ToolConfig 解析有效的图像配置。
+
+    Args:
+        global_config: 从 ToolConfig 表读取的全局图像生成配置
+        agent: Agent 实例（用于读取 legacy 配置）
+        provider_type: 供应商类型
+
+    Returns:
+        (effective_gemini_config, effective_xai_image_config)
+    """
+    has_enabled = global_config.get("image_generation_enabled", False)
+    provider_lower = provider_type.lower()
+
+    _CONFIG_KEY_MAP = {
+        "gemini": lambda u: (_merge_gemini(agent.gemini_config, u), agent.xai_image_config),
+        "xai":    lambda u: (agent.gemini_config, u),
+    }
+    _fallback = lambda u: (agent.gemini_config, agent.xai_image_config)
+
+    adapted = to_provider_config(provider_lower, global_config) if has_enabled else {}
+    resolver = _CONFIG_KEY_MAP.get(provider_lower, _fallback)
+    return resolver(adapted) if has_enabled else (agent.gemini_config, agent.xai_image_config)
+
+
 def _merge_gemini(legacy_config: dict | None, adapted: dict) -> dict:
     """Merge adapted image config into legacy gemini_config, preserving non-image fields."""
     base = dict(legacy_config or {})

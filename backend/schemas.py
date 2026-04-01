@@ -888,3 +888,33 @@ class AdminDebugMessageResponse(AdminDebugMessageBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+# ---------------------------------------------------------------------------
+# Tool Config schemas (工具级别配置)
+# ---------------------------------------------------------------------------
+class ToolConfigBase(BaseModel):
+    """工具配置基类"""
+    tool_name: str = Field(..., max_length=100)
+    config: Dict[str, Any] = Field(default_factory=dict)
+    is_enabled: bool = True
+
+
+class ToolConfigCreate(ToolConfigBase):
+    """创建工具配置"""
+    pass
+
+
+class ToolConfigUpdate(BaseModel):
+    """更新工具配置"""
+    config: Optional[Dict[str, Any]] = None
+    is_enabled: Optional[bool] = None
+
+
+class ToolConfigResponse(ToolConfigBase):
+    """工具配置响应"""
+    id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+

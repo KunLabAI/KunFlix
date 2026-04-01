@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import LLMProvider, Agent
+from models import LLMProvider, Agent, ToolConfig
 from services.xai_image_gen import (
     batch_generate_xai_images,
     XAIBatchImageConfig,
@@ -101,15 +101,21 @@ def _build_image_gen_tool_def(provider_type: str = "") -> dict:
 
 
 def _check_agent_eligible(agent: Agent) -> bool:
-    """Check basic eligibility: image_config enabled, provider set, model set, not image-only."""
-    cfg = agent.image_config or {}
-    _checks = (
-        cfg.get("image_generation_enabled"),
-        cfg.get("image_provider_id"),
-        cfg.get("image_model"),
-        agent.model not in _IMAGE_ONLY_MODELS,
+    """Check basic eligibility: agent model is not image-only.
+    
+    Note: Image generation config is now read from ToolConfig (global),
+    not from agent.image_config.
+    """
+    return agent.model not in _IMAGE_ONLY_MODELS
+
+
+async def _get_global_image_config(db: AsyncSession) -> dict:
+    """获取全局图像生成配置（从 ToolConfig 表）。"""
+    result = await db.execute(
+        select(ToolConfig).where(ToolConfig.tool_name == IMAGE_GEN_TOOL_NAME)
     )
-    return all(_checks)
+    tool_config = result.scalar_one_or_none()
+    return (tool_config.config if tool_config else {}) or {}
 
 
 # ---------------------------------------------------------------------------
@@ -171,11 +177,26 @@ _IMAGE_GENERATORS: dict[str, Any] = {
 async def _execute_image_gen_tool(args: dict, agent: Agent, db: AsyncSession) -> str:
     prompt = args.get("prompt", "")
     aspect_ratio = args.get("aspect_ratio")
-    n = min(max(args.get("n", 1), 1), 4)
 
-    cfg = agent.image_config or {}
+    # 从全局 ToolConfig 读取配置
+    cfg = await _get_global_image_config(db)
     provider_id = cfg.get("image_provider_id")
     model = cfg.get("image_model", "")
+    
+    # 从全局配置读取批量生成数量
+    img_cfg = cfg.get("image_config") or {}
+    batch_count = img_cfg.get("batch_count")
+    max_n = 10
+    
+    # batch_count 为 0 或未配置时表示"自动"，由智能体决定数量
+    # 否则使用配置的值
+    auto_mode = not batch_count or batch_count == 0
+    requested_n = args.get("n")
+    n = (
+        min(max(requested_n if requested_n is not None else 1, 1), max_n)
+        if auto_mode
+        else min(max(batch_count, 1), max_n)
+    )
 
     result = await db.execute(
         select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
@@ -231,15 +252,25 @@ class ImageGenProvider:
 
     display_name = "图像生成"
     description = "AI 图像生成（文本到图像，支持多供应商）"
-    condition = "需要启用 image_config 且供应商支持 tool-based 生成"
+    condition = "需要启用全局配置且供应商支持 tool-based 生成"
 
     @property
     def tool_names(self) -> frozenset[str]:
         return frozenset({IMAGE_GEN_TOOL_NAME})
 
     async def build_defs(self, ctx: ToolContext) -> list[dict]:
-        eligible = _check_agent_eligible(ctx.agent)
-        provider_type = await ctx.resolve_image_provider_type() if eligible else None
+        # 检查智能体模型是否支持工具调用
+        if not _check_agent_eligible(ctx.agent):
+            return []
+        
+        # 从全局 ToolConfig 读取配置
+        global_config = await ctx.get_global_image_config()
+        is_enabled = global_config.get("image_generation_enabled", False)
+        
+        if not is_enabled:
+            return []
+        
+        provider_type = await ctx.resolve_image_provider_type()
         is_tool_gen = provider_type and provider_type in _TOOL_GEN_PROVIDERS
         return [_build_image_gen_tool_def(provider_type)] if is_tool_gen else []
 

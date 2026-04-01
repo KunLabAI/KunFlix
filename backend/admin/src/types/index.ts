@@ -321,3 +321,23 @@ export interface ImageProviderCapability {
 }
 
 export type ImageProviderCapabilities = Record<string, ImageProviderCapability>;
+
+// ---------------------------------------------------------------------------
+// Tool Config types (工具级别配置)
+// ---------------------------------------------------------------------------
+export interface ToolConfig {
+  id: string;
+  tool_name: string;
+  config: Record<string, any>;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+// 图像生成工具配置 (generate_image)
+export interface ImageGenToolConfigData extends UnifiedImageGenConfig {}
+
+export interface ImageGenToolConfig extends ToolConfig {
+  tool_name: 'generate_image';
+  config: ImageGenToolConfigData;
+}

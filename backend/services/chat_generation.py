@@ -9,7 +9,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import AsyncSessionLocal
-from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin
+from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, ToolConfig
 from services.chat_utils import (
     sse, deserialize_content, extract_media_filename,
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
@@ -20,7 +20,7 @@ from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, I
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.media_utils import MEDIA_DIR
-from services.image_config_adapter import resolve_image_configs
+from services.image_config_adapter import resolve_global_image_configs
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +67,19 @@ async def generate_single_agent(
             content_val = deserialized
         messages.append({"role": role, "content": content_val})
 
+    # 从全局 ToolConfig 读取图像生成配置
+    from sqlalchemy import select as sql_select
+    global_image_result = await db.execute(
+        sql_select(ToolConfig).where(ToolConfig.tool_name == "generate_image")
+    )
+    global_image_config = global_image_result.scalar_one_or_none()
+    global_image_cfg = (global_image_config.config if global_image_config else {})
+    image_gen_enabled = global_image_cfg.get("image_generation_enabled", False)
+
     # 图片注入：将画布节点的图片或历史图片注入为本轮多模态输入
     # 两条路径：
     #   1. edit_image_url（画布节点附件）→ 始终注入（用于 AI 分析/查看），不依赖 image_generation_enabled
     #   2. edit_last_image（编辑历史图片）→ 仅在 image_generation_enabled 时注入（图片编辑工作流）
-    _IMAGE_EDIT_ENABLED = {
-        "gemini": lambda a: (a.image_config or a.gemini_config or {}).get("image_generation_enabled"),
-        "xai": lambda a: (a.image_config or a.xai_image_config or {}).get("image_generation_enabled"),
-    }
-    _edit_checker = _IMAGE_EDIT_ENABLED.get(provider.provider_type.lower(), lambda a: False)
-
     _edit_image_data_url = None
     # 路径 1：画布节点图片
     _img_filename = None
@@ -84,7 +87,7 @@ async def generate_single_agent(
         _img_filename = extract_media_filename(edit_image_url)
         _img_filename and (_edit_image_data_url := image_file_to_data_url(str(MEDIA_DIR / _img_filename)))
     # 路径 2：历史图片编辑 — 需要 image_generation_enabled
-    elif edit_last_image and _edit_checker(agent):
+    elif edit_last_image and image_gen_enabled:
         last_image_path = get_last_image_path(history)
         last_image_path and (_edit_image_data_url := image_file_to_data_url(last_image_path))
 
@@ -139,8 +142,8 @@ async def generate_single_agent(
             is_last_round = _round == MAX_TOOL_ROUNDS
             current_tools = None if is_last_round else tool_defs
             result = None
-            # 通过适配器解析有效的图像配置
-            _eff_gemini, _eff_xai = resolve_image_configs(agent, provider.provider_type)
+            # 通过适配器解析有效的图像配置（使用全局 ToolConfig）
+            _eff_gemini, _eff_xai = resolve_global_image_configs(global_image_cfg, agent, provider.provider_type)
             async for chunk, result in stream_completion(
                 provider_type=provider.provider_type,
                 api_key=provider.api_key,
@@ -332,13 +335,10 @@ async def generate_single_agent(
     yield sse("billing", billing_event)
 
     # 画布图像桥接：图像生成后自动创建/更新画布节点
-    _image_enabled_check = {
-        "gemini": lambda a: (a.image_config or a.gemini_config or {}).get("image_generation_enabled"),
-        "xai":    lambda a: (a.image_config or a.xai_image_config or {}).get("image_generation_enabled"),
-    }
+    # 使用全局 ToolConfig 判断图像生成是否启用
     _node_types = set(agent.target_node_types or [])
     _has_image_target = bool(_node_types & {"image", "character"})
-    _is_image_enabled = _image_enabled_check.get(provider.provider_type.lower(), lambda a: False)(agent)
+    _is_image_enabled = image_gen_enabled
     _should_bridge = theater_id and _has_image_target and _is_image_enabled and result and result.full_response
 
     if _should_bridge:

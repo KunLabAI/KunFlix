@@ -8,11 +8,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Activity, AlertTriangle, Clock, FileText, Settings2, Paintbrush } from 'lucide-react';
-import { useToolRegistry, useAgentToolUsage, useToolStats, useImageCapabilities } from '@/hooks/useToolRegistry';
-import { useAgents } from '@/hooks/useAgents';
+import { RefreshCw, Activity, AlertTriangle, Clock, FileText, Settings2 } from 'lucide-react';
+import { useToolRegistry, useAgentToolUsage, useToolStats, useImageCapabilities, useToolConfig, useUpdateToolConfig } from '@/hooks/useToolRegistry';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
-import { Agent } from '@/types';
+import { ImageGenToolConfigData } from '@/types';
 import ImageGenConfigDialog from '@/components/admin/tools/ImageGenConfigDialog';
 
 // generate_image 工具可配置参数定义（映射 UnifiedImageGenConfig）
@@ -30,12 +29,12 @@ export default function ToolsPage() {
   const { registry, isLoading: regLoading } = useToolRegistry();
   const { agentUsage, isLoading: usageLoading } = useAgentToolUsage();
   const { stats, isLoading: statsLoading, mutate: refreshStats } = useToolStats();
-  const { agents, mutate: refreshAgents } = useAgents(undefined, 1, 100);
   const { activeProviders } = useLLMProviders();
   const { capabilities: imageCapabilities } = useImageCapabilities();
+  const { config: toolConfig, mutate: refreshToolConfig } = useToolConfig('generate_image');
+  const { updateConfig } = useUpdateToolConfig();
 
   // 图像生成配置 Dialog 状态
-  const [configAgent, setConfigAgent] = useState<Agent | null>(null);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
 
   const isLoading = regLoading || usageLoading || statsLoading;
@@ -45,9 +44,19 @@ export default function ToolsPage() {
     (activeProviders || []).map(p => [p.id, `${p.name} (${p.provider_type})`])
   );
 
-  const handleEditAgent = (agent: Agent) => {
-    setConfigAgent(agent);
+  // 获取全局图像生成配置数据
+  const imageGenConfig: ImageGenToolConfigData | undefined = toolConfig?.config as ImageGenToolConfigData;
+
+  const handleSaveConfig = async (config: ImageGenToolConfigData) => {
+    await updateConfig('generate_image', { config });
+  };
+
+  const handleOpenConfig = () => {
     setConfigDialogOpen(true);
+  };
+
+  const handleSaved = () => {
+    refreshToolConfig();
   };
 
   return (
@@ -145,14 +154,41 @@ export default function ToolsPage() {
                       </Badge>
                     ))}
                   </div>
-                  {/* generate_image 工具可配置参数展示 */}
+                  {/* generate_image 工具配置 */}
                   {provider.tools.some(t => t.name === 'generate_image') && (
                     <div className="mt-3 pt-3 border-t">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Settings2 className="h-4 w-4 text-emerald-500" />
-                        <h5 className="text-sm font-medium text-emerald-600 dark:text-emerald-400">智能体级可配置参数</h5>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-emerald-500" />
+                          <h5 className="text-sm font-medium text-emerald-600 dark:text-emerald-400">工具配置</h5>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleOpenConfig}
+                        >
+                          <Settings2 className="mr-1 h-3.5 w-3.5" />
+                          配置
+                        </Button>
                       </div>
-                      <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant={imageGenConfig?.image_generation_enabled ? 'default' : 'secondary'}>
+                          {imageGenConfig?.image_generation_enabled ? '已启用' : '未启用'}
+                        </Badge>
+                        {imageGenConfig?.image_generation_enabled && (
+                          <span className="text-sm text-muted-foreground">
+                            {providerNameMap.get(imageGenConfig.image_provider_id || '') || '未选择供应商'} · {imageGenConfig.image_model || '未选择模型'}
+                          </span>
+                        )}
+                      </div>
+                      {imageGenConfig?.image_generation_enabled && imageGenConfig.image_config && (
+                        <div className="text-xs text-muted-foreground">
+                          宽高比: {imageGenConfig.image_config.aspect_ratio || '默认'} · 
+                          画质: {imageGenConfig.image_config.quality || '默认'} · 
+                          批量: {!imageGenConfig.image_config.batch_count || imageGenConfig.image_config.batch_count === 0 ? '自动' : `${imageGenConfig.image_config.batch_count}张`}
+                        </div>
+                      )}
+                      <div className="mt-2 space-y-1.5">
                         {IMAGE_GEN_CONFIG_PARAMS.map((param) => (
                           <div key={param.name} className="flex items-center gap-2 text-xs">
                             <code className="bg-muted px-1.5 py-0.5 rounded font-mono shrink-0">{param.name}</code>
@@ -163,77 +199,27 @@ export default function ToolsPage() {
                       </div>
                     </div>
                   )}
+                  {/* edit_image 工具 - 共享配置说明 */}
+                  {provider.tools.some(t => t.name === 'edit_image') && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Settings2 className="h-4 w-4 text-blue-500" />
+                        <h5 className="text-sm font-medium text-blue-600 dark:text-blue-400">工具配置</h5>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        图像编辑工具与「图像生成」共享全局配置。请在上方 ImageGenProvider 中配置。
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant={imageGenConfig?.image_generation_enabled ? 'default' : 'secondary'}>
+                          {imageGenConfig?.image_generation_enabled ? '已启用' : '未启用'}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* ── 图像生成工具配置（per-agent） ── */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Paintbrush className="h-5 w-5 text-emerald-500" />
-            <CardTitle>图像生成工具配置</CardTitle>
-          </div>
-          <CardDescription>
-            配置各智能体的 generate_image 工具参数（供应商、模型、画质等）
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>智能体</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>图像供应商</TableHead>
-                <TableHead>图像模型</TableHead>
-                <TableHead>宽高比</TableHead>
-                <TableHead>画质</TableHead>
-                <TableHead className="text-right">操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(agents || []).map((agent) => {
-                const cfg = agent.image_config;
-                const isEnabled = !!cfg?.image_generation_enabled;
-                const pName = cfg?.image_provider_id ? (providerNameMap.get(cfg.image_provider_id) || cfg.image_provider_id) : '-';
-                return (
-                  <TableRow key={agent.id}>
-                    <TableCell className="font-medium">{agent.name}</TableCell>
-                    <TableCell>
-                      <Badge variant={isEnabled ? 'default' : 'secondary'}>
-                        {isEnabled ? '已启用' : '未启用'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {isEnabled ? pName : '-'}
-                    </TableCell>
-                    <TableCell className="text-sm font-mono text-muted-foreground">
-                      {isEnabled ? (cfg?.image_model || '-') : '-'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {isEnabled ? (cfg?.image_config?.aspect_ratio || '-') : '-'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {isEnabled ? (cfg?.image_config?.quality || '-') : '-'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditAgent(agent)}
-                      >
-                        <Settings2 className="mr-1 h-3.5 w-3.5" />
-                        配置
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
         </CardContent>
       </Card>
 
@@ -329,12 +315,13 @@ export default function ToolsPage() {
 
       {/* 图像生成配置 Dialog */}
       <ImageGenConfigDialog
-        agent={configAgent}
         open={configDialogOpen}
         onOpenChange={setConfigDialogOpen}
-        onSaved={() => refreshAgents()}
+        onSaved={handleSaved}
         providers={activeProviders || []}
         imageCapabilities={imageCapabilities}
+        initialConfig={imageGenConfig}
+        onSaveConfig={handleSaveConfig}
       />
     </div>
   );

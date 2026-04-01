@@ -3,15 +3,16 @@
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import require_admin
 from database import get_db
-from models import Admin, Agent, ToolExecution
+from models import Admin, Agent, ToolExecution, ToolConfig
 from services.tool_manager import ToolManager
 from services.image_config_adapter import IMAGE_PROVIDER_CAPABILITIES
+from schemas import ToolConfigResponse, ToolConfigUpdate
 
 router = APIRouter(
     prefix="/api/admin/tools",
@@ -193,3 +194,64 @@ async def get_image_capabilities(
 ):
     """返回图像生成供应商的能力描述（宽高比、画质、输出格式、批量数限制）。"""
     return IMAGE_PROVIDER_CAPABILITIES
+
+
+# ---------------------------------------------------------------------------
+# 6. 工具配置管理 — 全局工具级别配置
+# ---------------------------------------------------------------------------
+
+@router.get("/configs", response_model=list[ToolConfigResponse])
+async def get_all_tool_configs(
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有工具配置。"""
+    result = await db.execute(select(ToolConfig).order_by(ToolConfig.tool_name))
+    return result.scalars().all()
+
+
+@router.get("/configs/{tool_name}", response_model=ToolConfigResponse)
+async def get_tool_config(
+    tool_name: str,
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取单个工具配置。"""
+    result = await db.execute(
+        select(ToolConfig).where(ToolConfig.tool_name == tool_name)
+    )
+    config = result.scalar_one_or_none()
+    if not config:
+        raise HTTPException(status_code=404, detail=f"Tool config '{tool_name}' not found")
+    return config
+
+
+@router.put("/configs/{tool_name}", response_model=ToolConfigResponse)
+async def update_tool_config(
+    tool_name: str,
+    update_data: ToolConfigUpdate,
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新工具配置（如不存在则创建）。"""
+    result = await db.execute(
+        select(ToolConfig).where(ToolConfig.tool_name == tool_name)
+    )
+    config = result.scalar_one_or_none()
+    
+    if config:
+        # 更新现有配置
+        update_data.config is not None and setattr(config, 'config', update_data.config)
+        update_data.is_enabled is not None and setattr(config, 'is_enabled', update_data.is_enabled)
+    else:
+        # 创建新配置
+        config = ToolConfig(
+            tool_name=tool_name,
+            config=update_data.config or {},
+            is_enabled=update_data.is_enabled if update_data.is_enabled is not None else True,
+        )
+        db.add(config)
+    
+    await db.commit()
+    await db.refresh(config)
+    return config

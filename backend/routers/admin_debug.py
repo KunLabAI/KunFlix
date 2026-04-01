@@ -16,7 +16,7 @@ import json
 from database import get_db, AsyncSessionLocal
 from models import (
     Agent, AdminDebugSession, AdminDebugMessage, 
-    LLMProvider, Admin, CreditTransaction
+    LLMProvider, Admin, CreditTransaction, ToolConfig
 )
 from schemas import (
     AdminDebugSessionCreate, AdminDebugSessionResponse,
@@ -26,7 +26,7 @@ from auth import get_current_active_admin, is_admin_entity
 from services.llm_stream import stream_completion
 from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, CreditTransaction as BillingCreditTransaction
-from services.image_config_adapter import resolve_image_configs
+from services.image_config_adapter import resolve_global_image_configs
 from services.tool_manager import ToolManager, ToolContext, IMAGE_GEN_TOOL_NAME
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
 from services.chat_utils import (
@@ -34,6 +34,7 @@ from services.chat_utils import (
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
 )
 from services.chat_tool_dispatch import append_tool_round
+from sqlalchemy import select as sql_select
 
 logger = logging.getLogger(__name__)
 
@@ -312,13 +313,14 @@ async def _generate_single_agent_debug(
         messages.append({"role": role, "content": content_val})
 
     # 如果用户请求编辑上一张图片
-    # 供应商 -> 图片生成启用判断函数映射表（优先使用统一配置）
-    _IMAGE_EDIT_ENABLED = {
-        "gemini": lambda a: (a.image_config or a.gemini_config or {}).get("image_generation_enabled"),
-        "xai": lambda a: (a.image_config or a.xai_image_config or {}).get("image_generation_enabled"),
-    }
-    _edit_checker = _IMAGE_EDIT_ENABLED.get(provider.provider_type.lower(), lambda a: False)
-    if edit_last_image and _edit_checker(agent):
+    # 从全局 ToolConfig 读取图像生成启用状态
+    global_image_result = await db.execute(
+        sql_select(ToolConfig).where(ToolConfig.tool_name == "generate_image")
+    )
+    global_image_config = global_image_result.scalar_one_or_none()
+    image_gen_enabled = (global_image_config.config if global_image_config else {}).get("image_generation_enabled", False)
+    
+    if edit_last_image and image_gen_enabled:
         last_image_path = get_last_image_path(history)
         if last_image_path is not None:
             data_url = image_file_to_data_url(last_image_path)
@@ -373,8 +375,9 @@ async def _generate_single_agent_debug(
             is_last_round = _round == MAX_TOOL_ROUNDS
             current_tools = None if is_last_round else tool_defs
             result = None
-            # 通过适配器解析有效的图像配置
-            _eff_gemini, _eff_xai = resolve_image_configs(agent, provider.provider_type)
+            # 通过适配器解析有效的图像配置（使用全局 ToolConfig）
+            global_cfg = (global_image_config.config if global_image_config else {})
+            _eff_gemini, _eff_xai = resolve_global_image_configs(global_cfg, agent, provider.provider_type)
             async for chunk, result in stream_completion(
                 provider_type=provider.provider_type,
                 api_key=provider.api_key,

@@ -1,6 +1,7 @@
-import useSWR from 'swr';
+import useSWR, { mutate } from 'swr';
 import { fetcher } from '@/lib/api-utils';
-import type { ToolProviderInfo, AgentToolUsage, ToolStats, ImageProviderCapabilities } from '@/types';
+import api from '@/lib/axios';
+import type { ToolProviderInfo, AgentToolUsage, ToolStats, ImageProviderCapabilities, ToolConfig } from '@/types';
 
 export function useToolRegistry() {
   const { data, error, isLoading } = useSWR<ToolProviderInfo[]>(
@@ -33,4 +34,25 @@ export function useImageCapabilities() {
     fetcher,
   );
   return { capabilities: data, isLoading, isError: error };
+}
+
+// 工具配置管理
+export function useToolConfig(toolName: string) {
+  const { data, error, isLoading, mutate } = useSWR<ToolConfig>(
+    toolName ? `/admin/tools/configs/${toolName}` : null,
+    fetcher,
+  );
+  return { config: data, isLoading, isError: error, mutate };
+}
+
+export function useUpdateToolConfig() {
+  const updateConfig = async (toolName: string, configData: { config?: Record<string, any>; is_enabled?: boolean }) => {
+    const response = await api.put(`/admin/tools/configs/${toolName}`, configData);
+    // 刷新缓存
+    mutate(`/admin/tools/configs/${toolName}`);
+    mutate('/admin/tools/configs');
+    return response.data;
+  };
+
+  return { updateConfig };
 }

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from database import get_db
-from models import Agent, LLMProvider, Asset, generate_uuid
+from models import Agent, LLMProvider, Asset, generate_uuid, ToolConfig
 from auth import get_current_active_user
 from schemas import (
     BatchImageGenerateRequest,
@@ -23,6 +23,7 @@ from schemas import (
 )
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
+from services.image_config_adapter import to_provider_config
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +328,7 @@ async def batch_generate(
         HTTPException(status_code=400, detail=f"Batch image generation not supported for provider: {provider_type}")
     )
 
-    return await handler(agent, provider, request)
+    return await handler(agent, provider, request, db)
 
 
 # ---------------------------------------------------------------------------
@@ -380,16 +381,23 @@ async def _batch_generate_gemini(agent: Agent, provider: LLMProvider, request: B
     )
 
 
-async def _batch_generate_xai(agent: Agent, provider: LLMProvider, request: BatchImageGenerateRequest) -> BatchImageGenerateResponse:
+async def _batch_generate_xai(agent: Agent, provider: LLMProvider, request: BatchImageGenerateRequest, db: AsyncSession) -> BatchImageGenerateResponse:
     """xAI 批量图片生成处理器"""
-    # 从 agent 的 xai_image_config 中读取配置
-    agent_img_cfg = (agent.xai_image_config or {}).get("image_config") or {}
+    # 从全局 ToolConfig 读取配置
+    result = await db.execute(
+        select(ToolConfig).where(ToolConfig.tool_name == "generate_image")
+    )
+    tool_config = result.scalar_one_or_none()
+    global_cfg = (tool_config.config if tool_config else {})
+    
+    # 使用适配器转换为 xAI 配置
+    xai_cfg = to_provider_config("xai", global_cfg).get("image_config") or {}
 
     xai_config = XAIBatchImageConfig(
-        aspect_ratio=agent_img_cfg.get("aspect_ratio", "1:1"),
-        resolution=agent_img_cfg.get("resolution", "1k"),
+        aspect_ratio=xai_cfg.get("aspect_ratio", "1:1"),
+        resolution=xai_cfg.get("resolution", "1k"),
         n=1,  # 批量模式每个 prompt 生成 1 张，多 prompt 并行
-        response_format=agent_img_cfg.get("response_format", "b64_json"),
+        response_format=xai_cfg.get("response_format", "b64_json"),
     )
 
     # 处理模型名称（移除 "xai/" 前缀）
