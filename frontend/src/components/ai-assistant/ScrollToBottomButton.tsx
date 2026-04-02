@@ -28,7 +28,7 @@ export function ScrollToBottomButton({
           exit={{ opacity: 0, y: 10, scale: 0.9 }}
           transition={{ duration: 0.2, ease: 'easeOut' }}
           className={cn(
-            'absolute bottom-20 left-1/2 -translate-x-1/2 z-20',
+            'absolute bottom-10 left-1/2 -translate-x-1/2 z-20',
             className
           )}
         >

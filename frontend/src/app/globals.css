@@ -404,3 +404,36 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* React Flow 自定义光标样式 - 使用 !important 覆盖默认样式 */
+.react-flow__pane,
+.react-flow__pane.react-flow__pane {
+  cursor: crosshair !important;
+}
+
+.react-flow__pane.dragging,
+.react-flow__pane:active {
+  cursor: grabbing !important;
+}
+
+/* 框选时的选区样式 */
+.react-flow__pane.selecting {
+  cursor: crosshair !important;
+}
+
+/* 禁用默认的 grab 光标 */
+.react-flow__pane[data-no-drag="true"] {
+  cursor: crosshair !important;
+}
+
+/* 框选时的选区样式 */
+.react-flow__selection {
+  background: rgba(var(--primary), 0.1);
+  border: 2px dashed hsl(var(--primary));
+  border-radius: 4px;
+}
+
+/* 节点选中状态 */
+.react-flow__node.selected {
+  z-index: 10;
+}

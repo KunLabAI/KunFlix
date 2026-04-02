@@ -28,6 +28,8 @@ import StoryboardNode from '@/components/canvas/StoryboardNode';
 import VideoNode from '@/components/canvas/VideoNode';
 import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
+import { CanvasHints } from '@/components/canvas/CanvasCursor';
+import { CanvasHelpButton } from '@/components/canvas/CanvasHelp';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film, Music } from 'lucide-react';
@@ -760,7 +762,10 @@ function InfiniteCanvas() {
           snapToGrid={snapToGrid}
           snapGrid={[20, 20]}
           panOnDrag={[1, 2]}
-          selectionOnDrag={false}
+          selectionOnDrag={true}
+          selectionKeyCode={null}
+          multiSelectionKeyCode={['Shift']}
+          panActivationKeyCode={['Space']}
         >
           <Background gap={60} size={2} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           
@@ -801,16 +806,20 @@ function InfiniteCanvas() {
           )}
           
           <Panel position="bottom-left" className="m-4 z-50">
-            <ZoomControls 
-              showMap={showMap} 
-              onToggleMap={() => setShowMap(!showMap)} 
-              onAutoLayout={handleAutoLayout}
-              isLayouting={isLayouting}
-              snapToGrid={snapToGrid}
-              onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
-              snapToGuides={snapToGuides}
-              onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
-            />
+            <div className="flex items-center gap-2">
+              <ZoomControls 
+                showMap={showMap} 
+                onToggleMap={() => setShowMap(!showMap)} 
+                onAutoLayout={handleAutoLayout}
+                isLayouting={isLayouting}
+                snapToGrid={snapToGrid}
+                onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
+                snapToGuides={snapToGuides}
+                onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+              />
+              {/* Help 按钮 - 与工具条分离 */}
+              <CanvasHelpButton />
+            </div>
           </Panel>
           
           <Panel position="top-left" className="m-4 z-50">
@@ -847,6 +856,9 @@ function InfiniteCanvas() {
              <AIAssistantPanel />
           </Panel>
         </ReactFlow>
+
+        {/* 画布操作提示 */}
+        <CanvasHints />
 
         {menuState.show && (
           <Card 
