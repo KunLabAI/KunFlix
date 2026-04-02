@@ -21,7 +21,7 @@ import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistan
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
 import { usePerformanceMonitor } from '@/components/ai-assistant';
-import { NodePreviewCard } from '@/components/ai-assistant/NodePreviewCard';
+import { NodePreviewCard, NodePreviewList } from '@/components/ai-assistant/NodePreviewCard';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
 
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
@@ -61,9 +61,10 @@ export function AIAssistantPanel() {
   const imageEditContext = useAIAssistantStore((state) => state.imageEditContext);
   const clearImageEditContext = useAIAssistantStore((state) => state.clearImageEditContext);
 
-  // 节点附件（从画布拖拽）
-  const nodeAttachment = useAIAssistantStore((state) => state.nodeAttachment);
-  const clearNodeAttachment = useAIAssistantStore((state) => state.clearNodeAttachment);
+  // 节点附件（从画布拖拽）- 支持多图
+  const nodeAttachments = useAIAssistantStore((state) => state.nodeAttachments);
+  const removeNodeAttachment = useAIAssistantStore((state) => state.removeNodeAttachment);
+  const clearNodeAttachments = useAIAssistantStore((state) => state.clearNodeAttachments);
   const isDragOverPanel = useAIAssistantStore((state) => state.isDragOverPanel);
 
   // 上下文使用统计
@@ -189,7 +190,9 @@ export function AIAssistantPanel() {
       setIsLoading(true);
 
       // 构建附件上下文（拼入消息正文，确保 AI 能感知节点内容）
-      const attachmentContext = nodeAttachment ? buildAttachmentContext(nodeAttachment, content) : content;
+      // 多图模式下，使用第一个附件构建上下文
+      const firstAttachment = nodeAttachments[0];
+      const attachmentContext = firstAttachment ? buildAttachmentContext(firstAttachment, content) : content;
 
       // 取消之前的请求
       abortControllerRef.current?.abort();
@@ -210,10 +213,10 @@ export function AIAssistantPanel() {
               target_node_id: imageEditContext.nodeId,
               edit_image_url: imageEditContext.imageUrl,
             }),
-            ...(nodeAttachment && {
-              target_node_id: nodeAttachment.nodeId,
+            ...(firstAttachment && {
+              target_node_id: firstAttachment.nodeId,
               // 图片/视频节点复用 edit_image_url（后端已支持）
-              ...(nodeAttachment.thumbnailUrl && { edit_image_url: nodeAttachment.thumbnailUrl }),
+              ...(firstAttachment.thumbnailUrl && { edit_image_url: firstAttachment.thumbnailUrl }),
             }),
           }),
           signal: abortControllerRef.current.signal,
@@ -269,10 +272,10 @@ export function AIAssistantPanel() {
       } finally {
         setIsLoading(false);
         clearImageEditContext();
-        clearNodeAttachment();
+        clearNodeAttachments();
       }
     },
-    [sessionId, agentId, theaterId, imageEditContext, nodeAttachment, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachment]
+    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments]
   );
 
   // 调整面板大小
@@ -486,9 +489,13 @@ export function AIAssistantPanel() {
               </div>
             )}
 
-            {/* 节点附件预览 */}
-            {nodeAttachment && (
-              <NodePreviewCard attachment={nodeAttachment} onClear={clearNodeAttachment} />
+            {/* 节点附件预览 - 支持多图横向排列 */}
+            {nodeAttachments.length > 0 && (
+              <NodePreviewList 
+                attachments={nodeAttachments}
+                onRemove={removeNodeAttachment}
+                onClearAll={clearNodeAttachments}
+              />
             )}
 
             {/* 输入区域（包含Agent选择器和发送按钮） */}
@@ -499,7 +506,7 @@ export function AIAssistantPanel() {
               availableAgents={availableAgents}
               isLoadingAgents={isLoadingAgents}
               onSwitchAgent={switchAgent}
-              placeholder={nodeAttachment ? '描述你对这个节点的需求...' : undefined}
+              placeholder={nodeAttachments.length > 0 ? `描述你对这${nodeAttachments.length > 1 ? '些' : '个'}节点的需求...` : undefined}
             />
 
             {/* 调整大小手柄 - 四边和四角 */}

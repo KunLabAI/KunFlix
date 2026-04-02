@@ -99,7 +99,7 @@ function InfiniteCanvas() {
   // 组合拖拽回调：对齐吸附 + AI面板检测
   const composedOnNodeDragStart = useCallback(
     (event: React.MouseEvent, node: any, nodes: any[]) => {
-      onAIDragStart(event, node);
+      onAIDragStart(event, node, nodes);
     },
     [onAIDragStart]
   );
@@ -113,7 +113,7 @@ function InfiniteCanvas() {
   const composedOnNodeDragStop = useCallback(
     (event: React.MouseEvent, node: any, nodes: any[]) => {
       onSnappingDragStop();
-      onAIDragStop(event, node);
+      onAIDragStop(event, node, nodes);
     },
     [onSnappingDragStop, onAIDragStop]
   );
@@ -759,6 +759,8 @@ function InfiniteCanvas() {
           proOptions={{ hideAttribution: true }}
           snapToGrid={snapToGrid}
           snapGrid={[20, 20]}
+          panOnDrag={[1, 2]}
+          selectionOnDrag={false}
         >
           <Background gap={60} size={2} className="text-muted-foreground dark:text-muted-foreground" variant={BackgroundVariant.Dots} />
           

@@ -117,7 +117,9 @@ interface AIAssistantState {
   // Image edit context (from canvas node AI edit)
   imageEditContext: ImageEditContext | null;
   
-  // Node attachment (from canvas drag to AI panel)
+  // Node attachments (from canvas drag to AI panel) - 支持多图（最多5个）
+  nodeAttachments: NodeAttachment[];
+  // 保持向后兼容的单图 API（实际使用 nodeAttachments[0]）
   nodeAttachment: NodeAttachment | null;
   
   // Drag-over visual feedback
@@ -165,7 +167,12 @@ interface AIAssistantState {
   setImageEditContext: (ctx: ImageEditContext | null) => void;
   clearImageEditContext: () => void;
   
-  // Node attachment
+  // Node attachments (多图支持，最多5个)
+  setNodeAttachments: (attachments: NodeAttachment[]) => void;
+  addNodeAttachment: (attachment: NodeAttachment) => void;
+  removeNodeAttachment: (nodeId: string) => void;
+  clearNodeAttachments: () => void;
+  // 保持向后兼容的单图 API
   setNodeAttachment: (attachment: NodeAttachment | null) => void;
   clearNodeAttachment: () => void;
   
@@ -202,6 +209,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       panelSize: { ...DEFAULT_PANEL_SIZE },
       panelPosition: { ...DEFAULT_PANEL_POSITION },
       imageEditContext: null,
+      nodeAttachments: [],
       nodeAttachment: null,
       isDragOverPanel: false,
       contextUsage: null,
@@ -307,9 +315,25 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext, nodeAttachment: null }),
       clearImageEditContext: () => set({ imageEditContext: null }),
 
-      // Node attachment (互斥：清除 imageEditContext)
-      setNodeAttachment: (nodeAttachment: NodeAttachment | null) => set({ nodeAttachment, imageEditContext: null }),
-      clearNodeAttachment: () => set({ nodeAttachment: null }),
+      // Node attachments (多图支持，最多5个，互斥：清除 imageEditContext)
+      setNodeAttachments: (nodeAttachments: NodeAttachment[]) => set({ nodeAttachments: nodeAttachments.slice(0, 5), imageEditContext: null }),
+      addNodeAttachment: (attachment: NodeAttachment) => set((state) => {
+        const exists = state.nodeAttachments.some(a => a.nodeId === attachment.nodeId);
+        if (exists) return state;
+        const newAttachments = [...state.nodeAttachments, attachment].slice(0, 5);
+        return { nodeAttachments: newAttachments, imageEditContext: null };
+      }),
+      removeNodeAttachment: (nodeId: string) => set((state) => ({
+        nodeAttachments: state.nodeAttachments.filter(a => a.nodeId !== nodeId)
+      })),
+      clearNodeAttachments: () => set({ nodeAttachments: [] }),
+      // 保持向后兼容的单图 API（映射到 nodeAttachments[0]）
+      setNodeAttachment: (nodeAttachment: NodeAttachment | null) => set({ 
+        nodeAttachments: nodeAttachment ? [nodeAttachment] : [],
+        nodeAttachment, 
+        imageEditContext: null 
+      }),
+      clearNodeAttachment: () => set({ nodeAttachments: [], nodeAttachment: null }),
       
       // Drag-over state
       setIsDragOverPanel: (isDragOverPanel: boolean) => set({ isDragOverPanel }),

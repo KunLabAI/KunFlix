@@ -5,6 +5,7 @@ import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
 
 const AI_PANEL_SELECTOR = '[data-ai-panel-dropzone]';
+const MAX_ATTACHMENTS = 5;
 
 /**
  * 检测坐标是否在指定 rect 内
@@ -15,19 +16,34 @@ function isPointInRect(x: number, y: number, rect: DOMRect): boolean {
 
 /**
  * 画布节点拖拽到 AI 面板的检测 hook
+ * 支持多选节点拖拽（最多5个图像节点）
  * 遵循 useCanvasSnapping 的 hook 模式
  */
 export function useNodeDragToAI() {
-  // 保存拖拽开始时的节点原始位置
-  const originalPositionRef = useRef<{ x: number; y: number } | null>(null);
+  // 保存拖拽开始时的节点原始位置（支持多选）
+  const originalPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   // 缓存 AI 面板的 DOM rect
   const panelRectRef = useRef<DOMRect | null>(null);
   // 跟踪当前是否悬停在面板上
   const isOverPanelRef = useRef(false);
+  // 当前拖拽的节点ID列表
+  const draggedNodeIdsRef = useRef<string[]>([]);
 
-  const onNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
-    // 保存节点原始位置
-    originalPositionRef.current = { x: node.position.x, y: node.position.y };
+  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node, nodes: Node[]) => {
+    // 判断是否多选：按住 Ctrl 或节点已被选中且选中有多个节点
+    const isMultiSelect = event.ctrlKey || event.metaKey || 
+      (node.selected && nodes.filter(n => n.selected).length > 1);
+    
+    // 获取所有正在拖拽的节点
+    const draggedNodes = isMultiSelect 
+      ? nodes.filter(n => n.selected)
+      : [node];
+    
+    // 保存所有拖拽节点的原始位置
+    originalPositionsRef.current = new Map(
+      draggedNodes.map(n => [n.id, { x: n.position.x, y: n.position.y }])
+    );
+    draggedNodeIdsRef.current = draggedNodes.map(n => n.id);
     
     // 缓存面板 rect
     const panelEl = document.querySelector(AI_PANEL_SELECTOR);
@@ -50,7 +66,7 @@ export function useNodeDragToAI() {
     (isOver !== prev) && useAIAssistantStore.getState().setIsDragOverPanel(isOver);
   }, []);
 
-  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
+  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node, nodes: Node[]) => {
     const wasOverPanel = isOverPanelRef.current;
     
     // 重置拖拽悬停状态
@@ -58,28 +74,47 @@ export function useNodeDragToAI() {
     isOverPanelRef.current = false;
 
     // 若拖拽释放在面板上
-    const originalPos = originalPositionRef.current;
-    if (wasOverPanel && originalPos) {
-      // 恢复节点原始位置
+    const originalPositions = originalPositionsRef.current;
+    if (wasOverPanel && originalPositions.size > 0) {
+      // 恢复所有拖拽节点的原始位置
       const { onNodesChange } = useCanvasStore.getState();
-      onNodesChange([{
-        type: 'position',
-        id: node.id,
-        position: originalPos,
+      const positionChanges = Array.from(originalPositions.entries()).map(([id, position]) => ({
+        type: 'position' as const,
+        id,
+        position,
         dragging: false,
-      }]);
+      }));
+      onNodesChange(positionChanges);
 
-      // 提取节点数据并设置为附件
-      const attachment = extractNodeAttachment(node as CanvasNode);
+      // 提取所有拖拽节点的附件数据（只取图像节点，最多5个）
       const store = useAIAssistantStore.getState();
-      store.setNodeAttachment(attachment);
+      const draggedNodes = nodes.filter(n => draggedNodeIdsRef.current.includes(n.id));
+      
+      // 过滤出图像节点并限制数量
+      const imageNodes = draggedNodes
+        .filter(n => n.type === 'image')
+        .slice(0, MAX_ATTACHMENTS);
+      
+      // 如果没有图像节点但有其他节点，取第一个
+      const nodesToAttach = imageNodes.length > 0 
+        ? imageNodes 
+        : draggedNodes.slice(0, 1);
+      
+      // 提取附件并添加到 store
+      nodesToAttach.forEach((n, index) => {
+        const attachment = extractNodeAttachment(n as CanvasNode);
+        index === 0 && store.nodeAttachments.length === 0
+          ? store.setNodeAttachments([attachment])
+          : store.addNodeAttachment(attachment);
+      });
       
       // 面板未打开时自动打开
       !store.isOpen && store.setIsOpen(true);
     }
 
     // 清理 ref
-    originalPositionRef.current = null;
+    originalPositionsRef.current = new Map();
+    draggedNodeIdsRef.current = [];
     panelRectRef.current = null;
   }, []);
 
