@@ -49,6 +49,10 @@ const defaultImageConfig = {
   },
 };
 
+const defaultVideoConfig = {
+  video_generation_enabled: false,
+};
+
 export default function AgentForm({ 
   initialValues, 
   onSubmit, 
@@ -92,6 +96,7 @@ export default function AgentForm({
       gemini_config: defaultGeminiConfig,
       image_config: defaultImageConfig,
       image_credit_per_image: 0,
+      video_config: defaultVideoConfig,
     },
   });
 
@@ -107,6 +112,7 @@ export default function AgentForm({
     if (initialValues) {
       const hasTools = !!(initialValues.tools && initialValues.tools.length > 0);
       const hasImageGen = !!initialValues.image_config?.image_generation_enabled;
+      const hasVideoGen = !!(initialValues.video_config as any)?.video_generation_enabled;
       const hasCanvas = !!(initialValues.target_node_types && initialValues.target_node_types.length > 0);
       const formData = {
         name: initialValues.name || '',
@@ -118,7 +124,7 @@ export default function AgentForm({
         temperature: Number(initialValues.temperature) || 0.7,
         context_window: Number(initialValues.context_window) || 4096,
         thinking_mode: Boolean(initialValues.thinking_mode),
-        tools_enabled: hasTools || hasImageGen || hasCanvas,
+        tools_enabled: hasTools || hasImageGen || hasVideoGen || hasCanvas,
         tools: initialValues.tools || [],
         target_node_types: (initialValues.target_node_types || []) as ("script" | "character" | "storyboard" | "video")[],
         input_credit_per_1m: Number(initialValues.input_credit_per_1m) || 0,
@@ -137,6 +143,7 @@ export default function AgentForm({
         gemini_config: initialValues.gemini_config || defaultGeminiConfig,
         image_config: initialValues.image_config || defaultImageConfig,
         image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
+        video_config: (initialValues.video_config as any) || defaultVideoConfig,
       };
       
       // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
@@ -175,6 +182,7 @@ export default function AgentForm({
         gemini_config: defaultGeminiConfig,
         image_config: defaultImageConfig,
         image_credit_per_image: 0,
+        video_config: defaultVideoConfig,
       });
       isFormInitialized.current = true;
     }
@@ -202,7 +210,7 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, gemini_config, image_config, ...rest } = values;
+      const { tools_enabled, gemini_config, image_config, video_config, ...rest } = values;
       
       // Clean up gemini_config（仅保留思考、媒体、搜索字段）
       const cleanedGeminiConfig = gemini_config ? {
@@ -227,11 +235,17 @@ export default function AgentForm({
         image_config: imgCfg,
       } : undefined;
 
+      // Clean up video_config
+      const cleanedVideoConfig = {
+        video_generation_enabled: video_config?.video_generation_enabled || false,
+      };
+
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
         gemini_config: cleanedGeminiConfig,
         image_config: cleanedImageConfig,
+        video_config: cleanedVideoConfig,
       };
       
       console.log('Submitting payload:', JSON.stringify(payload, null, 2));

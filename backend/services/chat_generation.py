@@ -220,6 +220,11 @@ async def generate_single_agent(
                     yield sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
 
+            # 发送视频任务创建事件（通知前端启动轮询UI）
+            for vt in ctx.video_tasks:
+                yield sse("video_task_created", vt)
+            ctx.video_tasks.clear()
+
     except Exception as e:
         generation_failed = True
         logger.error(f"LLM generation failed: {e}")

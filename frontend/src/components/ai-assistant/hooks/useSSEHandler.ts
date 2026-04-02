@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useAIAssistantStore, type Message, type AgentStep } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
 import type { MultiAgentData } from '@/components/canvas/MultiAgentSteps';
@@ -14,6 +14,7 @@ interface SSEEvent {
 interface StreamingState {
   skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
   toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed' }[];
+  videoTasks: VideoTaskData[];
   steps: AgentStep[];
   stepMap: Map<string, AgentStep>;
   multiAgent: MultiAgentData | null;
@@ -31,6 +32,7 @@ export function useSSEHandler() {
   const streamingStateRef = useRef<StreamingState>({
     skillCalls: [],
     toolCalls: [],
+    videoTasks: [],
     steps: [],
     stepMap: new Map(),
     multiAgent: null,
@@ -42,6 +44,7 @@ export function useSSEHandler() {
     streamingStateRef.current = {
       skillCalls: [],
       toolCalls: [],
+      videoTasks: [],
       steps: [],
       stepMap: new Map(),
       multiAgent: null,
@@ -74,7 +77,7 @@ export function useSSEHandler() {
       text: () => {
         const chunk = (data as { chunk?: string })?.chunk || '';
         const isNewRound = state.roundHasTools;
-        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.roundHasTools = false);
+        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.videoTasks = [], state.roundHasTools = false);
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -158,6 +161,23 @@ export function useSSEHandler() {
             return [...prev.slice(0, -1), { ...last, tool_calls: [...state.toolCalls] }];
           }
           return prev;
+        });
+      },
+
+      // 视频任务创建（generate_video 工具执行后由后端发送）
+      video_task_created: () => {
+        const d = data as { task_id?: string; video_mode?: string; model?: string };
+        const task: VideoTaskData = {
+          task_id: d.task_id || '',
+          video_mode: d.video_mode || '',
+          model: d.model || '',
+        };
+        state.videoTasks.push(task);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, video_tasks: [...state.videoTasks] }]
+            : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, video_tasks: [...state.videoTasks] }];
         });
       },
 

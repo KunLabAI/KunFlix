@@ -12,6 +12,7 @@ from database import get_db
 from models import Admin, Agent, ToolExecution, ToolConfig
 from services.tool_manager import ToolManager
 from services.image_config_adapter import IMAGE_PROVIDER_CAPABILITIES
+from services.video_providers.model_capabilities import VIDEO_MODEL_CAPABILITIES
 from schemas import ToolConfigResponse, ToolConfigUpdate
 
 router = APIRouter(
@@ -48,6 +49,7 @@ async def get_agent_tool_usage(
         select(
             Agent.id, Agent.name, Agent.tools,
             Agent.target_node_types, Agent.image_config,
+            Agent.video_config,
         ).order_by(Agent.name)
     )
     rows = result.all()
@@ -59,6 +61,7 @@ async def get_agent_tool_usage(
             "canvas_enabled": bool(r.target_node_types),
             "canvas_node_types": r.target_node_types or [],
             "image_gen_enabled": bool((r.image_config or {}).get("image_generation_enabled")),
+            "video_gen_enabled": bool((r.video_config or {}).get("video_generation_enabled")),
         }
         for r in rows
     ]
@@ -194,6 +197,18 @@ async def get_image_capabilities(
 ):
     """返回图像生成供应商的能力描述（宽高比、画质、输出格式、批量数限制）。"""
     return IMAGE_PROVIDER_CAPABILITIES
+
+
+# ---------------------------------------------------------------------------
+# 5b. 视频供应商能力 — 返回每个视频模型支持的参数选项
+# ---------------------------------------------------------------------------
+
+@router.get("/video-capabilities")
+async def get_video_capabilities(
+    _admin: Admin = Depends(require_admin),
+):
+    """返回视频生成模型的能力描述（模式、时长、分辨率、宽高比等）。"""
+    return VIDEO_MODEL_CAPABILITIES
 
 
 # ---------------------------------------------------------------------------

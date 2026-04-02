@@ -40,14 +40,22 @@ export interface MultiAgentData {
 // 多模态内容
 export type MessageContent = string | Array<{type: string; text?: string; image_url?: {url: string}}>;
 
+// 视频任务数据
+export interface VideoTaskData {
+  task_id: string;
+  video_mode: string;
+  model: string;
+}
+
 export interface Message {
   role: MessageRole;
   content: string;
   status?: MessageStatus;
-  // 扩展字段用于技能/工具/多智能体展示
+  // 扩展字段用于技能/工具/多智能体/视频任务展示
   skill_calls?: SkillCall[];
   tool_calls?: ToolCall[];
   multi_agent?: MultiAgentData;
+  video_tasks?: VideoTaskData[];
 }
 
 export interface AgentInfo {

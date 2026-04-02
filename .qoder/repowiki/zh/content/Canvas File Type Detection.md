@@ -9,7 +9,15 @@
 - [frontend/src/components/resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
 - [backend/models.py](file://backend/models.py)
 - [frontend/src/components/canvas/CharacterNode.tsx](file://frontend/src/components/canvas/CharacterNode.tsx)
+- [frontend/src/components/canvas/CanvasCursor.tsx](file://frontend/src/components/canvas/CanvasCursor.tsx)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 新增 Canvas Cursor 和 Canvas Hints 组件的详细分析
+- 更新文件类型检测流程图，包含新的光标反馈机制
+- 增强用户体验相关的操作提示功能说明
+- 完善文件拖拽过程中的实时类型检测和视觉反馈
 
 ## 目录
 1. [简介](#简介)
@@ -28,6 +36,8 @@
 
 系统采用前后端分离的设计模式，前端负责文件类型识别和用户界面交互，后端负责文件存储、类型验证和资源管理。通过统一的文件类型检测机制，确保了文件处理的一致性和可靠性。
 
+**更新** 新增了 Canvas Cursor 和 Canvas Hints 组件，提供更好的文件类型检测和操作提示功能，增强了用户的拖拽体验和操作反馈。
+
 ## 项目结构
 
 画布文件类型检测功能分布在前端和后端两个主要部分：
@@ -40,24 +50,29 @@ B[VideoNode 组件<br/>视频文件处理]
 C[CharacterNode 组件<br/>图片文件处理]
 D[AssetCard 组件<br/>资源预览]
 E[Canvas Store<br/>状态管理]
+F[CanvasCursor 组件<br/>自定义光标]
+G[CanvasHints 组件<br/>操作提示]
 end
 subgraph "后端层"
-F[Media Router<br/>文件上传处理]
-G[Models<br/>数据库模型]
-H[文件系统<br/>存储管理]
+H[Media Router<br/>文件上传处理]
+I[Models<br/>数据库模型]
+J[文件系统<br/>存储管理]
 end
-A --> F
-B --> F
-C --> F
-D --> F
+A --> H
+B --> H
+C --> H
+D --> H
 E --> A
-F --> G
-F --> H
+F --> A
+G --> A
+H --> I
+H --> J
 ```
 
 **图表来源**
-- [frontend/src/app/theater/[id]/page.tsx:1-866](file://frontend/src/app/theater/[id]/page.tsx#L1-L866)
+- [frontend/src/app/theater/[id]/page.tsx:1-913](file://frontend/src/app/theater/[id]/page.tsx#L1-L913)
 - [backend/routers/media.py:1-436](file://backend/routers/media.py#L1-L436)
+- [frontend/src/components/canvas/CanvasCursor.tsx:1-160](file://frontend/src/components/canvas/CanvasCursor.tsx#L1-L160)
 
 **章节来源**
 - [frontend/src/app/theater/[id]/page.tsx:277-293](file://frontend/src/app/theater/[id]/page.tsx#L277-L293)
@@ -82,27 +97,32 @@ F --> H
 sequenceDiagram
 participant U as 用户
 participant F as 前端页面
+participant C as CanvasCursor组件
+participant CH as CanvasHints组件
 participant V as VideoNode组件
-participant C as CharacterNode组件
+participant CN as CharacterNode组件
 participant R as 后端路由
 participant M as 数据库模型
 U->>F : 拖拽文件到画布
 F->>F : getFileType() 检测文件类型
+F->>C : 更新光标状态
+F->>CH : 显示操作提示
 F->>V : 创建视频节点
-F->>C : 创建图片节点
+F->>CN : 创建图片节点
 V->>R : POST /api/media/upload
-C->>R : POST /api/media/upload
+CN->>R : POST /api/media/upload
 R->>R : 验证文件类型和大小
 R->>M : 创建Asset记录
 R-->>V : 返回文件URL
-R-->>C : 返回文件URL
+R-->>CN : 返回文件URL
 V->>V : 更新节点数据
-C->>C : 更新节点数据
+CN->>CN : 更新节点数据
 ```
 
 **图表来源**
 - [frontend/src/app/theater/[id]/page.tsx:306-327](file://frontend/src/app/theater/[id]/page.tsx#L306-L327)
 - [backend/routers/media.py:94-147](file://backend/routers/media.py#L94-L147)
+- [frontend/src/components/canvas/CanvasCursor.tsx:10-117](file://frontend/src/components/canvas/CanvasCursor.tsx#L10-L117)
 
 **章节来源**
 - [frontend/src/app/theater/[id]/page.tsx:277-293](file://frontend/src/app/theater/[id]/page.tsx#L277-L293)
@@ -124,6 +144,18 @@ class CanvasPage {
 +onDragOver(event)
 +onDrop(event)
 }
+class CanvasCursor {
++cursorPos : Object
++isVisible : boolean
++cursorMode : string
++handleMouseMove()
++handleKeyDown()
++handleKeyUp()
+}
+class CanvasHints {
++showHints : boolean
++timer : Timeout
+}
 class VideoNode {
 +handleFileChange(event)
 +handleUploadClick()
@@ -141,9 +173,13 @@ class CanvasStore {
 +updateNodeData(id, data)
 +deleteNode(id)
 }
+CanvasPage --> CanvasCursor : 状态同步
+CanvasPage --> CanvasHints : 用户反馈
 CanvasPage --> VideoNode : 创建
 CanvasPage --> CharacterNode : 创建
 CanvasPage --> CanvasStore : 状态管理
+CanvasCursor --> CanvasPage : 光标反馈
+CanvasHints --> CanvasPage : 操作提示
 VideoNode --> CanvasStore : 更新状态
 CharacterNode --> CanvasStore : 更新状态
 ```
@@ -151,6 +187,7 @@ CharacterNode --> CanvasStore : 更新状态
 **图表来源**
 - [frontend/src/app/theater/[id]/page.tsx:277-510](file://frontend/src/app/theater/[id]/page.tsx#L277-L510)
 - [frontend/src/store/useCanvasStore.ts:60-114](file://frontend/src/store/useCanvasStore.ts#L60-L114)
+- [frontend/src/components/canvas/CanvasCursor.tsx:10-160](file://frontend/src/components/canvas/CanvasCursor.tsx#L10-L160)
 
 ### 后端架构设计
 
@@ -202,13 +239,31 @@ F --> |无匹配| H[返回 null]
 **图表来源**
 - [frontend/src/app/theater/[id]/page.tsx:285-293](file://frontend/src/app/theater/[id]/page.tsx#L285-L293)
 
-#### 后端文件类型验证
+#### Canvas Cursor 自定义光标组件
 
-后端实现了更严格的文件类型验证机制，包括 MIME 类型映射和扩展名检查：
+**新增** CanvasCursor 组件提供了实时的鼠标操作状态反馈：
+
+- **十字准星模式**：默认状态下显示精确的十字定位光标
+- **手型拖拽模式**：当按下空格键或拖拽时显示移动光标
+- **实时位置跟踪**：跟随鼠标移动，提供精确的拖拽定位
+- **透明度和缩放效果**：根据操作模式调整光标的视觉反馈
 
 **章节来源**
 - [frontend/src/app/theater/[id]/page.tsx:277-293](file://frontend/src/app/theater/[id]/page.tsx#L277-L293)
 - [backend/routers/media.py:41-64](file://backend/routers/media.py#L41-L64)
+- [frontend/src/components/canvas/CanvasCursor.tsx:10-117](file://frontend/src/components/canvas/CanvasCursor.tsx#L10-L117)
+
+#### Canvas Hints 操作提示组件
+
+**新增** CanvasHints 组件提供智能的操作指导：
+
+- **自动隐藏机制**：5秒后自动消失，避免干扰用户操作
+- **键盘快捷键提示**：显示框选、移动画布、多选等操作方法
+- **视觉层次清晰**：底部居中显示，不影响主要内容区域
+- **响应式布局**：使用 Flexbox 实现自适应的提示布局
+
+**章节来源**
+- [frontend/src/components/canvas/CanvasCursor.tsx:123-159](file://frontend/src/components/canvas/CanvasCursor.tsx#L123-L159)
 
 ### 文件上传处理组件
 
@@ -299,24 +354,28 @@ B[@xyflow/react]
 C[Zustand]
 D[Lucide Icons]
 E[Tailwind CSS]
+F[CanvasCursor 组件]
+G[CanvasHints 组件]
 end
 subgraph "后端依赖"
-F[FastAPI]
-G[SQLAlchemy]
-H[UUID]
-I[Pydantic]
+H[FastAPI]
+I[SQLAlchemy]
+J[UUID]
+K[Pydantic]
 end
 subgraph "数据库"
-J[PostgreSQL]
-K[SQLite]
+L[PostgreSQL]
+M[SQLite]
 end
 A --> B
 A --> C
 A --> D
-F --> G
-F --> I
-G --> J
-G --> K
+A --> F
+A --> G
+H --> I
+H --> K
+I --> L
+I --> M
 ```
 
 ### 文件类型处理流程
@@ -337,11 +396,14 @@ H --> I[后端验证]
 I --> J[数据库存储]
 J --> K[返回URL]
 K --> L[更新节点状态]
+L --> M[CanvasCursor 反馈]
+M --> N[CanvasHints 提示]
 ```
 
 **图表来源**
 - [frontend/src/app/theater/[id]/page.tsx:330-510](file://frontend/src/app/theater/[id]/page.tsx#L330-L510)
 - [backend/routers/media.py:94-147](file://backend/routers/media.py#L94-L147)
+- [frontend/src/components/canvas/CanvasCursor.tsx:10-159](file://frontend/src/components/canvas/CanvasCursor.tsx#L10-L159)
 
 **章节来源**
 - [frontend/src/store/useCanvasStore.ts:185-540](file://frontend/src/store/useCanvasStore.ts#L185-L540)
@@ -355,6 +417,8 @@ K --> L[更新节点状态]
 2. **本地预览**：使用 Blob URL 实现快速文件预览
 3. **批量处理**：支持多文件拖拽和批量上传
 4. **内存管理**：及时清理 Blob URL 和事件监听器
+5. **Canvas Cursor 优化**：使用 CSS 过渡动画而非频繁重绘
+6. **Canvas Hints 自动清理**：定时器自动清理避免内存泄漏
 
 ### 后端性能优化
 
@@ -380,6 +444,34 @@ K --> L[更新节点状态]
 1. 检查浏览器是否正确设置 MIME 类型
 2. 确认文件扩展名格式正确
 3. 重新下载或修复文件
+
+#### Canvas Cursor 无响应
+
+**问题描述**：自定义光标不显示或不响应
+
+**可能原因**：
+1. 画布元素未正确加载
+2. 事件监听器未绑定
+3. CSS 样式冲突
+
+**解决方案**：
+1. 确认 .react-flow__pane 元素存在
+2. 检查组件是否正确导入和渲染
+3. 验证 z-index 层级设置
+
+#### Canvas Hints 不显示
+
+**问题描述**：操作提示不显示
+
+**可能原因**：
+1. 组件未正确导入
+2. DOM 查询失败
+3. 样式被覆盖
+
+**解决方案**：
+1. 确认组件导入路径正确
+2. 检查 ReactFlow 包装器元素
+3. 验证 CSS 类名和样式
 
 #### 文件上传失败
 
@@ -422,6 +514,9 @@ K --> L[更新节点状态]
 1. **统一的文件类型检测**：前后端使用一致的检测标准，确保处理逻辑的一致性
 2. **灵活的扩展性**：通过映射表机制，可以轻松添加新的文件类型支持
 3. **完善的错误处理**：提供了全面的错误检测和用户友好的错误提示
-4. **良好的性能表现**：通过异步处理和缓存机制，保证了系统的响应速度
+4. **优秀的用户体验**：新增的 Canvas Cursor 和 Canvas Hints 组件提供了直观的操作反馈
+5. **良好的性能表现**：通过异步处理和缓存机制，保证了系统的响应速度
+
+**更新** 新增的 Canvas Cursor 组件通过实时的视觉反馈增强了用户的拖拽体验，而 Canvas Hints 组件则提供了智能的操作指导，显著提升了系统的易用性和用户满意度。
 
 该系统为 Infinite Game 项目提供了坚实的文件处理基础，支持用户在画布上创建各种类型的媒体内容，为后续的功能扩展奠定了良好的技术基础。

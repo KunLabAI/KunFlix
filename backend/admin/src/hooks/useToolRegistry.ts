@@ -1,7 +1,7 @@
 import useSWR, { mutate } from 'swr';
 import { fetcher } from '@/lib/api-utils';
 import api from '@/lib/axios';
-import type { ToolProviderInfo, AgentToolUsage, ToolStats, ImageProviderCapabilities, ToolConfig } from '@/types';
+import type { ToolProviderInfo, AgentToolUsage, ToolStats, ImageProviderCapabilities, VideoProviderCapabilities, ToolConfig } from '@/types';
 
 export function useToolRegistry() {
   const { data, error, isLoading } = useSWR<ToolProviderInfo[]>(
@@ -31,6 +31,14 @@ export function useToolStats() {
 export function useImageCapabilities() {
   const { data, error, isLoading } = useSWR<ImageProviderCapabilities>(
     '/admin/tools/image-capabilities',
+    fetcher,
+  );
+  return { capabilities: data, isLoading, isError: error };
+}
+
+export function useVideoCapabilities() {
+  const { data, error, isLoading } = useSWR<VideoProviderCapabilities>(
+    '/admin/tools/video-capabilities',
     fetcher,
   );
   return { capabilities: data, isLoading, isError: error };

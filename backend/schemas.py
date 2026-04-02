@@ -269,6 +269,8 @@ class AgentBase(BaseModel):
     image_credit_per_image: float = Field(default=0.0, ge=0.0)
     # 统一图像生成配置（供应商无关）
     image_config: Optional[UnifiedImageGenConfig] = None
+    # 视频生成配置（供应商无关）
+    video_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: List[str] = Field(default_factory=list)
 
@@ -318,6 +320,8 @@ class AgentUpdate(BaseModel):
     image_credit_per_image: Optional[float] = Field(None, ge=0.0)
     # 统一图像生成配置（供应商无关）
     image_config: Optional[UnifiedImageGenConfig] = None
+    # 视频生成配置（供应商无关）
+    video_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: Optional[List[str]] = None
 
@@ -645,10 +649,12 @@ class VideoGenerateRequest(BaseModel):
     provider_id: str
     model: str
     session_id: Optional[str] = None
-    video_mode: Literal["text_to_video", "image_to_video", "edit"] = "text_to_video"
+    video_mode: Literal["text_to_video", "image_to_video", "edit", "reference_images", "video_extension"] = "text_to_video"
     prompt: str = Field(..., min_length=1, max_length=2000)
     image_url: Optional[str] = None  # 首帧图片 (image_to_video/edit)
     last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 支持)
+    reference_images: Optional[List[dict]] = None  # 参考图片列表 (Grok/Gemini Veo 3.1)
+    extension_video_url: Optional[str] = None  # 视频扩展源视频 URL
     config: Optional[VideoConfig] = None
 
 

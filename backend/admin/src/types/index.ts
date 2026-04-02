@@ -58,6 +58,8 @@ export interface Agent {
   gemini_config?: GeminiConfig;
   // 统一图像生成配置
   image_config?: UnifiedImageGenConfig;
+  // 视频生成配置
+  video_config?: VideoGenToolConfigData;
   image_credit_per_image?: number;
   created_at?: string;
   updated_at?: string;
@@ -211,7 +213,7 @@ export interface VideoTaskResponse {
   id: string;
   xai_task_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  video_mode: 'text_to_video' | 'image_to_video' | 'edit';
+  video_mode: 'text_to_video' | 'image_to_video' | 'edit' | 'reference_images' | 'video_extension';
   prompt: string;
   duration: number;
   quality: '480p' | '512p' | '720p' | '768p' | '1080p';
@@ -238,7 +240,7 @@ export interface VideoTaskListResponse {
 export interface VideoCreateRequest {
   provider_id: string;
   model: string;
-  video_mode: 'text_to_video' | 'image_to_video' | 'edit';
+  video_mode: 'text_to_video' | 'image_to_video' | 'edit' | 'reference_images' | 'video_extension';
   prompt: string;
   image_url?: string;  // 首帧图片
   last_frame_image?: string;  // 尾帧图片 (MiniMax-Hailuo-02 支持)
@@ -275,6 +277,7 @@ export interface AgentToolUsage {
   canvas_enabled: boolean;
   canvas_node_types: string[];
   image_gen_enabled: boolean;
+  video_gen_enabled: boolean;
 }
 
 export interface ToolStats {
@@ -340,4 +343,43 @@ export interface ImageGenToolConfigData extends UnifiedImageGenConfig {}
 export interface ImageGenToolConfig extends ToolConfig {
   tool_name: 'generate_image';
   config: ImageGenToolConfigData;
+}
+
+// ---------------------------------------------------------------------------
+// 视频生成模型能力类型
+// ---------------------------------------------------------------------------
+export interface VideoModelCapabilities {
+  provider: string;
+  modes: string[];
+  durations: number[];
+  resolutions: string[];
+  supports_first_frame: boolean;
+  supports_last_frame: boolean;
+  supports_reference_images: boolean;
+  supports_video_extension: boolean;
+  supports_video_edit: boolean;
+  supports_audio: boolean;
+  max_reference_images: number;
+  supports_prompt_optimizer: boolean;
+  supports_fast_pretreatment: boolean;
+  aspect_ratios: string[];
+}
+
+export type VideoProviderCapabilities = Record<string, VideoModelCapabilities>;
+
+// 视频生成工具配置 (generate_video)
+export interface VideoGenToolConfigData {
+  video_generation_enabled: boolean;
+  video_provider_id?: string | null;
+  video_model?: string | null;
+  video_config?: {
+    duration?: number;
+    quality?: string;
+    aspect_ratio?: string;
+  } | null;
+}
+
+export interface VideoGenToolConfig extends ToolConfig {
+  tool_name: 'generate_video';
+  config: VideoGenToolConfigData;
 }

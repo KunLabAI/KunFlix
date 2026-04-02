@@ -9,9 +9,20 @@ REST 端点:
   下载: 从 response.generateVideoResponse.generatedSamples[0].video.uri 获取
 
 模型系列:
-  - veo-3.1-generate-preview (T2V, I2V, 首尾帧, 参考图片, 视频扩展, 原生音频)
-  - veo-3.1-fast-generate-preview (快速版本)
-  - veo-2.0-generate-001 (T2V, I2V, 无声)
+  - veo-3.1-generate-preview       (T2V, I2V, 首尾帧, 参考图片, 视频扩展, 原生音频)
+  - veo-3.1-fast-generate-preview  (快速版本, 与 3.1 同等能力)
+  - veo-3.1-lite-generate-preview  (轻量版, 无参考图片, 无视频扩展, 无 4k)
+  - veo-3.0-generate-001           (稳定版, T2V/I2V, 原生音频, 仅 8s)
+  - veo-3.0-fast-generate-001      (快速稳定版)
+  - veo-2.0-generate-001           (基础版, T2V/I2V, 无声)
+
+输入模式:
+  - text_to_video:     prompt → 视频
+  - image_to_video:    prompt + image (首帧) → 视频
+  - reference_images:  prompt + referenceImages (最多 3 张) → 视频 (仅 Veo 3.1/3.1 Fast)
+  - video_extension:   prompt + video (前次生成) → 扩展视频 (仅 Veo 3.1/3.1 Fast)
+
+首尾帧插值: image (首帧) + lastFrame (尾帧) → 插值视频 (Veo 3.1 系列)
 
 API 文档: https://ai.google.dev/gemini-api/docs/video
 """
@@ -34,6 +45,9 @@ class GeminiVeoAdapter(VideoProviderAdapter):
     SUPPORTED_MODELS: ClassVar[List[str]] = [
         "veo-3.1-generate-preview",
         "veo-3.1-fast-generate-preview",
+        "veo-3.1-lite-generate-preview",
+        "veo-3.0-generate-001",
+        "veo-3.0-fast-generate-001",
         "veo-2.0-generate-001",
     ]
     
@@ -42,7 +56,7 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         "true": "completed",    # done: true
     }
     
-    # 分辨率映射: 内部 quality -> Veo resolution
+    # 分辨率映射
     RESOLUTION_MAP: ClassVar[Dict[str, str]] = {
         "720p": "720p",
         "1080p": "1080p",
@@ -55,27 +69,33 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         "9:16": "9:16",
     }
     
-    def __init__(self):
-        # 支持原生音频的模型 (Veo 3+)
-        self._audio_models = {
-            "veo-3.1-generate-preview",
-            "veo-3.1-fast-generate-preview",
-        }
-        # 支持首尾帧的模型 (Veo 3.1+)
-        self._first_last_frame_models = {
-            "veo-3.1-generate-preview",
-            "veo-3.1-fast-generate-preview",
-        }
-        # 支持参考图片的模型 (Veo 3.1+)
-        self._reference_image_models = {
-            "veo-3.1-generate-preview",
-            "veo-3.1-fast-generate-preview",
-        }
-        # 支持视频扩展的模型 (Veo 3.1+)
-        self._video_extension_models = {
-            "veo-3.1-generate-preview",
-            "veo-3.1-fast-generate-preview",
-        }
+    # 模型能力集合 — 避免运行时 if 判断, 用集合查找
+    _REFERENCE_IMAGE_MODELS: ClassVar[set] = {
+        "veo-3.1-generate-preview",
+        "veo-3.1-fast-generate-preview",
+    }
+    
+    _VIDEO_EXTENSION_MODELS: ClassVar[set] = {
+        "veo-3.1-generate-preview",
+        "veo-3.1-fast-generate-preview",
+    }
+    
+    _FIRST_LAST_FRAME_MODELS: ClassVar[set] = {
+        "veo-3.1-generate-preview",
+        "veo-3.1-fast-generate-preview",
+        "veo-3.1-lite-generate-preview",
+        "veo-3.0-generate-001",
+        "veo-3.0-fast-generate-001",
+        "veo-2.0-generate-001",
+    }
+    
+    _SEED_MODELS: ClassVar[set] = {
+        "veo-3.1-generate-preview",
+        "veo-3.1-fast-generate-preview",
+        "veo-3.1-lite-generate-preview",
+        "veo-3.0-generate-001",
+        "veo-3.0-fast-generate-001",
+    }
     
     async def submit(self, ctx: VideoContext) -> VideoResult:
         """提交视频生成任务"""
@@ -84,44 +104,122 @@ class GeminiVeoAdapter(VideoProviderAdapter):
     
     def _build_payload(self, ctx: VideoContext) -> dict:
         """构建 Gemini Veo 请求 payload"""
-        # 基础 instances
         instance: Dict = {
             "prompt": ctx.prompt,
         }
         
-        # 首帧图片 (图生视频)
-        ctx.image_url and instance.update({
-            "image": {"imageUrl": ctx.image_url}
+        # 首帧图片 (图生视频 / 首尾帧插值的首帧)
+        ctx.image_url and instance.update(
+            self._build_image_field("image", ctx.image_url)
+        )
+        
+        # 尾帧图片 (首尾帧插值, Veo 3.1 系列支持)
+        (ctx.last_frame_image and ctx.model in self._FIRST_LAST_FRAME_MODELS) and instance.update(
+            self._build_image_field("lastFrame", ctx.last_frame_image)
+        )
+        
+        # 参考图片 (仅 Veo 3.1 / 3.1 Fast)
+        (ctx.reference_images and ctx.model in self._REFERENCE_IMAGE_MODELS) and instance.update({
+            "referenceImages": [
+                self._build_reference_image(img) for img in ctx.reference_images[:3]
+            ],
         })
         
-        # 尾帧图片 (仅 Veo 3.1+)
-        supports_last_frame = ctx.model in self._first_last_frame_models
-        (supports_last_frame and ctx.last_frame_image) and instance.update({
-            "lastFrame": {"imageUrl": ctx.last_frame_image}
-        })
+        # 视频扩展 (仅 Veo 3.1 / 3.1 Fast)
+        (ctx.extension_video_url and ctx.model in self._VIDEO_EXTENSION_MODELS) and instance.update(
+            self._build_video_field(ctx.extension_video_url)
+        )
         
         # parameters
         parameters: Dict = {}
         
         # 宽高比
-        aspect_ratio = self.ASPECT_RATIO_MAP.get(ctx.aspect_ratio, "16:9")
-        parameters["aspectRatio"] = aspect_ratio
+        parameters["aspectRatio"] = self.ASPECT_RATIO_MAP.get(ctx.aspect_ratio, "16:9")
         
-        # 分辨率 (Veo 3.1 支持 720p, 1080p, 4k)
+        # 分辨率
         resolution = self.RESOLUTION_MAP.get(ctx.quality.lower())
         resolution and parameters.update({"resolution": resolution})
         
-        # 时长 (4, 6, 8 秒) - 必须是数字类型
-        duration = ctx.duration
-        duration in (4, 6, 8) and parameters.update({"durationSeconds": duration})
+        # 时长 — 1080p/4k 强制 8 秒 (API 约束); 其余保留用户设定
+        duration = 8 * (resolution in ("1080p", "4k")) or ctx.duration
+        duration in (4, 5, 6, 8) and parameters.update({"durationSeconds": duration})
         
-        # 构建最终 payload (注意: numberOfVideos 参数不被 Veo 模型支持)
+        # personGeneration 参数
+        ctx.person_generation and parameters.update({"personGeneration": ctx.person_generation})
+        
+        # seed 参数 (Veo 3+ 支持)
+        (ctx.seed is not None and ctx.model in self._SEED_MODELS) and parameters.update({
+            "seed": ctx.seed,
+        })
+        
+        # 视频扩展模式: 强制 720p, 1 个视频
+        (ctx.extension_video_url and ctx.model in self._VIDEO_EXTENSION_MODELS) and parameters.update({
+            "resolution": "720p",
+            "numberOfVideos": 1,
+        })
+        
         payload: Dict = {
             "instances": [instance],
             "parameters": parameters,
         }
         
         return payload
+    
+    def _build_image_field(self, field_name: str, image_source: str) -> dict:
+        """构建图片字段 — 自动识别 URL 或 base64
+
+        使用 bytesBase64Encoded 格式 (Vertex AI 兼容),
+        避免 inlineData 格式在部分模型上不被支持的问题。
+        """
+        is_data_uri = image_source.startswith("data:")
+        is_url = image_source.startswith("http")
+
+        result = {}
+        # base64 data URI → bytesBase64Encoded + mimeType
+        is_data_uri and result.update({
+            field_name: self._parse_data_uri(image_source)
+        })
+        # HTTP URL → imageUrl (Gemini REST 格式)
+        (not is_data_uri and is_url) and result.update({
+            field_name: {"imageUrl": image_source}
+        })
+        return result
+
+    def _parse_data_uri(self, data_uri: str) -> dict:
+        """解析 data URI 为 bytesBase64Encoded 格式 (Vertex AI 兼容)"""
+        # data:image/png;base64,iVBOR...
+        header, data = data_uri.split(",", 1)
+        mime_type = header.split(":")[1].split(";")[0]
+        return {"bytesBase64Encoded": data, "mimeType": mime_type}
+    
+    def _build_reference_image(self, img: dict) -> dict:
+        """构建单个参考图片对象"""
+        url = img.get("url", img.get("image_url", ""))
+        reference_type = img.get("reference_type", "asset")
+
+        image_field = {}
+        url.startswith("data:") and image_field.update(
+            self._parse_data_uri(url)
+        )
+        (not url.startswith("data:") and url.startswith("http")) and image_field.update(
+            {"imageUrl": url}
+        )
+
+        return {
+            "image": image_field,
+            "referenceType": reference_type,
+        }
+
+    def _build_video_field(self, video_source: str) -> dict:
+        """构建视频字段 — 用于视频扩展"""
+        result = {}
+        video_source.startswith("data:") and result.update({
+            "video": self._parse_data_uri(video_source)
+        })
+        (not video_source.startswith("data:") and video_source.startswith("http")) and result.update({
+            "video": {"videoUrl": video_source}
+        })
+        return result
     
     async def _call_submit(self, ctx: VideoContext, payload: dict) -> VideoResult:
         """POST /v1beta/models/{model}:predictLongRunning"""
@@ -133,9 +231,9 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         model = ctx.model
         url = f"{_GEMINI_BASE_URL}/models/{model}:predictLongRunning"
         
-        # 日志不打印完整图片数据
+        # 日志不打印完整图片/视频数据
         log_payload = self._sanitize_payload_for_logging(payload)
-        logger.info(f"Gemini Veo submit — model={model}, payload={log_payload}")
+        logger.info(f"Gemini Veo submit — model={model}, mode={ctx.video_mode}, payload={log_payload}")
         
         try:
             async with httpx.AsyncClient(timeout=60) as client:
@@ -146,7 +244,6 @@ class GeminiVeoAdapter(VideoProviderAdapter):
                 resp.raise_for_status()
                 data = resp.json()
             
-            # 获取 operation name
             operation_name = data.get("name", "")
             logger.info(f"Gemini Veo submit OK — operation={operation_name}")
             
@@ -160,14 +257,16 @@ class GeminiVeoAdapter(VideoProviderAdapter):
             return VideoResult(status="failed", error=str(e))
     
     def _sanitize_payload_for_logging(self, payload: dict) -> dict:
-        """清理 payload 用于日志记录 (移除图片数据)"""
+        """清理 payload 用于日志记录 (移除图片/视频数据)"""
         import copy
         log_payload = copy.deepcopy(payload)
         
+        _SENSITIVE_KEYS = {"image", "lastFrame", "referenceImages", "video"}
+        
         instances = log_payload.get("instances", [])
         for instance in instances:
-            instance.get("image") and instance.update({"image": "<image_data>"})
-            instance.get("lastFrame") and instance.update({"lastFrame": "<image_data>"})
+            for key in _SENSITIVE_KEYS & set(instance.keys()):
+                instance[key] = f"<{key}_data>"
         
         return log_payload
     
@@ -195,9 +294,8 @@ class GeminiVeoAdapter(VideoProviderAdapter):
             
             # 检查 done 字段
             is_done = data.get("done", False)
-            mapped_status = "completed" if is_done else "processing"
+            mapped_status = "completed" * is_done or "processing"
             
-            # 调试: 打印完成时的响应结构
             is_done and logger.info(f"Gemini Veo completed, response keys: {list(data.keys())}")
             
             result = VideoResult(
@@ -224,35 +322,18 @@ class GeminiVeoAdapter(VideoProviderAdapter):
     def _extract_video_info(self, data: dict, result: VideoResult) -> None:
         """从响应中提取视频信息"""
         response_data = data.get("response", {})
-        logger.info(f"Gemini response keys: {list(response_data.keys())}")
-        
         video_response = response_data.get("generateVideoResponse", {})
-        logger.info(f"generateVideoResponse keys: {list(video_response.keys())}")
-        
         generated_samples = video_response.get("generatedSamples", [])
-        logger.info(f"generatedSamples count: {len(generated_samples)}")
         
         generated_samples and self._process_first_sample(generated_samples[0], result)
     
     def _process_first_sample(self, sample: dict, result: VideoResult) -> None:
         """处理第一个生成的视频样本"""
-        logger.info(f"Sample keys: {list(sample.keys())}")
         video_info = sample.get("video", {})
-        logger.info(f"Video info keys: {list(video_info.keys()) if isinstance(video_info, dict) else 'not a dict'}")
         
-        # 视频 URI (需要下载)
+        # 视频 URI
         video_uri = video_info.get("uri", "") if isinstance(video_info, dict) else ""
-        logger.info(f"Video URI: {video_uri[:80] if video_uri else 'N/A'}...")
         video_uri and setattr(result, "video_url", video_uri)
-        
-        # 视频字节 (如果有)
-        video_bytes = video_info.get("videoBytes", "")
-        
-        # 尝试获取尺寸信息 (Gemini API 可能不直接返回)
-        # 从 sample 中获取其他元数据
-        sample.get("generationConfig") and logger.debug(
-            f"Video generation config: {sample.get('generationConfig')}"
-        )
     
     async def download_video(self, video_uri: str, api_key: str) -> bytes:
         """

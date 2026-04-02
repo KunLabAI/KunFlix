@@ -28,6 +28,11 @@ const unifiedImageGenConfigSchema = z.object({
   image_config: unifiedImageConfigSchema,
 }).optional().nullable();
 
+// 视频生成配置 schema（Agent 级别仅需开关）
+const videoGenConfigSchema = z.object({
+  video_generation_enabled: z.boolean().optional().default(false),
+}).optional().nullable();
+
 export const agentFormSchema = z.object({
   name: z.string().min(1, "请输入智能体名称").max(50, "最大长度50字符"),
   description: z.string().min(1, "请输入描述").max(500, "最大长度500字符"),
@@ -64,12 +69,15 @@ export const agentFormSchema = z.object({
   // 统一图像生成配置
   image_config: unifiedImageGenConfigSchema,
   image_credit_per_image: z.number().min(0, "不能为负数").default(0),
+  // 视频生成配置
+  video_config: videoGenConfigSchema,
 }).refine((data) => {
-  // 启用能力时，至少需要选择一个技能、启用图像生成或画布工具
+  // 启用能力时，至少需要选择一个技能、启用图像/视频生成或画布工具
   const hasSkills = (data.tools?.length ?? 0) > 0;
   const hasImageGen = !!data.image_config?.image_generation_enabled;
+  const hasVideoGen = !!data.video_config?.video_generation_enabled;
   const hasCanvas = (data.target_node_types?.length ?? 0) > 0;
-  return !data.tools_enabled || hasSkills || hasImageGen || hasCanvas;
+  return !data.tools_enabled || hasSkills || hasImageGen || hasVideoGen || hasCanvas;
 }, {
   message: "启用能力时至少开启一项工具或功能",
   path: ["tools"],

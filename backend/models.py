@@ -254,6 +254,9 @@ class Agent(Base):
     # 统一图像生成配置（供应商无关，优先级高于 gemini_config/xai_image_config 中的图像配置）
     image_config = Column(JSON, default=dict)
 
+    # 视频生成配置（供应商无关）
+    video_config = Column(JSON, default=dict)
+
     # 可控制的画布节点类型: ["script", "character", "storyboard", "video"]
     target_node_types = Column(JSON, default=[])
 

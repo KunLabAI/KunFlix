@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid, AlertCircle } from 'lucide-react';
+import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid, AlertCircle, Film } from 'lucide-react';
 import { useToolConfig } from '@/hooks/useToolRegistry';
 
 // 画布节点类型选项
@@ -32,8 +32,15 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
   const { config: imageToolConfig } = useToolConfig('generate_image');
   const globalImageEnabled = imageToolConfig?.config?.image_generation_enabled;
 
+  // 获取全局视频工具配置
+  const { config: videoToolConfig } = useToolConfig('generate_video');
+  const globalVideoEnabled = videoToolConfig?.config?.video_generation_enabled;
+
   // 智能体级别的图像工具开关
   const agentImageEnabled = watch('image_config.image_generation_enabled');
+
+  // 智能体级别的视频工具开关
+  const agentVideoEnabled = watch('video_config.video_generation_enabled');
 
   // 画布状态
   const targetNodeTypes: string[] = watch('target_node_types') || [];
@@ -83,6 +90,55 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
             {imageToolConfig?.config?.image_model && (
               <Badge variant="outline" className="text-xs">
                 {imageToolConfig.config.image_model}
+              </Badge>
+            )}
+            <span className="text-xs text-muted-foreground">
+              参数配置请在「工具管理」中设置
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── 视频工具（generate_video + edit_video）── */}
+      <div className="rounded-lg border p-3">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Film className="h-4 w-4 text-violet-500" />
+            <span className="text-sm font-medium">视频工具</span>
+          </div>
+          <FormField
+            control={control}
+            name="video_config.video_generation_enabled"
+            render={({ field }) => (
+              <FormItem className="space-y-0">
+                <FormControl>
+                  <Switch
+                    checked={field.value || false}
+                    onCheckedChange={field.onChange}
+                    disabled={disabled || !globalVideoEnabled}
+                  />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          视频生成 (generate_video) 和视频编辑 (edit_video) 工具。
+        </p>
+        
+        {/* 全局配置状态提示 */}
+        {!globalVideoEnabled && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+            <AlertCircle className="h-3 w-3" />
+            <span>全局配置未启用，请在「工具管理」中先启用视频生成</span>
+          </div>
+        )}
+        
+        {globalVideoEnabled && agentVideoEnabled && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {videoToolConfig?.config?.video_model && (
+              <Badge variant="outline" className="text-xs">
+                {videoToolConfig.config.video_model}
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">

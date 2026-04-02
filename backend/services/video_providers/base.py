@@ -6,7 +6,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, ClassVar
+from typing import Dict, List, ClassVar, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -18,14 +18,21 @@ class VideoContext:
     api_key: str
     model: str
     prompt: str
-    provider_type: str = "xai"  # xai / minimax
+    provider_type: str = "xai"  # xai / minimax / gemini
     image_url: str | None = None  # 首帧图片
-    last_frame_image: str | None = None  # 尾帧图片 (MiniMax 支持)
+    last_frame_image: str | None = None  # 尾帧图片 (MiniMax / Gemini Veo 3.1 支持)
     duration: int = 6  # 秒
-    quality: str = "720p"  # 480p / 720p / 768P / 1080P
+    quality: str = "720p"  # 480p / 720p / 768P / 1080P / 4k
     aspect_ratio: str = "16:9"
     mode: str = "normal"  # 前端保留字段
-    video_mode: str = "text_to_video"  # text_to_video / image_to_video / edit
+    video_mode: str = "text_to_video"  # text_to_video / image_to_video / edit / video_extension / reference_images
+    # 参考图片 (Grok / Gemini Veo 3.1 支持, 最多 3 张)
+    reference_images: List[Dict] = field(default_factory=list)
+    # 视频扩展/编辑的源视频 URL (Grok / Gemini Veo 3.1 支持)
+    extension_video_url: str | None = None
+    # Gemini 特有配置
+    person_generation: str = ""  # allow_adult / dont_allow (留空则不发送, 使用 API 默认行为)
+    seed: Optional[int] = None  # 随机种子 (Gemini Veo 3+ 支持)
     # MiniMax 特有配置
     prompt_optimizer: bool = True
     fast_pretreatment: bool = False

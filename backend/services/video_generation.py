@@ -12,10 +12,11 @@
 架构:
   video_generation.py (工厂 + 兼容层)
   └── video_providers/
-      ├── base.py          (抽象基类)
-      ├── xai_provider.py  (xAI 适配器)
-      ├── minimax_provider.py (MiniMax 适配器)
-      └── gemini_provider.py (Gemini 适配器)
+      ├── base.py              (抽象基类)
+      ├── model_capabilities.py (模型能力配置)
+      ├── xai_provider.py      (xAI 适配器)
+      ├── minimax_provider.py  (MiniMax 适配器)
+      └── gemini_provider.py   (Gemini 适配器)
 """
 from __future__ import annotations
 
@@ -56,7 +57,7 @@ def get_provider_adapter(provider_type: str) -> VideoProviderAdapter:
     获取供应商适配器实例
     
     Args:
-        provider_type: 供应商类型 (xai, minimax)
+        provider_type: 供应商类型 (xai, minimax, gemini)
         
     Returns:
         VideoProviderAdapter: 适配器实例
@@ -76,9 +77,9 @@ def register_provider(provider_type: str, adapter_cls: Type[VideoProviderAdapter
 
 
 # ---------------------------------------------------------------------------
-# 统一入口函数 (向后兼容)
+# 统一入口函数
 # ---------------------------------------------------------------------------
-MAX_POLL_FAILURES = 10  # 保留常量
+MAX_POLL_FAILURES = 10
 
 
 async def submit_video_task(ctx: VideoContext) -> VideoResult:
@@ -91,11 +92,7 @@ async def submit_video_task(ctx: VideoContext) -> VideoResult:
     provider_type = getattr(ctx, "provider_type", "xai")
     
     adapter = get_provider_adapter(provider_type)
-    result = await adapter.submit(ctx)
-    
-    # 转换结果格式 (新 VideoResult.task_id -> 旧 VideoResult.xai_task_id)
-    # 通过属性别名保持兼容
-    return result
+    return await adapter.submit(ctx)
 
 
 async def poll_video_task(api_key: str, task_id: str, provider_type: str = "xai") -> VideoResult:
@@ -126,6 +123,14 @@ async def poll_video_task(api_key: str, task_id: str, provider_type: str = "xai"
 # ---------------------------------------------------------------------------
 # 辅助函数: 根据模型名推断供应商类型
 # ---------------------------------------------------------------------------
+
+# 模型前缀 -> 供应商类型 (按优先级排列)
+_MODEL_PREFIX_PROVIDER_MAP = [
+    (["veo-"], "gemini"),
+    (["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"], "minimax"),
+]
+
+
 def infer_provider_type(model: str) -> str:
     """
     根据模型名推断供应商类型
@@ -138,22 +143,13 @@ def infer_provider_type(model: str) -> str:
     """
     model_lower = model.lower()
     
-    # Gemini Veo 模型特征
-    veo_patterns = ["veo-"]
-    any(p in model_lower for p in veo_patterns) and veo_patterns.clear()
-    for pattern in veo_patterns:
-        (pattern in model_lower) and veo_patterns.append("gemini")
+    # 遍历前缀映射表, 返回第一个匹配的供应商类型
+    matches = [
+        provider
+        for prefixes, provider in _MODEL_PREFIX_PROVIDER_MAP
+        for prefix in prefixes
+        if prefix in model_lower
+    ]
     
-    # MiniMax 模型特征
-    minimax_patterns = ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]
-    any(p in model_lower for p in minimax_patterns) and minimax_patterns.clear()
-    for pattern in minimax_patterns:
-        (pattern in model_lower) and minimax_patterns.append("minimax")
-    
-    # 检查顺序: Veo -> MiniMax -> xAI (默认)
-    (any(p in model_lower for p in ["veo-"])) and veo_patterns.append("gemini")
-    (any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"])) and minimax_patterns.append("minimax")
-    
-    return "gemini" if any(p in model_lower for p in ["veo-"]) else \
-           "minimax" if any(p in model_lower for p in ["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"]) else \
-           "xai"
+    # 返回第一个匹配, 默认 xai
+    return matches[0] if matches else "xai"

@@ -38,6 +38,12 @@ class ToolContext:
     _image_provider_type: str | None = field(default=None, repr=False)
     _image_provider_resolved: bool = field(default=False, repr=False)
     _global_image_config: dict | None = field(default=None, repr=False)
+    _video_provider_type: str | None = field(default=None, repr=False)
+    _video_provider_resolved: bool = field(default=False, repr=False)
+    _global_video_config: dict | None = field(default=None, repr=False)
+
+    # --- transient event collectors ---
+    video_tasks: list = field(default_factory=list, repr=False)
 
     # ------------------------------------------------------------------
     # Lazy accessors
@@ -82,3 +88,31 @@ class ToolContext:
         prov = result.scalar_one_or_none() if result else None
         self._image_provider_type = prov.provider_type.lower() if prov else None
         return self._image_provider_type
+
+    async def get_global_video_config(self) -> dict:
+        """获取全局视频生成配置（从 ToolConfig 表，带缓存）。"""
+        if self._global_video_config is not None:
+            return self._global_video_config
+        from models import ToolConfig
+        result = await self.db.execute(
+            select(ToolConfig).where(ToolConfig.tool_name == "generate_video")
+        )
+        tool_config = result.scalar_one_or_none()
+        self._global_video_config = (tool_config.config if tool_config else {}) or {}
+        return self._global_video_config
+
+    async def resolve_video_provider_type(self) -> str | None:
+        """Resolve the video provider's provider_type from DB (cached after first call)."""
+        return self._video_provider_type if self._video_provider_resolved else await self._do_resolve_video_provider()
+
+    async def _do_resolve_video_provider(self) -> str | None:
+        from models import LLMProvider
+        self._video_provider_resolved = True
+        global_config = await self.get_global_video_config()
+        provider_id = global_config.get("video_provider_id")
+        result = provider_id and await self.db.execute(
+            select(LLMProvider).filter(LLMProvider.id == provider_id)
+        )
+        prov = result.scalar_one_or_none() if result else None
+        self._video_provider_type = prov.provider_type.lower() if prov else None
+        return self._video_provider_type

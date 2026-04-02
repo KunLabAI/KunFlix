@@ -14,6 +14,11 @@ class VideoModelCapabilities(TypedDict):
     resolutions: List[str]
     supports_first_frame: bool
     supports_last_frame: bool
+    supports_reference_images: bool
+    supports_video_extension: bool
+    supports_video_edit: bool
+    supports_audio: bool
+    max_reference_images: int
     supports_prompt_optimizer: bool
     supports_fast_pretreatment: bool
     aspect_ratios: List[str]
@@ -33,6 +38,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["768p", "1080p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": True,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -41,11 +51,16 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
     # MiniMax-Hailuo-2.3-Fast: I2V 专用模型，仅支持图片生成视频
     "MiniMax-Hailuo-2.3-Fast": {
         "provider": "minimax",
-        "modes": ["image_to_video"],  # 仅支持图片生成
+        "modes": ["image_to_video"],
         "durations": [6, 10],
         "resolutions": ["768p", "1080p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": True,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -58,7 +73,12 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "durations": [6, 10],
         "resolutions": ["512p", "768p", "1080p"],
         "supports_first_frame": True,
-        "supports_last_frame": True,  # 支持首尾帧
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -72,6 +92,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": False,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -85,6 +110,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": False,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -98,6 +128,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -111,6 +146,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -124,6 +164,11 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
@@ -137,66 +182,145 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "resolutions": ["720p"],
         "supports_first_frame": False,
         "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": True,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "1:1"],
     },
     
     # =========================================================================
-    # xAI 模型
+    # xAI (Grok) 模型
     # =========================================================================
     
-    # Grok Imagine Video: xAI 视频生成模型
+    # Grok Imagine Video: T2V, I2V, 参考图片, 视频编辑, 视频扩展
     "grok-imagine-video": {
         "provider": "xai",
-        "modes": ["text_to_video", "image_to_video", "edit"],
-        "durations": list(range(1, 16)),  # 1-15 秒
+        "modes": ["text_to_video", "image_to_video", "reference_images", "edit", "video_extension"],
+        "durations": list(range(1, 16)),  # 1-15 秒 (生成); 编辑不支持自定义时长; 扩展 2-10 秒
         "resolutions": ["480p", "720p"],
         "supports_first_frame": True,
         "supports_last_frame": False,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": False,
+        "max_reference_images": 3,
         "supports_prompt_optimizer": False,
         "supports_fast_pretreatment": False,
-        "aspect_ratios": ["16:9", "9:16", "1:1"],
+        "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"],
     },
     
     # =========================================================================
     # Gemini Veo 模型
     # =========================================================================
     
-    # Veo 3.1 Preview: 支持原生音频、首尾帧、参考图片、视频扩展
+    # Veo 3.1 Preview: 原生音频, T2V, I2V, 首尾帧, 参考图片, 视频扩展
     "veo-3.1-generate-preview": {
         "provider": "gemini",
-        "modes": ["text_to_video", "image_to_video"],
-        "durations": [4, 6, 8],
-        "resolutions": ["720p", "1080p", "4k"],
-        "supports_first_frame": True,
-        "supports_last_frame": True,  # Veo 3.1 支持首尾帧
-        "supports_prompt_optimizer": False,
-        "supports_fast_pretreatment": False,
-        "aspect_ratios": ["16:9", "9:16"],
-    },
-    
-    # Veo 3.1 Fast Preview: 快速版本
-    "veo-3.1-fast-generate-preview": {
-        "provider": "gemini",
-        "modes": ["text_to_video", "image_to_video"],
+        "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
         "durations": [4, 6, 8],
         "resolutions": ["720p", "1080p", "4k"],
         "supports_first_frame": True,
         "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 3,
         "supports_prompt_optimizer": False,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16"],
     },
     
-    # Veo 2.0: 基础版本，无声
+    # Veo 3.1 Fast Preview: 快速版本, 与 3.1 同等能力
+    "veo-3.1-fast-generate-preview": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
+        "durations": [4, 6, 8],
+        "resolutions": ["720p", "1080p", "4k"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 3,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 3.1 Lite Preview: 轻量版, 无参考图片, 无视频扩展, 无 4k
+    "veo-3.1-lite-generate-preview": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [4, 6, 8],
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 3.0: 稳定版, T2V/I2V, 原生音频, 仅 8 秒
+    "veo-3.0-generate-001": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [8],
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 3.0 Fast: 快速稳定版
+    "veo-3.0-fast-generate-001": {
+        "provider": "gemini",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": [8],
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16"],
+    },
+    
+    # Veo 2.0: 基础版本, 无声
     "veo-2.0-generate-001": {
         "provider": "gemini",
         "modes": ["text_to_video", "image_to_video"],
         "durations": [5, 6, 8],
         "resolutions": ["720p"],
         "supports_first_frame": True,
-        "supports_last_frame": False,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
         "supports_prompt_optimizer": False,
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16"],

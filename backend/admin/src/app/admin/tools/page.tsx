@@ -9,10 +9,11 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Activity, AlertTriangle, Clock, FileText, Settings2 } from 'lucide-react';
-import { useToolRegistry, useAgentToolUsage, useToolStats, useImageCapabilities, useToolConfig, useUpdateToolConfig } from '@/hooks/useToolRegistry';
+import { useToolRegistry, useAgentToolUsage, useToolStats, useImageCapabilities, useVideoCapabilities, useToolConfig, useUpdateToolConfig } from '@/hooks/useToolRegistry';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
-import { ImageGenToolConfigData } from '@/types';
+import { ImageGenToolConfigData, VideoGenToolConfigData } from '@/types';
 import ImageGenConfigDialog from '@/components/admin/tools/ImageGenConfigDialog';
+import VideoGenConfigDialog from '@/components/admin/tools/VideoGenConfigDialog';
 
 // generate_image 工具可配置参数定义（映射 UnifiedImageGenConfig）
 const IMAGE_GEN_CONFIG_PARAMS = [
@@ -25,17 +26,30 @@ const IMAGE_GEN_CONFIG_PARAMS = [
   { name: 'output_format', type: '枚举', description: '输出格式 (png, jpeg, webp)' },
 ];
 
+// generate_video 工具可配置参数定义
+const VIDEO_GEN_CONFIG_PARAMS = [
+  { name: 'video_generation_enabled', type: '布尔', description: '视频生成启用状态开关' },
+  { name: 'video_provider_id', type: '字符串', description: '视频生成供应商 ID' },
+  { name: 'video_model', type: '字符串', description: '视频生成模型名称' },
+  { name: 'duration', type: '整数', description: '视频时长 (秒)' },
+  { name: 'quality', type: '枚举', description: '分辨率 (480p, 720p, 1080p, 4k)' },
+  { name: 'aspect_ratio', type: '枚举', description: '宽高比 (16:9, 9:16, 1:1 等)' },
+];
+
 export default function ToolsPage() {
   const { registry, isLoading: regLoading } = useToolRegistry();
   const { agentUsage, isLoading: usageLoading } = useAgentToolUsage();
   const { stats, isLoading: statsLoading, mutate: refreshStats } = useToolStats();
   const { activeProviders } = useLLMProviders();
   const { capabilities: imageCapabilities } = useImageCapabilities();
-  const { config: toolConfig, mutate: refreshToolConfig } = useToolConfig('generate_image');
+  const { capabilities: videoCapabilities } = useVideoCapabilities();
+  const { config: imageToolConfig, mutate: refreshImageToolConfig } = useToolConfig('generate_image');
+  const { config: videoToolConfig, mutate: refreshVideoToolConfig } = useToolConfig('generate_video');
   const { updateConfig } = useUpdateToolConfig();
 
-  // 图像生成配置 Dialog 状态
-  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  // Dialog 状态
+  const [imageConfigDialogOpen, setImageConfigDialogOpen] = useState(false);
+  const [videoConfigDialogOpen, setVideoConfigDialogOpen] = useState(false);
 
   const isLoading = regLoading || usageLoading || statsLoading;
 
@@ -44,19 +58,16 @@ export default function ToolsPage() {
     (activeProviders || []).map(p => [p.id, `${p.name} (${p.provider_type})`])
   );
 
-  // 获取全局图像生成配置数据
-  const imageGenConfig: ImageGenToolConfigData | undefined = toolConfig?.config as ImageGenToolConfigData;
+  // 获取全局配置数据
+  const imageGenConfig: ImageGenToolConfigData | undefined = imageToolConfig?.config as ImageGenToolConfigData;
+  const videoGenConfig: VideoGenToolConfigData | undefined = videoToolConfig?.config as VideoGenToolConfigData;
 
-  const handleSaveConfig = async (config: ImageGenToolConfigData) => {
+  const handleSaveImageConfig = async (config: ImageGenToolConfigData) => {
     await updateConfig('generate_image', { config });
   };
 
-  const handleOpenConfig = () => {
-    setConfigDialogOpen(true);
-  };
-
-  const handleSaved = () => {
-    refreshToolConfig();
+  const handleSaveVideoConfig = async (config: VideoGenToolConfigData) => {
+    await updateConfig('generate_video', { config });
   };
 
   return (
@@ -165,7 +176,7 @@ export default function ToolsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={handleOpenConfig}
+                          onClick={() => setImageConfigDialogOpen(true)}
                         >
                           <Settings2 className="mr-1 h-3.5 w-3.5" />
                           配置
@@ -212,6 +223,68 @@ export default function ToolsPage() {
                       <div className="flex items-center gap-2 mt-2">
                         <Badge variant={imageGenConfig?.image_generation_enabled ? 'default' : 'secondary'}>
                           {imageGenConfig?.image_generation_enabled ? '已启用' : '未启用'}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                  {/* generate_video 工具配置 */}
+                  {provider.tools.some(t => t.name === 'generate_video') && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-violet-500" />
+                          <h5 className="text-sm font-medium text-violet-600 dark:text-violet-400">工具配置</h5>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setVideoConfigDialogOpen(true)}
+                        >
+                          <Settings2 className="mr-1 h-3.5 w-3.5" />
+                          配置
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant={videoGenConfig?.video_generation_enabled ? 'default' : 'secondary'}>
+                          {videoGenConfig?.video_generation_enabled ? '已启用' : '未启用'}
+                        </Badge>
+                        {videoGenConfig?.video_generation_enabled && (
+                          <span className="text-sm text-muted-foreground">
+                            {providerNameMap.get(videoGenConfig.video_provider_id || '') || '未选择供应商'} · {videoGenConfig.video_model || '未选择模型'}
+                          </span>
+                        )}
+                      </div>
+                      {videoGenConfig?.video_generation_enabled && videoGenConfig.video_config && (
+                        <div className="text-xs text-muted-foreground">
+                          时长: {videoGenConfig.video_config.duration || '默认'}s · 
+                          分辨率: {videoGenConfig.video_config.quality || '默认'} · 
+                          宽高比: {videoGenConfig.video_config.aspect_ratio || '默认'}
+                        </div>
+                      )}
+                      <div className="mt-2 space-y-1.5">
+                        {VIDEO_GEN_CONFIG_PARAMS.map((param) => (
+                          <div key={param.name} className="flex items-center gap-2 text-xs">
+                            <code className="bg-muted px-1.5 py-0.5 rounded font-mono shrink-0">{param.name}</code>
+                            <Badge variant="outline" className="text-[10px] shrink-0">{param.type}</Badge>
+                            <span className="text-muted-foreground">{param.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* edit_video 工具 - 共享配置说明 */}
+                  {provider.tools.some(t => t.name === 'edit_video') && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Settings2 className="h-4 w-4 text-indigo-500" />
+                        <h5 className="text-sm font-medium text-indigo-600 dark:text-indigo-400">工具配置</h5>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        视频编辑工具与「视频生成」共享全局配置。请在上方 VideoGenProvider 中配置。
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant={videoGenConfig?.video_generation_enabled ? 'default' : 'secondary'}>
+                          {videoGenConfig?.video_generation_enabled ? '已启用' : '未启用'}
                         </Badge>
                       </div>
                     </div>
@@ -273,6 +346,7 @@ export default function ToolsPage() {
                   <TableHead>Agent</TableHead>
                   <TableHead>画布</TableHead>
                   <TableHead>图像生成</TableHead>
+                  <TableHead>视频生成</TableHead>
                   <TableHead>Skills</TableHead>
                 </TableRow>
               </TableHeader>
@@ -292,6 +366,11 @@ export default function ToolsPage() {
                     <TableCell>
                       <Badge variant={agent.image_gen_enabled ? 'default' : 'secondary'}>
                         {agent.image_gen_enabled ? '已启用' : '未启用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={agent.video_gen_enabled ? 'default' : 'secondary'}>
+                        {agent.video_gen_enabled ? '已启用' : '未启用'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -315,13 +394,24 @@ export default function ToolsPage() {
 
       {/* 图像生成配置 Dialog */}
       <ImageGenConfigDialog
-        open={configDialogOpen}
-        onOpenChange={setConfigDialogOpen}
-        onSaved={handleSaved}
+        open={imageConfigDialogOpen}
+        onOpenChange={setImageConfigDialogOpen}
+        onSaved={() => refreshImageToolConfig()}
         providers={activeProviders || []}
         imageCapabilities={imageCapabilities}
         initialConfig={imageGenConfig}
-        onSaveConfig={handleSaveConfig}
+        onSaveConfig={handleSaveImageConfig}
+      />
+
+      {/* 视频生成配置 Dialog */}
+      <VideoGenConfigDialog
+        open={videoConfigDialogOpen}
+        onOpenChange={setVideoConfigDialogOpen}
+        onSaved={() => refreshVideoToolConfig()}
+        providers={activeProviders || []}
+        videoCapabilities={videoCapabilities}
+        initialConfig={videoGenConfig}
+        onSaveConfig={handleSaveVideoConfig}
       />
     </div>
   );

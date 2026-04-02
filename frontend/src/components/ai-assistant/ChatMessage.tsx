@@ -12,8 +12,54 @@ import { ThinkingIndicator } from './ThinkingIndicator';
 import { LazyImage } from './LazyImage';
 import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
+import { VideoTaskCard } from './VideoTaskCard';
 import MultiAgentSteps from '@/components/canvas/MultiAgentSteps';
 import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAIAssistantStore';
+
+// ---------------------------------------------------------------------------
+// Video marker parsing
+// ---------------------------------------------------------------------------
+
+// <!-- __VIDEO_TASK__|{task_id}|{video_mode}|{model} -->
+const VIDEO_TASK_RE = /<!-- __VIDEO_TASK__\|([^|]+)\|([^|]+)\|([^|]*) -->/g;
+// __VIDEO_DONE__{task_id}|{url}|{quality}|{duration}|{cost}
+const VIDEO_DONE_RE = /^__VIDEO_DONE__([^|]+)\|([^|]+)\|([^|]*)\|([^|]*)\|([^|]*)$/;
+
+interface VideoCardInfo {
+  taskId: string;
+  videoMode?: string;
+  model?: string;
+  videoUrl?: string;
+  quality?: string;
+  duration?: number;
+  creditCost?: number;
+}
+
+function parseVideoMarkers(content: string): { cleanContent: string; videoCards: VideoCardInfo[] } {
+  // __VIDEO_DONE__: entire message is a completion marker
+  const doneMatch = VIDEO_DONE_RE.exec(content);
+  if (doneMatch) {
+    return {
+      cleanContent: '',
+      videoCards: [{
+        taskId: doneMatch[1],
+        videoUrl: doneMatch[2],
+        quality: doneMatch[3],
+        duration: parseFloat(doneMatch[4]) || 0,
+        creditCost: parseFloat(doneMatch[5]) || 0,
+      }],
+    };
+  }
+
+  // __VIDEO_TASK__: extract in-content task markers
+  const videoCards: VideoCardInfo[] = [];
+  const cleanContent = content.replace(VIDEO_TASK_RE, (_m, taskId, videoMode, model) => {
+    videoCards.push({ taskId, videoMode, model });
+    return '';
+  }).trim();
+
+  return { cleanContent, videoCards };
+}
 
 // Markdown组件配置：使用懒加载优化性能
 const createMarkdownComponents = (isStreaming: boolean) => ({
@@ -105,10 +151,33 @@ function FloatingLoadingDots() {
 export function ChatMessage({ message, isLoading, isLast, className }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
-  const isAiThinking = isStreaming && !message.content && !message.skill_calls?.length && !message.tool_calls?.length;
+  const isAiThinking = isStreaming && !message.content && !message.skill_calls?.length && !message.tool_calls?.length && !message.video_tasks?.length;
   
+  // 解析视频标记（仅对 AI 非流式消息解析，流式消息保持原样）
+  const { cleanContent, videoCards } = useMemo(
+    () => (!isUser && !isStreaming && message.content)
+      ? parseVideoMarkers(message.content)
+      : { cleanContent: message.content, videoCards: [] as VideoCardInfo[] },
+    [message.content, isUser, isStreaming],
+  );
+
+  // 合并两种来源的视频任务：内容解析 + SSE 事件
+  const allVideoCards = useMemo(() => {
+    const sseCards: VideoCardInfo[] = (message.video_tasks || []).map((vt) => ({
+      taskId: vt.task_id,
+      videoMode: vt.video_mode,
+      model: vt.model,
+    }));
+    // 去重（同一 taskId 只保留一个）
+    const seen = new Set(videoCards.map((c) => c.taskId));
+    return [...videoCards, ...sseCards.filter((c) => !seen.has(c.taskId))];
+  }, [videoCards, message.video_tasks]);
+
+  // 纯视频完成消息（__VIDEO_DONE__）无需渲染文本
+  const isVideoOnlyMessage = allVideoCards.length > 0 && !cleanContent;
+
   // 检测消息是否需要分块
-  const { needsChunking } = useMessageChunking(message.content, 10000);
+  const { needsChunking } = useMessageChunking(cleanContent, 10000);
   
   // 根据流式状态创建 markdown 组件
   const markdownComponents = useMemo(() => createMarkdownComponents(isStreaming), [isStreaming]);
@@ -126,7 +195,8 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
           'max-w-[85%] rounded-2xl px-3 py-2 text-sm',
           isUser
             ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'text-secondary-foreground'
+            : 'text-secondary-foreground',
+          isVideoOnlyMessage && '!px-0 !py-0',
         )}
       >
         {/* 用户消息 */}
@@ -140,17 +210,16 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
             {/* 思考中指示器 */}
             {isAiThinking && <ThinkingIndicator />}
 
-            {/* 消息内容 */}
-            {message.content && (
+            {/* 消息内容（去除视频标记后的文本） */}
+            {cleanContent && (
               isStreaming ? (
                 <TypewriterText
-                  content={message.content}
+                  content={cleanContent}
                   isStreaming={isStreaming}
                 />
               ) : needsChunking ? (
-                // 大消息使用分块渲染
                 <MessageChunk
-                  content={message.content}
+                  content={cleanContent}
                   maxChunkSize={2000}
                   renderContent={(chunk) => (
                     <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
@@ -163,11 +232,16 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
               ) : (
                 <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {message.content}
+                    {cleanContent}
                   </ReactMarkdown>
                 </div>
               )
             )}
+
+            {/* 视频任务卡片 */}
+            {allVideoCards.map((card) => (
+              <VideoTaskCard key={card.taskId} task={card} />
+            ))}
 
             {/* 技能调用指示器 */}
             {message.skill_calls && message.skill_calls.length > 0 && (
