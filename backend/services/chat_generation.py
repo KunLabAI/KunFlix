@@ -94,6 +94,11 @@ async def generate_single_agent(
     if _edit_image_data_url and messages:
         last_msg = messages[-1]
         (last_msg.get("role") == "user") and inject_image_to_message(last_msg, _edit_image_data_url)
+        # 附带媒体路径提示，让 LLM 使用路径调用 edit_image（而非尝试复制 base64）
+        _media_path = _img_filename and f"/api/media/{_img_filename}"
+        _media_path and isinstance(last_msg.get("content"), list) and last_msg["content"].append(
+            {"type": "text", "text": f"[Image source path: {_media_path} — use this path as image_url for edit_image tool, do NOT pass base64 data]"}
+        )
         logger.info(f"Injected image into user message: {_img_filename or 'history_image'}")
 
     # 工具管理器 — 构建工具定义
@@ -210,8 +215,8 @@ async def generate_single_agent(
                 )
                 yield sse(_SSE_END[is_skill], event_data)
                 
-                # Canvas tool 执行后发送画布更新事件，通知前端刷新
-                is_canvas and theater_id and (
+                # Canvas / edit_image 工具执行后发送画布更新事件，通知前端刷新
+                (is_canvas or tc.name == "edit_image") and theater_id and (
                     yield sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
 

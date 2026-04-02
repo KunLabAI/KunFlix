@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid } from 'lucide-react';
+import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid, AlertCircle } from 'lucide-react';
+import { useToolConfig } from '@/hooks/useToolRegistry';
 
 // 画布节点类型选项
 const NODE_TYPE_OPTIONS = [
@@ -27,9 +28,12 @@ interface ToolCapabilitiesProps {
 const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
   const { control, watch, setValue } = useFormContext();
 
-  // 图像生成状态
-  const imageEnabled = watch('image_config.image_generation_enabled');
-  const imageModel = watch('image_config.image_model');
+  // 获取全局图像工具配置
+  const { config: imageToolConfig } = useToolConfig('generate_image');
+  const globalImageEnabled = imageToolConfig?.config?.image_generation_enabled;
+
+  // 智能体级别的图像工具开关
+  const agentImageEnabled = watch('image_config.image_generation_enabled');
 
   // 画布状态
   const targetNodeTypes: string[] = watch('target_node_types') || [];
@@ -39,13 +43,12 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
     <div className="mt-4 pt-4 border-t space-y-3">
       <h4 className="text-sm font-medium">工具开关</h4>
 
-      {/* ── generate_image 工具 ── */}
+      {/* ── 图像工具（generate_image + edit_image）── */}
       <div className="rounded-lg border p-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Paintbrush className="h-4 w-4 text-emerald-500" />
-            <span className="text-sm font-medium">图像生成</span>
-            <span className="text-xs text-muted-foreground font-mono">generate_image</span>
+            <span className="text-sm font-medium">图像工具</span>
           </div>
           <FormField
             control={control}
@@ -56,7 +59,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
                   <Switch
                     checked={field.value || false}
                     onCheckedChange={field.onChange}
-                    disabled={disabled}
+                    disabled={disabled || !globalImageEnabled}
                   />
                 </FormControl>
               </FormItem>
@@ -64,15 +67,26 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
           />
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          文本模型可通过 generate_image 工具调用图像生成，支持跨供应商。
+          图像生成 (generate_image) 和图像编辑 (edit_image) 工具。
         </p>
-        {imageEnabled && (
-          <div className="mt-2 flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {imageModel || '未配置模型'}
-            </Badge>
+        
+        {/* 全局配置状态提示 */}
+        {!globalImageEnabled && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+            <AlertCircle className="h-3 w-3" />
+            <span>全局配置未启用，请在「工具管理」中先启用图像生成</span>
+          </div>
+        )}
+        
+        {globalImageEnabled && agentImageEnabled && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {imageToolConfig?.config?.image_model && (
+              <Badge variant="outline" className="text-xs">
+                {imageToolConfig.config.image_model}
+              </Badge>
+            )}
             <span className="text-xs text-muted-foreground">
-              详细参数请在「工具管理 → 图像生成工具配置」中设置
+              参数配置请在「工具管理」中设置
             </span>
           </div>
         )}

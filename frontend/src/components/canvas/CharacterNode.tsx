@@ -110,9 +110,15 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   const handleAIEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // 确保 imageUrl 是完整的 /api/media/ 路径
+    let imageUrl = data.imageUrl || '';
+    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('/api/media/') && !imageUrl.startsWith('data:')) {
+      // 纯文件名或 UUID，添加 /api/media/ 前缀
+      imageUrl = `/api/media/${imageUrl}`;
+    }
     useAIAssistantStore.getState().setImageEditContext({
       nodeId: id,
-      imageUrl: data.imageUrl || '',
+      imageUrl,
       nodeName: data.name || '未命名图片卡',
     });
     useAIAssistantStore.getState().setIsOpen(true);

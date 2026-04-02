@@ -35,23 +35,35 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
   },
   image: (node) => {
     const data = node.data as CharacterNodeData;
+    // 将 imageUrl 转换为完整的 /api/media/ 路径
+    let thumbnailUrl: string | null = data.imageUrl || null;
+    if (thumbnailUrl && !thumbnailUrl.startsWith('http') && !thumbnailUrl.startsWith('/api/media/') && !thumbnailUrl.startsWith('data:')) {
+      // 纯文件名或 UUID，添加 /api/media/ 前缀
+      thumbnailUrl = `/api/media/${thumbnailUrl}`;
+    }
     return {
       nodeId: node.id,
       nodeType: 'image',
       label: data.name || '未命名图片',
       excerpt: data.description || '',
-      thumbnailUrl: data.imageUrl || null,
+      thumbnailUrl,
       meta: { fitMode: data.fitMode, uploading: data.uploading },
     };
   },
   video: (node) => {
     const data = node.data as VideoNodeData;
+    // 将 videoUrl 转换为完整的 /api/media/ 路径
+    let thumbnailUrl: string | null = data.videoUrl || null;
+    if (thumbnailUrl && !thumbnailUrl.startsWith('http') && !thumbnailUrl.startsWith('/api/media/') && !thumbnailUrl.startsWith('data:')) {
+      // 纯文件名或 UUID，添加 /api/media/ 前缀
+      thumbnailUrl = `/api/media/${thumbnailUrl}`;
+    }
     return {
       nodeId: node.id,
       nodeType: 'video',
       label: data.name || '未命名视频',
       excerpt: data.description || '',
-      thumbnailUrl: data.videoUrl || null,
+      thumbnailUrl,
       meta: { fitMode: data.fitMode, uploading: data.uploading },
     };
   },

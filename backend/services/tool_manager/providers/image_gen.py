@@ -263,6 +263,11 @@ class ImageGenProvider:
         if not _check_agent_eligible(ctx.agent):
             return []
         
+        # 检查智能体级别的开关
+        agent_image_enabled = (ctx.agent.image_config or {}).get("image_generation_enabled", False)
+        if not agent_image_enabled:
+            return []
+        
         # 从全局 ToolConfig 读取配置
         global_config = await ctx.get_global_image_config()
         is_enabled = global_config.get("image_generation_enabled", False)
