@@ -28,13 +28,15 @@ _DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
     "minimax": "https://api.minimax.io/anthropic",
     "xai": "https://api.x.ai/v1",
+    "ark": "https://ark.cn-beijing.volces.com/api/v3",
+    "doubao": "https://ark.cn-beijing.volces.com/api/v3",
 }
 
 # Azure uses "azure" client type, all others use "openai"
 _CLIENT_TYPE_MAP = {"azure": "azure"}
 
 # 视频模型关键词 → 跳过聊天测试，使用 API key 验证
-_VIDEO_MODEL_PATTERNS = ("video", "imagine-video")
+_VIDEO_MODEL_PATTERNS = ("video", "imagine-video", "seedance")
 
 
 def _build_client_kwargs(base_url: str | None, provider_type: str) -> dict:

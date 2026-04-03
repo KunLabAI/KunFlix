@@ -107,6 +107,8 @@ class ToolContext:
 
     async def _do_resolve_video_provider(self) -> str | None:
         from models import LLMProvider
+        from services.video_providers import extract_video_provider_type
+        
         self._video_provider_resolved = True
         global_config = await self.get_global_video_config()
         provider_id = global_config.get("video_provider_id")
@@ -114,5 +116,6 @@ class ToolContext:
             select(LLMProvider).filter(LLMProvider.id == provider_id)
         )
         prov = result.scalar_one_or_none() if result else None
-        self._video_provider_type = prov.provider_type.lower() if prov else None
+        # 使用标准化的提取函数
+        self._video_provider_type = extract_video_provider_type(prov.provider_type) if prov else None
         return self._video_provider_type

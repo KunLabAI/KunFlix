@@ -18,7 +18,7 @@ class VideoContext:
     api_key: str
     model: str
     prompt: str
-    provider_type: str = "xai"  # xai / minimax / gemini
+    provider_type: str = ""  # 由调用方显式设置 (xai / minimax / gemini / ark)
     image_url: str | None = None  # 首帧图片
     last_frame_image: str | None = None  # 尾帧图片 (MiniMax / Gemini Veo 3.1 支持)
     duration: int = 6  # 秒

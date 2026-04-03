@@ -5,6 +5,7 @@
   - xAI (Grok Video)
   - MiniMax (Hailuo)
   - Gemini (Veo)
+  - Ark (Seedance)
 
 使用方式:
   from services.video_generation import submit_video_task, poll_video_task, VideoContext
@@ -16,7 +17,8 @@
       ├── model_capabilities.py (模型能力配置)
       ├── xai_provider.py      (xAI 适配器)
       ├── minimax_provider.py  (MiniMax 适配器)
-      └── gemini_provider.py   (Gemini 适配器)
+      ├── gemini_provider.py   (Gemini 适配器)
+      └── ark_provider.py      (Ark Seedance 适配器)
 """
 from __future__ import annotations
 
@@ -31,6 +33,8 @@ from .video_providers import (
     XAIVideoAdapter,
     MiniMaxVideoAdapter,
     GeminiVeoAdapter,
+    ArkSeedanceAdapter,
+    extract_video_provider_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +53,7 @@ _PROVIDER_REGISTRY: Dict[str, Type[VideoProviderAdapter]] = {
     "xai": XAIVideoAdapter,
     "minimax": MiniMaxVideoAdapter,
     "gemini": GeminiVeoAdapter,
+    "ark": ArkSeedanceAdapter,
 }
 
 
@@ -124,22 +129,23 @@ async def poll_video_task(api_key: str, task_id: str, provider_type: str = "xai"
 # 辅助函数: 根据模型名推断供应商类型
 # ---------------------------------------------------------------------------
 
-# 模型前缀 -> 供应商类型 (按优先级排列)
+# 模型前缀 -> 供应商类型 (备用推断机制，优先使用 LLMProvider.provider_type)
 _MODEL_PREFIX_PROVIDER_MAP = [
     (["veo-"], "gemini"),
     (["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"], "minimax"),
+    (["seedance", "doubao-seedance"], "ark"),
 ]
 
 
-def infer_provider_type(model: str) -> str:
+def _infer_from_model_prefix(model: str) -> str:
     """
-    根据模型名推断供应商类型
+    根据模型名前缀推断供应商类型 (备用方案)
     
     Args:
         model: 模型名称
         
     Returns:
-        str: 供应商类型 (xai / minimax / gemini)
+        str: 供应商类型，默认 xai
     """
     model_lower = model.lower()
     
@@ -151,5 +157,23 @@ def infer_provider_type(model: str) -> str:
         if prefix in model_lower
     ]
     
-    # 返回第一个匹配, 默认 xai
     return matches[0] if matches else "xai"
+
+
+def infer_provider_type(model: str, provider_type_hint: str = "") -> str:
+    """
+    推断供应商类型
+    
+    优先使用 provider_type_hint（从 LLMProvider.provider_type 提取）。
+    备用：根据模型名前缀推断。
+    
+    Args:
+        model: 模型名称
+        provider_type_hint: 供应商类型提示 (來自 LLMProvider.provider_type)
+        
+    Returns:
+        str: 供应商类型 (xai / minimax / gemini / ark)
+    """
+    # 优先使用提示
+    hint_result = extract_video_provider_type(provider_type_hint) if provider_type_hint else None
+    return hint_result or _infer_from_model_prefix(model)

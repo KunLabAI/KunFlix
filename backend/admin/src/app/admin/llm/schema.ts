@@ -37,6 +37,7 @@ export const PROVIDER_ICONS: Record<string, string> = {
   microsoft: '/provider/microsoft-color.svg',
   openrouter: '/provider/openrouter.svg',
   sora: '/provider/sora-color.svg',
+  ark: '/provider/volcengine-color.svg',
   // Fallbacks or mappings for existing keys
   // deepseek not in list, maybe use qwen or generic? Or maybe it's not provided yet. I'll omit or use a placeholder if needed, but for now I'll map what I can.
 };
@@ -51,6 +52,7 @@ export const PROVIDER_OPTIONS = [
   { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax },
   { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
   { value: 'doubao', label: 'Doubao (ByteDance)', icon: PROVIDER_ICONS.doubao },
+  { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
   // { value: 'kling', label: 'Kling', icon: PROVIDER_ICONS.kling },
   // { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
 ];

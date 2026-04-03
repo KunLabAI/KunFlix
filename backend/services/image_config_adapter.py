@@ -12,6 +12,7 @@ from typing import Any
 _QUALITY_MAP: dict[str, dict[str, str]] = {
     "gemini": {"standard": "1024", "hd": "2K", "ultra": "4K"},
     "xai":    {"standard": "1k",   "hd": "2k", "ultra": "2k"},
+    "ark":    {"standard": "1K",   "hd": "2K", "ultra": "4K"},
 }
 
 # ---------------------------------------------------------------------------
@@ -20,6 +21,7 @@ _QUALITY_MAP: dict[str, dict[str, str]] = {
 _BATCH_MAP: dict[str, dict[str, Any]] = {
     "gemini": {"field": "batch_count", "max": 8},
     "xai":    {"field": "n",           "max": 10},
+    "ark":    {"field": "n",           "max": 4},
 }
 
 # ---------------------------------------------------------------------------
@@ -29,11 +31,13 @@ _ASPECT_RATIO_SUPPORTED: dict[str, set[str]] = {
     "gemini": {"auto", "16:9", "4:3", "1:1", "3:4", "9:16"},
     "xai":    {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
                "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "auto"},
+    "ark":    {"1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "auto"},
 }
 
 _ASPECT_RATIO_DEFAULT: dict[str, str] = {
     "gemini": "auto",
     "xai":    "1:1",
+    "ark":    "1:1",
 }
 
 # ---------------------------------------------------------------------------
@@ -42,6 +46,7 @@ _ASPECT_RATIO_DEFAULT: dict[str, str] = {
 _OUTPUT_FORMAT_SUPPORTED: dict[str, set[str]] = {
     "gemini": {"png", "jpeg", "webp"},
     "xai":    set(),  # xAI 不支持用户指定输出格式
+    "ark":    set(),  # Ark Seedream 不支持用户指定输出格式
 }
 
 
@@ -60,6 +65,12 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
         "qualities": ["standard", "hd"],
         "output_formats": [],
         "batch_count": {"min": 1, "max": _BATCH_MAP["xai"]["max"]},
+    },
+    "ark": {
+        "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["ark"]),
+        "qualities": ["standard", "hd", "ultra"],
+        "output_formats": [],
+        "batch_count": {"min": 1, "max": _BATCH_MAP["ark"]["max"]},
     },
 }
 
@@ -122,12 +133,40 @@ def _adapt_to_xai(unified: dict) -> dict:
     return result
 
 
+def _adapt_to_ark(unified: dict) -> dict:
+    """Convert unified image_config → ark Seedream image config format."""
+    cfg = unified.get("image_config") or {}
+    result: dict[str, Any] = {
+        "image_generation_enabled": unified.get("image_generation_enabled", False),
+    }
+    img: dict[str, Any] = {}
+
+    # aspect_ratio
+    ar = cfg.get("aspect_ratio")
+    ar and ar in _ASPECT_RATIO_SUPPORTED["ark"] and img.update(aspect_ratio=ar)
+
+    # quality → size
+    q = cfg.get("quality")
+    q and img.update(size=_QUALITY_MAP["ark"].get(q, "1K"))
+
+    # batch_count → n
+    bc = cfg.get("batch_count")
+    bc and img.update(n=min(bc, _BATCH_MAP["ark"]["max"]))
+
+    # Seedream 默认使用 url 格式
+    img.update(response_format="url")
+
+    img and result.update(image_config=img)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Adapter registry (mapping table)
 # ---------------------------------------------------------------------------
 _ADAPTERS: dict[str, callable] = {
     "gemini": _adapt_to_gemini,
     "xai":    _adapt_to_xai,
+    "ark":    _adapt_to_ark,
 }
 
 

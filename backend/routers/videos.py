@@ -14,6 +14,7 @@ from models import LLMProvider, VideoTask, ChatMessage
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
+from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
 from services.media_utils import save_video_from_url, MEDIA_DIR
@@ -93,7 +94,7 @@ async def create_video_task(
     input_image_count += 1 if request.last_frame_image else 0
 
     # 推断供应商类型
-    provider_type = provider.provider_type or infer_provider_type(request.model)
+    provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(request.model, provider.provider_type)
     
     # 构建视频上下文
     ctx = VideoContext(
@@ -173,7 +174,7 @@ async def get_video_task_status(
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Provider not found"))
 
     # 轮询供应商 (根据 provider_type 自动选择适配器)
-    provider_type = provider.provider_type or infer_provider_type(task.model or "")
+    provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(task.model or "", provider.provider_type)
     poll_result = await poll_video_task(provider.api_key, task.xai_task_id, provider_type)
 
     # 超时保护：pending 且有错误超过 5 分钟 → 判定失败

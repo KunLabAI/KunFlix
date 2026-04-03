@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 VIDEO_EDIT_TOOL_NAME = "edit_video"
 
 # 视频供应商集合（与 video_gen 共享）
-_TOOL_VIDEO_PROVIDERS = frozenset({"xai", "minimax", "gemini"})
+_TOOL_VIDEO_PROVIDERS = frozenset({"xai", "minimax", "gemini", "ark"})
 
 # 工具模式 → VideoContext.video_mode 映射
 _MODE_TO_VIDEO_MODE = {

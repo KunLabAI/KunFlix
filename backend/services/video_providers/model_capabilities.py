@@ -325,6 +325,136 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16"],
     },
+    
+    # =========================================================================
+    # 火山方舟 Seedance 模型
+    # =========================================================================
+    
+    # Seedance 2.0: T2V, I2V, 首尾帧, 多模态参考(图/视频/音频), 有声视频
+    "doubao-seedance-2-0-260128": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
+        "durations": list(range(4, 16)),  # 4-15 秒
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": True,
+        "max_reference_images": 9,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 2.0 Fast: 快速版, 与 2.0 同等能力
+    "doubao-seedance-2-0-fast-260128": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
+        "durations": list(range(4, 16)),
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": True,
+        "max_reference_images": 9,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 1.5 Pro: T2V, I2V, 首尾帧, 有声视频
+    "doubao-seedance-1-5-pro-251215": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": list(range(4, 13)),  # 4-12 秒
+        "resolutions": ["480p", "720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 1.0 Pro: T2V, I2V, 首尾帧
+    "doubao-seedance-1-0-pro-250801": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": list(range(2, 13)),  # 2-12 秒
+        "resolutions": ["480p", "720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 1.0 Pro Fast: 快速版, 首帧 + T2V
+    "doubao-seedance-1-0-pro-fast-250801": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video"],
+        "durations": list(range(2, 13)),
+        "resolutions": ["480p", "720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 1.0 Lite T2V: 纯文本生成视频
+    "doubao-seedance-1-0-lite-t2v": {
+        "provider": "ark",
+        "modes": ["text_to_video"],
+        "durations": list(range(2, 13)),
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": False,
+        "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
+    
+    # Seedance 1.0 Lite I2V: 首帧, 首尾帧, 参考图 (1-4张)
+    "doubao-seedance-1-0-lite-i2v": {
+        "provider": "ark",
+        "modes": ["text_to_video", "image_to_video", "reference_images"],
+        "durations": list(range(2, 13)),
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 4,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+    },
 }
 
 

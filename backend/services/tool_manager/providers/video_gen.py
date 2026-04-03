@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import LLMProvider, VideoTask, ToolConfig
 from services.video_generation import submit_video_task, infer_provider_type
+from services.video_providers import VIDEO_PROVIDER_TYPES, extract_video_provider_type
 from services.video_providers.base import VideoContext
 from services.video_providers.model_capabilities import (
     VIDEO_MODEL_CAPABILITIES,
@@ -35,9 +36,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 VIDEO_GEN_TOOL_NAME = "generate_video"
-
-# Providers that support tool-based video generation
-_TOOL_VIDEO_PROVIDERS = frozenset({"xai", "minimax", "gemini"})
 
 # Superset fallback enums (used when model capabilities are unknown)
 _DEFAULT_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"]
@@ -199,8 +197,10 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
     if not provider:
         return json.dumps({"error": "Video provider not found or inactive. Please configure video generation in admin tools."})
 
-    # 推断供应商类型
-    provider_type = provider.provider_type or infer_provider_type(model)
+    # 从 LLMProvider.provider_type 提取视频供应商类型
+    video_provider_type = extract_video_provider_type(provider.provider_type)
+    # 备用：根据模型名推断
+    video_provider_type = video_provider_type or infer_provider_type(model, provider.provider_type)
 
     # 合并配置：全局配置 > 工具参数（管理员设定优先）
     final_duration = video_cfg.get("duration") or duration or 6
@@ -215,7 +215,7 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
         api_key=provider.api_key,
         model=model,
         prompt=prompt,
-        provider_type=provider_type,
+        provider_type=video_provider_type,
         image_url=image_url,
         duration=final_duration,
         quality=final_quality,
@@ -257,7 +257,7 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
     await db.commit()
     await db.refresh(task)
 
-    logger.info("Video task created via tool: %s (%s: %s)", task.id, provider_type, video_result.task_id)
+    logger.info("Video task created via tool: %s (%s: %s)", task.id, video_provider_type, video_result.task_id)
 
     # 将视频任务信息存入 ctx，供 chat_generation 发送 SSE 事件
     ctx.video_tasks.append({"task_id": task.id, "video_mode": video_mode, "model": model})
@@ -305,9 +305,13 @@ class VideoGenProvider:
         if not is_enabled:
             return []
 
-        # 检查供应商是否支持工具调用视频生成
+        # 检查供应商是否支持工具调用视频生成 (使用代码级注册表)
         provider_type = await ctx.resolve_video_provider_type()
-        if provider_type not in _TOOL_VIDEO_PROVIDERS:
+        is_supported = provider_type in VIDEO_PROVIDER_TYPES
+        # 供应商类型未注册则不启用工具
+        _ = is_supported or logger.debug("Video provider %s not in registered types", provider_type)
+        is_supported or None  # no-op placeholder
+        if not is_supported:
             return []
 
         # 获取模型能力以动态构建参数枚举

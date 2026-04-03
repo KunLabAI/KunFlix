@@ -53,6 +53,8 @@ DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
     "minimax": "https://api.minimax.io/anthropic",
     "xai": "https://api.x.ai/v1",
+    "ark": "https://ark.cn-beijing.volces.com/api/v3",
+    "doubao": "https://ark.cn-beijing.volces.com/api/v3",
 }
 
 # 供应商注册表：provider_type -> stream handler
@@ -413,6 +415,68 @@ async def _save_xai_image_item_sdk(item, response_format: str) -> str:
 async def stream_xai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """xAI/Grok 统一分发器：根据模型类型路由到文本或图像处理器"""
     handler = _stream_xai_image if ctx.model in _XAI_IMAGE_MODELS else _stream_xai_text
+    async for chunk in handler(ctx, result):
+        yield chunk
+
+
+# ============================================================
+# 火山方舟 (Ark) 供应商 — 文本(OpenAI 兼容) + 图像(Seedream)
+# ============================================================
+
+# Ark Seedream 图像模型集合（使用 /images/generations，非 chat completions）
+_ARK_IMAGE_MODELS = frozenset({
+    "doubao-seedream-5-0-260128",
+    "doubao-seedream-4-5-250115",
+    "doubao-seedream-4-0-241220",
+})
+
+
+async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """火山方舟 Seedream 图像生成（使用 /images/generations 端点）"""
+    from openai import AsyncOpenAI
+    from services.media_utils import save_image_from_url
+
+    base_url = get_effective_base_url(ctx) or "https://ark.cn-beijing.volces.com/api/v3"
+    client = AsyncOpenAI(api_key=ctx.api_key, base_url=base_url)
+
+    # 从最后一条 user 消息提取 prompt
+    prompt_text, _ = _extract_xai_user_input(ctx.messages)
+
+    # 从 xai_image_config 提取配置（复用统一字段）
+    img_cfg = (ctx.xai_image_config or {}).get("image_config") or {}
+    n = img_cfg.get("n") or 1
+    size = img_cfg.get("size") or "1K"
+    watermark = img_cfg.get("watermark", False)
+
+    logger.info(
+        f"Ark Seedream: model={ctx.model}, n={n}, size={size}, watermark={watermark}"
+    )
+
+    generate_params: Dict[str, Any] = {
+        "model": ctx.model,
+        "prompt": prompt_text,
+        "n": n,
+        "response_format": "url",
+        "extra_body": {"size": size, "watermark": watermark},
+    }
+
+    response = await client.images.generate(**generate_params)
+
+    for item in response.data:
+        url_data = getattr(item, "url", None)
+        url = (await save_image_from_url(url_data)) if url_data else ""
+        md = f"\n\n![image]({url})\n\n"
+        result.full_response += md
+        result.generated_image_count += 1
+        yield md
+
+    logger.info(f"Ark Seedream generated: {result.generated_image_count} images")
+
+
+@register_provider("ark", "doubao")
+async def stream_ark(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """火山方舟统一分发器：Seedream 图像模型 → 图像处理，其他 → OpenAI 兼容文本处理"""
+    handler = _stream_ark_image if ctx.model in _ARK_IMAGE_MODELS else _PROVIDER_REGISTRY["openai"]
     async for chunk in handler(ctx, result):
         yield chunk
 

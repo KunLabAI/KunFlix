@@ -35,7 +35,7 @@ const RESOLUTION_LABELS: Record<string, string> = {
 };
 
 // 视频供应商类型集合
-const VIDEO_PROVIDER_TYPES = new Set(["xai", "minimax", "gemini"]);
+const VIDEO_PROVIDER_TYPES = new Set(["xai", "minimax", "gemini", "ark"]);
 
 interface VideoGenConfigDialogProps {
   open: boolean;
@@ -150,7 +150,7 @@ export default function VideoGenConfigDialog({
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>
-                    未找到视频供应商。请先在「供应商管理」中添加 xAI、MiniMax 或 Gemini 类型的供应商。
+                    未找到视频供应商。请先在「供应商管理」中添加 xAI、MiniMax、Gemini 或火山方舟 (Ark) 类型的供应商。
                   </span>
                 </div>
               )}

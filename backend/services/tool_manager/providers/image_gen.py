@@ -21,6 +21,10 @@ from services.xai_image_gen import (
     batch_generate_xai_images,
     XAIBatchImageConfig,
 )
+from services.ark_image_gen import (
+    batch_generate_ark_images,
+    ArkBatchImageConfig,
+)
 from services.batch_image_gen import (
     batch_generate_images,
     BatchImageConfig,
@@ -45,7 +49,7 @@ _ASPECT_RATIO_ENUM = [
 ]
 
 # Providers that support tool-based image generation
-_TOOL_GEN_PROVIDERS = frozenset({"xai", "gemini"})
+_TOOL_GEN_PROVIDERS = frozenset({"xai", "gemini", "ark"})
 
 # ---------------------------------------------------------------------------
 # Tool Definition (dynamic per provider)
@@ -163,10 +167,32 @@ async def _generate_via_gemini(
     return [r.image_url for r in result.results if r.image_url]
 
 
+async def _generate_via_ark(
+    api_key: str, base_url: str | None, model: str,
+    prompt: str, config: dict, n: int,
+) -> list[str]:
+    img_cfg = config.get("image_config") or {}
+    ark_config = ArkBatchImageConfig(
+        size=img_cfg.get("size") or "1K",
+        n=n,
+        response_format=img_cfg.get("response_format") or "url",
+        watermark=img_cfg.get("watermark", False),
+    )
+    result = await batch_generate_ark_images(
+        api_key=api_key,
+        model=model,
+        prompts=[prompt],
+        config=ark_config,
+        base_url=base_url,
+    )
+    return [url for r in result.results for url in r.image_urls]
+
+
 # Handler dispatch map (no if-chains)
 _IMAGE_GENERATORS: dict[str, Any] = {
     "xai": _generate_via_xai,
     "gemini": _generate_via_gemini,
+    "ark": _generate_via_ark,
 }
 
 
