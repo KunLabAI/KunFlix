@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Clapperboard, Database, Trash2, Copy, Maximize2 } from 'lucide-react';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { PivotEditor } from './pivot/PivotEditor';
+import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 
 const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeData>>) => {
@@ -154,36 +155,27 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           </CardContent>
         </Card>
 
-        {/* 悬浮操作按钮，底部外侧 */}
-        <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-full flex justify-center pt-4 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30 pb-4">
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleEdit} 
-            title="全屏编辑" 
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDuplicate} 
-            title="创建副本" 
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDelete} 
-            title="删除" 
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* 工具条 */}
+        <NodeToolbar
+          actions={[
+            {
+              icon: <Maximize2 className="h-3.5 w-3.5" />,
+              onClick: handleEdit,
+              title: '全屏编辑',
+            },
+            {
+              icon: <Copy className="h-3.5 w-3.5" />,
+              onClick: handleDuplicate,
+              title: '创建副本',
+            },
+            {
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleDelete,
+              title: '删除',
+              variant: 'danger',
+            },
+          ] as ToolbarAction[]}
+        />
 
         {/* Left Edge */}
         <div className="edge-handle-wrapper left group/handle pointer-events-auto">

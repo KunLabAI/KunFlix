@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Pencil, Trash2, Wand2, Check, Copy } from 'lucide-react';
 import { useCanvasStore, ScriptNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { ScriptEditor } from './ScriptEditor';
+import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 
 const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => {
@@ -206,31 +207,22 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         </CardFooter>
       </Card>
 
-      {/* 悬浮操作按钮，底部外侧 */}
-      <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
-        <Button
-          variant="secondary"
-          size="icon"
-          className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40"
-          onClick={handleDuplicate}
-          title="创建副本"
-          aria-label="创建副本"
-          role="button"
-        >
-          <Copy className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="secondary"
-          size="icon"
-          className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40"
-          onClick={handleDelete}
-          title="删除"
-          aria-label="删除"
-          role="button"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
+      {/* 工具条 */}
+      <NodeToolbar
+        actions={[
+          {
+            icon: <Copy className="h-3.5 w-3.5" />,
+            onClick: handleDuplicate,
+            title: '创建副本',
+          },
+          {
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            onClick: handleDelete,
+            title: '删除',
+            variant: 'danger',
+          },
+        ] as ToolbarAction[]}
+      />
 
       {/* Right Edge */}
       <div className="edge-handle-wrapper right group/handle pointer-events-auto">

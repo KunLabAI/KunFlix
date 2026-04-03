@@ -20,6 +20,7 @@ import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
 
 import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData } from '@/store/useCanvasStore';
+import { useResourceStore } from '@/store/useResourceStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
 import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/ScriptNode';
@@ -329,7 +330,7 @@ function InfiniteCanvas() {
   };
 
   // 通用文件上传（XHR，避免重复代码）
-  const uploadFile = (file: File): Promise<{ url?: string; error?: string }> => {
+  const uploadFile = (file: File): Promise<{ url?: string; error?: string; asset?: Record<string, unknown> }> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/media/upload');
@@ -442,6 +443,8 @@ function InfiniteCanvas() {
           const { updateNodeData } = useCanvasStore.getState();
           URL.revokeObjectURL(objectUrl);
           updateNodeData(newNode.id, { imageUrl: response.url, uploading: false } as Partial<CharacterNodeData>);
+          // 同步新资源到 resourceStore
+          response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
         } catch (error: any) {
           console.error('Upload error:', error);
           const { updateNodeData } = useCanvasStore.getState();
@@ -481,6 +484,8 @@ function InfiniteCanvas() {
           const { updateNodeData } = useCanvasStore.getState();
           URL.revokeObjectURL(objectUrl);
           updateNodeData(newNode.id, { videoUrl: response.url, uploading: false } as Partial<VideoNodeData>);
+          // 同步新资源到 resourceStore
+          response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
         } catch (error: any) {
           console.error('Upload error:', error);
           const { updateNodeData } = useCanvasStore.getState();
@@ -523,6 +528,8 @@ function InfiniteCanvas() {
             } as ScriptNodeData,
           };
           addNode(newNode);
+          // 同步新资源到 resourceStore
+          response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
         } catch (error: any) {
           console.error('Audio upload error:', error);
           alert(`音频上传失败: ${error.message || '请重试'}`);

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize } from 'lucide-react';
 import { useCanvasStore, VideoNodeData, CanvasNode } from '@/store/useCanvasStore';
+import { useResourceStore } from '@/store/useResourceStore';
+import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 
 const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
@@ -146,7 +148,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await new Promise<{ url?: string; error?: string }>((resolve, reject) => {
+      const response = await new Promise<{ url?: string; error?: string; asset?: Record<string, unknown> }>((resolve, reject) => {
         xhr.onload = () => {
           try {
             let res;
@@ -170,8 +172,11 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         throw new Error(response.error);
       }
 
-      // Success
+      // Success: 更新节点数据并同步到资源库
       updateNodeData(id, { videoUrl: response.url, uploading: false } as Partial<VideoNodeData>);
+      
+      // 同步新资源到 resourceStore（让侧边栏实时显示）
+      response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
     } catch (error: any) {
       console.error('Upload error:', error);
       setUploadError(error.message || '上传失败，请重试');
@@ -287,7 +292,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
         <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] transition-shadow hover:shadow-lg`}>
           <CardContent 
-            className="p-3 flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
+            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
           >
             {!data.videoUrl && !isUploading && !uploadError && (
               <Button 
@@ -374,42 +379,28 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           </CardContent>
         </Card>
 
-        {/* 悬浮操作按钮，底部外侧 */}
-        <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleToggleFitMode} 
-            title={data.fitMode === 'contain' ? "填充卡片 (裁剪)" : "适应卡片 (留白)"} 
-            aria-label="切换视频适配模式"
-            role="button"
-          >
-            {data.fitMode === 'contain' ? <Maximize className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDuplicate} 
-            title="创建副本" 
-            aria-label="创建副本"
-            role="button"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDelete} 
-            title="删除" 
-            aria-label="删除"
-            role="button"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* 工具条 */}
+        <NodeToolbar
+          actions={[
+            {
+              icon: data.fitMode === 'contain' ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />,
+              onClick: handleToggleFitMode,
+              title: data.fitMode === 'contain' ? '填充卡片 (裁剪)' : '适应卡片 (留白)',
+              ariaLabel: '切换视频适配模式',
+            },
+            {
+              icon: <Copy className="h-3.5 w-3.5" />,
+              onClick: handleDuplicate,
+              title: '创建副本',
+            },
+            {
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleDelete,
+              title: '删除',
+              variant: 'danger',
+            },
+          ] as ToolbarAction[]}
+        />
 
         {/* Right Edge */}
         <div className="edge-handle-wrapper right group/handle pointer-events-auto">

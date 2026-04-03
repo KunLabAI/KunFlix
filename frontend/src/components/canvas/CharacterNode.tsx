@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
 import { useCanvasStore, CharacterNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 import { createPortal } from 'react-dom';
 
@@ -112,16 +113,20 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     e.stopPropagation();
     // 确保 imageUrl 是完整的 /api/media/ 路径
     let imageUrl = data.imageUrl || '';
-    if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('/api/media/') && !imageUrl.startsWith('data:')) {
-      // 纯文件名或 UUID，添加 /api/media/ 前缀
-      imageUrl = `/api/media/${imageUrl}`;
-    }
-    useAIAssistantStore.getState().setImageEditContext({
+    const needsPrefix = imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('/api/media/') && !imageUrl.startsWith('data:');
+    needsPrefix && (imageUrl = `/api/media/${imageUrl}`);
+    
+    // 使用 nodeAttachments 代替 imageEditContext，统一预览样式（与拖拽一致）
+    const store = useAIAssistantStore.getState();
+    store.addNodeAttachment({
       nodeId: id,
-      imageUrl,
-      nodeName: data.name || '未命名图片卡',
+      nodeType: 'image',
+      label: data.name || '未命名图片卡',
+      excerpt: data.description || '',
+      thumbnailUrl: imageUrl,
+      meta: { fromAIEdit: true },
     });
-    useAIAssistantStore.getState().setIsOpen(true);
+    store.setIsOpen(true);
   };
 
   const handleUploadClick = (e?: React.MouseEvent) => {
@@ -380,9 +385,9 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </div>
         </div>
 
-        <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] transition-shadow hover:shadow-lg`}>
+        <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
           <CardContent 
-            className="p-3 flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
+            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
           >
             {!data.imageUrl && !isUploading && !uploadError && (
               <Button 
@@ -465,53 +470,34 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </CardContent>
         </Card>
 
-        {/* 悬浮操作按钮，底部外侧 */}
-        <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 w-full flex justify-center pt-2 gap-2 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-150 z-30">
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-primary/10 hover:text-primary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleAIEdit} 
-            title="AI 编辑" 
-            aria-label="AI 编辑"
-            role="button"
-          >
-            <Sparkles className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleToggleFitMode} 
-            title={data.fitMode === 'contain' ? "填充卡片 (裁剪)" : "适应卡片 (留白)"} 
-            aria-label="切换图片适配模式"
-            role="button"
-          >
-            {data.fitMode === 'contain' ? <Maximize className="h-4 w-4" /> : <Minimize className="h-4 w-4" />}
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md hover:bg-secondary shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDuplicate} 
-            title="创建副本" 
-            aria-label="创建副本"
-            role="button"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="secondary" 
-            size="icon" 
-            className="h-8 w-8 rounded-full shadow-md text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0 pointer-events-auto relative z-40" 
-            onClick={handleDelete} 
-            title="删除" 
-            aria-label="删除"
-            role="button"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {/* 工具条 */}
+        <NodeToolbar
+          actions={[
+            {
+              icon: <Sparkles className="h-3.5 w-3.5" />,
+              onClick: handleAIEdit,
+              title: 'AI 编辑',
+              variant: 'primary',
+            },
+            {
+              icon: data.fitMode === 'contain' ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />,
+              onClick: handleToggleFitMode,
+              title: data.fitMode === 'contain' ? '填充卡片 (裁剪)' : '适应卡片 (留白)',
+              ariaLabel: '切换图片适配模式',
+            },
+            {
+              icon: <Copy className="h-3.5 w-3.5" />,
+              onClick: handleDuplicate,
+              title: '创建副本',
+            },
+            {
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onClick: handleDelete,
+              title: '删除',
+              variant: 'danger',
+            },
+          ] as ToolbarAction[]}
+        />
 
         {/* Right Edge */}
         <div className="edge-handle-wrapper right group/handle pointer-events-auto">

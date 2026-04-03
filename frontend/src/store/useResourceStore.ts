@@ -37,6 +37,8 @@ interface ResourceState {
   renameAsset: (id: string, name: string) => Promise<void>;
   replaceAssetFile: (id: string, file: File) => Promise<void>;
   deleteAsset: (id: string) => Promise<void>;
+  /** 从外部上传（如画布）同步新资源到 store */
+  syncAssetFromUpload: (asset: AssetItem | Record<string, unknown>) => void;
   reset: () => void;
 }
 
@@ -152,6 +154,17 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
       assets: s.assets.filter((a) => a.id !== id),
       total: s.total - 1,
     }));
+  },
+
+  syncAssetFromUpload(asset) {
+    const assetItem = asset as AssetItem;
+    // 避免重复添加
+    set((s) => {
+      const exists = s.assets.some((a) => a.id === assetItem.id);
+      return exists
+        ? s
+        : { assets: [assetItem, ...s.assets], total: s.total + 1 };
+    });
   },
 
   reset() {

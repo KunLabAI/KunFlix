@@ -43,7 +43,7 @@ function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
       transition={{ duration: 0.15 }}
       className="relative group shrink-0"
     >
-      <div className="w-16 h-16 rounded-lg overflow-hidden bg-muted/50 border border-border/50">
+      <div className="w-16 h-16 rounded-lg overflow-hidden bg-transparent border border-border/50">
         {isVideo ? (
           <div className="relative w-full h-full">
             <video
