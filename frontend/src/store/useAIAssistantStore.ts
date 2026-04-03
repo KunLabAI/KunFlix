@@ -56,6 +56,8 @@ export interface Message {
   tool_calls?: ToolCall[];
   multi_agent?: MultiAgentData;
   video_tasks?: VideoTaskData[];
+  // 欢迎消息标记
+  isWelcome?: boolean;
 }
 
 export interface AgentInfo {
@@ -196,7 +198,7 @@ interface AIAssistantState {
 }
 
 const DEFAULT_MESSAGES: Message[] = [
-  { role: 'ai', content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' }
+  { role: 'ai', content: '', status: 'complete', isWelcome: true }
 ];
 
 const DEFAULT_PANEL_SIZE = { width: 320, height: 480 };

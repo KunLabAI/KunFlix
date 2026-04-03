@@ -14,6 +14,7 @@ import { LazyImage } from './LazyImage';
 import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
+import { WelcomeMessage } from './WelcomeMessage';
 import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
@@ -328,71 +329,79 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
         {!isUser && (
           <DraggableTextWrapper>
             <div className="space-y-2">
-              {/* 单智能体思考面板：有思考内容时显示 */}
-              {thinkingContent && (
-                <ThinkPanel 
-                  isThinking={isSingleAgentThinking}
-                  thinkingContent={thinkingContent}
-                />
-              )}
+              {/* 欢迎消息：显示特殊的欢迎组件 */}
+              {message.isWelcome && <WelcomeMessage />}
               
-              {/* 流式输出且无思考内容时显示点点点动画占位 */}
-              {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
-                <div className="py-2 px-1">
-                  <FloatingLoadingDots />
-                </div>
-              )}
+              {/* 非欢迎消息：正常渲染 AI 回复内容 */}
+              {!message.isWelcome && (
+                <>
+                  {/* 单智能体思考面板：有思考内容时显示 */}
+                  {thinkingContent && (
+                    <ThinkPanel 
+                      isThinking={isSingleAgentThinking}
+                      thinkingContent={thinkingContent}
+                    />
+                  )}
+                  
+                  {/* 流式输出且无思考内容时显示点点点动画占位 */}
+                  {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
+                    <div className="py-2 px-1">
+                      <FloatingLoadingDots />
+                    </div>
+                  )}
 
-              {/* 正式回复内容：思考完成后或无思考内容时显示 */}
-              {cleanContent && (isThinkingComplete || !thinkingContent) && (
-                isStreaming ? (
-                  <TypewriterText
-                    content={cleanContent}
-                    isStreaming={isStreaming}
-                  />
-                ) : needsChunking ? (
-                  <MessageChunk
-                    content={cleanContent}
-                    maxChunkSize={2000}
-                    renderContent={(chunk) => (
+                  {/* 正式回复内容：思考完成后或无思考内容时显示 */}
+                  {cleanContent && (isThinkingComplete || !thinkingContent) && (
+                    isStreaming ? (
+                      <TypewriterText
+                        content={cleanContent}
+                        isStreaming={isStreaming}
+                      />
+                    ) : needsChunking ? (
+                      <MessageChunk
+                        content={cleanContent}
+                        maxChunkSize={2000}
+                        renderContent={(chunk) => (
+                          <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                              {chunk}
+                            </ReactMarkdown>
+                          </div>
+                        )}
+                      />
+                    ) : (
                       <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {chunk}
+                          {cleanContent}
                         </ReactMarkdown>
                       </div>
-                    )}
-                  />
-                ) : (
-                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {cleanContent}
-                    </ReactMarkdown>
-                  </div>
-                )
-              )}
+                    )
+                  )}
 
-              {/* 视频任务卡片 */}
-              {allVideoCards.map((card) => (
-                <VideoTaskCard key={card.taskId} task={card} />
-              ))}
+                  {/* 视频任务卡片 */}
+                  {allVideoCards.map((card) => (
+                    <VideoTaskCard key={card.taskId} task={card} />
+                  ))}
 
-              {/* 技能调用指示器 */}
-              {message.skill_calls && message.skill_calls.length > 0 && (
-                <SkillCallIndicator skillCalls={message.skill_calls} />
-              )}
+                  {/* 技能调用指示器 */}
+                  {message.skill_calls && message.skill_calls.length > 0 && (
+                    <SkillCallIndicator skillCalls={message.skill_calls} />
+                  )}
 
-              {/* 工具调用指示器 */}
-              {message.tool_calls && message.tool_calls.length > 0 && (
-                <ToolCallIndicator toolCalls={message.tool_calls} />
-              )}
+                  {/* 工具调用指示器 */}
+                  {message.tool_calls && message.tool_calls.length > 0 && (
+                    <ToolCallIndicator toolCalls={message.tool_calls} />
+                  )}
 
-              {/* 多智能体思考面板 */}
-              {message.multi_agent && (
-                <ThinkPanel
-                  steps={message.multi_agent.steps}
-                  isThinking={isMultiAgentThinking}
-                  className="mb-2"
-                />
+                  {/* 多智能体思考面板 */}
+                  {message.multi_agent && (
+                    <ThinkPanel
+                      steps={message.multi_agent.steps}
+                      isThinking={isMultiAgentThinking}
+                      className="mb-2"
+                    />
+                  )}
+                </>
               )}
 
               {/* 加载动画 - 浮动跳跃三点 - 已移至 VirtualMessageList */}

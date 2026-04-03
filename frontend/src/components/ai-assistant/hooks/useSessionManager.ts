@@ -6,7 +6,7 @@ import { useCanvasStore } from '@/store/useCanvasStore';
 import api from '@/lib/api';
 
 const DEFAULT_MESSAGES = [
-  { role: 'ai' as const, content: '你好！我是你的专属创作 AI 助手，有什么可以帮你的吗？', status: 'complete' as const },
+  { role: 'ai' as const, content: '', status: 'complete' as const, isWelcome: true },
 ];
 
 export function useSessionManager() {

@@ -22,6 +22,7 @@ import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
 import { usePerformanceMonitor } from '@/components/ai-assistant';
 import { NodePreviewCard, NodePreviewList } from '@/components/ai-assistant/NodePreviewCard';
+import { WelcomeMessage } from '@/components/ai-assistant/WelcomeMessage';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
 
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
@@ -453,35 +454,47 @@ export function AIAssistantPanel() {
                 )}
               </AnimatePresence>
 
-              <VirtualMessageList
-                ref={virtualListRef}
-                messages={messages}
-                renderItem={(message, index) => (
-                  <div className="px-4 py-2">
-                    <ChatMessage
-                      message={message}
-                      isLoading={isLoading}
-                      isLast={index === messages.length - 1 && (!isLoading || message.role === 'ai')}
-                    />
-                  </div>
-                )}
-                overscan={overscanCount}
-                scrollBehavior={scrollBehavior}
-                onScrollToBottom={(atBottom) => {
-                  setIsAtBottom(atBottom);
-                  setShowScrollButton(!atBottom && messages.length > 5);
-                }}
-                isLoading={isLoading}
-              />
-              
-              {/* 回到最新按钮 */}
-              <ScrollToBottomButton
-                isVisible={showScrollButton}
-                onClick={() => {
-                  scrollToBottomVirtual('smooth');
-                }}
-                hasNewMessages={isLoading && !isAtBottom}
-              />
+              {/* 欢迎状态：仅有欢迎消息时，布局在底部 */}
+              {messages.length === 1 && messages[0].isWelcome ? (
+                <div className="flex flex-col justify-end h-full px-4 pb-6 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                  <WelcomeMessage onSend={handleSend} />
+                </div>
+              ) : (
+                <>
+                  <VirtualMessageList
+                    ref={virtualListRef}
+                    messages={messages.filter(m => !m.isWelcome)}
+                    renderItem={(message, index) => {
+                      const realMessages = messages.filter(m => !m.isWelcome);
+                      return (
+                        <div className="px-4 py-2">
+                          <ChatMessage
+                            message={message}
+                            isLoading={isLoading}
+                            isLast={index === realMessages.length - 1 && (!isLoading || message.role === 'ai')}
+                          />
+                        </div>
+                      );
+                    }}
+                    overscan={overscanCount}
+                    scrollBehavior={scrollBehavior}
+                    onScrollToBottom={(atBottom) => {
+                      setIsAtBottom(atBottom);
+                      setShowScrollButton(!atBottom && messages.length > 5);
+                    }}
+                    isLoading={isLoading}
+                  />
+                  
+                  {/* 回到最新按钮 */}
+                  <ScrollToBottomButton
+                    isVisible={showScrollButton}
+                    onClick={() => {
+                      scrollToBottomVirtual('smooth');
+                    }}
+                    hasNewMessages={isLoading && !isAtBottom}
+                  />
+                </>
+              )}
             </div>
 
             {/* 图像编辑上下文横幅 */}
