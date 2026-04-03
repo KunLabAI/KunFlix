@@ -40,10 +40,10 @@ const POLL_INTERVAL = 5000;
 
 // Status display config (dispatch map)
 const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: typeof Loader2 }> = {
-  pending:    { label: '等待生成...',  color: 'text-amber-500',  Icon: Clock },
-  processing: { label: '正在生成...',  color: 'text-blue-500',   Icon: Loader2 },
-  completed:  { label: '生成完成',     color: 'text-green-500',  Icon: CheckCircle2 },
-  failed:     { label: '生成失败',     color: 'text-red-500',    Icon: XCircle },
+  pending:    { label: '等待生成...',  color: 'text-[var(--color-status-pending-text)]',  Icon: Clock },
+  processing: { label: '正在生成...',  color: 'text-[var(--color-status-processing-text)]',   Icon: Loader2 },
+  completed:  { label: '生成完成',     color: 'text-[var(--color-status-success-text)]',  Icon: CheckCircle2 },
+  failed:     { label: '生成失败',     color: 'text-[var(--color-status-error-text)]',    Icon: XCircle },
 };
 
 // Video mode labels
@@ -91,8 +91,7 @@ function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLa
           isDragging && 'opacity-50'
         )}
       >
-        {/* Drag handle indicator */}
-        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
           <GripVertical className="h-3 w-3" />
           <span>拖动到画布</span>
         </div>
@@ -100,7 +99,7 @@ function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLa
           src={videoUrl}
           controls
           preload="metadata"
-          className="w-full rounded-lg bg-black"
+          className="w-full rounded-lg bg-[var(--color-bg-primary)]"
           style={{ maxHeight: '360px' }}
           // Prevent video controls from interfering with drag
           onMouseDown={(e) => e.stopPropagation()}
@@ -203,12 +202,12 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
   return (
     <div
       className={cn(
-        'rounded-xl border overflow-hidden transition-all duration-300 my-2',
+        'rounded-lg border overflow-hidden transition-all duration-300 my-2',
         isActive
-          ? 'bg-violet-50/50 dark:bg-violet-950/20 border-violet-200 dark:border-violet-800'
+          ? 'bg-[var(--color-status-processing-bg)] border-[var(--color-status-processing-border)]'
           : status === 'completed'
-            ? 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
-            : 'bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-800',
+            ? 'bg-[var(--color-status-success-bg)] border-[var(--color-status-success-border)]'
+            : 'bg-[var(--color-status-error-bg)] border-[var(--color-status-error-border)]',
         className,
       )}
     >
@@ -224,12 +223,12 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
         {/* Meta badges */}
         <div className="flex items-center gap-1.5 ml-auto">
           {modeLabel && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-muted-foreground">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]">
               {modeLabel}
             </span>
           )}
           {model && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-muted-foreground">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]">
               {model}
             </span>
           )}
@@ -239,19 +238,19 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
       {/* Loading animation for active tasks */}
       {isActive && (
         <div className="px-3 pb-3">
-          <div className="flex items-center justify-center py-8 rounded-lg bg-black/5 dark:bg-white/5">
+          <div className="flex items-center justify-center py-8 rounded-lg bg-[var(--color-bg-panel)]">
             <div className="flex flex-col items-center gap-3">
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
               >
-                <Film className="h-8 w-8 text-violet-400" />
+                <Film className="h-8 w-8 text-[var(--color-status-processing-icon)]" />
               </motion.div>
               <div className="flex items-center gap-1">
                 {[0, 1, 2].map((i) => (
                   <motion.span
                     key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-violet-400"
+                    className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-processing-icon)]"
                     animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
                     transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
                   />
@@ -279,8 +278,8 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
       {/* Error message for failed tasks */}
       {status === 'failed' && (
         <div className="px-3 pb-3">
-          <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs">
-            <XCircle className="h-4 w-4 shrink-0" />
+          <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-status-error-bg)] text-[var(--color-status-error-text)] text-xs">
+            <XCircle className="h-4 w-4 shrink-0 text-[var(--color-status-error-icon)]" />
             <span>{errorMsg || '视频生成失败，请重试'}</span>
           </div>
         </div>

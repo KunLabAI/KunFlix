@@ -60,20 +60,20 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
         // 样式配置: 执行中(蓝) / 错误(红) / 成功(绿)
         const styleConfig = hasError
           ? {
-              bg: 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800',
-              icon: 'text-red-500',
-              text: 'text-red-700 dark:text-red-300',
+              bg: 'bg-[var(--color-status-error-bg)] border-[var(--color-status-error-border)]',
+              icon: 'text-[var(--color-status-error-icon)]',
+              text: 'text-[var(--color-status-error-text)]',
             }
           : isExecuting
             ? {
-                bg: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800',
-                icon: 'text-blue-500',
-                text: 'text-blue-700 dark:text-blue-300',
+                bg: 'bg-[var(--color-status-executing-bg)] border-[var(--color-status-executing-border)]',
+                icon: 'text-[var(--color-status-executing-icon)]',
+                text: 'text-[var(--color-status-executing-text)]',
               }
             : {
-                bg: 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800',
-                icon: 'text-green-500',
-                text: 'text-green-700 dark:text-green-300',
+                bg: 'bg-[var(--color-status-success-bg)] border-[var(--color-status-success-border)]',
+                icon: 'text-[var(--color-status-success-icon)]',
+                text: 'text-[var(--color-status-success-text)]',
               };
 
         const statusLabel = hasError
@@ -88,15 +88,15 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
             className={cn('rounded-lg border transition-all duration-200', styleConfig.bg)}
           >
             <div
-              className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-lg"
+              className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-[var(--color-bg-panel-hover)] transition-colors rounded-lg"
               onClick={() => toggleTool(tool.tool_name)}
             >
               {isExecuting ? (
-                <Loader2 className="h-3.5 w-3.5 text-blue-500 animate-spin" />
+                <Loader2 className={cn('h-3.5 w-3.5 animate-spin', styleConfig.icon)} />
               ) : hasError ? (
-                <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                <AlertCircle className={cn('h-3.5 w-3.5', styleConfig.icon)} />
               ) : (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                <CheckCircle2 className={cn('h-3.5 w-3.5', styleConfig.icon)} />
               )}
               <Terminal className={cn('h-3.5 w-3.5', styleConfig.icon)} />
               <span className={cn('text-xs flex-1', styleConfig.text)}>{statusLabel}</span>
@@ -113,7 +113,7 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
             {/* 错误消息摘要（未展开时也显示） */}
             {hasError && !isExpanded && (
               <div className="px-2.5 pb-2 pt-0.5 border-t border-inherit">
-                <div className="text-xs text-red-600 dark:text-red-400 line-clamp-2">
+                <div className="text-xs text-[var(--color-status-error-text)] line-clamp-2">
                   {errorMessage}
                 </div>
               </div>
@@ -122,7 +122,7 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
             {isExpanded && tool.arguments && Object.keys(tool.arguments).length > 0 && (
               <div className="px-2.5 pb-2 pt-0.5 border-t border-inherit">
                 <div className="text-[10px] text-muted-foreground mb-1">参数:</div>
-                <pre className="text-xs bg-black/5 dark:bg-white/5 rounded p-1.5 overflow-x-auto">
+                <pre className="text-xs bg-[var(--color-bg-panel)] text-[var(--color-text-panel)] rounded p-1.5 overflow-x-auto">
                   {JSON.stringify(tool.arguments, null, 2)}
                 </pre>
               </div>
@@ -137,8 +137,8 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
                   className={cn(
                     'text-xs rounded p-1.5 overflow-x-auto max-h-32',
                     hasError
-                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
-                      : 'bg-black/5 dark:bg-white/5'
+                      ? 'bg-[var(--color-status-error-bg)] text-[var(--color-status-error-text)]'
+                      : 'bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]'
                   )}
                 >
                   {typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
@@ -153,9 +153,9 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
         <div className="text-[10px] text-muted-foreground px-1">
           {executingCount > 0 && <span>{executingCount} 个执行中</span>}
           {executingCount > 0 && (successCount > 0 || errorCount > 0) && <span> / </span>}
-          {successCount > 0 && <span className="text-green-600">{successCount} 个成功</span>}
+          {successCount > 0 && <span className="text-[var(--color-status-success-text)]">{successCount} 个成功</span>}
           {successCount > 0 && errorCount > 0 && <span> / </span>}
-          {errorCount > 0 && <span className="text-red-600">{errorCount} 个失败</span>}
+          {errorCount > 0 && <span className="text-[var(--color-status-error-text)]">{errorCount} 个失败</span>}
         </div>
       )}
     </div>

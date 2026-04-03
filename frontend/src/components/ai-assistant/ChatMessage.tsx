@@ -14,7 +14,7 @@ import { LazyImage } from './LazyImage';
 import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
-import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAIAssistantStore';
+import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
 // Video marker parsing
@@ -24,6 +24,29 @@ import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAI
 const VIDEO_TASK_RE = /<!-- __VIDEO_TASK__\|([^|]+)\|([^|]+)\|([^|]*) -->/g;
 // __VIDEO_DONE__{task_id}|{url}|{quality}|{duration}|{cost}
 const VIDEO_DONE_RE = /^__VIDEO_DONE__([^|]+)\|([^|]+)\|([^|]*)\|([^|]*)\|([^|]*)$/;
+
+// ---------------------------------------------------------------------------
+// Attachment parsing
+// ---------------------------------------------------------------------------
+const ATTACHMENTS_RE = /<!-- __ATTACHMENTS__(\[.*?\]) -->/;
+const MSG_START_RE = /<!-- __MSG_START__ -->\n?/;
+
+function parseAttachments(content: string) {
+  const match = ATTACHMENTS_RE.exec(content);
+  if (!match) return { cleanContent: content, attachments: [] };
+
+  try {
+    const attachments = JSON.parse(match[1]);
+    const splitMatch = MSG_START_RE.exec(content);
+    const cleanContent = splitMatch 
+      ? content.slice(splitMatch.index + splitMatch[0].length)
+      : content.replace(match[0], '').trim();
+
+    return { cleanContent, attachments };
+  } catch (e) {
+    return { cleanContent: content, attachments: [] };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Think content parsing - 解析 <think>...</think> 标记
@@ -111,7 +134,7 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
     if (isStreaming || isInline) {
       return isInline ? (
         <code
-          className="px-1.5 py-0.5 rounded bg-muted text-primary font-mono text-xs before:content-none after:content-none"
+          className="px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-primary)] font-mono text-xs before:content-none after:content-none"
           {...props}
         >
           {children}
@@ -123,7 +146,7 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
               {language}
             </span>
           )}
-          <pre className="!bg-muted/80 !p-3 rounded-lg overflow-x-auto border border-border/50">
+          <pre className="bg-[var(--color-bg-panel)] p-3 rounded-lg overflow-x-auto border border-[var(--color-border-light)]">
             <code className={cn("font-mono text-xs", className)} {...props}>
               {children}
             </code>
@@ -170,7 +193,7 @@ function FloatingLoadingDots() {
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className="w-1.5 h-1.5 rounded-full bg-primary/60"
+          className="w-1.5 h-1.5 rounded-full bg-[var(--color-icon-thinking)]"
           animate={{
             y: [0, -6, 0],
             opacity: [0.4, 1, 0.4],
@@ -183,6 +206,44 @@ function FloatingLoadingDots() {
           }}
         />
       ))}
+    </div>
+  );
+}
+
+function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] }) {
+  if (!attachments?.length) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-2">
+      {attachments.map(a => {
+        const isMedia = a.nodeType === 'image' || a.nodeType === 'video';
+        
+        if (isMedia && a.thumbnailUrl) {
+          return (
+            <div 
+              key={a.nodeId} 
+              className="relative w-16 h-16 rounded-md overflow-hidden bg-[var(--color-bg-primary)]/20 border border-[var(--color-bg-primary)]/30 flex-shrink-0"
+              title={a.label}
+            >
+              {a.nodeType === 'video' ? (
+                <video src={a.thumbnailUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              ) : (
+                <img src={a.thumbnailUrl} alt={a.label} className="w-full h-full object-cover" />
+              )}
+            </div>
+          );
+        }
+        
+        return (
+          <div 
+            key={a.nodeId} 
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--color-bg-primary)]/20 rounded-md text-xs border border-[var(--color-bg-primary)]/30 max-w-full overflow-hidden"
+            title={a.label}
+          >
+            <span className="truncate opacity-90 font-medium">{a.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -209,6 +270,12 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
       ? parseVideoMarkers(responseContent)
       : { cleanContent: responseContent, videoCards: [] as VideoCardInfo[] },
     [responseContent, isUser, isStreaming],
+  );
+
+  // 解析用户消息附件
+  const { cleanContent: userCleanContent, attachments: userAttachments } = useMemo(
+    () => isUser ? parseAttachments(message.content || '') : { cleanContent: message.content || '', attachments: [] },
+    [message.content, isUser]
   );
 
   // 合并两种来源的视频任务：内容解析 + SSE 事件
@@ -244,14 +311,17 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
         className={cn(
           'max-w-[85%] rounded-2xl px-3 py-2 text-sm',
           isUser
-            ? 'bg-primary text-primary-foreground rounded-tr-sm'
-            : 'text-secondary-foreground',
-          isVideoOnlyMessage && '!px-0 !py-0',
+            ? 'bg-[var(--color-text-primary)] text-[var(--color-bg-primary)] rounded-tr-sm'
+            : 'text-[var(--color-text-primary)] rounded-tl-sm',
+          isVideoOnlyMessage && '!px-0 !py-0 !bg-transparent !border-transparent !shadow-none',
         )}
       >
         {/* 用户消息 */}
         {isUser && (
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          <div className="flex flex-col">
+            <UserAttachmentPreview attachments={userAttachments} />
+            {userCleanContent && <div className="whitespace-pre-wrap break-words leading-relaxed">{userCleanContent}</div>}
+          </div>
         )}
 
         {/* AI消息 */}
@@ -266,9 +336,11 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                 />
               )}
               
-              {/* 流式输出且无思考内容时显示简单的思考面板 */}
+              {/* 流式输出且无思考内容时显示点点点动画占位 */}
               {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
-                <ThinkPanel isThinking={true} />
+                <div className="py-2 px-1">
+                  <FloatingLoadingDots />
+                </div>
               )}
 
               {/* 正式回复内容：思考完成后或无思考内容时显示 */}

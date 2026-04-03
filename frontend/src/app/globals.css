@@ -61,7 +61,7 @@
   }
 }
 
-:root.dark {
+:root.dark, [data-theme="dark"] {
   --background: #0c0c0c;
   --foreground: #fafafa;
   --card: #09090b;
@@ -87,9 +87,57 @@
   --node-green: #34d399;
   --node-yellow: #fbbf24;
   --node-purple: #a78bfa;
+
+  /* AI Assistant Theme Variables */
+  --color-bg-primary: #09090b;
+  --color-text-primary: #fafafa;
+  --color-border-light: #27272a; /* Unified */
+  --color-border-dark: #27272a;
+
+  --color-bg-panel: #27272a;
+  --color-bg-panel-hover: #3f3f46;
+  --color-text-panel: #fafafa;
+
+  /* Status Colors */
+  --color-status-success-bg: rgba(21, 128, 61, 0.15);
+  --color-status-success-border: rgba(34, 197, 94, 0.2);
+  --color-status-success-text: #86efac;
+  --color-status-success-icon: #22c55e;
+
+  --color-status-error-bg: rgba(185, 28, 28, 0.15);
+  --color-status-error-border: rgba(239, 68, 68, 0.2);
+  --color-status-error-text: #fca5a5;
+  --color-status-error-icon: #ef4444;
+
+  --color-status-executing-bg: rgba(29, 78, 216, 0.15);
+  --color-status-executing-border: rgba(59, 130, 246, 0.2);
+  --color-status-executing-text: #93c5fd;
+  --color-status-executing-icon: #3b82f6;
+
+  --color-status-processing-bg: rgba(139, 92, 246, 0.15);
+  --color-status-processing-border: rgba(167, 139, 250, 0.2);
+  --color-status-processing-text: #c4b5fd;
+  --color-status-processing-icon: #a78bfa;
+
+  --color-status-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-status-warning-border: rgba(252, 211, 77, 0.2);
+  --color-status-warning-text: #fcd34d;
+  --color-status-warning-icon: #fbbf24;
+
+  --color-status-pending-bg: rgba(71, 85, 105, 0.15);
+  --color-status-pending-border: rgba(100, 116, 139, 0.2);
+  --color-status-pending-text: #cbd5e1;
+  --color-status-pending-icon: #94a3b8;
+
+  --color-gradient-thinking-start: rgba(139, 92, 246, 0.15);
+  --color-gradient-thinking-mid: rgba(168, 85, 247, 0.15);
+  --color-gradient-thinking-end: rgba(139, 92, 246, 0.15);
+  --color-gradient-thinking-border: rgba(139, 92, 246, 0.4);
+  --color-icon-thinking: #a78bfa;
+  --color-icon-thinking-pulse: #c4b5fd;
 }
 
-:root.light {
+:root.light, [data-theme="light"] {
   --background: #ffffff;
   --foreground: #09090b;
   --card: #ffffff;
@@ -115,6 +163,54 @@
   --node-green: #10b981;
   --node-yellow: #f59e0b;
   --node-purple: #8b5cf6;
+
+  /* AI Assistant Theme Variables */
+  --color-bg-primary: #ffffff;
+  --color-text-primary: #09090b;
+  --color-border-light: #e4e4e7;
+  --color-border-dark: #e4e4e7; /* For unified usage */
+
+  --color-bg-panel: #f4f4f5;
+  --color-bg-panel-hover: #e4e4e7;
+  --color-text-panel: #18181b;
+
+  /* Status Colors */
+  --color-status-success-bg: #f0fdf4;
+  --color-status-success-border: #bbf7d0;
+  --color-status-success-text: #15803d;
+  --color-status-success-icon: #22c55e;
+
+  --color-status-error-bg: #fef2f2;
+  --color-status-error-border: #fecaca;
+  --color-status-error-text: #b91c1c;
+  --color-status-error-icon: #ef4444;
+
+  --color-status-executing-bg: #eff6ff;
+  --color-status-executing-border: #bfdbfe;
+  --color-status-executing-text: #1d4ed8;
+  --color-status-executing-icon: #3b82f6;
+
+  --color-status-processing-bg: #f5f3ff;
+  --color-status-processing-border: #ddd6fe;
+  --color-status-processing-text: #6d28d9;
+  --color-status-processing-icon: #8b5cf6;
+
+  --color-status-warning-bg: #fffbeb;
+  --color-status-warning-border: #fde68a;
+  --color-status-warning-text: #b45309;
+  --color-status-warning-icon: #f59e0b;
+
+  --color-status-pending-bg: #f8fafc;
+  --color-status-pending-border: #e2e8f0;
+  --color-status-pending-text: #475569;
+  --color-status-pending-icon: #64748b;
+
+  --color-gradient-thinking-start: rgba(139, 92, 246, 0.1);
+  --color-gradient-thinking-mid: rgba(168, 85, 247, 0.1);
+  --color-gradient-thinking-end: rgba(139, 92, 246, 0.1);
+  --color-gradient-thinking-border: rgba(139, 92, 246, 0.3);
+  --color-icon-thinking: #8b5cf6;
+  --color-icon-thinking-pulse: #a78bfa;
 }
 
 @theme inline {

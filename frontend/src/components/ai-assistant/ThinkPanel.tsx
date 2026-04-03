@@ -18,10 +18,10 @@ interface ThinkPanelProps {
 
 // 状态图标映射表
 const STATUS_ICON_MAP: Record<string, { Icon: typeof Circle; className: string }> = {
-  pending: { Icon: Circle, className: 'text-muted-foreground' },
-  running: { Icon: Loader2, className: 'text-blue-500 animate-spin' },
-  completed: { Icon: CheckCircle2, className: 'text-green-500' },
-  failed: { Icon: XCircle, className: 'text-red-500' },
+  pending: { Icon: Circle, className: 'text-[var(--color-status-pending-icon)]' },
+  running: { Icon: Loader2, className: 'text-[var(--color-status-executing-icon)] animate-spin' },
+  completed: { Icon: CheckCircle2, className: 'text-[var(--color-status-success-icon)]' },
+  failed: { Icon: XCircle, className: 'text-[var(--color-status-error-icon)]' },
 };
 
 /**
@@ -126,10 +126,10 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
         className={cn(
           'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all',
           isThinking
-            ? 'bg-gradient-to-r from-violet-500/10 via-purple-500/10 to-violet-500/10 border border-violet-500/30'
+            ? 'bg-gradient-to-r from-[var(--color-gradient-thinking-start)] via-[var(--color-gradient-thinking-mid)] to-[var(--color-gradient-thinking-end)] border border-[var(--color-gradient-thinking-border)]'
             : progress.isAllDone
-              ? 'bg-green-500/10 border border-green-500/20'
-              : 'bg-muted/50 hover:bg-muted/70'
+              ? 'bg-[var(--color-status-success-bg)] border border-[var(--color-status-success-border)]'
+              : 'bg-[var(--color-bg-panel)] hover:bg-[var(--color-bg-panel-hover)]'
         )}
         onClick={() => {
           const newExpanded = !isExpanded;
@@ -140,9 +140,9 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
       >
         {/* 图标 */}
         <div className="relative">
-          <Brain className={cn('h-4 w-4', isThinking ? 'text-violet-500' : 'text-primary')} />
+          <Brain className={cn('h-4 w-4', isThinking ? 'text-[var(--color-icon-thinking)]' : 'text-[var(--color-text-primary)]')} />
           {isThinking && (
-            <Sparkles className="h-2.5 w-2.5 text-violet-400 absolute -top-1 -right-1 animate-pulse" />
+            <Sparkles className="h-2.5 w-2.5 text-[var(--color-icon-thinking-pulse)] absolute -top-1 -right-1 animate-pulse" />
           )}
         </div>
 
@@ -158,7 +158,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                     ? '多智能体协作' 
                     : '思考完成'}
             </span>
-            {isThinking && <LoadingDots size="sm" className="text-violet-500" />}
+            {isThinking && <LoadingDots size="sm" className="text-[var(--color-icon-thinking)]" />}
           </div>
           {currentStep && (
             <p className="text-[10px] text-muted-foreground truncate">
@@ -198,7 +198,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
             <div className="space-y-2 pt-2 pl-2">
               {/* 单智能体模式：显示思考内容 */}
               {!isMultiAgent && (thinkingContent || children) && (
-                <div className="p-2 bg-muted/30 rounded text-xs text-muted-foreground">
+                <div className="p-2 bg-[var(--color-bg-panel)] rounded text-xs text-muted-foreground">
                   {thinkingContent && (
                     <p className="whitespace-pre-wrap">{thinkingContent}</p>
                   )}
@@ -211,11 +211,11 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                 <>
                   {/* 进度条 */}
                   {progress.total > 0 && (
-                    <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                    <div className="h-1 w-full bg-[var(--color-bg-panel-hover)] rounded-full overflow-hidden">
                       <motion.div
                         className={cn(
                           'h-full',
-                          progress.failed > 0 ? 'bg-red-500' : 'bg-green-500'
+                          progress.failed > 0 ? 'bg-[var(--color-status-error-icon)]' : 'bg-[var(--color-status-success-icon)]'
                         )}
                         initial={{ width: 0 }}
                         animate={{ width: `${progress.percentage}%` }}
@@ -231,9 +231,9 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                     const isStepExpanded = expandedSteps.has(step.subtask_id);
 
                     return (
-                      <div key={step.subtask_id} className="border-l-2 border-muted pl-3 py-1">
+                      <div key={step.subtask_id} className="border-l-2 border-[var(--color-border-light)] pl-3 py-1">
                         <div
-                          className="flex items-start gap-2 cursor-pointer hover:bg-muted/30 rounded p-1 -ml-1 transition-colors"
+                          className="flex items-start gap-2 cursor-pointer hover:bg-[var(--color-bg-panel)] rounded p-1 -ml-1 transition-colors"
                           onClick={(e) => { e.stopPropagation(); toggleStep(step.subtask_id); }}
                         >
                           <StatusIcon className={cn('h-4 w-4 mt-0.5', iconConfig.className)} />
@@ -260,10 +260,10 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="mt-2 p-2 bg-muted/30 rounded text-xs overflow-hidden"
+                              className="mt-2 p-2 bg-[var(--color-bg-panel)] rounded text-xs overflow-hidden"
                             >
                               {step.error ? (
-                                <p className="text-red-500">{step.error}</p>
+                                <p className="text-[var(--color-status-error-text)]">{step.error}</p>
                               ) : (
                                 <p className="text-muted-foreground whitespace-pre-wrap">{step.result}</p>
                               )}

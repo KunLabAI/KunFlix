@@ -15,9 +15,9 @@ function formatTokensFull(tokens: number): string {
 // 获取电池格子的颜色状态
 function getCellColor(filled: boolean, percentage: number): string {
   if (!filled) return 'bg-muted/50';
-  if (percentage >= 90) return 'bg-red-500';
-  if (percentage >= 70) return 'bg-amber-500';
-  return 'bg-emerald-500';
+  if (percentage >= 90) return 'bg-[var(--color-status-error-icon)]';
+  if (percentage >= 70) return 'bg-[var(--color-status-warning-icon)]';
+  return 'bg-[var(--color-status-success-icon)]';
 }
 
 export function ContextUsageBar() {
@@ -82,7 +82,7 @@ export function ContextUsageBar() {
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <motion.div
                       className={`h-full rounded-full ${
-                        percentage >= 90 ? 'bg-red-500' : percentage >= 70 ? 'bg-amber-500' : 'bg-emerald-500'
+                        percentage >= 90 ? 'bg-[var(--color-status-error-icon)]' : percentage >= 70 ? 'bg-[var(--color-status-warning-icon)]' : 'bg-[var(--color-status-success-icon)]'
                       }`}
                       initial={{ width: 0 }}
                       animate={{ width: `${clampedPercentage}%` }}
@@ -103,13 +103,13 @@ export function ContextUsageBar() {
                     </div>
 
                     <div className="text-muted-foreground">剩余</div>
-                    <div className="text-right font-medium tabular-nums text-emerald-500">
+                    <div className="text-right font-medium tabular-nums text-[var(--color-status-success-text)]">
                       {formatTokensFull(remainingTokens)}
                     </div>
 
                     <div className="text-muted-foreground">使用率</div>
                     <div className={`text-right font-medium tabular-nums ${
-                      percentage >= 90 ? 'text-red-500' : percentage >= 70 ? 'text-amber-500' : 'text-emerald-500'
+                      percentage >= 90 ? 'text-[var(--color-status-error-text)]' : percentage >= 70 ? 'text-[var(--color-status-warning-text)]' : 'text-[var(--color-status-success-text)]'
                     }`}>
                       {percentage.toFixed(1)}%
                     </div>
@@ -126,7 +126,7 @@ export function ContextUsageBar() {
         {/* 右侧：简洁的百分比显示 */}
         <div className="flex items-center gap-1.5">
           <span className={`text-[11px] font-medium tabular-nums ${
-            percentage >= 90 ? 'text-red-500' : percentage >= 70 ? 'text-amber-500' : 'text-muted-foreground'
+            percentage >= 90 ? 'text-[var(--color-status-error-text)]' : percentage >= 70 ? 'text-[var(--color-status-warning-text)]' : 'text-muted-foreground'
           }`}>
             {percentage.toFixed(0)}%
           </span>

@@ -27,21 +27,21 @@ export function SkillCallIndicator({ skillCalls, className }: SkillCallIndicator
             className={cn(
               'flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all duration-200',
               isLoading
-                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
-                : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800'
+                ? 'bg-[var(--color-status-warning-bg)] border-[var(--color-status-warning-border)]'
+                : 'bg-[var(--color-status-success-bg)] border-[var(--color-status-success-border)]'
             )}
           >
             {isLoading ? (
-              <Loader2 className="h-3.5 w-3.5 text-amber-500 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 text-[var(--color-status-warning-icon)] animate-spin" />
             ) : (
-              <Zap className="h-3.5 w-3.5 text-emerald-500" />
+              <Zap className="h-3.5 w-3.5 text-[var(--color-status-success-icon)]" />
             )}
             <span
               className={cn(
                 'text-xs',
                 isLoading
-                  ? 'text-amber-700 dark:text-amber-300'
-                  : 'text-emerald-700 dark:text-emerald-300'
+                  ? 'text-[var(--color-status-warning-text)]'
+                  : 'text-[var(--color-status-success-text)]'
               )}
             >
               {isLoading ? `正在加载技能: ${skill.skill_name}` : `已加载技能: ${skill.skill_name}`}

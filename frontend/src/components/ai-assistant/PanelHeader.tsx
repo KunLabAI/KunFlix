@@ -106,30 +106,30 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
             ease: "easeInOut",
           }}
         >
-          <BatteryWarning className="h-4 w-4 text-red-500" />
+          <BatteryWarning className="h-4 w-4 text-[var(--color-status-error-icon)]" />
         </motion.div>
       );
     }
     // 90-99%
-    if (percentage >= 90) return <BatteryWarning className="h-4 w-4 text-red-500" />;
+    if (percentage >= 90) return <BatteryWarning className="h-4 w-4 text-[var(--color-status-error-icon)]" />;
     // 80-89%
-    if (percentage >= 80) return <BatteryLow className="h-4 w-4 text-orange-500" />;
+    if (percentage >= 80) return <BatteryLow className="h-4 w-4 text-[var(--color-status-warning-icon)]" />;
     // 70-79%
-    if (percentage >= 70) return <BatteryLow className="h-4 w-4 text-amber-500" />;
+    if (percentage >= 70) return <BatteryLow className="h-4 w-4 text-[var(--color-status-warning-icon)]" />;
     // 60-69%
-    if (percentage >= 60) return <BatteryMedium className="h-4 w-4 text-yellow-500" />;
+    if (percentage >= 60) return <BatteryMedium className="h-4 w-4 text-[var(--color-status-warning-icon)]" />;
     // 50-59%
-    if (percentage >= 50) return <BatteryMedium className="h-4 w-4 text-lime-500" />;
+    if (percentage >= 50) return <BatteryMedium className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
     // 40-49%
-    if (percentage >= 40) return <BatteryMedium className="h-4 w-4 text-emerald-500" />;
+    if (percentage >= 40) return <BatteryMedium className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
     // 30-39%
-    if (percentage >= 30) return <Battery className="h-4 w-4 text-emerald-500" />;
+    if (percentage >= 30) return <Battery className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
     // 20-29%
-    if (percentage >= 20) return <Battery className="h-4 w-4 text-emerald-400" />;
+    if (percentage >= 20) return <Battery className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
     // 10-19%
-    if (percentage >= 10) return <Battery className="h-4 w-4 text-emerald-300" />;
+    if (percentage >= 10) return <Battery className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
     // 0-9%
-    return <Battery className="h-4 w-4 text-emerald-200" />;
+    return <Battery className="h-4 w-4 text-[var(--color-status-success-icon)]" />;
   };
 
   return (
@@ -148,10 +148,10 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
         {getBatteryIcon()}
         <span className={cn(
           "text-xs font-medium tabular-nums",
-          percentage >= 100 ? 'text-red-500' :
-          percentage >= 90 ? 'text-red-500' :
-          percentage >= 70 ? 'text-amber-500' :
-          'text-emerald-500'
+          percentage >= 100 ? 'text-[var(--color-status-error-text)]' :
+          percentage >= 90 ? 'text-[var(--color-status-error-text)]' :
+          percentage >= 70 ? 'text-[var(--color-status-warning-text)]' :
+          'text-muted-foreground'
         )}>
           {percentage.toFixed(0)}%
         </span>
@@ -192,13 +192,13 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <motion.div
                   className={`h-full rounded-full ${
-                    percentage >= 100 ? 'bg-red-500' :
-                    percentage >= 90 ? 'bg-red-500' :
-                    percentage >= 80 ? 'bg-orange-500' :
-                    percentage >= 70 ? 'bg-amber-500' :
-                    percentage >= 60 ? 'bg-yellow-500' :
-                    percentage >= 50 ? 'bg-lime-500' :
-                    'bg-emerald-500'
+                    percentage >= 100 ? 'bg-[var(--color-status-error-icon)]' :
+                    percentage >= 90 ? 'bg-[var(--color-status-error-icon)]' :
+                    percentage >= 80 ? 'bg-[var(--color-status-warning-icon)]' :
+                    percentage >= 70 ? 'bg-[var(--color-status-warning-icon)]' :
+                    percentage >= 60 ? 'bg-[var(--color-status-warning-icon)]' :
+                    percentage >= 50 ? 'bg-[var(--color-status-success-icon)]' :
+                    'bg-[var(--color-status-success-icon)]'
                   }`}
                   initial={{ width: 0 }}
                   animate={{ width: `${clampedPercentage}%` }}
@@ -219,16 +219,16 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
                 </div>
 
                 <div className="text-muted-foreground">剩余</div>
-                <div className="text-right font-medium tabular-nums text-emerald-500">
+                <div className="text-right font-medium tabular-nums text-muted-foreground">
                   {remainingTokens.toLocaleString()}
                 </div>
 
                 <div className="text-muted-foreground">使用率</div>
                 <div className={`text-right font-medium tabular-nums ${
-                  percentage >= 100 ? 'text-red-500' :
-                  percentage >= 90 ? 'text-red-500' :
-                  percentage >= 70 ? 'text-amber-500' :
-                  'text-emerald-500'
+                  percentage >= 100 ? 'text-[var(--color-status-error-text)]' :
+                  percentage >= 90 ? 'text-[var(--color-status-error-text)]' :
+                  percentage >= 70 ? 'text-[var(--color-status-warning-text)]' :
+                  'text-muted-foreground'
                 }`}>
                   {percentage.toFixed(1)}%
                 </div>

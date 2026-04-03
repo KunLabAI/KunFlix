@@ -26,7 +26,9 @@ export function ThemeToggle() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode)
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    document.documentElement.classList.toggle("light", !isDarkMode);
+    document.documentElement.setAttribute("data-theme", isDarkMode ? "dark" : "light");
   }, [isDarkMode])
 
   const toggleDarkMode = () => setIsDarkMode((isDark) => !isDark)

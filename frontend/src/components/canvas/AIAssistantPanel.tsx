@@ -25,16 +25,26 @@ import { NodePreviewCard, NodePreviewList } from '@/components/ai-assistant/Node
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
 
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
-const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment, userMsg: string) => string> = {
-  text: (a, msg) => `[引用文本卡「${a.label}」]\n内容摘要：${a.excerpt || '（空）'}\n\n${msg}`,
-  image: (a, msg) => `[引用图片卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}${msg}`,
-  video: (a, msg) => `[引用视频卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}${msg}`,
-  storyboard: (a, msg) => `[引用分镜卡「${a.label}」]\n${a.excerpt ? `描述：${a.excerpt}\n` : ''}时长：${a.meta?.duration ?? ''}秒\n\n${msg}`,
+const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment) => string> = {
+  text: (a) => `[引用文本卡「${a.label}」]\n内容摘要：${a.excerpt || '（空）'}`,
+  image: (a) => `[引用图像卡「${a.label}」]\n图像描述：${a.excerpt || '无描述'}`,
+  video: (a) => `[引用视频卡「${a.label}」]\n视频描述：${a.excerpt || '无描述'}`,
+  storyboard: (a) => `[引用分镜卡「${a.label}」]\n分镜描述：${a.excerpt || '无描述'}`,
 };
 
-function buildAttachmentContext(attachment: NodeAttachment, userMessage: string): string {
-  const builder = ATTACHMENT_CONTEXT_BUILDERS[attachment.nodeType];
-  return builder?.(attachment, userMessage) ?? `[引用节点「${attachment.label}」]\n\n${userMessage}`;
+function buildAttachmentContext(attachments: NodeAttachment[], userMessage: string): string {
+  if (!attachments || attachments.length === 0) return userMessage;
+  
+  // 1. 隐藏元数据（用于前端恢复渲染附件UI）
+  const metaBlock = `<!-- __ATTACHMENTS__${JSON.stringify(attachments)} -->`;
+  
+  // 2. 构建可读上下文（供 AI 理解）
+  const readableContexts = attachments.map(a => {
+    const builder = ATTACHMENT_CONTEXT_BUILDERS[a.nodeType];
+    return builder ? builder(a) : `[引用节点「${a.label}」]`;
+  });
+  
+  return `${metaBlock}\n${readableContexts.join('\n\n')}\n<!-- __MSG_START__ -->\n${userMessage}`;
 }
 
 export function AIAssistantPanel() {
@@ -185,22 +195,21 @@ export function AIAssistantPanel() {
         currentAgentId = created.agentId;
       }
 
-      // 添加用户消息 + 空的AI流式消息（触发思考面板显示）
-      setMessages((prev) => [
-        ...prev,
-        { role: 'user', content, status: 'complete' },
-        { role: 'ai', content: '', status: 'streaming' },
-      ]);
-      setIsLoading(true);
-
       // 构建附件上下文（拼入消息正文，确保 AI 能感知节点内容）
-      // 多图模式下，使用第一个附件构建上下文
+      const attachmentContext = nodeAttachments.length > 0 ? buildAttachmentContext(nodeAttachments, content) : content;
       const firstAttachment = nodeAttachments[0];
-      const attachmentContext = firstAttachment ? buildAttachmentContext(firstAttachment, content) : content;
 
       // 取消之前的请求
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
+
+      // 添加用户消息 + 空的AI流式消息（触发思考面板显示）
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content: attachmentContext, status: 'complete' },
+        { role: 'ai', content: '', status: 'streaming' },
+      ]);
+      setIsLoading(true);
 
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_URL || '';
