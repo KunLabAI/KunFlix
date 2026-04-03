@@ -8,12 +8,12 @@ import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { SkillCallIndicator } from './SkillCallIndicator';
-import { ThinkingIndicator } from './ThinkingIndicator';
+import { ThinkPanel } from './ThinkPanel';
+import { DraggableTextWrapper } from './DraggableTextWrapper';
 import { LazyImage } from './LazyImage';
 import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
-import MultiAgentSteps from '@/components/canvas/MultiAgentSteps';
 import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +24,45 @@ import type { Message, SkillCall, ToolCall, MultiAgentData } from '@/store/useAI
 const VIDEO_TASK_RE = /<!-- __VIDEO_TASK__\|([^|]+)\|([^|]+)\|([^|]*) -->/g;
 // __VIDEO_DONE__{task_id}|{url}|{quality}|{duration}|{cost}
 const VIDEO_DONE_RE = /^__VIDEO_DONE__([^|]+)\|([^|]+)\|([^|]*)\|([^|]*)\|([^|]*)$/;
+
+// ---------------------------------------------------------------------------
+// Think content parsing - 解析 <think>...</think> 标记
+// ---------------------------------------------------------------------------
+const THINK_TAG_RE = /<think>([\s\S]*?)(?:<\/think>|$)/;
+
+interface ParsedThinkContent {
+  thinkingContent: string;     // 思考内容
+  responseContent: string;      // 正式回复内容
+  isThinkingComplete: boolean;  // 思考是否完成
+}
+
+function parseThinkContent(content: string): ParsedThinkContent {
+  const match = THINK_TAG_RE.exec(content);
+  
+  // 没有 <think> 标记，所有内容都是正式回复
+  const noThinkTag = !match;
+  if (noThinkTag) {
+    return {
+      thinkingContent: '',
+      responseContent: content,
+      isThinkingComplete: true,
+    };
+  }
+
+  const thinkingContent = match[1] || '';
+  const hasClosingTag = content.includes('</think>');
+  
+  // 提取 </think> 后的内容作为正式回复
+  const responseContent = hasClosingTag
+    ? content.split('</think>').slice(1).join('</think>').trim()
+    : '';
+
+  return {
+    thinkingContent: thinkingContent.trim(),
+    responseContent,
+    isThinkingComplete: hasClosingTag,
+  };
+}
 
 interface VideoCardInfo {
   taskId: string;
@@ -151,14 +190,25 @@ function FloatingLoadingDots() {
 export function ChatMessage({ message, isLoading, isLast, className }: ChatMessageProps) {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
-  const isAiThinking = isStreaming && !message.content && !message.skill_calls?.length && !message.tool_calls?.length && !message.video_tasks?.length;
+  
+  // 检测多智能体是否正在思考（有 running 状态的步骤）
+  const isMultiAgentThinking = message.multi_agent?.steps.some(s => s.status === 'running') ?? false;
+  
+  // 解析思考内容和正式回复内容
+  const { thinkingContent, responseContent, isThinkingComplete } = useMemo(
+    () => parseThinkContent(message.content || ''),
+    [message.content]
+  );
+  
+  // 单智能体思考状态：有思考内容且思考未完成
+  const isSingleAgentThinking = !message.multi_agent && !!thinkingContent && !isThinkingComplete;
   
   // 解析视频标记（仅对 AI 非流式消息解析，流式消息保持原样）
   const { cleanContent, videoCards } = useMemo(
-    () => (!isUser && !isStreaming && message.content)
-      ? parseVideoMarkers(message.content)
-      : { cleanContent: message.content, videoCards: [] as VideoCardInfo[] },
-    [message.content, isUser, isStreaming],
+    () => (!isUser && !isStreaming && responseContent)
+      ? parseVideoMarkers(responseContent)
+      : { cleanContent: responseContent, videoCards: [] as VideoCardInfo[] },
+    [responseContent, isUser, isStreaming],
   );
 
   // 合并两种来源的视频任务：内容解析 + SSE 事件
@@ -206,66 +256,76 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
 
         {/* AI消息 */}
         {!isUser && (
-          <div className="space-y-2">
-            {/* 思考中指示器 */}
-            {isAiThinking && <ThinkingIndicator />}
-
-            {/* 消息内容（去除视频标记后的文本） */}
-            {cleanContent && (
-              isStreaming ? (
-                <TypewriterText
-                  content={cleanContent}
-                  isStreaming={isStreaming}
+          <DraggableTextWrapper>
+            <div className="space-y-2">
+              {/* 单智能体思考面板：有思考内容时显示 */}
+              {thinkingContent && (
+                <ThinkPanel 
+                  isThinking={isSingleAgentThinking}
+                  thinkingContent={thinkingContent}
                 />
-              ) : needsChunking ? (
-                <MessageChunk
-                  content={cleanContent}
-                  maxChunkSize={2000}
-                  renderContent={(chunk) => (
-                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {chunk}
-                      </ReactMarkdown>
-                    </div>
-                  )}
+              )}
+              
+              {/* 流式输出且无思考内容时显示简单的思考面板 */}
+              {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
+                <ThinkPanel isThinking={true} />
+              )}
+
+              {/* 正式回复内容：思考完成后或无思考内容时显示 */}
+              {cleanContent && (isThinkingComplete || !thinkingContent) && (
+                isStreaming ? (
+                  <TypewriterText
+                    content={cleanContent}
+                    isStreaming={isStreaming}
+                  />
+                ) : needsChunking ? (
+                  <MessageChunk
+                    content={cleanContent}
+                    maxChunkSize={2000}
+                    renderContent={(chunk) => (
+                      <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {chunk}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  />
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {cleanContent}
+                    </ReactMarkdown>
+                  </div>
+                )
+              )}
+
+              {/* 视频任务卡片 */}
+              {allVideoCards.map((card) => (
+                <VideoTaskCard key={card.taskId} task={card} />
+              ))}
+
+              {/* 技能调用指示器 */}
+              {message.skill_calls && message.skill_calls.length > 0 && (
+                <SkillCallIndicator skillCalls={message.skill_calls} />
+              )}
+
+              {/* 工具调用指示器 */}
+              {message.tool_calls && message.tool_calls.length > 0 && (
+                <ToolCallIndicator toolCalls={message.tool_calls} />
+              )}
+
+              {/* 多智能体思考面板 */}
+              {message.multi_agent && (
+                <ThinkPanel
+                  steps={message.multi_agent.steps}
+                  isThinking={isMultiAgentThinking}
+                  className="mb-2"
                 />
-              ) : (
-                <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                    {cleanContent}
-                  </ReactMarkdown>
-                </div>
-              )
-            )}
+              )}
 
-            {/* 视频任务卡片 */}
-            {allVideoCards.map((card) => (
-              <VideoTaskCard key={card.taskId} task={card} />
-            ))}
-
-            {/* 技能调用指示器 */}
-            {message.skill_calls && message.skill_calls.length > 0 && (
-              <SkillCallIndicator skillCalls={message.skill_calls} />
-            )}
-
-            {/* 工具调用指示器 */}
-            {message.tool_calls && message.tool_calls.length > 0 && (
-              <ToolCallIndicator toolCalls={message.tool_calls} />
-            )}
-
-            {/* 多智能体步骤 */}
-            {message.multi_agent && (
-              <MultiAgentSteps
-                steps={message.multi_agent.steps}
-                finalResult={message.multi_agent.finalResult}
-                totalTokens={message.multi_agent.totalTokens}
-                creditCost={message.multi_agent.creditCost}
-                className="mb-2"
-              />
-            )}
-
-            {/* 加载动画 - 浮动跳跃三点 - 已移至 VirtualMessageList */}
-          </div>
+              {/* 加载动画 - 浮动跳跃三点 - 已移至 VirtualMessageList */}
+            </div>
+          </DraggableTextWrapper>
         )}
       </div>
     </div>

@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Film, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
+import { Film, Loader2, CheckCircle2, XCircle, Clock, Download, GripVertical } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
+import { handleVideoDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +52,76 @@ const MODE_LABELS: Record<string, string> = {
   image_to_video: '图生视频',
   edit: '视频编辑',
 };
+
+// ---------------------------------------------------------------------------
+// DraggableVideoPreview - Sub-component with drag support
+// ---------------------------------------------------------------------------
+
+interface DraggableVideoPreviewProps {
+  videoUrl: string;
+  quality: string;
+  duration: number;
+  creditCost: number;
+  modeLabel: string;
+}
+
+function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLabel }: DraggableVideoPreviewProps) {
+  const dragPreviewRef = useRef<HTMLElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const onDragStart = useCallback((e: React.DragEvent) => {
+    setIsDragging(true);
+    dragPreviewRef.current = handleVideoDragStart(e, videoUrl, modeLabel || '视频');
+  }, [videoUrl, modeLabel]);
+
+  const onDragEnd = useCallback(() => {
+    setIsDragging(false);
+    cleanupDragPreview(dragPreviewRef.current);
+    dragPreviewRef.current = null;
+  }, []);
+
+  return (
+    <div className="px-3 pb-3">
+      <div
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        className={cn(
+          'relative group cursor-grab active:cursor-grabbing transition-all',
+          isDragging && 'opacity-50'
+        )}
+      >
+        {/* Drag handle indicator */}
+        <div className="absolute top-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+          <GripVertical className="h-3 w-3" />
+          <span>拖动到画布</span>
+        </div>
+        <video
+          src={videoUrl}
+          controls
+          preload="metadata"
+          className="w-full rounded-lg bg-black"
+          style={{ maxHeight: '360px' }}
+          // Prevent video controls from interfering with drag
+          onMouseDown={(e) => e.stopPropagation()}
+        />
+      </div>
+      <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
+        {quality && <span>画质: {quality}</span>}
+        {duration > 0 && <span>时长: {duration}s</span>}
+        {creditCost > 0 && <span>消耗: {creditCost} 积分</span>}
+        <a
+          href={videoUrl}
+          download
+          className="ml-auto flex items-center gap-1 text-primary hover:underline"
+        >
+          <Download className="h-3 w-3" />
+          下载
+        </a>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -194,30 +265,15 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
         </div>
       )}
 
-      {/* Video player for completed tasks */}
+      {/* Video player for completed tasks - with drag support */}
       {status === 'completed' && videoUrl && (
-        <div className="px-3 pb-3">
-          <video
-            src={videoUrl}
-            controls
-            preload="metadata"
-            className="w-full rounded-lg bg-black"
-            style={{ maxHeight: '360px' }}
-          />
-          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
-            {quality && <span>画质: {quality}</span>}
-            {duration > 0 && <span>时长: {duration}s</span>}
-            {creditCost > 0 && <span>消耗: {creditCost} 积分</span>}
-            <a
-              href={videoUrl}
-              download
-              className="ml-auto flex items-center gap-1 text-primary hover:underline"
-            >
-              <Download className="h-3 w-3" />
-              下载
-            </a>
-          </div>
-        </div>
+        <DraggableVideoPreview
+          videoUrl={videoUrl}
+          quality={quality}
+          duration={duration}
+          creditCost={creditCost}
+          modeLabel={modeLabel}
+        />
       )}
 
       {/* Error message for failed tasks */}

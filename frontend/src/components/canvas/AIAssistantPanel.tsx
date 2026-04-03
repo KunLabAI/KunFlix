@@ -185,8 +185,12 @@ export function AIAssistantPanel() {
         currentAgentId = created.agentId;
       }
 
-      // 添加用户消息
-      setMessages((prev) => [...prev, { role: 'user', content, status: 'complete' }]);
+      // 添加用户消息 + 空的AI流式消息（触发思考面板显示）
+      setMessages((prev) => [
+        ...prev,
+        { role: 'user', content, status: 'complete' },
+        { role: 'ai', content: '', status: 'streaming' },
+      ]);
       setIsLoading(true);
 
       // 构建附件上下文（拼入消息正文，确保 AI 能感知节点内容）
