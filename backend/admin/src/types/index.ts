@@ -25,6 +25,20 @@ export interface UnifiedImageGenConfig {
   image_config?: UnifiedImageConfig | null;
 }
 
+// ---------------------------------------------------------------------------
+// 上下文压缩配置
+// ---------------------------------------------------------------------------
+export interface CompactionConfig {
+  enabled: boolean;
+  provider_id?: string;
+  model?: string;
+  compact_ratio: number;
+  reserve_ratio: number;
+  tool_old_threshold: number;
+  tool_recent_n: number;
+  max_summary_tokens: number;
+}
+
 export interface Agent {
   id?: string;
   name: string;
@@ -60,6 +74,8 @@ export interface Agent {
   image_config?: UnifiedImageGenConfig;
   // 视频生成配置
   video_config?: VideoGenToolConfigData;
+  // 上下文压缩配置
+  compaction_config?: CompactionConfig;
   image_credit_per_image?: number;
   created_at?: string;
   updated_at?: string;

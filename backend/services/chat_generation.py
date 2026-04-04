@@ -54,12 +54,25 @@ async def generate_single_agent(
         yield "Error: Agent provider is not available"
         return
 
+    # 加载会话（用于读取压缩状态）
+    session_result = await db.execute(select(ChatSession).filter(ChatSession.id == session_id))
+    chat_session = session_result.scalars().first()
+    skip_count = int(chat_session.compressed_before_id or "0") if chat_session else 0
+
     # 准备消息列表
     messages = []
     if agent.system_prompt:
         messages.append({"role": "system", "content": agent.system_prompt})
 
-    for msg in history:
+    # 注入已有压缩摘要到 system prompt
+    (chat_session and chat_session.compressed_summary and messages and messages[0].get("role") == "system"
+     and messages[0].__setitem__(
+         "content",
+         messages[0]["content"] + f"\n\n# Previous Conversation Summary\n{chat_session.compressed_summary}",
+     ))
+
+    # 加载历史消息（跳过已被摘要覆盖的旧消息）
+    for msg in history[skip_count:]:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
         deserialized = deserialize_content(msg.content)
         if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
@@ -118,6 +131,13 @@ async def generate_single_agent(
     skill_prompt = build_skill_prompt(agent_skills, ctx.active_skills_dir) if agent_skills else ""
     (skill_prompt and messages and messages[0].get("role") == "system"
      and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
+
+    # 上下文压缩（在所有注入完成后、LLM 调用前）
+    from services.context_compaction import compact_context
+    compaction_result = await compact_context(messages, agent, provider, db, session_id, session_obj=chat_session)
+    if compaction_result:
+        messages, _summary = compaction_result
+        yield sse("context_compacted", {"message": "Context compacted", "preserved_messages": len(messages)})
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -368,14 +388,6 @@ async def generate_single_agent(
                 logger.warning(f"Balance frozen for {entity_id}")
 
             await session.commit()
-
-            # 更新 billing_event 中的 context_usage 为累计值
-            s and billing_event.update({
-                "context_usage": {
-                    "used_tokens": s.total_tokens_used or 0,
-                    "context_window": agent.context_window,
-                }
-            })
 
             # 查询最新余额
             balance_result = await session.execute(

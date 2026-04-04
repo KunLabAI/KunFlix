@@ -14,9 +14,11 @@
 - [useAIAssistantStore.ts](file://frontend/src/store/useAIAssistantStore.ts)
 - [useSessionManager.ts](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts)
 - [useSSEHandler.ts](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts)
-- [VideoTaskCard.tsx](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx)
+- [VirtualMessageList.tsx](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx)
 - [AIAssistantPanel.tsx](file://frontend/src/components/canvas/AIAssistantPanel.tsx)
 - [WelcomeMessage.tsx](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx)
+- [ChatMessage.tsx](file://frontend/src/components/ai-assistant/ChatMessage.tsx)
+- [MessageInput.tsx](file://frontend/src/components/ai-assistant/MessageInput.tsx)
 - [api.ts](file://frontend/src/lib/api.ts)
 - [index.ts](file://frontend/src/components/ai-assistant/index.ts)
 - [useVideoTasks.ts](file://backend/admin/src/hooks/useVideoTasks.ts)
@@ -31,6 +33,8 @@
 - 优化默认消息初始化逻辑，实现智能欢迎消息状态管理
 - 新增AI助手面板的欢迎状态布局处理机制
 - 更新前端状态管理，支持欢迎消息的完整生命周期
+- 新增虚拟滚动配置支持，包括overscan和scrollBehavior参数
+- 增强消息状态管理，支持MessageStatus类型和状态转换
 
 ## 目录
 1. [简介](#简介)
@@ -39,15 +43,17 @@
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
 6. [欢迎消息状态管理](#欢迎消息状态管理)
-7. [视频任务跟踪系统](#视频任务跟踪系统)
-8. [依赖关系分析](#依赖关系分析)
-9. [性能考虑](#性能考虑)
-10. [故障排除指南](#故障排除指南)
-11. [结论](#结论)
+7. [虚拟滚动配置系统](#虚拟滚动配置系统)
+8. [消息状态管理增强](#消息状态管理增强)
+9. [视频任务跟踪系统](#视频任务跟踪系统)
+10. [依赖关系分析](#依赖关系分析)
+11. [性能考虑](#性能考虑)
+12. [故障排除指南](#故障排除指南)
+13. [结论](#结论)
 
 ## 简介
 
-增强的AI助手存储是基于AgentScope多智能体框架构建的通用AI内容创作和交互平台。该项目实现了完整的AI助手会话管理和状态持久化机制，支持多智能体协作、实时交互、智能计费系统以及**新增的欢迎消息状态管理能力**。
+增强的AI助手存储是基于AgentScope多智能体框架构建的通用AI内容创作和交互平台。该项目实现了完整的AI助手会话管理和状态持久化机制，支持多智能体协作、实时交互、智能计费系统以及**新增的欢迎消息状态管理能力**和**虚拟滚动配置系统**。
 
 该平台的核心特色包括：
 - **智能代理编排**：基于AgentScope的多智能体协作系统
@@ -58,10 +64,12 @@
 - **可视化管理后台**：提供完整的用户管理、代理监控界面
 - **视频任务跟踪**：完整的视频生成任务生命周期管理，支持进度监控和状态更新
 - **智能欢迎消息**：基于isWelcome属性的欢迎消息状态管理，优化用户体验
+- **高性能虚拟滚动**：基于react-window的虚拟滚动系统，支持自定义overscan和滚动行为
+- **增强消息状态管理**：支持流式消息状态转换和多模态内容展示
 
 ## 项目结构
 
-项目采用前后端分离架构，包含三个主要部分，并新增了智能欢迎消息管理模块：
+项目采用前后端分离架构，包含三个主要部分，并新增了智能欢迎消息管理和虚拟滚动配置模块：
 
 ```mermaid
 graph TB
@@ -80,12 +88,14 @@ I[AI助手组件]
 J[画布系统]
 K[视频任务卡片]
 L[欢迎消息管理]
+M[虚拟滚动系统]
+N[消息状态管理]
 end
 subgraph "管理后台 (admin)"
-M[独立管理界面]
-N[用户管理]
-O[代理配置]
-P[视频任务监控]
+O[独立管理界面]
+P[用户管理]
+Q[代理配置]
+R[视频任务监控]
 end
 A --> B
 A --> C
@@ -94,8 +104,10 @@ A --> F
 G --> A
 G --> K
 G --> L
-M --> A
-M --> P
+G --> M
+G --> N
+O --> A
+O --> R
 H --> I
 J --> I
 ```
@@ -198,7 +210,7 @@ VIDEO_TASK ||--o{ USER : belongs_to
 
 ### 前端状态管理系统
 
-使用Zustand实现的轻量级状态管理，支持AI助手的完整生命周期，**新增欢迎消息状态管理**：
+使用Zustand实现的轻量级状态管理，支持AI助手的完整生命周期，**新增欢迎消息状态管理、虚拟滚动配置和消息状态管理增强**：
 
 ```mermaid
 flowchart TD
@@ -208,20 +220,26 @@ B --> D[代理选择]
 B --> E[画布集成]
 B --> F[视频任务管理]
 B --> G[欢迎消息管理]
-C --> H[本地持久化]
-C --> I[虚拟滚动]
-C --> J[实时更新]
-G --> K[欢迎状态检测]
-G --> L[智能布局切换]
-G --> M[预设对话处理]
-D --> N[代理列表]
-D --> O[上下文使用]
-E --> P[节点附件]
-E --> Q[图像编辑]
-E --> R[多智能体协作]
-F --> S[任务状态]
-F --> T[进度监控]
-F --> U[结果展示]
+B --> H[虚拟滚动配置]
+B --> I[消息状态管理]
+C --> J[本地持久化]
+C --> K[虚拟滚动]
+C --> L[实时更新]
+G --> M[欢迎状态检测]
+G --> N[智能布局切换]
+G --> O[预设对话处理]
+H --> P[overscan配置]
+H --> Q[滚动行为设置]
+I --> R[流式状态管理]
+I --> S[多模态内容展示]
+D --> T[代理列表]
+D --> U[上下文使用]
+E --> V[节点附件]
+E --> W[图像编辑]
+E --> X[多智能体协作]
+F --> Y[任务状态]
+F --> Z[进度监控]
+F --> AA[结果展示]
 ```
 
 **图表来源**
@@ -233,7 +251,7 @@ F --> U[结果展示]
 
 ## 架构概览
 
-系统采用分层架构设计，实现了清晰的关注点分离，**新增欢迎消息处理层**：
+系统采用分层架构设计，实现了清晰的关注点分离，**新增欢迎消息处理层和虚拟滚动配置层**：
 
 ```mermaid
 graph TB
@@ -242,6 +260,8 @@ FE[前端应用]
 ADMIN[管理后台]
 VIDEO_CARD[视频任务卡片]
 WELCOME[欢迎消息组件]
+VIRTUAL_LIST[虚拟滚动列表]
+MESSAGE_STATUS[消息状态管理]
 end
 subgraph "应用层"
 API[FastAPI API]
@@ -249,12 +269,16 @@ ROUTERS[路由处理]
 SERVICES[业务服务]
 VIDEO_SERVICES[视频服务层]
 WELCOME_SERVICE[欢迎消息服务]
+VIRTUAL_SERVICE[虚拟滚动服务]
+MESSAGE_SERVICE[消息状态服务]
 end
 subgraph "数据层"
 MODELS[数据库模型]
 DB[(SQLite/PostgreSQL)]
 VIDEOS[视频存储]
 WELCOMES[欢迎消息存储]
+VIRTUAL_STORAGE[虚拟滚动状态]
+MESSAGE_STORAGE[消息状态存储]
 end
 subgraph "AI引擎"
 AGENTS[智能体系统]
@@ -266,13 +290,19 @@ FE --> API
 ADMIN --> API
 VIDEO_CARD --> API
 WELCOME --> WELCOME_SERVICE
+VIRTUAL_LIST --> VIRTUAL_SERVICE
+MESSAGE_STATUS --> MESSAGE_SERVICE
 API --> ROUTERS
 ROUTERS --> SERVICES
 SERVICES --> MODELS
 SERVICES --> VIDEO_SERVICES
 SERVICES --> WELCOME_SERVICE
+SERVICES --> VIRTUAL_SERVICE
+SERVICES --> MESSAGE_SERVICE
 VIDEO_SERVICES --> VIDEOS
 WELCOME_SERVICE --> WELCOMES
+VIRTUAL_SERVICE --> VIRTUAL_STORAGE
+MESSAGE_SERVICE --> MESSAGE_STORAGE
 MODELS --> DB
 SERVICES --> EXECUTOR
 EXECUTOR --> AGENTS
@@ -595,6 +625,176 @@ G --> H[发送预设消息]
 - [useSessionManager.ts:8-10](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L8-L10)
 - [WelcomeMessage.tsx:28-67](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L28-L67)
 
+## 虚拟滚动配置系统
+
+### VirtualMessageList组件架构
+
+系统实现了高性能的虚拟滚动列表，支持自定义配置和优化：
+
+```mermaid
+flowchart TD
+A[VirtualMessageList组件] --> B[消息过滤]
+B --> C[虚拟滚动引擎]
+C --> D[动态行高计算]
+C --> E[可视区域渲染]
+C --> F[滚动行为控制]
+D --> G[行高度缓存]
+E --> H[overscan优化]
+F --> I[平滑滚动]
+F --> J[即时滚动]
+H --> K[预加载可见区域]
+I --> L[用户体验优化]
+J --> M[性能最大化]
+```
+
+**图表来源**
+- [VirtualMessageList.tsx:43-271](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L43-L271)
+
+### 虚拟滚动配置参数
+
+VirtualMessageList组件支持灵活的配置选项：
+
+```typescript
+interface VirtualMessageListProps {
+  messages: Message[];           // 消息数组
+  renderItem: (message: Message, index: number) => React.ReactNode; // 渲染函数
+  overscan?: number;             // 预渲染行数，默认5
+  scrollBehavior?: 'instant' | 'smooth'; // 滚动行为
+  onScrollToBottom?: (isAtBottom: boolean) => void; // 滚动回调
+  className?: string;            // 自定义样式类
+  isLoading?: boolean;           // 加载状态
+}
+```
+
+**图表来源**
+- [VirtualMessageList.tsx:8-16](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L8-L16)
+
+### 动态行高计算
+
+系统使用useDynamicRowHeight实现智能的行高计算：
+
+```mermaid
+flowchart TD
+A[动态行高计算] --> B[默认高度估计]
+B --> C[消息内容测量]
+C --> D[高度缓存机制]
+D --> E[性能优化]
+E --> F[自适应调整]
+F --> G[稳定渲染]
+```
+
+**图表来源**
+- [VirtualMessageList.tsx:63-66](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L63-L66)
+
+### 滚动行为控制
+
+支持平滑滚动和即时滚动两种模式：
+
+```mermaid
+stateDiagram-v2
+[*] --> 滚动初始化
+滚动初始化 --> 平滑滚动
+滚动初始化 --> 即时滚动
+平滑滚动 --> 滚动动画
+即时滚动 --> 瞬间定位
+滚动动画 --> 滚动完成
+瞬间定位 --> 滚动完成
+滚动完成 --> [*]
+```
+
+**图表来源**
+- [VirtualMessageList.tsx:86-109](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L86-L109)
+
+### Overscan优化机制
+
+系统通过overscan参数优化渲染性能：
+
+```mermaid
+flowchart TD
+A[消息列表渲染] --> B{检查overscan设置}
+B --> |默认5行| C[预渲染可见区域+5行]
+B --> |自定义设置| D[预渲染可见区域+n行]
+C --> E[减少滚动时重绘]
+D --> E
+E --> F[提升滚动流畅度]
+```
+
+**图表来源**
+- [VirtualMessageList.tsx:258](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L258)
+
+**章节来源**
+- [VirtualMessageList.tsx:43-271](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L43-L271)
+- [AIAssistantPanel.tsx:464-486](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L464-L486)
+
+## 消息状态管理增强
+
+### MessageStatus类型系统
+
+系统引入了完整的消息状态管理机制：
+
+```mermaid
+stateDiagram-v2
+[*] --> 消息创建
+消息创建 --> 流式状态
+消息创建 --> 完成状态
+流式状态 --> 内容增量
+内容增量 --> 流式状态
+流式状态 --> 完成状态
+完成状态 --> [*]
+```
+
+**图表来源**
+- [useSSEHandler.ts:352-358](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L352-L358)
+
+### 流式消息处理
+
+系统支持实时的流式消息处理和状态转换：
+
+```mermaid
+sequenceDiagram
+participant UI as 用户界面
+participant SSE as 服务器推送
+participant Store as 状态管理
+UI->>SSE : 发送消息请求
+SSE->>Store : text事件
+Store->>Store : 创建流式消息
+Store->>UI : 更新UI显示
+SSE->>Store : tool_call事件
+Store->>Store : 添加工具调用
+Store->>UI : 更新工具指示器
+SSE->>Store : done事件
+Store->>Store : 设置完成状态
+Store->>UI : 完成渲染
+```
+
+**图表来源**
+- [useSSEHandler.ts:76-108](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L76-L108)
+
+### 多模态内容展示
+
+消息状态管理支持多种内容类型的展示：
+
+```mermaid
+flowchart TD
+A[消息状态管理] --> B[文本内容]
+A --> C[工具调用]
+A --> D[技能调用]
+A --> E[多智能体协作]
+A --> F[视频任务]
+B --> G[Markdown渲染]
+C --> H[工具指示器]
+D --> I[技能指示器]
+E --> J[协作面板]
+F --> K[视频卡片]
+```
+
+**图表来源**
+- [ChatMessage.tsx:252-415](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L252-L415)
+
+**章节来源**
+- [useSSEHandler.ts:352-358](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L352-L358)
+- [ChatMessage.tsx:252-415](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L252-L415)
+
 ## 视频任务跟踪系统
 
 ### 视频任务生命周期
@@ -716,6 +916,7 @@ React[React 19.2.3]
 Tailwind[Tailwind CSS]
 SWR[SWR]
 FramerMotion[Framer Motion]
+ReactWindow[react-window 2.2.7]
 end
 subgraph "AI服务"
 OpenAI[OpenAI API]
@@ -732,6 +933,7 @@ NextJS --> Zustand
 NextJS --> React
 NextJS --> SWR
 NextJS --> FramerMotion
+NextJS --> ReactWindow
 AgentScope --> OpenAI
 AgentScope --> Anthropic
 AgentScope --> Gemini
@@ -757,18 +959,24 @@ H --> I[状态更新]
 I --> J[前端渲染]
 J --> K[视频任务展示]
 J --> L[欢迎消息处理]
+J --> M[虚拟滚动渲染]
+J --> N[消息状态更新]
 subgraph "存储层"
-M[SQLite]
-N[PostgreSQL]
-O[localStorage]
-P[视频存储]
-Q[欢迎消息存储]
+O[SQLite]
+P[PostgreSQL]
+Q[localStorage]
+R[视频存储]
+S[欢迎消息存储]
+T[虚拟滚动状态]
+U[消息状态存储]
 end
-D --> M
-D --> N
-I --> O
-F --> P
-L --> Q
+D --> O
+D --> P
+I --> Q
+F --> R
+L --> S
+M --> T
+N --> U
 ```
 
 **图表来源**
@@ -799,6 +1007,8 @@ L --> Q
 4. **懒加载**：按需加载组件和数据
 5. **轮询优化**：智能轮询策略，活跃任务才进行频繁轮询
 6. **欢迎消息优化**：**新增欢迎消息的特殊渲染优化，避免不必要的DOM操作**
+7. **虚拟滚动优化**：**新增overscan预渲染优化，提升滚动流畅度**
+8. **消息状态缓存**：**新增流式消息状态缓存机制，减少重渲染**
 
 ### 实时通信优化
 
@@ -808,6 +1018,7 @@ L --> Q
 4. **错误重连**：自动处理连接中断
 5. **视频状态推送**：基于Server-Sent Events的实时状态更新
 6. **欢迎消息推送**：**新增欢迎消息状态的实时推送机制**
+7. **消息状态同步**：**新增流式消息状态的实时同步机制**
 
 ### 视频任务性能优化
 
@@ -823,6 +1034,21 @@ L --> Q
 2. **条件渲染优化**：**智能的条件渲染机制，仅在必要时渲染欢迎消息**
 3. **布局优化**：**专门的底部布局优化，提升用户体验**
 4. **预设对话缓存**：**预设对话按钮的性能优化和缓存机制**
+
+### 虚拟滚动性能优化
+
+1. **动态行高缓存**：**新增行高计算缓存机制，避免重复测量**
+2. **overscan预渲染**：**智能的预渲染策略，平衡性能和内存使用**
+3. **滚动行为优化**：**平滑滚动和即时滚动的性能对比优化**
+4. **ResizeObserver优化**：**容器尺寸变化监听的性能优化**
+5. **滚动位置记忆**：**滚动位置状态的记忆和恢复机制**
+
+### 消息状态管理性能优化
+
+1. **流式状态缓存**：**新增流式消息状态的缓存机制**
+2. **状态转换优化**：**智能的状态转换算法，减少不必要的重渲染**
+3. **多模态内容优化**：**视频任务、工具调用等多模态内容的性能优化**
+4. **消息分块渲染**：**长消息的分块渲染优化，提升渲染性能**
 
 ## 故障排除指南
 
@@ -881,13 +1107,36 @@ L --> Q
 5. **验证localStorage中的欢迎消息状态**
 6. **确认状态管理中欢迎消息的处理流程**
 
+#### 虚拟滚动问题
+
+**症状**：虚拟滚动列表渲染异常或性能问题
+
+**解决方案**：
+1. **检查VirtualMessageList组件的配置参数**
+2. **验证overscan设置是否合理**
+3. **确认消息数组的数据格式**
+4. **检查动态行高的计算逻辑**
+5. **验证滚动行为设置**
+6. **确认消息状态管理的正确性**
+
+#### 消息状态管理问题
+
+**症状**：流式消息状态显示异常
+
+**解决方案**：
+1. **检查MessageStatus类型定义**
+2. **验证流式消息的事件处理逻辑**
+3. **确认状态转换的正确性**
+4. **检查多模态内容的渲染逻辑**
+5. **验证消息分块渲染的性能**
+
 **章节来源**
 - [database.py:24-31](file://backend/database.py#L24-L31)
 - [useAIAssistantStore.ts:348-368](file://frontend/src/store/useAIAssistantStore.ts#L348-L368)
 
 ## 结论
 
-增强的AI助手存储项目展现了现代全栈应用的最佳实践。通过合理的架构设计、完善的组件分离、高效的性能优化以及**新增的欢迎消息状态管理能力**，该项目成功实现了复杂的AI助手功能。
+增强的AI助手存储项目展现了现代全栈应用的最佳实践。通过合理的架构设计、完善的组件分离、高效的性能优化以及**新增的欢迎消息状态管理能力、虚拟滚动配置系统和消息状态管理增强**，该项目成功实现了复杂的AI助手功能。
 
 ### 主要优势
 
@@ -899,6 +1148,8 @@ L --> Q
 6. **功能完整**：支持文本、图像、**视频**等多种内容生成
 7. **管理完善**：提供完整的视频任务监控和管理功能
 8. **智能欢迎体验**：**基于isWelcome属性的智能欢迎消息管理**
+9. **高性能虚拟滚动**：**基于react-window的虚拟滚动系统，支持自定义配置**
+10. **增强消息状态管理**：**支持流式消息状态转换和多模态内容展示**
 
 ### 技术亮点
 
@@ -913,6 +1164,10 @@ L --> Q
 - **完整的视频任务生命周期管理**
 - **智能的视频生成计费系统**
 - **直观的视频任务监控界面**
+- **高性能的虚拟滚动系统**
+- **灵活的滚动行为配置**
+- **智能的overscan优化机制**
+- **完整的消息状态管理**
 
 ### 新增功能价值
 
@@ -924,6 +1179,19 @@ L --> Q
 - **状态持久化支持**：欢迎消息状态与整体应用状态管理无缝集成
 - **性能优化**：专门的欢迎消息渲染优化，提升应用响应速度
 
+**虚拟滚动配置系统的引入**为平台带来了以下价值：
+- **高性能消息渲染**：支持大量消息的高效虚拟滚动渲染
+- **灵活的配置选项**：支持overscan预渲染和滚动行为自定义
+- **智能的性能优化**：动态行高计算和缓存机制
+- **流畅的用户体验**：平滑滚动和即时滚动的性能对比
+- **内存使用优化**：智能的预渲染策略平衡性能和内存占用
+
+**消息状态管理增强系统的引入**为平台带来了以下价值：
+- **完整的流式消息支持**：实时的流式消息状态转换和展示
+- **多模态内容集成**：视频任务、工具调用、技能调用等内容的统一管理
+- **智能的状态缓存**：流式消息状态的缓存机制，减少重渲染
+- **性能优化的渲染**：长消息的分块渲染和多模态内容的优化展示
+
 **视频任务跟踪系统的引入**为平台带来了以下价值：
 - **完整的多模态内容创作能力**：从文本到图像再到视频的全流程支持
 - **实时进度监控**：用户可以实时查看视频生成进度
@@ -932,4 +1200,4 @@ L --> Q
 - **资源优化**：智能的轮询策略和资源清理机制
 - **管理便利**：后台提供完整的视频任务监控和管理功能
 
-**欢迎消息状态管理和视频任务跟踪系统的结合**使该项目成为了一个真正意义上的多模态AI创作平台，具备了完整的用户体验和专业的功能特性，为AI内容创作提供了坚实的技术基础，具备良好的可维护性和扩展性，适合进一步的功能开发和生产环境部署。
+**欢迎消息状态管理、虚拟滚动配置系统和消息状态管理增强的结合**使该项目成为了一个真正意义上的多模态AI创作平台，具备了完整的用户体验和专业的功能特性，为AI内容创作提供了坚实的技术基础，具备良好的可维护性和扩展性，适合进一步的功能开发和生产环境部署。

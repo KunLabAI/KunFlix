@@ -53,6 +53,17 @@ const defaultVideoConfig = {
   video_generation_enabled: false,
 };
 
+const defaultCompactionConfig = {
+  enabled: false,
+  provider_id: '',
+  model: '',
+  compact_ratio: 0.75,
+  reserve_ratio: 0.15,
+  tool_old_threshold: 500,
+  tool_recent_n: 5,
+  max_summary_tokens: 1024,
+};
+
 export default function AgentForm({ 
   initialValues, 
   onSubmit, 
@@ -97,6 +108,7 @@ export default function AgentForm({
       image_config: defaultImageConfig,
       image_credit_per_image: 0,
       video_config: defaultVideoConfig,
+      compaction_config: defaultCompactionConfig,
     },
   });
 
@@ -144,6 +156,7 @@ export default function AgentForm({
         image_config: initialValues.image_config || defaultImageConfig,
         image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
         video_config: (initialValues.video_config as any) || defaultVideoConfig,
+        compaction_config: initialValues.compaction_config || defaultCompactionConfig,
       };
       
       // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
@@ -183,6 +196,7 @@ export default function AgentForm({
         image_config: defaultImageConfig,
         image_credit_per_image: 0,
         video_config: defaultVideoConfig,
+        compaction_config: defaultCompactionConfig,
       });
       isFormInitialized.current = true;
     }
@@ -210,7 +224,7 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, gemini_config, image_config, video_config, ...rest } = values;
+      const { tools_enabled, gemini_config, image_config, video_config, compaction_config, ...rest } = values;
       
       // Clean up gemini_config（仅保留思考、媒体、搜索字段）
       const cleanedGeminiConfig = gemini_config ? {
@@ -240,12 +254,25 @@ export default function AgentForm({
         video_generation_enabled: video_config?.video_generation_enabled || false,
       };
 
+      // Clean up compaction_config
+      const cleanedCompactionConfig = compaction_config?.enabled ? {
+        enabled: true,
+        provider_id: compaction_config.provider_id || '',
+        model: compaction_config.model || '',
+        compact_ratio: compaction_config.compact_ratio ?? 0.75,
+        reserve_ratio: compaction_config.reserve_ratio ?? 0.15,
+        tool_old_threshold: compaction_config.tool_old_threshold ?? 500,
+        tool_recent_n: compaction_config.tool_recent_n ?? 5,
+        max_summary_tokens: compaction_config.max_summary_tokens ?? 1024,
+      } : { enabled: false, compact_ratio: 0.75, reserve_ratio: 0.15, tool_old_threshold: 500, tool_recent_n: 5, max_summary_tokens: 1024 };
+
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
         gemini_config: cleanedGeminiConfig,
         image_config: cleanedImageConfig,
         video_config: cleanedVideoConfig,
+        compaction_config: cleanedCompactionConfig,
       };
       
       console.log('Submitting payload:', JSON.stringify(payload, null, 2));

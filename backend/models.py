@@ -187,6 +187,10 @@ class ChatSession(Base):
     # 上下文使用统计（累计 token 使用量）
     total_tokens_used = Column(BigInteger, default=0)
 
+    # 上下文压缩
+    compressed_summary = Column(Text, nullable=True)       # 旧消息的 LLM 摘要
+    compressed_before_id = Column(String(36), nullable=True)  # 此 ID 之前（含）的消息已被摘要覆盖
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -256,6 +260,9 @@ class Agent(Base):
 
     # 视频生成配置（供应商无关）
     video_config = Column(JSON, default=dict)
+
+    # 上下文压缩配置（智能体级别）
+    compaction_config = Column(JSON, default=dict)
 
     # 可控制的画布节点类型: ["script", "character", "storyboard", "video"]
     target_node_types = Column(JSON, default=[])
@@ -441,6 +448,10 @@ class AdminDebugSession(Base):
     title = Column(String, default="Debug Chat")
     agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False, index=True)
     admin_id = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
+
+    # 上下文压缩
+    compressed_summary = Column(Text, nullable=True)
+    compressed_before_id = Column(String(36), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

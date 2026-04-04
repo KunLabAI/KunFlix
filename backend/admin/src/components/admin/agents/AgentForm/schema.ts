@@ -33,6 +33,18 @@ const videoGenConfigSchema = z.object({
   video_generation_enabled: z.boolean().optional().default(false),
 }).optional().nullable();
 
+// 上下文压缩配置 schema
+const compactionConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  provider_id: z.preprocess(emptyStringToNull, z.string().optional().nullable()),
+  model: z.preprocess(emptyStringToNull, z.string().optional().nullable()),
+  compact_ratio: z.number().min(0.5).max(0.95).optional().default(0.75),
+  reserve_ratio: z.number().min(0.05).max(0.4).optional().default(0.15),
+  tool_old_threshold: z.number().min(100).max(5000).optional().default(500),
+  tool_recent_n: z.number().min(1).max(20).optional().default(5),
+  max_summary_tokens: z.number().min(256).max(4096).optional().default(1024),
+}).optional().nullable();
+
 export const agentFormSchema = z.object({
   name: z.string().min(1, "请输入智能体名称").max(50, "最大长度50字符"),
   description: z.string().min(1, "请输入描述").max(500, "最大长度500字符"),
@@ -71,6 +83,8 @@ export const agentFormSchema = z.object({
   image_credit_per_image: z.number().min(0, "不能为负数").default(0),
   // 视频生成配置
   video_config: videoGenConfigSchema,
+  // 上下文压缩配置
+  compaction_config: compactionConfigSchema,
 }).refine((data) => {
   // 启用能力时，至少需要选择一个技能、启用图像/视频生成或画布工具
   const hasSkills = (data.tools?.length ?? 0) > 0;

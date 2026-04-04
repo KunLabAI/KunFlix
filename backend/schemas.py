@@ -271,6 +271,8 @@ class AgentBase(BaseModel):
     image_config: Optional[UnifiedImageGenConfig] = None
     # 视频生成配置（供应商无关）
     video_config: Optional[dict] = None
+    # 上下文压缩配置
+    compaction_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: List[str] = Field(default_factory=list)
 
@@ -322,6 +324,8 @@ class AgentUpdate(BaseModel):
     image_config: Optional[UnifiedImageGenConfig] = None
     # 视频生成配置（供应商无关）
     video_config: Optional[dict] = None
+    # 上下文压缩配置
+    compaction_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: Optional[List[str]] = None
 

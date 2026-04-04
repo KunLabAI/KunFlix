@@ -12,6 +12,13 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { LLMProvider } from '@/types';
 
 // 积分定价维度映射表（避免 if-else）
@@ -49,6 +56,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const model = watch('model');
   const searchEnabled = watch('gemini_config.google_search_enabled');
   const imageEnabled = watch('image_config.image_generation_enabled');
+  const compactionEnabled = watch('compaction_config.enabled');
+  const compactionProviderId = watch('compaction_config.provider_id');
   const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
 
   // 当前选中的供应商
@@ -60,6 +69,14 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   // 供应商类型判断
   const providerType = currentProvider?.provider_type?.toLowerCase() || '';
   const isGeminiProvider = providerType === 'gemini';
+
+  // 压缩供应商的模型列表
+  const compactionModelList = useMemo(() => {
+    const p = providers?.find(pr => pr.id === compactionProviderId);
+    return p
+      ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
+      : [];
+  }, [compactionProviderId, providers]);
 
   // 获取当前模型的 API 成本数据
   const modelCosts: Record<string, number> = currentProvider?.model_costs?.[model] ?? {};
@@ -151,6 +168,206 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
              <span>256K</span>
            </div>
          </div>
+      </div>
+
+      {/* 上下文压缩配置 */}
+      <div className="rounded-xl border bg-card p-5">
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <Label className="text-sm font-medium">上下文压缩</Label>
+            <p className="text-xs text-muted-foreground mt-1">对话过长时自动摘要压缩旧消息</p>
+          </div>
+          <FormField
+            control={control}
+            name="compaction_config.enabled"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={disabled}
+                    />
+                    <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
+                  </div>
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {compactionEnabled && (
+          <div className="space-y-4 pt-3 border-t mt-3">
+            {/* 压缩供应商 */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">摘要生成供应商</Label>
+              <FormField
+                control={control}
+                name="compaction_config.provider_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Select
+                        value={field.value || '_fallback'}
+                        onValueChange={(val) => {
+                          field.onChange(val === '_fallback' ? '' : val);
+                          setValue('compaction_config.model', '');
+                        }}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder="选择供应商" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_fallback">使用当前智能体的供应商（默认）</SelectItem>
+                          {providers?.filter(p => p.is_active).map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* 压缩模型 */}
+            {compactionProviderId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">摘要生成模型</Label>
+                <FormField
+                  control={control}
+                  name="compaction_config.model"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Select value={field.value || ''} onValueChange={field.onChange} disabled={disabled}>
+                          <SelectTrigger className="bg-background">
+                            <SelectValue placeholder="选择模型" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {compactionModelList.map((m: string) => (
+                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 阈值设置 */}
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={control}
+                name="compaction_config.compact_ratio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">
+                      压缩触发阈值 ({Math.round((field.value ?? 0.75) * 100)}%)
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0.5} max={0.95} step={0.05}
+                        value={field.value ?? 0.75}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        className="font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="compaction_config.reserve_ratio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">
+                      保留比例 ({Math.round((field.value ?? 0.15) * 100)}%)
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0.05} max={0.4} step={0.05}
+                        value={field.value ?? 0.15}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        className="font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={control}
+                name="compaction_config.tool_old_threshold"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">旧工具截断字符数</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={100} max={5000} step={100}
+                        value={field.value ?? 500}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        className="font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={control}
+                name="compaction_config.tool_recent_n"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">最近完整保留条数</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1} max={20} step={1}
+                        value={field.value ?? 5}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        className="font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={control}
+              name="compaction_config.max_summary_tokens"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">最大摘要 Token 数</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={256} max={4096} step={128}
+                      value={field.value ?? 1024}
+                      onChange={e => field.onChange(Number(e.target.value))}
+                      className="font-mono"
+                      disabled={disabled}
+                    />
+                  </FormControl>
+                  <p className="text-[11px] text-muted-foreground">LLM 生成摘要时的 max_tokens 限制</p>
+                </FormItem>
+              )}
+            />
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border bg-card p-5">
