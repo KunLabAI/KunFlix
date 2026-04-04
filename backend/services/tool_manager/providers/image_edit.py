@@ -534,6 +534,10 @@ class ImageEditProvider:
 
     async def build_defs(self, ctx: "ToolContext") -> list[dict]:
         """Build tool definitions if enabled and supported."""
+        # Skill-gate: 如果 image_tools skill 已配置但未加载，延迟注入
+        if ctx.is_skill_gated("image_tools"):
+            return []
+
         # 检查智能体模型是否支持工具调用
         if not _check_agent_eligible(ctx.agent):
             return []

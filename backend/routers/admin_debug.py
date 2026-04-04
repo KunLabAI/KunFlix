@@ -28,6 +28,7 @@ from services.orchestrator import DynamicOrchestrator
 from services.billing import calculate_credit_cost, CreditTransaction as BillingCreditTransaction
 from services.image_config_adapter import resolve_global_image_configs
 from services.tool_manager import ToolManager, ToolContext, IMAGE_GEN_TOOL_NAME
+from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
 from services.chat_utils import (
     sse, serialize_content, deserialize_content,
@@ -423,13 +424,24 @@ async def _generate_single_agent_debug(
             )
 
             # 追踪已加载的技能
+            tool_skill_loaded = False
             for tc in result.tool_calls:
                 (tc.name == "load_skill") and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+            # 检测本轮是否有工具Skill被加载
+            tool_skill_loaded = any(
+                tc.name == "load_skill" and json.loads(tc.arguments).get("skill_name", "") in TOOL_SKILL_GATE_MAP
+                for tc in result.tool_calls
+            )
 
             # 重建工具定义（技能 enum 自动缩减）
+            # 如果有工具Skill被加载，需完整异步重建以注入新解锁的工具定义
             remaining_skills = [s for s in agent_skills if s not in loaded_skills]
-            rebuilt_tool_defs = tool_manager.rebuild_after_round(ctx)
-            tool_defs = (rebuilt_tool_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            managed_defs = (
+                await tool_manager.build_tool_defs(ctx)
+                if tool_skill_loaded
+                else tool_manager.rebuild_after_round(ctx)
+            )
+            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
             tool_defs = tool_defs or None
 
             # 发送 tool 完成事件

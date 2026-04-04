@@ -293,6 +293,10 @@ class VideoGenProvider:
         return frozenset({VIDEO_GEN_TOOL_NAME})
 
     async def build_defs(self, ctx: "ToolContext") -> list[dict]:
+        # Skill-gate: 如果 video_tools skill 已配置但未加载，延迟注入
+        if ctx.is_skill_gated("video_tools"):
+            return []
+
         # 检查智能体级别的视频生成开关
         agent_video_enabled = (ctx.agent.video_config or {}).get("video_generation_enabled", False)
         if not agent_video_enabled:

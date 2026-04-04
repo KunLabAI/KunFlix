@@ -515,20 +515,34 @@ class CanvasProvider:
 
     display_name = "画布工具"
     description = "画布节点的增删改查（text/image/video/storyboard）"
-    condition = "需要 theater_id 且 target_node_types 非空"
+    condition = "需要 theater_id 且 target_node_types 非空（或 canvas_tools skill 已加载）"
+
+    # 全节点类型列表（canvas_tools skill 加载后的默认值）
+    _ALL_NODE_TYPES = list(NODE_TYPE_SCHEMA.keys())
 
     @property
     def tool_names(self) -> frozenset[str]:
         return CANVAS_TOOL_NAMES_SET
 
+    def _effective_node_types(self, ctx: ToolContext) -> list[str]:
+        """canvas_tools skill 加载后授予全节点类型访问权限，否则使用 agent 配置。"""
+        skill_loaded = "canvas_tools" in ctx.loaded_tool_skills
+        return self._ALL_NODE_TYPES if skill_loaded else (ctx.agent.target_node_types or [])
+
     async def build_defs(self, ctx: ToolContext) -> list[dict]:
-        has_context = ctx.theater_id and ctx.agent.target_node_types
-        return _build_canvas_tool_defs(ctx.agent.target_node_types) if has_context else []
+        # Skill-gate: 如果 canvas_tools skill 已配置但未加载，延迟注入
+        if ctx.is_skill_gated("canvas_tools"):
+            return []
+
+        target_types = self._effective_node_types(ctx)
+        has_context = ctx.theater_id and target_types
+        return _build_canvas_tool_defs(target_types) if has_context else []
 
     async def execute(self, name: str, args: dict, ctx: ToolContext) -> str:
+        target_types = self._effective_node_types(ctx)
         executor = _EXECUTORS.get(name)
         return _error_result(f"Unknown canvas tool: {name}") if not executor else await _run_executor(
-            executor, name, args, ctx.theater_id, ctx.agent.target_node_types, ctx.db, agent_id=ctx.agent.id
+            executor, name, args, ctx.theater_id, target_types, ctx.db, agent_id=ctx.agent.id
         )
 
     def rebuild_defs(self, ctx: ToolContext) -> list[dict] | None:

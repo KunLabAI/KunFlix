@@ -45,7 +45,11 @@ async def get_tool_result(
 
 def _execute_skill(tc_name: str, tc_args: dict, ctx: "ToolContext") -> str:
     from services.skill_tools import load_skill_content
-    return load_skill_content(tc_args.get("skill_name", ""), ctx.active_skills_dir)
+    from services.tool_manager.context import TOOL_SKILL_GATE_MAP
+    skill_name = tc_args.get("skill_name", "")
+    # 追踪工具Skill加载（用于 skill-gated 工具动态注入）
+    (skill_name in TOOL_SKILL_GATE_MAP) and ctx.loaded_tool_skills.add(skill_name)
+    return load_skill_content(skill_name, ctx.active_skills_dir)
 
 
 async def append_tool_round(

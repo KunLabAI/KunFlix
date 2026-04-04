@@ -19,6 +19,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Skill-gated tool mapping: skill name -> set of tool names it gates
+# ---------------------------------------------------------------------------
+TOOL_SKILL_GATE_MAP: dict[str, frozenset[str]] = {
+    "image_tools": frozenset({"generate_image", "edit_image"}),
+    "video_tools": frozenset({"generate_video", "edit_video"}),
+    "canvas_tools": frozenset({
+        "list_canvas_nodes", "get_canvas_node",
+        "create_canvas_node", "update_canvas_node", "delete_canvas_node",
+    }),
+}
+
 
 @dataclass
 class ToolContext:
@@ -42,8 +54,20 @@ class ToolContext:
     _video_provider_resolved: bool = field(default=False, repr=False)
     _global_video_config: dict | None = field(default=None, repr=False)
 
+    # --- skill-gated tool tracking ---
+    loaded_tool_skills: set = field(default_factory=set, repr=False)
+
     # --- transient event collectors ---
     video_tasks: list = field(default_factory=list, repr=False)
+
+    # ------------------------------------------------------------------
+    # Skill-gate helpers
+    # ------------------------------------------------------------------
+
+    def is_skill_gated(self, skill_name: str) -> bool:
+        """Check if a tool-skill is configured on the agent but not yet loaded."""
+        agent_skills = self.agent.tools or []
+        return skill_name in agent_skills and skill_name not in self.loaded_tool_skills
 
     # ------------------------------------------------------------------
     # Lazy accessors

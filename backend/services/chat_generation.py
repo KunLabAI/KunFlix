@@ -17,6 +17,7 @@ from services.chat_utils import (
 from services.chat_tool_dispatch import append_tool_round
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
+from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.media_utils import MEDIA_DIR
@@ -131,6 +132,20 @@ async def generate_single_agent(
     logger.info(f"Context window: {agent.context_window} | Temperature: {agent.temperature}")
     logger.info(f"Skills: {agent.tools or 'none'}")
     logger.info(f"Current message: {content}")
+    # 输出发送给 LLM 的完整消息列表
+    logger.info(f"--- Messages ({len(messages)}) ---")
+    for i, m in enumerate(messages):
+        role = m.get("role", "?")
+        c = m.get("content", "")
+        # 多模态消息（list）只显示文本部分摘要
+        preview = (
+            c[:200] if isinstance(c, str)
+            else " | ".join(p.get("text", "[non-text]")[:80] for p in c if isinstance(p, dict))[:200]
+        )
+        logger.info(f"  [{i}] {role}: {preview}{'...' if len(str(c)) > 200 else ''}")
+    # 输出工具定义
+    tool_names_list = [d.get("function", {}).get("name", "?") for d in (tool_defs or [])]
+    logger.info(f"--- Tools ({len(tool_names_list)}): {tool_names_list} ---")
     logger.info(f"{'-'*60}")
 
     # 调用 LLM 流式接口（含工具调用循环）
@@ -186,6 +201,20 @@ async def generate_single_agent(
             logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
             await append_tool_round(messages, result, tool_manager, ctx, is_anthropic)
 
+            # 输出工具轮次后新增的消息（assistant tool_calls + tool results）
+            _new_msgs = messages[-(1 + len(result.tool_calls)):] if not is_anthropic else messages[-2:]
+            for nm in _new_msgs:
+                _r = nm.get("role", "?")
+                _c = nm.get("content", "")
+                _tc = nm.get("tool_calls")
+                # tool_calls 消息：显示函数名
+                _tc_names = [t.get("function", {}).get("name", "?") for t in (_tc or [])]
+                _preview = (
+                    f"tool_calls={_tc_names}" if _tc
+                    else (str(_c)[:300] if isinstance(_c, str) else str(_c)[:300])
+                )
+                logger.info(f"  >> [{_r}] {_preview}{'...' if len(str(_c)) > 300 else ''}")
+
             # 累计 generate_image 工具产生的图片数（用于计费）
             tool_generated_image_count += sum(
                 min(max(json.loads(tc.arguments).get("n", 1), 1), 4)
@@ -194,14 +223,30 @@ async def generate_single_agent(
             )
 
             # 追踪已加载的技能
+            tool_skill_loaded = False
             for tc in result.tool_calls:
                 (tc.name == "load_skill") and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+            # 检测本轮是否有工具Skill被加载（ctx.loaded_tool_skills 已在 _execute_skill 中更新）
+            tool_skill_loaded = any(
+                tc.name == "load_skill" and json.loads(tc.arguments).get("skill_name", "") in TOOL_SKILL_GATE_MAP
+                for tc in result.tool_calls
+            )
 
             # 重建工具定义（技能 enum 自动缩减）
+            # 如果有工具Skill被加载，需完整异步重建以注入新解锁的工具定义
             remaining_skills = [s for s in agent_skills if s not in loaded_skills]
-            rebuilt_tool_defs = tool_manager.rebuild_after_round(ctx)
-            tool_defs = (rebuilt_tool_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            managed_defs = (
+                await tool_manager.build_tool_defs(ctx)
+                if tool_skill_loaded
+                else tool_manager.rebuild_after_round(ctx)
+            )
+            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
             tool_defs = tool_defs or None
+
+            # 输出重建后的工具列表（仅在发生变化时）
+            tool_skill_loaded and logger.info(
+                f"  [Skill-gate] Rebuilt tools: {[d.get('function', {}).get('name', '?') for d in (tool_defs or [])]}"
+            )
 
             # 发送 tool 完成事件 (skill_loaded 或 tool_result)
             for tc in result.tool_calls:
