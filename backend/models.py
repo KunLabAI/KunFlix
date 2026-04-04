@@ -186,6 +186,7 @@ class ChatSession(Base):
 
     # 上下文使用统计（累计 token 使用量）
     total_tokens_used = Column(BigInteger, default=0)
+    last_round_tokens = Column(Integer, nullable=True)     # 上一轮实际 token 数（供应商返回），用于下轮压缩决策
 
     # 上下文压缩
     compressed_summary = Column(Text, nullable=True)       # 旧消息的 LLM 摘要

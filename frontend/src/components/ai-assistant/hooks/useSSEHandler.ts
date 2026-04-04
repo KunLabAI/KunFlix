@@ -350,7 +350,16 @@ export function useSSEHandler() {
 
       // 上下文压缩完成（旧消息已被摘要替代）
       context_compacted: () => {
-        // 静默处理：压缩对用户透明，无需额外 UI 反馈
+        const d = data as { summary?: string };
+        d.summary && setMessages((prev) => [
+          ...prev,
+          {
+            role: 'ai' as const,
+            content: '',
+            status: 'complete' as const,
+            compaction_summary: d.summary,
+          },
+        ]);
       },
 
       // 完成

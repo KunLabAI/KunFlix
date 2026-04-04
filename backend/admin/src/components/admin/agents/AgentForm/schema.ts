@@ -42,7 +42,7 @@ const compactionConfigSchema = z.object({
   reserve_ratio: z.number().min(0.05).max(0.4).optional().default(0.15),
   tool_old_threshold: z.number().min(100).max(5000).optional().default(500),
   tool_recent_n: z.number().min(1).max(20).optional().default(5),
-  max_summary_tokens: z.number().min(256).max(4096).optional().default(1024),
+  max_summary_tokens: z.number().min(4096).max(131072).optional().default(4096),
 }).optional().nullable();
 
 export const agentFormSchema = z.object({

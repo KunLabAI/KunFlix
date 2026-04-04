@@ -132,12 +132,16 @@ async def generate_single_agent(
     (skill_prompt and messages and messages[0].get("role") == "system"
      and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
 
-    # 上下文压缩（在所有注入完成后、LLM 调用前）
-    from services.context_compaction import compact_context
-    compaction_result = await compact_context(messages, agent, provider, db, session_id, session_obj=chat_session)
-    if compaction_result:
-        messages, _summary = compaction_result
-        yield sse("context_compacted", {"message": "Context compacted", "preserved_messages": len(messages)})
+    # Pre-call: 仅截断工具结果（压缩延迟到 LLM 响应后执行，确保 AI 看到完整上下文）
+    from services.context_compaction import truncate_tool_results, load_compaction_config_from_agent
+    _compact_cfg = load_compaction_config_from_agent(agent)
+    truncate_tool_results(
+        messages,
+        recent_n=_compact_cfg.tool_recent_n,
+        old_threshold=_compact_cfg.tool_old_threshold,
+        recent_threshold=_compact_cfg.tool_recent_threshold,
+    )
+    _messages_snapshot = list(messages)  # 快照：用于后续延迟压缩（工具调用循环会修改 messages）
 
     # 计算输入字符数（兼容多模态消息）
     def _content_len(c): return len(c) if isinstance(c, str) else sum(len(p.get('text', '')) for p in c if isinstance(p, dict))
@@ -330,6 +334,7 @@ async def generate_single_agent(
             "context_window": agent.context_window,
         },
     }
+    _compaction_result = None
     async with AsyncSessionLocal() as session:
         try:
             # Prepare content for assistant（映射表驱动，避免 if-else）
@@ -356,6 +361,7 @@ async def generate_single_agent(
             s = s_result.scalars().first()
             s and setattr(s, 'updated_at', sa_func.now())
             s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
+            s and setattr(s, 'last_round_tokens', result.input_tokens + result.output_tokens)
 
             # 查询实体并更新统计（映射表驱动，避免 if-else）
             entity_model_map = {True: Admin, False: User}
@@ -387,6 +393,14 @@ async def generate_single_agent(
                 billing_event["frozen"] = True
                 logger.warning(f"Balance frozen for {entity_id}")
 
+            # Post-generation deferred compaction（AI 已用完整上下文生成响应，现在为下轮压缩）
+            from services.context_compaction import compact_context
+            _compaction_result = await compact_context(
+                _messages_snapshot, agent, provider, session, session_id,
+                session_obj=s,
+                actual_total_tokens=result.input_tokens + result.output_tokens,
+            )
+
             await session.commit()
 
             # 查询最新余额
@@ -396,7 +410,13 @@ async def generate_single_agent(
             billing_event["remaining_credits"] = round(float(balance_result.scalar() or 0), 4)
 
         except Exception as e:
+            _compaction_result = None
             logger.error(f"Failed to save message/billing: {e}")
+
+    # 发送压缩事件（如果触发了压缩）
+    _compaction_result and (yield sse("context_compacted", {
+        "summary": _compaction_result[1],
+    }))
 
     # 发送计费信息和完成事件
     yield sse("billing", billing_event)

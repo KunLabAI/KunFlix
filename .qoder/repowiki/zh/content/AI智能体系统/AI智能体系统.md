@@ -16,6 +16,12 @@
 - [backend/agent_extensions.py](file://backend/agent_extensions.py)
 - [backend/config.py](file://backend/config.py)
 - [backend/services/billing.py](file://backend/services/billing.py)
+- [backend/services/context_compaction.py](file://backend/services/context_compaction.py)
+- [backend/migrations/versions/909762287e70_add_compaction_config_to_agent.py](file://backend/migrations/versions/909762287e70_add_compaction_config_to_agent.py)
+- [backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx](file://backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx)
+- [backend/admin/src/types/index.ts](file://backend/admin/src/types/index.ts)
+- [backend/services/chat_generation.py](file://backend/services/chat_generation.py)
+- [backend/routers/admin_debug.py](file://backend/routers/admin_debug.py)
 </cite>
 
 ## 目录
@@ -33,11 +39,13 @@
 ## 简介
 本项目是一个基于FastAPI的AI智能体系统，支持多智能体协作、技能系统、多供应商大模型接入（OpenAI、Google Gemini、xAI、Azure、DashScope、Anthropic等）、实时流式输出、计费与配额管理、以及可扩展的工具与技能加载机制。系统通过对话式智能体（DialogAgent）封装AgentScope框架，结合动态编排器（DynamicOrchestrator）实现管道式、计划式与讨论式协作模式，提供从配置加载到结果输出的完整执行链路。
 
+**新增功能**：系统现已集成智能上下文压缩功能，通过compaction_config配置字段实现自动化的对话历史压缩，有效控制上下文长度并提升长对话场景下的性能表现。
+
 ## 项目结构
 后端采用分层架构：
 - 应用入口与生命周期管理：FastAPI应用、数据库迁移与启动事件
 - 路由层：提供REST接口，如多智能体编排、智能体管理、聊天会话等
-- 服务层：编排器、执行器、流式处理、计费、技能管理等
+- 服务层：编排器、执行器、流式处理、计费、技能管理、上下文压缩等
 - 模型与Schema：ORM模型与Pydantic输入输出模型
 - 配置与扩展：全局配置、智能体扩展（工具守卫、记忆压缩）
 
@@ -49,12 +57,14 @@ C --> D["模型与Schema<br/>models.py / schemas.py"]
 C --> E["配置<br/>config.py"]
 C --> F["技能系统<br/>skills_manager.py / skill_tools.py"]
 C --> G["智能体扩展<br/>agent_extensions.py"]
+C --> H["上下文压缩<br/>context_compaction.py"]
 ```
 
 图示来源
 - [backend/main.py:110-174](file://backend/main.py#L110-L174)
 - [backend/routers/orchestrate.py:19-71](file://backend/routers/orchestrate.py#L19-L71)
 - [backend/services/orchestrator.py:560-673](file://backend/services/orchestrator.py#L560-L673)
+- [backend/services/context_compaction.py:1-305](file://backend/services/context_compaction.py#L1-L305)
 
 章节来源
 - [backend/main.py:110-174](file://backend/main.py#L110-L174)
@@ -63,6 +73,7 @@ C --> G["智能体扩展<br/>agent_extensions.py"]
 ## 核心组件
 - 智能体引擎与对话代理
   - DialogAgent：封装AgentScope智能体，负责消息格式化、工具注册、内存压缩、令牌统计与回复生成
+  - MemoryCompactionHook：智能上下文压缩钩子，基于配置自动压缩过长的对话历史
   - NarrativeEngine：故事叙述引擎，按需从数据库加载LLM配置，初始化多个角色智能体（导演、叙述者、NPC管理者）
 - 编排与协作
   - DynamicOrchestrator：动态编排器，根据领导者智能体的分析结果选择协作策略（管道、计划、讨论），并管理子任务与进度事件
@@ -78,6 +89,7 @@ C --> G["智能体扩展<br/>agent_extensions.py"]
 - 配置与模型
   - config：全局配置（数据库、Redis、密钥、默认模型等）
   - models/schemas：智能体、LLM提供商、任务执行、子任务、聊天会话、计费交易等数据模型与输入输出模型
+  - **新增**：compaction_config配置字段，支持精细化的上下文压缩控制
 
 章节来源
 - [backend/agents.py:40-175](file://backend/agents.py#L40-L175)
@@ -93,13 +105,14 @@ C --> G["智能体扩展<br/>agent_extensions.py"]
 - [backend/schemas.py:126-350](file://backend/schemas.py#L126-L350)
 
 ## 架构总览
-系统采用“路由-服务-模型”三层结构，配合注册表与策略模式实现多供应商与多协作模式的解耦扩展。
+系统采用"路由-服务-模型"三层结构，配合注册表与策略模式实现多供应商与多协作模式的解耦扩展。**新增**上下文压缩服务作为独立模块集成到服务层中。
 
 ```mermaid
 graph TB
 subgraph "接口层"
 OR["编排接口<br/>routers/orchestrate.py"]
 AR["智能体接口<br/>routers/agents.py"]
+CD["上下文压缩接口<br/>routers/admin_debug.py"]
 end
 subgraph "服务层"
 DO["动态编排器<br/>services/orchestrator.py"]
@@ -107,9 +120,11 @@ AE["执行器<br/>services/agent_executor.py"]
 LS["流式处理<br/>services/llm_stream.py"]
 BM["计费<br/>services/billing.py"]
 SM["技能管理<br/>skills_manager.py / skill_tools.py"]
+CC["上下文压缩<br/>services/context_compaction.py"]
 end
 subgraph "智能体与扩展"
 DA["对话代理<br/>agents.py(DialogAgent)"]
+MCH["内存压缩钩子<br/>agent_extensions.py"]
 NE["叙事引擎<br/>agents.py(NarrativeEngine)"]
 AE1["扩展<br/>agent_extensions.py"]
 end
@@ -124,11 +139,13 @@ AE --> DA
 AE --> LS
 AE --> BM
 DA --> SM
-DA --> AE1
+DA --> MCH
 DO --> M
 AE --> M
 LS --> M
 SM --> M
+CC --> M
+CD --> CC
 AR --> M
 C --> NE
 ```
@@ -145,6 +162,8 @@ C --> NE
 - [backend/models.py:146-447](file://backend/models.py#L146-L447)
 - [backend/schemas.py:126-800](file://backend/schemas.py#L126-L800)
 - [backend/config.py:7-43](file://backend/config.py#L7-L43)
+- [backend/services/context_compaction.py:1-305](file://backend/services/context_compaction.py#L1-L305)
+- [backend/routers/admin_debug.py:362-363](file://backend/routers/admin_debug.py#L362-L363)
 
 ## 详细组件分析
 
@@ -154,10 +173,11 @@ C --> NE
   - 若数据库为空，回退到配置中的默认密钥与模型
 - 生命周期控制
   - DialogAgent：构造时注册工具、初始化工具守卫与记忆压缩钩子；reply时进行消息格式化、调用模型、聚合流式响应、提取令牌统计
-  - MemoryCompactionHook：当估算token超过阈值时，保留系统提示与最近消息，对中间对话进行摘要压缩
+  - **新增** MemoryCompactionHook：基于compaction_config配置智能压缩对话历史，当估算token超过阈值时，保留系统提示与最近消息，对中间对话进行摘要压缩
   - ToolGuardMixin：对受限工具进行拦截与拒绝，预留审批流程扩展点
 - 参数管理
   - Agent模型包含温度、上下文窗口、系统提示、工具列表、思维模式、多模态与图像生成配置、目标节点类型等
+  - **新增**：compaction_config字段支持精细化的上下文压缩控制
   - LLMProvider模型支持多种供应商类型、基础URL、模型列表、成本配置与默认标记
 
 ```mermaid
@@ -178,6 +198,16 @@ class MemoryCompactionHook {
 +__call__(agent, kwargs) void
 +_summarize_messages(messages) str
 }
+class CompactionConfig {
++enabled : bool
++provider_id : str
++model : str
++compact_ratio : float
++reserve_ratio : float
++tool_old_threshold : int
++tool_recent_n : int
++max_summary_tokens : int
+}
 class ToolGuardMixin {
 +_denied_tools
 +_guarded_tools
@@ -197,6 +227,7 @@ class NarrativeEngine {
 }
 DialogAgent --> MemoryCompactionHook : "使用"
 DialogAgent --> ToolGuardMixin : "混入"
+MemoryCompactionHook --> CompactionConfig : "读取配置"
 NarrativeEngine --> DialogAgent : "创建多个角色"
 ```
 
@@ -204,6 +235,7 @@ NarrativeEngine --> DialogAgent : "创建多个角色"
 - [backend/agents.py:40-175](file://backend/agents.py#L40-L175)
 - [backend/agents.py:176-383](file://backend/agents.py#L176-L383)
 - [backend/agent_extensions.py:7-163](file://backend/agent_extensions.py#L7-L163)
+- [backend/services/context_compaction.py:45-57](file://backend/services/context_compaction.py#L45-L57)
 
 章节来源
 - [backend/main.py:49-109](file://backend/main.py#L49-L109)
@@ -211,6 +243,48 @@ NarrativeEngine --> DialogAgent : "创建多个角色"
 - [backend/agent_extensions.py:7-163](file://backend/agent_extensions.py#L7-L163)
 - [backend/models.py:196-253](file://backend/models.py#L196-L253)
 - [backend/schemas.py:239-350](file://backend/schemas.py#L239-L350)
+
+### 上下文压缩配置与管理
+- **新增** compaction_config配置字段
+  - 数据库层面：通过迁移脚本添加JSON类型的compaction_config列
+  - 模型定义：AgentBase和Agent模型均包含compaction_config字段
+  - Schema定义：支持可选的字典配置，包含所有压缩相关参数
+- 配置参数详解
+  - enabled：启用/禁用上下文压缩功能
+  - provider_id/model：自定义摘要生成的LLM提供商和模型
+  - compact_ratio：压缩触发阈值（默认0.75，即75%）
+  - reserve_ratio：保留比例（默认0.15，即15%）
+  - tool_old_threshold：旧工具结果截断字符数（默认500）
+  - tool_recent_n：最近完整保留的工具结果数量（默认5）
+  - max_summary_tokens：摘要生成的最大token数（默认1024）
+- 配置界面
+  - 管理后台提供完整的配置界面，支持实时参数调整和可视化展示
+  - 包含压缩触发阈值、保留比例、工具结果截断等参数的滑块和输入框
+
+```mermaid
+flowchart TD
+Start(["智能体配置"]) --> DB["数据库存储<br/>compaction_config JSON"]
+DB --> Load["加载配置<br/>load_compaction_config_from_agent"]
+Load --> Defaults["应用默认值<br/>_DEFAULTS"]
+Defaults --> Runtime["运行时配置<br/>CompactionConfig对象"]
+Runtime --> Decision["决策逻辑<br/>check_compaction_needed"]
+Decision --> Split["消息分割<br/>split_messages_for_compaction"]
+Split --> Truncate["工具结果截断<br/>truncate_tool_results"]
+Truncate --> Summary["生成摘要<br/>generate_summary"]
+Summary --> Persist["持久化<br/>ChatSession.compressed_summary"]
+Persist --> End(["完成压缩"])
+```
+
+图示来源
+- [backend/services/context_compaction.py:58-62](file://backend/services/context_compaction.py#L58-L62)
+- [backend/services/context_compaction.py:208-305](file://backend/services/context_compaction.py#L208-L305)
+- [backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx:262-368](file://backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx#L262-L368)
+
+章节来源
+- [backend/services/context_compaction.py:1-305](file://backend/services/context_compaction.py#L1-L305)
+- [backend/migrations/versions/909762287e70_add_compaction_config_to_agent.py:1-35](file://backend/migrations/versions/909762287e70_add_compaction_config_to_agent.py#L1-L35)
+- [backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx:262-368](file://backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx#L262-L368)
+- [backend/admin/src/types/index.ts:29-40](file://backend/admin/src/types/index.ts#L29-L40)
 
 ### 多智能体协作机制
 - 领导者模式
@@ -331,6 +405,10 @@ J --> K["聚合StreamResult(usage/工具调用/模态token)"]
 - 计费与审计
   - calculate_credit_cost：按维度映射表计算总费用，支持文本/图像/搜索/图片生成等多维统计
   - deduct_credits_atomic/refund_credits_atomic：原子化扣费与退款，记录CreditTransaction
+- **新增** 上下文压缩执行流程
+  - 在对话生成过程中自动检查上下文长度
+  - 当超过配置阈值时，执行消息压缩和摘要生成
+  - 支持管理员调试模式下的手动压缩
 
 ```mermaid
 sequenceDiagram
@@ -339,17 +417,13 @@ participant API as "AgentExecutor"
 participant Agent as "DialogAgent"
 participant Stream as "llm_stream"
 participant Billing as "billing"
+participant Compaction as "context_compaction"
 Client->>API : execute / execute_streaming
 API->>API : 加载Agent/Provider配置
-alt 非流式
 API->>Agent : reply(Msg)
+Agent->>Compaction : 检查上下文长度
+Compaction-->>Agent : 返回压缩结果(如有)
 Agent-->>API : ExecutionResult
-else 流式
-API->>Stream : stream_completion(...)
-loop 块
-Stream-->>API : (chunk, StreamResult)
-end
-end
 API->>Billing : calculate_credit_cost(result, agent)
 Billing-->>API : (total_cost, metadata)
 API-->>Client : 结果/事件流
@@ -359,16 +433,19 @@ API-->>Client : 结果/事件流
 - [backend/services/agent_executor.py:74-208](file://backend/services/agent_executor.py#L74-L208)
 - [backend/services/llm_stream.py:76-800](file://backend/services/llm_stream.py#L76-L800)
 - [backend/services/billing.py:310-351](file://backend/services/billing.py#L310-L351)
+- [backend/services/context_compaction.py:208-305](file://backend/services/context_compaction.py#L208-L305)
 
 章节来源
 - [backend/services/agent_executor.py:63-287](file://backend/services/agent_executor.py#L63-L287)
 - [backend/services/billing.py:12-388](file://backend/services/billing.py#L12-L388)
+- [backend/services/context_compaction.py:1-305](file://backend/services/context_compaction.py#L1-L305)
 
 ## 依赖关系分析
 - 组件耦合
   - DynamicOrchestrator依赖AgentExecutor与数据库模型，策略类通过注册表解耦
   - AgentExecutor依赖Agent模型、LLMProvider模型与流式模块
   - DialogAgent依赖工具包、MCP客户端管理器与扩展（工具守卫、记忆压缩）
+  - **新增**：上下文压缩服务独立于其他组件，通过接口调用集成
 - 外部依赖
   - AgentScope：智能体框架与模型封装
   - OpenAI/Anthropic/DashScope/Gemini SDK：供应商SDK
@@ -384,8 +461,10 @@ Executor --> Stream["services/llm_stream.py"]
 Agents --> Extensions["agent_extensions.py"]
 Agents --> Skills["skills_manager.py / skill_tools.py"]
 Executor --> Billing["services/billing.py"]
+Executor --> Compaction["services/context_compaction.py"]
 RouterO["routers/orchestrate.py"] --> Orchestrator
 RouterA["routers/agents.py"] --> Models
+RouterD["routers/admin_debug.py"] --> Compaction
 ```
 
 图示来源
@@ -398,6 +477,7 @@ RouterA["routers/agents.py"] --> Models
 - [backend/services/billing.py:12-388](file://backend/services/billing.py#L12-L388)
 - [backend/routers/orchestrate.py:26-71](file://backend/routers/orchestrate.py#L26-L71)
 - [backend/routers/agents.py:16-151](file://backend/routers/agents.py#L16-L151)
+- [backend/routers/admin_debug.py:362-363](file://backend/routers/admin_debug.py#L362-L363)
 
 章节来源
 - [backend/services/orchestrator.py:560-800](file://backend/services/orchestrator.py#L560-L800)
@@ -411,14 +491,14 @@ RouterA["routers/agents.py"] --> Models
 - 缓存机制
   - AgentExecutor缓存模型与对话代理实例，避免重复初始化
   - 技能同步时按差异更新，减少I/O
+  - **新增**：上下文压缩结果缓存到ChatSession.compressed_summary，避免重复计算
 - 资源管理
-  - MemoryCompactionHook在对话增长时自动摘要压缩，控制上下文大小
+  - **新增** MemoryCompactionHook在对话增长时自动摘要压缩，控制上下文大小
+  - **新增**：工具结果截断功能减少不必要的token消耗
   - 统一的流式处理与事件流，降低内存峰值
 - 计费与配额
   - 映射表驱动的计费计算，避免条件分支开销
   - 原子化扣费与退款，保证并发一致性
-
-[本节为通用指导，无需特定文件引用]
 
 ## 故障排除指南
 - 数据库连接失败与迁移
@@ -431,6 +511,9 @@ RouterA["routers/agents.py"] --> Models
   - 余额不足或账户冻结会抛出相应异常；检查用户余额与冻结状态
 - 工具守卫拦截
   - 被拦截工具会返回系统消息提示；确认工具白名单与审批流程
+- **新增** 上下文压缩问题
+  - 检查compaction_config配置是否正确；验证摘要生成模型可用性
+  - 查看压缩日志，确认消息分割和摘要生成过程是否正常
 
 章节来源
 - [backend/main.py:49-109](file://backend/main.py#L49-L109)
@@ -438,20 +521,25 @@ RouterA["routers/agents.py"] --> Models
 - [backend/services/llm_stream.py:76-800](file://backend/services/llm_stream.py#L76-L800)
 - [backend/services/billing.py:37-84](file://backend/services/billing.py#L37-L84)
 - [backend/agent_extensions.py:19-79](file://backend/agent_extensions.py#L19-L79)
+- [backend/services/context_compaction.py:1-305](file://backend/services/context_compaction.py#L1-L305)
 
 ## 结论
-本系统通过清晰的分层架构与注册表/策略模式实现了多供应商与多协作模式的高扩展性；借助对话代理、编排器与流式处理，提供了从配置加载到实时输出的完整链路；技能系统与工具守卫保障了安全性与可维护性；计费模块确保了资源使用的可控与可观测。建议在生产环境中进一步完善审批流程、监控与告警体系，并持续优化上下文压缩与缓存策略以提升性能。
+本系统通过清晰的分层架构与注册表/策略模式实现了多供应商与多协作模式的高扩展性；借助对话代理、编排器与流式处理，提供了从配置加载到实时输出的完整链路；技能系统与工具守卫保障了安全性与可维护性；计费模块确保了资源使用的可控与可观测。
 
-[本节为总结性内容，无需特定文件引用]
+**新增功能价值**：智能上下文压缩功能显著提升了系统在长对话场景下的性能表现，通过可配置的压缩策略平衡了对话质量与资源消耗，为大规模AI应用场景提供了可靠的技术支撑。
+
+建议在生产环境中进一步完善审批流程、监控与告警体系，并持续优化上下文压缩与缓存策略以提升性能。
 
 ## 附录
 - 关键配置项
   - 数据库URL、Redis地址、默认模型、JWT密钥与过期时间
+  - **新增**：compaction_config配置字段及其所有子参数
 - 常用模型字段
-  - Agent：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思维模式、图像/视频计费、领导者配置、目标节点类型
+  - Agent：名称、描述、提供商、模型、温度、上下文窗口、系统提示、工具、思维模式、图像/视频计费、领导者配置、目标节点类型、**上下文压缩配置**
   - LLMProvider：名称、供应商类型、API密钥、基础URL、模型列表、标签、是否激活/默认、配置JSON、模型成本
 
 章节来源
 - [backend/config.py:7-43](file://backend/config.py#L7-L43)
 - [backend/models.py:146-253](file://backend/models.py#L146-L253)
 - [backend/schemas.py:126-350](file://backend/schemas.py#L126-L350)
+- [backend/services/context_compaction.py:25-35](file://backend/services/context_compaction.py#L25-L35)

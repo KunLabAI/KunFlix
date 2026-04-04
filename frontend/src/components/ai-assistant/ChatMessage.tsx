@@ -15,6 +15,7 @@ import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
+import { CompactionNotice } from './CompactionNotice';
 import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
@@ -299,6 +300,11 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
   
   // 根据流式状态创建 markdown 组件
   const markdownComponents = useMemo(() => createMarkdownComponents(isStreaming), [isStreaming]);
+
+  // 上下文压缩消息：渲染为独立的压缩面板
+  if (message.compaction_summary) {
+    return <CompactionNotice summary={message.compaction_summary} />;
+  }
 
   return (
     <div

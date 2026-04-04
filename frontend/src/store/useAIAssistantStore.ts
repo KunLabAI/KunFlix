@@ -58,6 +58,8 @@ export interface Message {
   video_tasks?: VideoTaskData[];
   // 欢迎消息标记
   isWelcome?: boolean;
+  // 上下文压缩摘要
+  compaction_summary?: string;
 }
 
 export interface AgentInfo {

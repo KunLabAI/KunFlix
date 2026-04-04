@@ -355,8 +355,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                   <FormControl>
                     <Input
                       type="number"
-                      min={256} max={4096} step={128}
-                      value={field.value ?? 1024}
+                      min={4096} max={131072} step={1024}
+                      value={field.value ?? 4096}
                       onChange={e => field.onChange(Number(e.target.value))}
                       className="font-mono"
                       disabled={disabled}

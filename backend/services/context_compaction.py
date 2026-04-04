@@ -31,14 +31,25 @@ _DEFAULTS = {
     "tool_old_threshold": 500,
     "tool_recent_n": 5,
     "tool_recent_threshold": 5000,
-    "max_summary_tokens": 1024,
+    "max_summary_tokens": 4096,
 }
 
 SUMMARY_SYSTEM_PROMPT = (
-    "You are a conversation summarizer. Condense the following conversation "
-    "into a brief summary that preserves key facts, decisions, tool results, "
-    "and context needed for continuation.\n"
-    "Output a concise summary in the same language as the conversation."
+    "You are an expert conversation summarizer. Your task is to create a **detailed, comprehensive** summary "
+    "of the conversation that allows seamless continuation without losing important context.\n\n"
+    "## Requirements\n"
+    "- Preserve ALL character names, relationships, settings, and key plot points\n"
+    "- Retain specific details: dates, numbers, technical terms, code snippets, tool results\n"
+    "- Maintain the narrative arc and emotional tone of the conversation\n"
+    "- Include key decisions made and their reasoning\n"
+    "- Preserve any instructions, constraints, or style preferences the user specified\n"
+    "- If this is a creative work (story, script, etc.), include chapter/section progression, "
+    "character development arcs, unresolved plot threads, and the current narrative direction\n"
+    "- Use the SAME LANGUAGE as the conversation\n"
+    "- Structure the summary with clear sections for easy reference\n\n"
+    "## Output Format\n"
+    "Write a well-organized summary using markdown headers and bullet points where appropriate. "
+    "Be thorough — a longer, detailed summary is preferred over a brief one."
 )
 
 
@@ -66,8 +77,15 @@ def load_compaction_config_from_agent(agent: Any) -> CompactionConfig:
 # Token estimation (character-based, no external tokenizer dependency)
 # ---------------------------------------------------------------------------
 def estimate_tokens(text: str) -> int:
-    """Rough token estimate: ~1 token per 3 characters for mixed CJK/Latin text."""
-    return max(1, len(text) // 3)
+    """CJK-aware token estimate: CJK chars ≈ 1 token each, Latin/other ≈ 1 token per 4 chars."""
+    cjk = sum(
+        1 for c in text
+        if '\u2e80' <= c <= '\u9fff'    # CJK radicals, ideographs
+        or '\uf900' <= c <= '\ufaff'    # CJK compatibility ideographs
+        or '\uff00' <= c <= '\uffef'    # full-width forms
+        or '\uac00' <= c <= '\ud7af'    # Hangul
+    )
+    return max(1, cjk + (len(text) - cjk) // 4)
 
 
 def _extract_text(content: Any) -> str:
@@ -118,11 +136,24 @@ def truncate_tool_results(
 # Compaction decision
 # ---------------------------------------------------------------------------
 def check_compaction_needed(
-    messages: list[dict], context_window: int, compact_ratio: float
+    messages: list[dict], context_window: int, compact_ratio: float,
+    last_round_tokens: int | None = None,
 ) -> tuple[bool, int]:
-    """Return (should_compact, estimated_tokens)."""
+    """Return (should_compact, estimated_tokens).
+
+    When last_round_tokens (real value from provider) is available, use it as
+    the base and only estimate the newest message — much more accurate than
+    pure character-based estimation.
+    """
     threshold = int(context_window * compact_ratio)
-    current = estimate_messages_tokens(messages)
+    # Prefer provider-reported tokens + estimate of new message only
+    new_msg_tokens = (
+        estimate_tokens(_extract_text(messages[-1].get("content", ""))) + 4
+    ) if messages else 0
+    current = (
+        (last_round_tokens + new_msg_tokens) if last_round_tokens
+        else estimate_messages_tokens(messages)
+    )
     return current > threshold, current
 
 
@@ -212,18 +243,22 @@ async def compact_context(
     db: AsyncSession,
     session_id: str,
     session_obj: Any = None,
+    actual_total_tokens: int | None = None,
 ) -> tuple[list[dict], str | None] | None:
     """Run full compaction pipeline. Returns (new_messages, summary) or None if no compaction needed.
 
     Args:
         session_obj: Pre-loaded session object (ChatSession or AdminDebugSession).
                      If None, will be loaded from ChatSession table.
+        actual_total_tokens: Real token count from provider API (post-call mode).
+                             When provided, skips tool truncation (already done by caller)
+                             and uses this value for threshold check instead of estimation.
     """
     # Load configuration from agent (or use defaults)
     cfg = load_compaction_config_from_agent(agent)
 
-    # Always truncate tool results first (cheap, runs even when compaction disabled)
-    truncate_tool_results(
+    # Tool truncation: skip when running post-call (already done by caller pre-call)
+    actual_total_tokens or truncate_tool_results(
         messages,
         recent_n=cfg.tool_recent_n,
         old_threshold=cfg.tool_old_threshold,
@@ -234,8 +269,16 @@ async def compact_context(
     if not cfg.enabled:
         return None
 
-    needed, current_tokens = check_compaction_needed(
-        messages, agent.context_window, cfg.compact_ratio
+    # Threshold check: prefer actual tokens from provider (post-call) over estimation
+    threshold = int(agent.context_window * cfg.compact_ratio)
+    _last_tokens = getattr(session_obj, "last_round_tokens", None) if session_obj else None
+    needed, current_tokens = (
+        (actual_total_tokens > threshold, actual_total_tokens)
+        if actual_total_tokens
+        else check_compaction_needed(
+            messages, agent.context_window, cfg.compact_ratio,
+            last_round_tokens=_last_tokens,
+        )
     )
     if not needed:
         return None
