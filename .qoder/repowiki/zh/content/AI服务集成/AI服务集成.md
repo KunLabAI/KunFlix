@@ -7,7 +7,10 @@
 - [backend/services/tool_manager/protocol.py](file://backend/services/tool_manager/protocol.py)
 - [backend/services/tool_manager/providers/__init__.py](file://backend/services/tool_manager/providers/__init__.py)
 - [backend/services/tool_manager/providers/image_gen.py](file://backend/services/tool_manager/providers/image_gen.py)
+- [backend/services/tool_manager/providers/image_edit.py](file://backend/services/tool_manager/providers/image_edit.py)
 - [backend/services/tool_manager/providers/video_gen.py](file://backend/services/tool_manager/providers/video_gen.py)
+- [backend/services/tool_manager/providers/video_edit.py](file://backend/services/tool_manager/providers/video_edit.py)
+- [backend/services/tool_manager/providers/canvas.py](file://backend/services/tool_manager/providers/canvas.py)
 - [backend/services/video_providers/base.py](file://backend/services/video_providers/base.py)
 - [backend/services/video_providers/model_capabilities.py](file://backend/services/video_providers/model_capabilities.py)
 - [backend/services/video_providers/gemini_provider.py](file://backend/services/video_providers/gemini_provider.py)
@@ -31,7 +34,7 @@
 ## 简介
 本文件面向KunFlix的AI服务集成，系统性阐述多模态AI服务提供商的集成架构与实现细节，涵盖：
 - LLM服务提供商（OpenAI、Claude、Gemini、xAI）在工具调用中的角色与适配
-- 图像生成、视频生成服务的统一适配与执行流程
+- 图像生成、图像编辑、视频生成、视频编辑、画布节点管理等工具的统一管理机制
 - 工具调用机制与ToolManager的管理机制
 - 配置管理（全局工具配置、模型能力适配）
 - 错误处理策略与性能优化建议
@@ -39,7 +42,7 @@
 - 多模态数据转换与最佳实践
 
 ## 项目结构
-KunFlix后端采用“服务层 + 适配器 + 统一路由”的分层设计：
+KunFlix后端采用"服务层 + 适配器 + 统一路由"的分层设计：
 - 工具管理层：集中注册与调度工具提供者，按上下文动态生成工具定义
 - 视频生成服务：统一入口，按供应商类型选择适配器，完成提交、轮询与下载
 - 供应商适配器：封装各平台API差异，屏蔽供应商细节
@@ -54,7 +57,10 @@ CTX["ToolContext<br/>上下文与懒加载"]
 end
 subgraph "工具提供者"
 IG["ImageGenProvider<br/>图像生成"]
+IE["ImageEditProvider<br/>图像编辑"]
 VG["VideoGenProvider<br/>视频生成"]
+VE["VideoEditProvider<br/>视频编辑"]
+CP["CanvasProvider<br/>画布节点管理"]
 end
 subgraph "视频生成服务"
 VGEN["video_generation.py<br/>统一入口"]
@@ -72,26 +78,37 @@ CAP["模型能力配置<br/>model_capabilities.py"]
 ROUTE["/api/admin/tools<br/>能力与配置接口"]
 end
 TM --> IG
+TM --> IE
 TM --> VG
+TM --> VE
+TM --> CP
 TM --> TP
 TM --> CTX
 VG --> VGEN
+VE --> VGEN
 VGEN --> REG
 REG --> GEM
 REG --> MINIMAX
 REG --> XAI
 REG --> ARK
 IG --> CFG
+IE --> CFG
 VG --> CFG
+VE --> CFG
 VG --> CAP
+VE --> CAP
 ROUTE --> CFG
 ROUTE --> CAP
 ```
 
 图表来源
 - [backend/services/tool_manager/manager.py:23-108](file://backend/services/tool_manager/manager.py#L23-L108)
+- [backend/services/tool_manager/providers/__init__.py:10-25](file://backend/services/tool_manager/providers/__init__.py#L10-L25)
 - [backend/services/tool_manager/providers/image_gen.py:276-328](file://backend/services/tool_manager/providers/image_gen.py#L276-L328)
+- [backend/services/tool_manager/providers/image_edit.py:524-581](file://backend/services/tool_manager/providers/image_edit.py#L524-L581)
 - [backend/services/tool_manager/providers/video_gen.py:284-342](file://backend/services/tool_manager/providers/video_gen.py#L284-L342)
+- [backend/services/tool_manager/providers/video_edit.py:228-286](file://backend/services/tool_manager/providers/video_edit.py#L228-L286)
+- [backend/services/tool_manager/providers/canvas.py:513-563](file://backend/services/tool_manager/providers/canvas.py#L513-L563)
 - [backend/services/video_generation.py:50-82](file://backend/services/video_generation.py#L50-L82)
 - [backend/services/video_providers/model_capabilities.py:28-477](file://backend/services/video_providers/model_capabilities.py#L28-L477)
 - [backend/routers/admin_tools.py:29-36](file://backend/routers/admin_tools.py#L29-L36)
@@ -122,7 +139,7 @@ ROUTE --> CAP
 - [backend/routers/admin_tools.py:29-273](file://backend/routers/admin_tools.py#L29-L273)
 
 ## 架构总览
-KunFlix的AI服务集成采用“协议 + 适配器 + 统一入口”的架构：
+KunFlix的AI服务集成采用"协议 + 适配器 + 统一入口"的架构：
 - 工具层：ToolManager负责工具提供者的生命周期与派发；ToolProvider协议约束实现；ToolContext贯穿执行期上下文
 - 供应商层：VideoProviderAdapter抽象统一视频生成接口；具体适配器封装供应商API差异
 - 服务层：video_generation.py作为统一入口，按供应商类型路由至对应适配器
@@ -150,7 +167,9 @@ DB-->>Client : 返回配置
 - [backend/routers/admin_tools.py:29-36](file://backend/routers/admin_tools.py#L29-L36)
 - [backend/services/tool_manager/manager.py:96-108](file://backend/services/tool_manager/manager.py#L96-L108)
 - [backend/services/tool_manager/providers/image_gen.py:318-328](file://backend/services/tool_manager/providers/image_gen.py#L318-L328)
+- [backend/services/tool_manager/providers/image_edit.py:571-581](file://backend/services/tool_manager/providers/image_edit.py#L571-L581)
 - [backend/services/tool_manager/providers/video_gen.py:332-342](file://backend/services/tool_manager/providers/video_gen.py#L332-L342)
+- [backend/services/tool_manager/providers/video_edit.py:276-286](file://backend/services/tool_manager/providers/video_edit.py#L276-L286)
 
 ## 详细组件分析
 
@@ -183,6 +202,7 @@ class ToolContext {
 +db
 +session_id
 +user_id
++is_admin
 +loaded_tool_skills
 +video_tasks
 +get_global_image_config() dict
@@ -192,7 +212,10 @@ class ToolContext {
 }
 ToolManager --> ToolProvider : "注册与派发"
 ToolProvider <|.. ImageGenProvider
+ToolProvider <|.. ImageEditProvider
 ToolProvider <|.. VideoGenProvider
+ToolProvider <|.. VideoEditProvider
+ToolProvider <|.. CanvasProvider
 ToolContext --> ToolProvider : "构建定义/执行"
 ```
 
@@ -201,7 +224,10 @@ ToolContext --> ToolProvider : "构建定义/执行"
 - [backend/services/tool_manager/protocol.py:11-44](file://backend/services/tool_manager/protocol.py#L11-L44)
 - [backend/services/tool_manager/context.py:35-146](file://backend/services/tool_manager/context.py#L35-L146)
 - [backend/services/tool_manager/providers/image_gen.py:276-328](file://backend/services/tool_manager/providers/image_gen.py#L276-L328)
+- [backend/services/tool_manager/providers/image_edit.py:524-581](file://backend/services/tool_manager/providers/image_edit.py#L524-L581)
 - [backend/services/tool_manager/providers/video_gen.py:284-342](file://backend/services/tool_manager/providers/video_gen.py#L284-L342)
+- [backend/services/tool_manager/providers/video_edit.py:228-286](file://backend/services/tool_manager/providers/video_edit.py#L228-L286)
+- [backend/services/tool_manager/providers/canvas.py:513-563](file://backend/services/tool_manager/providers/canvas.py#L513-L563)
 
 章节来源
 - [backend/services/tool_manager/manager.py:23-108](file://backend/services/tool_manager/manager.py#L23-L108)
@@ -244,6 +270,33 @@ IG-->>TM : 返回Markdown结果
 - [backend/services/tool_manager/providers/image_gen.py:129-196](file://backend/services/tool_manager/providers/image_gen.py#L129-L196)
 - [backend/services/tool_manager/providers/image_gen.py:203-270](file://backend/services/tool_manager/providers/image_gen.py#L203-L270)
 
+### 图像编辑工具（ImageEditProvider）
+- 工具定义：基于图像生成能力配置动态生成参数枚举（支持的宽高比、质量等级等）
+- 执行流程：解析全局配置与工具参数，处理多种图像URL格式（data URI、HTTP URL、本地路径），调用对应供应商编辑接口
+- 画布集成：成功编辑后自动创建新节点并连接到源节点，保留原始图像不变
+
+```mermaid
+flowchart TD
+Start(["开始"]) --> ParseArgs["解析工具参数<br/>image_url, prompt, aspect_ratio, quality"]
+ParseArgs --> ResolveURL["解析图像URL<br/>支持 data URI / HTTP / 本地路径"]
+ResolveURL --> LoadCfg["读取全局图像配置<br/>供应商ID/模型/参数"]
+LoadCfg --> ResolveProv["解析供应商类型<br/>支持 xAI / Gemini"]
+ResolveProv --> BuildCtx["构建覆盖配置<br/>合并用户参数"]
+BuildCtx --> CallHandler["调用供应商编辑处理器"]
+CallHandler --> SaveResult["保存编辑结果<br/>创建画布节点可选"]
+SaveResult --> Done(["返回结果字符串"])
+```
+
+图表来源
+- [backend/services/tool_manager/providers/image_edit.py:435-518](file://backend/services/tool_manager/providers/image_edit.py#L435-L518)
+- [backend/services/tool_manager/providers/image_edit.py:167-178](file://backend/services/tool_manager/providers/image_edit.py#L167-L178)
+- [backend/services/tool_manager/providers/image_edit.py:338-342](file://backend/services/tool_manager/providers/image_edit.py#L338-L342)
+
+章节来源
+- [backend/services/tool_manager/providers/image_edit.py:109-164](file://backend/services/tool_manager/providers/image_edit.py#L109-L164)
+- [backend/services/tool_manager/providers/image_edit.py:171-187](file://backend/services/tool_manager/providers/image_edit.py#L171-L187)
+- [backend/services/tool_manager/providers/image_edit.py:338-342](file://backend/services/tool_manager/providers/image_edit.py#L338-L342)
+
 ### 视频生成工具（VideoGenProvider）
 - 工具定义：基于模型能力配置动态生成参数枚举（模式、时长、分辨率、宽高比等）
 - 执行流程：解析全局配置与工具参数，构造VideoContext，提交任务，持久化VideoTask，返回任务ID与提示信息
@@ -255,7 +308,8 @@ Start(["开始"]) --> ParseArgs["解析工具参数<br/>prompt, mode, ratio, dur
 ParseArgs --> LoadCfg["读取全局视频配置<br/>供应商ID/模型/参数"]
 LoadCfg --> ResolveProv["解析供应商类型<br/>优先: provider_type, 备用: 模型前缀"]
 ResolveProv --> BuildCtx["构建 VideoContext"]
-BuildCtx --> Submit["submit_video_task 提交任务"]
+BuildCtx --> ResolveMedia["解析本地媒体<br/>转换为 data URI"]
+ResolveMedia --> Submit["submit_video_task 提交任务"]
 Submit --> Persist["创建 VideoTask 记录"]
 Persist --> Notify["写入上下文事件<br/>video_tasks"]
 Notify --> Done(["返回结果字符串"])
@@ -270,6 +324,63 @@ Notify --> Done(["返回结果字符串"])
 - [backend/services/tool_manager/providers/video_gen.py:77-155](file://backend/services/tool_manager/providers/video_gen.py#L77-L155)
 - [backend/services/tool_manager/providers/video_gen.py:174-278](file://backend/services/tool_manager/providers/video_gen.py#L174-L278)
 - [backend/services/video_generation.py:90-126](file://backend/services/video_generation.py#L90-L126)
+
+### 视频编辑工具（VideoEditProvider）
+- 工具定义：基于模型能力配置动态生成参数枚举（支持编辑/扩展模式）
+- 执行流程：解析全局配置与工具参数，构造VideoContext（编辑模式使用image_url，扩展模式使用extension_video_url），提交任务并持久化
+- 模式映射：edit模式对应video_mode="edit"，extend模式对应video_mode="video_extension"
+
+```mermaid
+sequenceDiagram
+participant Agent as "Agent"
+participant VE as "VideoEditProvider"
+participant Cfg as "ToolConfig"
+participant Prov as "LLMProvider"
+participant VGEN as "video_generation.py"
+Agent->>VE : 请求构建工具定义
+VE->>Cfg : 读取全局视频配置
+VE->>Prov : 解析供应商类型
+VE-->>Agent : 返回工具定义
+Agent->>VE : 执行 edit_video
+VE->>VE : 解析参数与模式
+VE->>VE : 构建 VideoContext
+VE->>VGEN : submit_video_task
+VGEN-->>VE : 返回 VideoResult
+VE->>DB : 创建 VideoTask 记录
+VE-->>Agent : 返回任务ID
+```
+
+图表来源
+- [backend/services/tool_manager/providers/video_edit.py:228-286](file://backend/services/tool_manager/providers/video_edit.py#L228-L286)
+- [backend/services/tool_manager/providers/video_edit.py:128-222](file://backend/services/tool_manager/providers/video_edit.py#L128-L222)
+- [backend/services/video_generation.py:90-126](file://backend/services/video_generation.py#L90-L126)
+
+章节来源
+- [backend/services/tool_manager/providers/video_edit.py:51-109](file://backend/services/tool_manager/providers/video_edit.py#L51-L109)
+- [backend/services/tool_manager/providers/video_edit.py:128-222](file://backend/services/tool_manager/providers/video_edit.py#L128-L222)
+- [backend/services/tool_manager/providers/video_edit.py:228-286](file://backend/services/tool_manager/providers/video_edit.py#L228-L286)
+
+### 画布节点管理工具（CanvasProvider）
+- 工具定义：基于目标节点类型动态生成参数枚举（支持text、image、video、storyboard四种类型）
+- 执行流程：提供节点的增删改查操作，支持自动布局和尺寸估算
+- 权限控制：根据技能加载状态和代理配置决定可用节点类型
+
+```mermaid
+flowchart TD
+Start(["开始"]) --> CheckSkill["检查技能门控<br/>canvas_tools"]
+CheckSkill --> HasContext["检查上下文<br/>theater_id + target_node_types"]
+HasContext --> BuildDefs["构建工具定义<br/>基于可用节点类型"]
+BuildDefs --> Execute["执行工具<br/>list/get/create/update/delete"]
+Execute --> End(["结束"])
+```
+
+图表来源
+- [backend/services/tool_manager/providers/canvas.py:513-563](file://backend/services/tool_manager/providers/canvas.py#L513-L563)
+- [backend/services/tool_manager/providers/canvas.py:532-546](file://backend/services/tool_manager/providers/canvas.py#L532-L546)
+
+章节来源
+- [backend/services/tool_manager/providers/canvas.py:126-246](file://backend/services/tool_manager/providers/canvas.py#L126-L246)
+- [backend/services/tool_manager/providers/canvas.py:532-546](file://backend/services/tool_manager/providers/canvas.py#L532-L546)
 
 ### 视频生成适配器（以Gemini为例）
 - 提交任务：构建payload，调用供应商API提交长耗时任务，返回operation_name作为任务ID
@@ -313,6 +424,7 @@ end
 - [backend/services/video_providers/model_capabilities.py:28-477](file://backend/services/video_providers/model_capabilities.py#L28-L477)
 - [backend/services/tool_manager/providers/image_gen.py:58-105](file://backend/services/tool_manager/providers/image_gen.py#L58-L105)
 - [backend/services/tool_manager/providers/video_gen.py:77-155](file://backend/services/tool_manager/providers/video_gen.py#L77-L155)
+- [backend/services/tool_manager/providers/video_edit.py:51-109](file://backend/services/tool_manager/providers/video_edit.py#L51-L109)
 
 ### 配置管理与全局工具配置
 - ToolConfig：存储工具级别的全局配置（如启用开关、默认供应商ID、模型与参数）
@@ -337,14 +449,19 @@ end
 graph LR
 TM["ToolManager"] --> TP["ToolProvider 协议"]
 IG["ImageGenProvider"] --> TP
+IE["ImageEditProvider"] --> TP
 VG["VideoGenProvider"] --> TP
+VE["VideoEditProvider"] --> TP
+CP["CanvasProvider"] --> TP
 VGEN["video_generation.py"] --> REG["适配器注册表"]
 REG --> GEM["GeminiVeoAdapter"]
 REG --> MINIMAX["MiniMaxVideoAdapter"]
 REG --> XAI["XAIVideoAdapter"]
 REG --> ARK["ArkSeedanceAdapter"]
 IG --> DB["LLMProvider/ToolConfig"]
+IE --> DB
 VG --> DB
+VE --> DB
 CTX["ToolContext"] --> DB
 ```
 
@@ -363,17 +480,23 @@ CTX["ToolContext"] --> DB
 - 异步I/O：供应商API调用使用httpx异步客户端，提升并发性能
 - 参数枚举裁剪：基于模型能力裁剪工具参数枚举，减少无效请求
 - 本地媒体内联：将本地媒体转换为data URI，避免二次网络请求
+- 画布节点复用：图像编辑后自动创建新节点并连接，避免重复上传
 
 ## 故障排查指南
 - 工具不可用
   - 检查全局配置：确认工具已启用且供应商ID有效
   - 检查技能门控：若相关技能未加载，工具定义可能为空
+  - 检查代理配置：确保代理的image_config或video_config正确设置
 - 供应商调用失败
   - 查看执行日志：通过管理员路由查询工具执行日志，定位错误原因
   - 核对模型能力：确认所选模型支持相应参数与模式
+  - 验证URL格式：确保图像/视频URL格式正确（data URI、HTTP URL、本地路径）
 - 视频生成长时间Pending
   - 检查轮询逻辑：确认轮询次数与失败阈值设置合理
   - 核对供应商限制：如分辨率与时长约束，确保参数符合供应商要求
+- 画布节点异常
+  - 检查节点类型：确认目标节点类型在代理配置中允许
+  - 验证权限：确保canvas_tools技能已加载或代理配置了目标节点类型
 
 章节来源
 - [backend/routers/admin_tools.py:135-187](file://backend/routers/admin_tools.py#L135-L187)
@@ -386,6 +509,7 @@ KunFlix的AI服务集成为多模态场景提供了清晰、可扩展的架构�
 - 通过VideoGeneration与适配器实现供应商层的统一与扩展
 - 通过模型能力配置与全局配置管理实现参数与能力的动态适配
 - 通过管理员路由与日志体系实现可观测性与运维能力
+- 通过画布节点管理实现内容创作的完整工作流
 
 该架构便于新增供应商与工具，同时保证了工具调用的稳定性与可维护性。
 
@@ -400,3 +524,7 @@ KunFlix的AI服务集成为多模态场景提供了清晰、可扩展的架构�
 - 多模态数据转换
   - 图像/视频URL自动识别data URI与HTTP URL，确保供应商API兼容
   - 本地媒体路径转换为内联编码，避免远程访问问题
+- 工具扩展开发
+  - 实现ToolProvider接口：提供tool_names、build_defs、execute、rebuild_defs、get_tool_metadata方法
+  - 在providers/__init__.py中注册新提供者
+  - 在管理员路由中添加相应的配置接口

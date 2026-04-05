@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CreateTheaterCardProps {
   onClick?: () => void;
@@ -10,17 +11,46 @@ interface CreateTheaterCardProps {
 export default function CreateTheaterCard({ onClick }: CreateTheaterCardProps) {
   return (
     <motion.div
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
-      className="relative flex-shrink-0 w-[200px] h-[300px] rounded-xl overflow-hidden cursor-pointer group border-2 border-dashed border-muted-foreground/30 hover:border-primary transition-colors duration-300 bg-secondary/30 hover:bg-secondary/50 flex flex-col items-center justify-center gap-4"
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      className={cn(
+        "relative flex-shrink-0 w-[260px] h-[360px] rounded-2xl overflow-hidden cursor-pointer group",
+        "bg-secondary/30 hover:bg-secondary/50",
+        "border-2 border-dashed border-border hover:border-primary/50",
+        "flex flex-col items-center justify-center gap-6"
+      )}
       onClick={onClick}
     >
-      <div className="p-4 rounded-full bg-background shadow-sm border border-border group-hover:scale-110 transition-transform duration-300">
-        <Plus className="w-8 h-8 text-primary" />
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+        <div 
+          className="w-full h-full"
+          style={{
+            backgroundImage: `radial-gradient(circle at 1px 1px, var(--foreground) 1px, transparent 0)`,
+            backgroundSize: '20px 20px'
+          }}
+        />
       </div>
-      <span className="text-muted-foreground font-medium group-hover:text-foreground transition-colors">
-        创建新剧场
-      </span>
+
+      {/* Icon */}
+      <div className={cn(
+        "relative p-6 rounded-2xl",
+        "bg-background",
+        "group-hover:scale-110 transition-all duration-500"
+      )}>
+        <Plus className="w-12 h-12 text-primary" />
+      </div>
+
+      {/* Text */}
+      <div className="text-center z-10">
+        <span className="block text-foreground font-semibold text-xl mb-2">
+          创建新剧场
+        </span>
+        <span className="text-muted-foreground text-sm">
+          开始您的创作之旅
+        </span>
+      </div>
     </motion.div>
   );
 }

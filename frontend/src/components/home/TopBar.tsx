@@ -1,121 +1,361 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Search, Menu, User, Sun, Moon } from "lucide-react";
-import { Button, Dropdown, Avatar, Input, Drawer } from "antd";
+import { useState, useRef, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { 
+  Search, Menu, X, User, Sun, Moon, Home, FolderOpen, Users, 
+  LogOut, Settings 
+} from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+// 导航链接配置
+const NAV_LINKS = [
+  { key: "home", label: "首页", href: "/", icon: Home },
+  { key: "resources", label: "资源库", href: "/resources", icon: FolderOpen },
+  { key: "community", label: "社区", href: "#", icon: Users },
+];
+
+// 用户菜单配置
+const USER_MENU_ITEMS = [
+  { key: "profile", label: "个人资料", icon: User },
+  { key: "settings", label: "设置", icon: Settings },
+];
 
 export default function TopBar() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [searchVisible, setSearchVisible] = useState(false);
+  const pathname = usePathname();
+  
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const menuItems = [
-    {
-      key: "profile",
-      label: "个人资料",
-      onClick: () => console.log("Profile clicked"),
-    },
-    {
-      key: "settings",
-      label: "设置",
-      onClick: () => console.log("Settings clicked"),
-    },
-    {
-      key: "logout",
-      label: "退出登录",
-      onClick: logout,
-    },
-  ];
+  // 点击外部关闭用户菜单和搜索
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+      if (searchOpen && !(event.target as Element).closest('.search-container')) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [searchOpen]);
+
+  // 搜索打开时自动聚焦
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [searchOpen]);
+
+  // 导航处理
+  const handleNavigate = (href: string) => {
+    router.push(href);
+    setMobileMenuOpen(false);
+  };
+
+  // 用户菜单处理
+  const handleUserMenuClick = (key: string) => {
+    const handlers: Record<string, () => void> = {
+      profile: () => console.log("Profile clicked"),
+      settings: () => console.log("Settings clicked"),
+    };
+    handlers[key]?.();
+    setUserMenuOpen(false);
+  };
+
+  // 搜索提交
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      console.log("Search:", searchQuery);
+      // TODO: 实现搜索逻辑
+    }
+  };
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 flex justify-center bg-background/80 backdrop-blur-md transition-colors duration-300 border-b border-border/10">
-      <div className="w-full max-w-[1440px] flex items-center justify-between px-6 py-4">
-        {/* Menu Button */}
-        <Button
-          type="text"
-          className="hover:bg-accent hover:text-accent-foreground rounded-md transition-colors"
-          icon={<Menu className="w-5 h-5 text-foreground" />}
-          onClick={() => setMenuVisible(true)}
-        />
-
-        {/* Right Side Actions */}
-        <div className="flex items-center gap-3">
-          {/* Search */}
-          <div className="relative flex items-center">
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: searchVisible ? 240 : 0, opacity: searchVisible ? 1 : 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="overflow-hidden"
-            >
-              <Input 
-                placeholder="搜索剧场..." 
-                className="w-full rounded-full bg-accent/50 border-transparent focus:border-primary hover:border-primary/50 transition-colors" 
-              />
-            </motion.div>
-            <Button
-              type="text"
-              className="ml-2 hover:bg-accent hover:text-accent-foreground rounded-full transition-colors"
-              icon={<Search className="w-5 h-5 text-foreground" />}
-              onClick={() => setSearchVisible(!searchVisible)}
-            />
-          </div>
-
-          {/* Theme Toggle */}
-          <Button
-            type="text"
-            className="hover:bg-accent hover:text-accent-foreground rounded-full transition-colors"
-            icon={
-              theme === "dark" ? (
-                <Sun className="w-5 h-5 text-foreground" />
-              ) : (
-                <Moon className="w-5 h-5 text-foreground" />
-              )
-            }
-            onClick={toggleTheme}
-          />
-
-          {/* User Info */}
-          <Dropdown menu={{ items: menuItems }} placement="bottomRight" trigger={['click']}>
-            <div className="flex items-center gap-3 cursor-pointer pl-2 hover:opacity-80 transition-opacity">
-              <span className="hidden md:block text-sm text-foreground font-medium">
-                {user?.nickname || "游客"}
-              </span>
-              <Avatar icon={<User />} className="bg-primary text-primary-foreground border-2 border-background shadow-sm" />
+    <>
+      {/* Main TopBar */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            
+            {/* Left: Logo */}
+            <div className="flex items-center">
+              <button 
+                onClick={() => handleNavigate("/")}
+                className="flex items-center gap-2 group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">IN</span>
+                </div>
+                <span className="hidden sm:block font-semibold text-foreground text-sm tracking-tight">
+                  KunFlix
+                </span>
+              </button>
             </div>
-          </Dropdown>
-        </div>
-      </div>
 
-      {/* Menu Drawer */}
-      <Drawer
-        title={<span className="font-semibold text-lg">菜单导航</span>}
-        placement="left"
-        onClose={() => setMenuVisible(false)}
-        open={menuVisible}
-        styles={{ body: { padding: '16px' }, header: { borderBottom: '1px solid var(--border)' } }}
-        className="bg-background"
-      >
-        <div className="flex flex-col gap-2">
-          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors"
-            onClick={() => { setMenuVisible(false); router.push("/"); }}>
-            首页
-          </Button>
-          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors"
-            onClick={() => { setMenuVisible(false); router.push("/resources"); }}>
-            我的库
-          </Button>
-          <Button type="text" block className="h-12 text-left justify-start px-4 rounded-lg hover:bg-accent hover:text-accent-foreground text-base font-medium transition-colors">
-            社区
-          </Button>
+            {/* Center: Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+              {NAV_LINKS.map((link) => {
+                const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
+                return (
+                  <button
+                    key={link.key}
+                    onClick={() => handleNavigate(link.href)}
+                    className={cn(
+                      "relative px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200",
+                      isActive 
+                        ? "text-foreground" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    )}
+                  >
+                    {link.label}
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeNav"
+                        className="absolute inset-0 bg-secondary rounded-md -z-10"
+                        transition={{ type: "spring" as const, bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Right: Search + Theme + User */}
+            <div className="flex items-center gap-2">
+              {/* Search Container */}
+              <div className="search-container relative flex items-center">
+                <AnimatePresence mode="wait">
+                  {searchOpen ? (
+                    <motion.form
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: 240, opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      transition={{ type: "spring" as const, stiffness: 400, damping: 30 }}
+                      onSubmit={handleSearchSubmit}
+                      className="overflow-hidden"
+                    >
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder="搜索剧场、资源..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className={cn(
+                            "w-full h-9 pl-9 pr-8 text-sm rounded-lg",
+                            "bg-secondary border border-transparent",
+                            "placeholder:text-muted-foreground",
+                            "focus:bg-background focus:border-border focus:outline-none",
+                            "transition-all duration-200"
+                          )}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSearchOpen(false)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary transition-colors"
+                        >
+                          <X className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </motion.form>
+                  ) : (
+                    <motion.button
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setSearchOpen(true)}
+                      className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                      aria-label="搜索"
+                    >
+                      <Search className="w-5 h-5" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+              >
+                {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+
+              {/* User Menu - 仅显示头像 */}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className={cn(
+                    "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
+                    userMenuOpen && "bg-secondary text-foreground"
+                  )}
+                  aria-label="用户菜单"
+                >
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
+                    <User className="w-3 h-3 text-primary-foreground" />
+                  </div>
+                </button>
+
+                {/* User Dropdown */}
+                <AnimatePresence>
+                  {userMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className={cn(
+                        "absolute right-0 top-full mt-2 w-48 py-1.5 rounded-xl",
+                        "bg-popover border border-border shadow-lg",
+                        "origin-top-right z-50"
+                      )}
+                    >
+                      <div className="px-3 py-2 border-b border-border/50">
+                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                      </div>
+                      
+                      {USER_MENU_ITEMS.map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => handleUserMenuClick(item.key)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-muted-foreground" />
+                          {item.label}
+                        </button>
+                      ))}
+                      
+                      <div className="border-t border-border/50 mt-1 pt-1">
+                        <button
+                          onClick={logout}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          退出登录
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
         </div>
-      </Drawer>
-    </div>
+      </header>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, x: -300 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -300 }}
+            transition={{ type: "spring" as const, damping: 25, stiffness: 200 }}
+            className="fixed inset-y-0 left-0 z-40 w-72 bg-background border-r border-border md:hidden"
+          >
+            <div className="flex flex-col h-full pt-20 pb-6 px-4">
+              {/* Mobile Search */}
+              <div className="relative mb-6">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="搜索..."
+                  className={cn(
+                    "w-full h-10 pl-9 pr-4 text-sm rounded-lg",
+                    "bg-secondary border border-transparent",
+                    "placeholder:text-muted-foreground",
+                    "focus:bg-background focus:border-border focus:outline-none"
+                  )}
+                />
+              </div>
+
+              {/* Mobile Navigation */}
+              <nav className="flex flex-col gap-1">
+                {NAV_LINKS.map((link, index) => {
+                  const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
+                  return (
+                    <motion.button
+                      key={link.key}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      onClick={() => handleNavigate(link.href)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-3 rounded-lg text-left",
+                        "transition-colors duration-200",
+                        isActive 
+                          ? "bg-secondary text-foreground" 
+                          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                      )}
+                    >
+                      <link.icon className="w-5 h-5" />
+                      <span className="font-medium">{link.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </nav>
+
+              {/* Mobile User Section */}
+              <div className="mt-auto pt-6 border-t border-border">
+                <div className="flex items-center gap-3 px-3 py-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
+                    <User className="w-5 h-5 text-primary-foreground" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={logout}
+                  className="w-full flex items-center gap-3 px-3 py-3 mt-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="font-medium">退出登录</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Overlay for mobile menu */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
