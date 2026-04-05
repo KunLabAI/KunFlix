@@ -1,20 +1,35 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, Layers, Image as ImageIcon, Video, Music,
+  Layers, Image as ImageIcon, Video, Music,
   LayoutGrid, List, FolderOpen, Loader2, Upload, X, AlertCircle,
-  Search, Filter, ChevronDown
+  Search, Home, Users, Sun, Moon, User, LogOut, Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useResourceStore, FileTypeFilter } from "@/store/useResourceStore";
 import { AssetItem } from "@/lib/resourceApi";
+import { useTheme } from "@/context/ThemeContext";
+import { useAuth } from "@/context/AuthContext";
 import AssetCard from "@/components/resources/AssetCard";
 import AssetEditDialog from "@/components/resources/AssetEditDialog";
 import AssetDeleteDialog from "@/components/resources/AssetDeleteDialog";
 import AssetPreviewDialog from "@/components/resources/AssetPreviewDialog";
+
+// 导航链接配置
+const NAV_LINKS = [
+  { key: "home", label: "首页", href: "/", icon: Home },
+  { key: "resources", label: "资源库", href: "/resources", icon: FolderOpen },
+  { key: "community", label: "社区", href: "#", icon: Users },
+];
+
+// 用户菜单配置
+const USER_MENU_ITEMS = [
+  { key: "profile", label: "个人资料", icon: User },
+  { key: "settings", label: "设置", icon: Settings },
+];
 
 // 筛选标签配置
 const FILTER_TABS: { key: FileTypeFilter; label: string; icon: React.ElementType; color: string }[] = [
@@ -47,6 +62,9 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function ResourcesPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
   const {
     assets, total, isLoading, hasMore, typeFilter, uploadQueue,
     fetchAssets, loadMore, setTypeFilter, addUpload, removeUpload,
@@ -56,12 +74,11 @@ export default function ResourcesPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [sizeError, setSizeError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  // 编辑/删除/预览 dialog 状态
-  const [editTarget, setEditTarget] = useState<{ asset: AssetItem; mode: "rename" | "replace" } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<AssetItem | null>(null);
-  const [previewTarget, setPreviewTarget] = useState<AssetItem | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   // 首次加载
   useEffect(() => { fetchAssets(); }, []);
@@ -77,6 +94,27 @@ export default function ResourcesPage() {
     el && obs.observe(el);
     return () => { el && obs.unobserve(el); };
   }, [hasMore, isLoading, loadMore]);
+
+  // 点击外部关闭菜单和搜索
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+      if (searchOpen && !(event.target as Element).closest('.search-container')) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [searchOpen]);
+
+  // 搜索打开时自动聚焦
+  useEffect(() => {
+    if (searchOpen && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [searchOpen]);
 
   // 文件处理
   const SIZE_LIMITS: Record<string, number> = {
@@ -119,6 +157,21 @@ export default function ResourcesPage() {
     handleFiles(e.dataTransfer.files);
   };
 
+  // 导航处理
+  const handleNavigate = (href: string) => {
+    router.push(href);
+  };
+
+  // 用户菜单处理
+  const handleUserMenuClick = (key: string) => {
+    const handlers: Record<string, () => void> = {
+      profile: () => console.log("Profile clicked"),
+      settings: () => console.log("Settings clicked"),
+    };
+    handlers[key]?.();
+    setUserMenuOpen(false);
+  };
+
   // 过滤资源
   const filteredAssets = assets.filter((asset) => {
     const matchesType = typeFilter === "all" || asset.file_type === typeFilter;
@@ -133,236 +186,395 @@ export default function ResourcesPage() {
   const handleReplace = useCallback((asset: AssetItem) => setEditTarget({ asset, mode: "replace" }), []);
   const handleDelete = useCallback((asset: AssetItem) => setDeleteTarget(asset), []);
 
+  // 编辑/删除/预览 dialog 状态
+  const [editTarget, setEditTarget] = useState<{ asset: AssetItem; mode: "rename" | "replace" } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AssetItem | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<AssetItem | null>(null);
+
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/50">
+      {/* Top Navigation Bar */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Top Row */}
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push("/")}
-                className="p-2 -ml-2 rounded-lg hover:bg-secondary transition-colors"
+            
+            {/* Left: Logo */}
+            <div className="flex items-center">
+              <button 
+                onClick={() => handleNavigate("/")}
+                className="flex items-center gap-2 group"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center">
+                  <span className="text-white font-bold text-sm">IN</span>
+                </div>
+                <span className="hidden sm:block font-semibold text-foreground text-sm tracking-tight">
+                  KunFlix
+                </span>
               </button>
-              <div>
-                <h1 className="text-lg font-semibold">我的资源库</h1>
-                <p className="text-xs text-muted-foreground hidden sm:block">
-                  管理和组织您的创作素材
-                </p>
-              </div>
-              <span className="text-xs font-medium text-muted-foreground bg-secondary px-2.5 py-1 rounded-full">
-                {total} 个资源
-              </span>
             </div>
 
-            {/* Search - Desktop */}
-            <div className="hidden md:flex items-center gap-3">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="搜索资源..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={cn(
-                    "w-64 h-9 pl-9 pr-4 text-sm rounded-lg",
-                    "bg-secondary/50 border border-border",
-                    "placeholder:text-muted-foreground",
-                    "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                    "transition-all"
-                  )}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Row - Filters */}
-          <div className="flex items-center justify-between pb-4 gap-4">
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-xl">
-              {FILTER_TABS.map((tab) => {
-                const isActive = typeFilter === tab.key;
+            {/* Center: Navigation */}
+            <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+              {NAV_LINKS.map((link) => {
+                const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
                 return (
                   <button
-                    key={tab.key}
-                    onClick={() => setTypeFilter(tab.key)}
+                    key={link.key}
+                    onClick={() => handleNavigate(link.href)}
                     className={cn(
-                      "relative flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
-                      isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                      "relative px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200",
+                      isActive 
+                        ? "text-foreground" 
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
-                    <tab.icon className={cn("w-4 h-4", isActive && tab.color)} />
-                    <span className="hidden sm:inline">{tab.label}</span>
+                    {link.label}
                     {isActive && (
                       <motion.div
-                        layoutId="activeFilter"
-                        className="absolute inset-0 bg-background rounded-lg shadow-sm -z-10"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                        layoutId="activeNavResources"
+                        className="absolute inset-0 bg-secondary rounded-md -z-10"
+                        transition={{ type: "spring" as const, bounce: 0.2, duration: 0.6 }}
                       />
                     )}
                   </button>
                 );
               })}
-            </div>
+            </nav>
 
-            {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg">
-              {VIEW_MODES.map((mode) => {
-                const isActive = viewMode === mode.key;
-                return (
-                  <button
-                    key={mode.key}
-                    onClick={() => setViewMode(mode.key as "grid" | "list")}
-                    className={cn(
-                      "p-2 rounded-md transition-all",
-                      isActive 
-                        ? "bg-background text-foreground shadow-sm" 
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                    title={mode.label}
-                  >
-                    <mode.icon className="w-4 h-4" />
-                  </button>
-                );
-              })}
+            {/* Right: Search + Theme + User */}
+            <div className="flex items-center gap-2">
+              {/* Search Container */}
+              <div className="search-container relative flex items-center">
+                <AnimatePresence mode="wait">
+                  {searchOpen ? (
+                    <motion.form
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: 200, opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      transition={{ type: "spring" as const, stiffness: 400, damping: 30 }}
+                      onSubmit={(e) => { e.preventDefault(); }}
+                      className="overflow-hidden"
+                    >
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          placeholder="搜索资源..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className={cn(
+                            "w-full h-9 pl-9 pr-8 text-sm rounded-lg",
+                            "bg-secondary border border-transparent",
+                            "placeholder:text-muted-foreground",
+                            "focus:bg-background focus:border-border focus:outline-none",
+                            "transition-all duration-200"
+                          )}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setSearchOpen(false)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-secondary transition-colors"
+                        >
+                          <X className="w-3 h-3 text-muted-foreground" />
+                        </button>
+                      </div>
+                    </motion.form>
+                  ) : (
+                    <motion.button
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setSearchOpen(true)}
+                      className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                      aria-label="搜索"
+                    >
+                      <Search className="w-5 h-5" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Theme Toggle */}
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+              >
+                {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+
+              {/* User Menu */}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className={cn(
+                    "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
+                    userMenuOpen && "bg-secondary text-foreground"
+                  )}
+                  aria-label="用户菜单"
+                >
+                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
+                    <User className="w-3 h-3 text-primary-foreground" />
+                  </div>
+                </button>
+
+                {/* User Dropdown */}
+                <AnimatePresence>
+                  {userMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className={cn(
+                        "absolute right-0 top-full mt-2 w-48 py-1.5 rounded-xl",
+                        "bg-popover border border-border shadow-lg",
+                        "origin-top-right z-50"
+                      )}
+                    >
+                      <div className="px-3 py-2 border-b border-border/50">
+                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                      </div>
+                      
+                      {USER_MENU_ITEMS.map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => handleUserMenuClick(item.key)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-muted-foreground" />
+                          {item.label}
+                        </button>
+                      ))}
+                      
+                      <div className="border-t border-border/50 mt-1 pt-1">
+                        <button
+                          onClick={logout}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          退出登录
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Content */}
-      <div className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Upload Zone */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <div
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-            onDragLeave={() => setIsDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => inputRef.current?.click()}
-            className={cn(
-              "relative flex flex-col items-center justify-center gap-4 py-12 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-300 overflow-hidden",
-              isDragOver
-                ? "border-primary bg-primary/5 scale-[1.01]"
-                : "border-border/50 bg-secondary/30 hover:border-primary/30 hover:bg-secondary/50"
-            )}
-          >
-            {/* Background Gradient */}
-            <div className={cn(
-              "absolute inset-0 bg-gradient-to-br from-node-purple/5 via-transparent to-node-blue/5 transition-opacity duration-300",
-              isDragOver ? "opacity-100" : "opacity-0"
-            )} />
-
-            <div className="relative z-10 flex flex-col items-center gap-4">
-              <div className={cn(
-                "w-16 h-16 rounded-2xl flex items-center justify-center transition-all duration-300",
-                isDragOver 
-                  ? "bg-primary/10 scale-110" 
-                  : "bg-secondary"
-              )}>
-                <Upload className={cn(
-                  "w-8 h-8 transition-colors",
-                  isDragOver ? "text-primary" : "text-muted-foreground"
-                )} />
-              </div>
-              <div className="text-center">
-                <p className="text-base font-medium text-foreground mb-1">
-                  {isDragOver ? "释放以上传文件" : "拖拽文件到这里上传"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  或 <span className="text-primary font-medium">点击选择文件</span>
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground/60">
-                支持 JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV · 最大 500MB
-              </p>
+      {/* Sub Header - Title, Filters, View Mode in one row */}
+      <div className="fixed top-16 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 gap-4">
+            {/* Left: Title + Resource Count */}
+            <div className="flex items-center gap-3 shrink-0">
+              <h1 className="text-base font-semibold text-foreground">我的资源库</h1>
+              <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                {total}
+              </span>
             </div>
 
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              accept="image/*,video/*,audio/*"
-              className="hidden"
-              onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
-            />
+            {/* Right: Filter Tabs (Icon only) + View Mode Toggle + Upload Button */}
+            <div className="flex items-center gap-2">
+              {/* Filter Tabs - Icon only */}
+              <div className="hidden sm:flex items-center gap-1 p-1 bg-secondary/50 rounded-lg">
+                {FILTER_TABS.map((tab) => {
+                  const isActive = typeFilter === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setTypeFilter(tab.key)}
+                      className={cn(
+                        "relative p-1.5 rounded-md transition-all",
+                        isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                      title={tab.label}
+                    >
+                      <tab.icon className={cn("w-4 h-4", isActive && tab.color)} />
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeFilter"
+                          className="absolute inset-0 bg-background rounded-md shadow-sm -z-10"
+                          transition={{ type: "spring" as const, bounce: 0.2, duration: 0.6 }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* View Mode Toggle */}
+              <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg shrink-0">
+                {VIEW_MODES.map((mode) => {
+                  const isActive = viewMode === mode.key;
+                  return (
+                    <button
+                      key={mode.key}
+                      onClick={() => setViewMode(mode.key as "grid" | "list")}
+                      className={cn(
+                        "p-1.5 rounded-md transition-all",
+                        isActive 
+                          ? "bg-background text-foreground shadow-sm" 
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                      title={mode.label}
+                    >
+                      <mode.icon className="w-4 h-4" />
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Upload Button */}
+              <button
+                onClick={() => inputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium shrink-0"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="hidden sm:inline">上传文件</span>
+              </button>
+            </div>
           </div>
 
-          {/* Size limit error */}
-          <AnimatePresence>
-            {sizeError && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className="flex items-start gap-2.5 mt-4 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive"
-              >
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span className="text-sm flex-1">{sizeError}</span>
-                <button 
-                  onClick={() => setSizeError(null)} 
-                  className="shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors"
+          {/* Mobile Filter Tabs - Icon only */}
+          <div className="flex sm:hidden items-center gap-1 p-1 bg-secondary/50 rounded-lg overflow-x-auto pb-2 -mb-2 w-fit ml-auto">
+            {FILTER_TABS.map((tab) => {
+              const isActive = typeFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setTypeFilter(tab.key)}
+                  className={cn(
+                    "relative p-1.5 rounded-md transition-all",
+                    isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  title={tab.label}
                 >
-                  <X className="w-4 h-4" />
+                  <tab.icon className={cn("w-4 h-4", isActive && tab.color)} />
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeFilterMobile"
+                      className="absolute inset-0 bg-background rounded-md shadow-sm -z-10"
+                      transition={{ type: "spring" as const, bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
                 </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
-          {/* Upload Queue */}
-          <AnimatePresence>
-            {uploadQueue.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 space-y-2"
+      {/* Content */}
+      <div className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-36 pb-6">
+        {/* Size limit error */}
+        <AnimatePresence>
+          {sizeError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="flex items-start gap-2.5 mb-4 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="text-sm flex-1">{sizeError}</span>
+              <button 
+                onClick={() => setSizeError(null)} 
+                className="shrink-0 p-1 rounded hover:bg-destructive/10 transition-colors"
               >
-                {uploadQueue.map((item) => (
-                  <motion.div
-                    key={item.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border/30"
-                  >
-                    <Loader2 className={cn(
-                      "w-5 h-5 shrink-0",
-                      item.status === "uploading" && "animate-spin text-primary",
-                      item.status === "error" && "text-destructive"
-                    )} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{item.file.name}</div>
-                      <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
-                        <motion.div
-                          className={cn("h-full rounded-full", STATUS_STYLES[item.status])}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${item.progress}%` }}
-                          transition={{ duration: 0.3 }}
-                        />
-                      </div>
+                <X className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Upload Queue */}
+        <AnimatePresence>
+          {uploadQueue.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 space-y-2"
+            >
+              {uploadQueue.map((item) => (
+                <motion.div
+                  key={item.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50 border border-border/30"
+                >
+                  <Loader2 className={cn(
+                    "w-5 h-5 shrink-0",
+                    item.status === "uploading" && "animate-spin text-primary",
+                    item.status === "error" && "text-destructive"
+                  )} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{item.file.name}</div>
+                    <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
+                      <motion.div
+                        className={cn("h-full rounded-full", STATUS_STYLES[item.status])}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${item.progress}%` }}
+                        transition={{ duration: 0.3 }}
+                      />
                     </div>
-                    <button 
-                      onClick={() => removeUpload(item.id)} 
-                      className="shrink-0 p-2 rounded-lg hover:bg-secondary transition-colors"
-                    >
-                      <X className="w-4 h-4 text-muted-foreground" />
-                    </button>
-                  </motion.div>
-                ))}
+                  </div>
+                  <button 
+                    onClick={() => removeUpload(item.id)} 
+                    className="shrink-0 p-2 rounded-lg hover:bg-secondary transition-colors"
+                  >
+                    <X className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Asset Grid / List with Drag Overlay */}
+        <div 
+          className="relative"
+          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={handleDrop}
+        >
+          {/* Drag Overlay - Only visible when dragging */}
+          <AnimatePresence>
+            {isDragOver && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-20 bg-primary/10 backdrop-blur-sm rounded-2xl border-2 border-dashed border-primary flex items-center justify-center pointer-events-none"
+              >
+                <div className="flex flex-col items-center gap-4 text-primary">
+                  <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center">
+                    <Upload className="w-8 h-8" />
+                  </div>
+                  <p className="text-lg font-medium">释放以上传文件</p>
+                  <p className="text-sm text-primary/70">支持 JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV</p>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
 
-        {/* Asset Grid / List */}
-        {filteredAssets.length > 0 ? (
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept="image/*,video/*,audio/*"
+            className="hidden"
+            onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }}
+          />
+
+          {filteredAssets.length > 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -412,15 +624,6 @@ export default function ResourcesPage() {
                   ? "尝试使用其他关键词搜索，或清除筛选条件" 
                   : "拖拽文件到上方区域，或点击上传按钮添加您的第一个资源"}
               </p>
-              {!searchQuery && (
-                <button
-                  onClick={() => inputRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-                >
-                  <Upload className="w-4 h-4" />
-                  上传文件
-                </button>
-              )}
             </motion.div>
           )
         )}
@@ -432,6 +635,7 @@ export default function ResourcesPage() {
           </div>
         )}
         <div ref={sentinelRef} className="h-4" />
+        </div>
       </div>
 
       {/* Dialogs */}
