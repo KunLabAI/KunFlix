@@ -13,7 +13,7 @@
 
 [🚀 Quick Start](#-quick-start) · [✨ Features](#-core-features) · [📖 Docs](#-tech-stack) · [🤝 Contributing](#-community--support)
 
-English | [简体中文](./README_ZH.md)
+English | [简体中文](./README.md)
 
 ---
 
@@ -196,8 +196,8 @@ python dev.py
 
 | Service | URL |
 |:---:|:---:|
-| 🎭 Theater Client | http://localhost:3000 |
-| 📊 Admin Dashboard | http://localhost:3001 |
+| 🎭 Theater Client | http://localhost:3666 |
+| 📊 Admin Dashboard | http://localhost:3888 |
 | 📖 API Docs | http://localhost:8000/docs |
 
 ## 💡 Use Cases
