@@ -24,7 +24,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件系统性梳理 Infinite Game 前端基于 Zustand 的状态管理方案，重点覆盖以下方面：
+本文件系统性梳理 KunFlix 前端基于 Zustand 的状态管理方案，重点覆盖以下方面：
 - Zustand 使用模式：store 创建、状态定义、动作函数设计
 - 三大核心 store 的实现与职责边界：画布状态管理（useCanvasStore）、AI 助手状态管理（useAIAssistantStore）、资源管理（useResourceStore）
 - 状态持久化策略、状态订阅机制与性能优化技术

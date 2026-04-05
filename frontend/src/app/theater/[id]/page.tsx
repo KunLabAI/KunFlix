@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { 
   ReactFlow, 
@@ -58,6 +59,7 @@ const defaultEdgeOptions = {
 function InfiniteCanvas() {
   const router = useRouter();
   const params = useParams();
+  const { t } = useTranslation();
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -343,12 +345,12 @@ function InfiniteCanvas() {
           const res = xhr.responseText ? JSON.parse(xhr.responseText) : {};
           xhr.status >= 200 && xhr.status < 300
             ? resolve(res)
-            : resolve({ error: res?.detail || res?.error || `上传失败 (HTTP ${xhr.status})` });
+            : resolve({ error: res?.detail || res?.error || t('canvas.uploadFailedHttp', { status: xhr.status }) });
         } catch {
-          resolve({ error: `解析响应失败: ${xhr.status} ${xhr.statusText}` });
+          resolve({ error: t('canvas.parseResponseFailed', { status: xhr.status, statusText: xhr.statusText }) });
         }
       };
-      xhr.onerror = () => reject(new Error('网络请求失败或跨域错误'));
+      xhr.onerror = () => reject(new Error(t('canvas.networkError')));
       xhr.send(formData);
     });
   };
@@ -366,18 +368,18 @@ function InfiniteCanvas() {
         // File size limit for text files: 10MB
         const MAX_TEXT_FILE_SIZE = 10 * 1024 * 1024;
         if (file.size > MAX_TEXT_FILE_SIZE) {
-          alert('文本文件大小不能超过 10MB');
+          alert(t('canvas.fileSizeError.text'));
           return;
         }
         
         if (isPdf) {
           // PDF files cannot be parsed in browser, show placeholder
-          content = `[PDF 文件: ${file.name}]\n\nPDF 文件内容需要在服务器端解析。文件已作为附件上传。`;
+          content = t('canvas.pdfPlaceholder', { name: file.name });
         } else {
           try {
             content = await readTextFile(file);
           } catch {
-            content = `无法读取文件: ${file.name}`;
+            content = t('canvas.readFileFailed', { name: file.name });
           }
         }
         
@@ -386,7 +388,7 @@ function InfiniteCanvas() {
         const originalLength = content.length;
         if (content.length > MAX_CHARACTERS) {
           content = content.substring(0, MAX_CHARACTERS) + 
-            `\n\n[文件内容已截断，原文件共 ${originalLength.toLocaleString()} 字符，超出最大限制 ${MAX_CHARACTERS.toLocaleString()} 字符]`;
+            t('canvas.contentTruncated', { original: originalLength.toLocaleString(), max: MAX_CHARACTERS.toLocaleString() });
         }
         
         const newNode: CanvasNode = {
@@ -416,7 +418,7 @@ function InfiniteCanvas() {
       case 'image': {
         // Validate file size (50MB max)
         if (file.size > 50 * 1024 * 1024) {
-          alert('图片大小不能超过 50MB');
+          alert(t('canvas.fileSizeError.image'));
           return;
         }
         
@@ -449,7 +451,7 @@ function InfiniteCanvas() {
           console.error('Upload error:', error);
           const { updateNodeData } = useCanvasStore.getState();
           updateNodeData(newNode.id, { uploading: false } as Partial<CharacterNodeData>);
-          alert(`上传失败: ${error.message || '请重试'}`);
+          alert(t('canvas.uploadFailed', { message: error.message || t('canvas.retryHint') }));
         }
         break;
       }
@@ -457,7 +459,7 @@ function InfiniteCanvas() {
       case 'video': {
         // Validate file size (500MB max)
         if (file.size > 500 * 1024 * 1024) {
-          alert('视频大小不能超过 500MB');
+          alert(t('canvas.fileSizeError.video'));
           return;
         }
         
@@ -490,7 +492,7 @@ function InfiniteCanvas() {
           console.error('Upload error:', error);
           const { updateNodeData } = useCanvasStore.getState();
           updateNodeData(newNode.id, { uploading: false } as Partial<VideoNodeData>);
-          alert(`上传失败: ${error.message || '请重试'}`);
+          alert(t('canvas.uploadFailed', { message: error.message || t('canvas.retryHint') }));
         }
         break;
       }
@@ -498,7 +500,7 @@ function InfiniteCanvas() {
       case 'audio': {
         // Validate file size (100MB max)
         if (file.size > 100 * 1024 * 1024) {
-          alert('音频大小不能超过 100MB');
+          alert(t('canvas.fileSizeError.audio'));
           return;
         }
 
@@ -532,13 +534,13 @@ function InfiniteCanvas() {
           response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
         } catch (error: any) {
           console.error('Audio upload error:', error);
-          alert(`音频上传失败: ${error.message || '请重试'}`);
+          alert(t('canvas.audioUploadFailed', { message: error.message || t('canvas.retryHint') }));
         }
         break;
       }
       
       default:
-        alert(`不支持的文件类型: ${file.name}`);
+        alert(t('canvas.unsupportedFile', { name: file.name }));
     }
   };
 
@@ -609,11 +611,16 @@ function InfiniteCanvas() {
         
         // 按类型分组并限制批量数量（映射表模式）
         const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20 };
-        const TYPE_NAMES: Record<string, string> = { video: '视频', image: '图片', audio: '音频', text: '文本' };
+        const TYPE_NAMES: Record<string, string> = {
+          video: t('canvas.fileNames.video'),
+          image: t('canvas.fileNames.image'),
+          audio: t('canvas.fileNames.audio'),
+          text: t('canvas.fileNames.text'),
+        };
         const grouped: Record<string, File[]> = {};
         Array.from(files).forEach((file) => {
-          const t = getFileType(file) ?? 'unknown';
-          (grouped[t] = grouped[t] || []).push(file);
+          const fType = getFileType(file) ?? 'unknown';
+          (grouped[fType] = grouped[fType] || []).push(file);
         });
 
         const allowed: File[] = [];
@@ -621,7 +628,9 @@ function InfiniteCanvas() {
         Object.entries(grouped).forEach(([type, list]) => {
           const limit = BATCH_LIMITS[type] ?? 20;
           allowed.push(...list.slice(0, limit));
-          list.length > limit && rejected.push(`${TYPE_NAMES[type] ?? '文件'}最多 ${limit} 个，已跳过 ${list.length - limit} 个`);
+          list.length > limit && rejected.push(
+            t('canvas.batchLimit', { type: TYPE_NAMES[type] ?? t('canvas.fileNames.default'), limit, skipped: list.length - limit })
+          );
         });
         rejected.length > 0 && alert(rejected.join('\n'));
 
@@ -682,11 +691,11 @@ function InfiniteCanvas() {
 
       addNode(newNode);
     },
-    [screenToFlowPosition, addNode]
+    [screenToFlowPosition, addNode, t]
   );
 
   // Save status indicator
-  const saveStatusText = isSaving ? '保存中...' : isDirty ? '未保存' : lastSavedAt ? '已保存' : '';
+  const saveStatusText = isSaving ? t('canvas.saving') : isDirty ? t('canvas.unsaved') : lastSavedAt ? t('canvas.saved') : '';
   const SaveIcon = isSaving ? Loader2 : isDirty ? Save : Check;
 
   if (isLoading) {
@@ -694,7 +703,7 @@ function InfiniteCanvas() {
       <div className="flex h-screen w-full items-center justify-center bg-background text-foreground">
         <div className="flex flex-col items-center gap-4">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-muted-foreground text-sm">正在加载剧场...</p>
+          <p className="text-muted-foreground text-sm">{t('canvas.loading')}</p>
         </div>
       </div>
     );
@@ -708,11 +717,14 @@ function InfiniteCanvas() {
     audio: <Music className="w-8 h-8 text-amber-500" />,
   };
   const FILE_TYPE_LABELS: Record<string, string> = {
-    text: '文本文件', image: '图像文件', video: '视频文件', audio: '音频文件',
+    text: t('canvas.fileType.text'),
+    image: t('canvas.fileType.image'),
+    video: t('canvas.fileType.video'),
+    audio: t('canvas.fileType.audio'),
   };
 
   const getFileTypeIcon = () => FILE_TYPE_ICONS[dragFileType ?? ''] ?? <FileText className="w-8 h-8 text-muted-foreground" />;
-  const getFileTypeLabel = () => FILE_TYPE_LABELS[dragFileType ?? ''] ?? '文件';
+  const getFileTypeLabel = () => FILE_TYPE_LABELS[dragFileType ?? ''] ?? t('canvas.fileType.default');
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
@@ -736,8 +748,8 @@ function InfiniteCanvas() {
             >
               {getFileTypeIcon()}
               <div className="text-center">
-                <p className="text-lg font-semibold text-foreground">释放以创建 {getFileTypeLabel()}节点</p>
-                <p className="text-sm text-muted-foreground mt-1">支持拖拽多个文件</p>
+                <p className="text-lg font-semibold text-foreground">{t('canvas.dropToCreateNode', { type: getFileTypeLabel() })}</p>
+                <p className="text-sm text-muted-foreground mt-1">{t('canvas.multiFileDrop')}</p>
               </div>
             </div>
           </div>
@@ -831,7 +843,7 @@ function InfiniteCanvas() {
           
           <Panel position="top-left" className="m-4 z-50">
             <div className="flex items-center bg-card border border-border/50 shadow-sm rounded-lg p-1 gap-1 pointer-events-auto">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => router.push('/')} title="返回">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => router.push('/')} title={t('canvas.back')}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div className="w-px h-4 bg-border/50 mx-1" />
@@ -840,13 +852,13 @@ function InfiniteCanvas() {
                 value={theaterTitle}
                 onChange={(e) => setTheaterTitle(e.target.value)}
                 className="bg-transparent text-sm font-medium text-foreground outline-none border-none px-2 py-1 w-40 truncate"
-                placeholder="剧场名称"
+                placeholder={t('canvas.theaterName')}
               />
               <div className="w-px h-4 bg-border/50 mx-1" />
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={undo} title="撤销 (Ctrl+Z)">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={undo} title={t('canvas.undo')}>
                 <Undo className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={redo} title="重做 (Ctrl+Y)">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={redo} title={t('canvas.redo')}>
                 <Redo className="w-4 h-4" />
               </Button>
               <div className="w-px h-4 bg-border/50 mx-1" />
@@ -877,23 +889,23 @@ function InfiniteCanvas() {
             }}
           >
             <div className="text-xs font-medium text-muted-foreground px-2 py-1 mb-1">
-              创建连接的节点
+              {t('canvas.createConnectedNode')}
             </div>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('text')}>
               <ScrollText className="w-4 h-4 mr-2 text-indigo-500" />
-              文本卡
+              {t('canvas.textCard')}
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('image')}>
               <User className="w-4 h-4 mr-2 text-emerald-500" />
-              图片卡
+              {t('canvas.imageCard')}
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('video')}>
               <Film className="w-4 h-4 mr-2 text-purple-500" />
-              视频卡
+              {t('canvas.videoCard')}
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('storyboard')}>
               <Clapperboard className="w-4 h-4 mr-2 text-amber-500" />
-              多维表格卡
+              {t('canvas.storyboardCard')}
             </Button>
           </Card>
         )}

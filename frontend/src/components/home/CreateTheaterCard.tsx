@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Plus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface CreateTheaterCardProps {
@@ -9,6 +10,8 @@ interface CreateTheaterCardProps {
 }
 
 export default function CreateTheaterCard({ onClick }: CreateTheaterCardProps) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       whileHover={{ scale: 1.03 }}
@@ -45,10 +48,10 @@ export default function CreateTheaterCard({ onClick }: CreateTheaterCardProps) {
       {/* Text */}
       <div className="text-center z-10">
         <span className="block text-foreground font-semibold text-xl mb-2">
-          创建新剧场
+          {t("home.createTheater")}
         </span>
         <span className="text-muted-foreground text-sm">
-          开始您的创作之旅
+          {t("home.createDesc")}
         </span>
       </div>
     </motion.div>

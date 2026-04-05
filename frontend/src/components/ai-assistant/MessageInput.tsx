@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Send, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,13 +31,16 @@ export function MessageInput({
   onSend,
   isLoading,
   disabled = false,
-  placeholder = '输入你的想法...',
+  placeholder,
   className,
-  agentName = 'AI 助手',
+  agentName,
   availableAgents = [],
   isLoadingAgents = false,
   onSwitchAgent,
 }: MessageInputProps) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder = placeholder ?? t('ai.inputPlaceholder');
+  const resolvedAgentName = agentName ?? t('ai.title');
   const [inputValue, setInputValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,7 +98,7 @@ export function MessageInput({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder}
+            placeholder={resolvedPlaceholder}
             className="w-full bg-transparent border-0 resize-none outline-none text-sm text-foreground placeholder:text-muted-foreground/60 min-h-[60px] max-h-[120px] py-3 px-3 pb-6"
             rows={1}
             autoFocus
@@ -115,13 +119,13 @@ export function MessageInput({
                 className="h-8 px-2 text-sm font-medium hover:bg-primary/10 flex items-center gap-2"
                 disabled={isLoadingAgents}
               >
-                <span className="text-foreground">{agentName}</span>
+                <span className="text-foreground">{resolvedAgentName}</span>
                 <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
               <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
-                选择智能体
+                {t('ai.selectAgent')}
               </div>
               {availableAgents.map((agent) => (
                 <DropdownMenuItem
@@ -138,7 +142,7 @@ export function MessageInput({
                     )}
                     {agent.target_node_types && agent.target_node_types.length > 0 && (
                       <span className="text-[10px] text-muted-foreground/70">
-                        支持: {agent.target_node_types.join(', ')}
+                        {t('ai.supports', { types: agent.target_node_types.join(', ') })}
                       </span>
                     )}
                   </div>
@@ -146,7 +150,7 @@ export function MessageInput({
               ))}
               {availableAgents.length === 0 && (
                 <div className="p-3 text-xs text-muted-foreground text-center">
-                  暂无可用智能体
+                  {t('ai.noAgents')}
                 </div>
               )}
             </DropdownMenuContent>
@@ -165,7 +169,7 @@ export function MessageInput({
                   ? 'bg-muted text-muted-foreground cursor-not-allowed'
                   : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
               )}
-              title={isLoading ? '发送中...' : '发送'}
+              title={isLoading ? t('ai.sending') : t('ai.send')}
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

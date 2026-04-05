@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Infinite Narrative Theater",
+    title="KunFlix",
     lifespan=lifespan,
 )
 
@@ -160,7 +160,7 @@ app.include_router(admin_tools.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Infinite Narrative Theater API"}
+    return {"message": "Welcome to the KunFlix API"}
 
 
 @app.websocket("/ws/{user_id}")

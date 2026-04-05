@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   Layers, Plus, ScrollText, Image as ImageIcon, Video, 
   Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2
@@ -9,8 +10,8 @@ import { useResourceStore } from '@/store/useResourceStore';
 const NODE_TYPES = [
   { 
     type: 'text', 
-    name: '文本卡', 
-    description: '剧本、广告等文案',
+    nameKey: 'sidebar.textCard', 
+    descKey: 'sidebar.textDesc',
     icon: ScrollText, 
     color: 'text-node-blue', 
     bg: 'bg-node-blue/10',
@@ -19,8 +20,8 @@ const NODE_TYPES = [
   },
   { 
     type: 'image', 
-    name: '图片卡', 
-    description: '角色、场景、海报等',
+    nameKey: 'sidebar.imageCard', 
+    descKey: 'sidebar.imageDesc',
     icon: ImageIcon, 
     color: 'text-node-green', 
     bg: 'bg-node-green/10',
@@ -29,8 +30,8 @@ const NODE_TYPES = [
   },
   { 
     type: 'video', 
-    name: '视频卡', 
-    description: '动画、短片等媒体',
+    nameKey: 'sidebar.videoCard', 
+    descKey: 'sidebar.videoDesc',
     icon: Video, 
     color: 'text-node-yellow', 
     bg: 'bg-node-yellow/10',
@@ -39,8 +40,8 @@ const NODE_TYPES = [
   },
   { 
     type: 'storyboard', 
-    name: '多维表格卡', 
-    description: '分镜、脚本等数据管理',
+    nameKey: 'sidebar.storyboardCard', 
+    descKey: 'sidebar.storyboardDesc',
     icon: Table2, 
     color: 'text-node-purple', 
     bg: 'bg-node-purple/10',
@@ -56,7 +57,22 @@ const DRAG_DATA_BUILDERS: Record<string, (asset: { url: string; name: string }) 
   audio: (a) => ({ nodeType: 'text', data: { title: a.name, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: a.url }] }] } } }),
 };
 
+// 资产标签tab配置
+const ASSET_TABS = [
+  { key: 'images' as const, labelKey: 'sidebar.images', icon: ImagePlus, activeColor: 'text-node-green' },
+  { key: 'videos' as const, labelKey: 'sidebar.videos', icon: Film, activeColor: 'text-node-yellow' },
+  { key: 'music' as const, labelKey: 'sidebar.music', icon: Music, activeColor: 'text-node-blue' },
+];
+
+// 空状态配置
+const EMPTY_STATE_CONFIG: Record<string, { icon: React.ElementType; labelKey: string }> = {
+  images: { icon: ImagePlus, labelKey: 'sidebar.noImages' },
+  videos: { icon: Film, labelKey: 'sidebar.noVideos' },
+  music: { icon: Music, labelKey: 'sidebar.noMusic' },
+};
+
 export const Sidebar = () => {
+  const { t } = useTranslation();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'music'>('images');
   let timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -99,7 +115,7 @@ export const Sidebar = () => {
     dragPreview.style.opacity = '0.7';
     dragPreview.innerHTML = `
       <div class="w-4 h-4 rounded-sm bg-primary/20"></div>
-      <span class="text-sm font-medium">放置以添加节点</span>
+      <span class="text-sm font-medium">${t('sidebar.dropToAdd')}</span>
     `;
     document.body.appendChild(dragPreview);
     event.dataTransfer.setDragImage(dragPreview, 0, 0);
@@ -142,7 +158,7 @@ export const Sidebar = () => {
               ? "opacity-100 translate-x-0 pointer-events-auto" 
               : "opacity-0 -translate-x-2 pointer-events-none"
           )}>
-            <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 pt-1">添加节点</div>
+            <div className="text-xs font-semibold text-muted-foreground mb-2 px-2 pt-1">{t('sidebar.addNode')}</div>
             <div className="flex flex-col gap-1">
               {NODE_TYPES.map((node) => (
                 <div
@@ -155,8 +171,8 @@ export const Sidebar = () => {
                     <node.icon className={cn("w-4 h-4", node.color)} />
                   </div>
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-sm font-medium text-foreground">{node.name}</span>
-                    <span className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5 leading-snug opacity-80">{node.description}</span>
+                    <span className="text-sm font-medium text-foreground">{t(node.nameKey)}</span>
+                    <span className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5 leading-snug opacity-80">{t(node.descKey)}</span>
                   </div>
                   <GripVertical className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-50 transition-opacity shrink-0 mt-1" />
                 </div>
@@ -187,36 +203,19 @@ export const Sidebar = () => {
             
             {/* Tabs */}
             <div className="flex items-center gap-1 p-1 bg-secondary/50 rounded-lg">
-              <button 
-                onClick={() => setActiveAssetTab('images')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all",
-                  activeAssetTab === 'images' ? "bg-background text-node-green shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <ImagePlus className="w-3.5 h-3.5" />
-                图片
-              </button>
-              <button 
-                onClick={() => setActiveAssetTab('videos')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all",
-                  activeAssetTab === 'videos' ? "bg-background text-node-yellow shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Film className="w-3.5 h-3.5" />
-                视频
-              </button>
-              <button 
-                onClick={() => setActiveAssetTab('music')}
-                className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all",
-                  activeAssetTab === 'music' ? "bg-background text-node-blue shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Music className="w-3.5 h-3.5" />
-                音乐
-              </button>
+              {ASSET_TABS.map((tab) => (
+                <button 
+                  key={tab.key}
+                  onClick={() => setActiveAssetTab(tab.key)}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-md transition-all",
+                    activeAssetTab === tab.key ? `bg-background ${tab.activeColor} shadow-sm` : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {t(tab.labelKey)}
+                </button>
+              ))}
             </div>
 
             {/* Content Area */}
@@ -252,7 +251,7 @@ export const Sidebar = () => {
                   )) : (
                     <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <ImagePlus className="w-8 h-8 mb-2 opacity-20" />
-                      <span className="text-xs">暂无图片资产</span>
+                      <span className="text-xs">{t('sidebar.noImages')}</span>
                     </div>
                   )}
                 </div>
@@ -287,7 +286,7 @@ export const Sidebar = () => {
                   )) : (
                     <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <Film className="w-8 h-8 mb-2 opacity-20" />
-                      <span className="text-xs">暂无视频资产</span>
+                      <span className="text-xs">{t('sidebar.noVideos')}</span>
                     </div>
                   )}
                 </div>
@@ -314,7 +313,7 @@ export const Sidebar = () => {
                   )) : (
                     <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <Music className="w-8 h-8 mb-2 opacity-20" />
-                      <span className="text-xs">暂无音乐资源</span>
+                      <span className="text-xs">{t('sidebar.noMusic')}</span>
                     </div>
                   )}
                 </div>
@@ -330,7 +329,7 @@ export const Sidebar = () => {
               className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-muted-foreground hover:text-primary transition-colors rounded-md hover:bg-secondary/50"
             >
               <ExternalLink className="w-3 h-3" />
-              管理资源
+              {t('sidebar.manageResources')}
             </a>
           </div>
         </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import { 
   Play, Layers, MoreHorizontal, Edit2, Copy, Trash2, 
   Clock, Circle, CheckCircle2, Archive, ArrowRight 
@@ -18,21 +19,18 @@ import { useConfirmDialog, useInputDialog } from "@/components/ui/confirm-dialog
 
 // 状态配置映射表
 const STATUS_CONFIG: Record<string, { 
-  label: string; 
+  labelKey: string; 
   icon: React.ElementType; 
 }> = {
-  draft: { 
-    label: "草稿", 
-    icon: Circle, 
-  },
-  published: { 
-    label: "已发布", 
-    icon: CheckCircle2, 
-  },
-  archived: { 
-    label: "已归档", 
-    icon: Archive, 
-  },
+  draft: { labelKey: "theater.status.draft", icon: Circle },
+  published: { labelKey: "theater.status.published", icon: CheckCircle2 },
+  archived: { labelKey: "theater.status.archived", icon: Archive },
+};
+
+// 时间格式映射
+const TIME_KEY_MAP: Record<number, string> = {
+  0: "theater.today",
+  1: "theater.yesterday",
 };
 
 // 画布节点类型
@@ -54,11 +52,12 @@ interface TheaterCardProps {
   status?: string;
   nodeCount?: number;
   updatedAt?: string | null;
-  nodes?: TheaterNode[]; // 画布节点列表，用于提取背景
+  nodes?: TheaterNode[];
   onClick?: () => void;
   onRename?: (id: string, newTitle: string) => void;
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
+  priority?: boolean;
 }
 
 export default function TheaterCard({
@@ -73,7 +72,9 @@ export default function TheaterCard({
   onRename,
   onDuplicate,
   onDelete,
+  priority = false,
 }: TheaterCardProps) {
+  const { t, i18n } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const { confirm, dialog: confirmDialog, setLoading: setConfirmLoading } = useConfirmDialog();
   const { input, dialog: inputDialog, setLoading: setInputLoading } = useInputDialog();
@@ -83,7 +84,6 @@ export default function TheaterCard({
 
   // 从画布节点中提取图片/视频作为背景
   const extractBackgroundFromNodes = (): string | null => {
-    // 优先级：image > video
     const mediaNodes = nodes.filter((node) => 
       node.node_type === "image" || node.node_type === "video"
     );
@@ -92,14 +92,11 @@ export default function TheaterCard({
       const data = node.data;
       if (!data) continue;
       
-      // 图片节点
       if (node.node_type === "image" && data.imageUrl) {
         return data.imageUrl;
       }
       
-      // 视频节点
       if (node.node_type === "video" && data.videoUrl) {
-        // 视频使用缩略图或第一帧
         return data.thumbnail || data.videoUrl;
       }
     }
@@ -107,7 +104,6 @@ export default function TheaterCard({
     return null;
   };
 
-  // 最终背景图：传入的 image > 从节点提取 > null
   const backgroundImage = image || extractBackgroundFromNodes();
 
   // 格式化时间
@@ -117,12 +113,11 @@ export default function TheaterCard({
     const now = new Date();
     const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
     
-    const timeFormats: Record<number, string> = {
-      0: "今天",
-      1: "昨天",
-    };
+    const timeKey = TIME_KEY_MAP[diffDays];
+    if (timeKey) return t(timeKey);
     
-    return timeFormats[diffDays] ?? date.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+    const locale = i18n.language === "en-US" ? "en-US" : "zh-CN";
+    return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
   };
 
   const timeLabel = formatTime(updatedAt);
@@ -134,12 +129,12 @@ export default function TheaterCard({
     if (!onRename) return;
     
     const newTitle = await input({
-      title: "重命名剧场",
-      description: "请输入新的剧场名称",
+      title: t("theater.renameDialog.title"),
+      description: t("theater.renameDialog.description"),
       defaultValue: title,
-      placeholder: "剧场名称",
-      confirmText: "保存",
-      cancelText: "取消",
+      placeholder: t("theater.renameDialog.placeholder"),
+      confirmText: t("theater.renameDialog.confirm"),
+      cancelText: t("theater.renameDialog.cancel"),
     });
     
     if (newTitle && newTitle !== title) {
@@ -171,11 +166,11 @@ export default function TheaterCard({
     if (!onDelete) return;
     
     const confirmed = await confirm({
-      title: "删除剧场",
-      description: `确定要删除"${title}"吗？此操作不可恢复，所有相关数据将被永久删除。`,
+      title: t("theater.deleteDialog.title"),
+      description: t("theater.deleteDialog.description", { title }),
       type: "delete",
-      confirmText: "删除",
-      cancelText: "取消",
+      confirmText: t("theater.deleteDialog.confirm"),
+      cancelText: t("theater.deleteDialog.cancel"),
     });
     
     if (confirmed) {
@@ -207,7 +202,6 @@ export default function TheaterCard({
           {backgroundImage ? (
             <div className="absolute inset-0">
               {backgroundImage.match(/\.(mp4|webm|mov|avi)$/i) ? (
-                /* Video Background - use video element with poster */
                 <video
                   src={backgroundImage}
                   className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
@@ -216,28 +210,29 @@ export default function TheaterCard({
                   playsInline
                 />
               ) : (
-                /* Image Background */
                 <Image
                   src={backgroundImage}
                   alt={title}
                   fill
+                  sizes="260px"
+                  priority={priority}
+                  loading={priority ? "eager" : "lazy"}
                   className="object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
                 />
               )}
             </div>
           ) : (
-            /* Solid Background when no image - uses theme colors */
             <div className="absolute inset-0 bg-muted transition-transform duration-500 ease-in-out group-hover:scale-110" />
           )}
 
-          {/* Theme-aware Gradient Overlay - darker for better text readability */}
+          {/* Gradient Overlay */}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
 
           {/* Status Badge */}
           <div className="absolute top-4 left-4 z-10">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold text-foreground bg-background/80 backdrop-blur-md">
               <StatusIcon className="w-3 h-3" />
-              {statusConfig.label}
+              {t(statusConfig.labelKey)}
             </span>
           </div>
 
@@ -256,20 +251,20 @@ export default function TheaterCard({
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MoreHorizontal className="w-4 h-4" />
-                    <span className="sr-only">更多选项</span>
+                    <span className="sr-only">{t("theater.moreOptions")}</span>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40 z-50">
                   {onRename && (
                     <DropdownMenuItem onClick={handleRename} className="cursor-pointer">
                       <Edit2 className="w-4 h-4 mr-2" />
-                      <span>重命名</span>
+                      <span>{t("theater.rename")}</span>
                     </DropdownMenuItem>
                   )}
                   {onDuplicate && (
                     <DropdownMenuItem onClick={handleDuplicate} className="cursor-pointer">
                       <Copy className="w-4 h-4 mr-2" />
-                      <span>创建副本</span>
+                      <span>{t("theater.duplicate")}</span>
                     </DropdownMenuItem>
                   )}
                   {onDelete && (
@@ -278,7 +273,7 @@ export default function TheaterCard({
                       className="cursor-pointer text-destructive focus:bg-destructive/10 focus:text-destructive"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
-                      <span>删除</span>
+                      <span>{t("theater.delete")}</span>
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -288,16 +283,14 @@ export default function TheaterCard({
 
           {/* Content Area */}
           <div className="absolute bottom-0 left-0 right-0 p-5">
-            {/* Title */}
             <h3 className="text-2xl font-bold tracking-tight truncate mb-2 text-foreground">
               {title}
             </h3>
 
-            {/* Meta Info */}
             <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
               <div className="flex items-center gap-1.5">
                 <Layers className="w-4 h-4" />
-                <span>{nodeCount} 节点</span>
+                <span>{t("theater.nodeCount", { count: nodeCount })}</span>
               </div>
               {timeLabel && (
                 <div className="flex items-center gap-1.5">
@@ -307,11 +300,10 @@ export default function TheaterCard({
               )}
             </div>
 
-            {/* Open Button */}
             <div className="flex items-center justify-between rounded-xl px-4 py-3 backdrop-blur-md bg-background/20 border border-border/50 transition-all duration-300 group-hover:bg-background/30">
               <div className="flex items-center gap-2">
                 <Play className="w-4 h-4 fill-current" />
-                <span className="text-sm font-semibold tracking-wide">打开剧场</span>
+                <span className="text-sm font-semibold tracking-wide">{t("theater.openTheater")}</span>
               </div>
               <ArrowRight className="h-4 w-4 transform transition-transform duration-300 group-hover:translate-x-1" />
             </div>

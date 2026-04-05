@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, Image as ImageIcon, Video, Music,
@@ -17,32 +18,33 @@ import AssetCard from "@/components/resources/AssetCard";
 import AssetEditDialog from "@/components/resources/AssetEditDialog";
 import AssetDeleteDialog from "@/components/resources/AssetDeleteDialog";
 import AssetPreviewDialog from "@/components/resources/AssetPreviewDialog";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 // 导航链接配置
 const NAV_LINKS = [
-  { key: "home", label: "首页", href: "/", icon: Home },
-  { key: "resources", label: "资源库", href: "/resources", icon: FolderOpen },
-  { key: "community", label: "社区", href: "#", icon: Users },
+  { key: "home", labelKey: "nav.home", href: "/", icon: Home },
+  { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen },
+  { key: "community", labelKey: "nav.community", href: "#", icon: Users },
 ];
 
 // 用户菜单配置
 const USER_MENU_ITEMS = [
-  { key: "profile", label: "个人资料", icon: User },
-  { key: "settings", label: "设置", icon: Settings },
+  { key: "profile", labelKey: "userMenu.profile", icon: User },
+  { key: "settings", labelKey: "userMenu.settings", icon: Settings },
 ];
 
 // 筛选标签配置
-const FILTER_TABS: { key: FileTypeFilter; label: string; icon: React.ElementType; color: string }[] = [
-  { key: "all", label: "全部", icon: Layers, color: "text-foreground" },
-  { key: "image", label: "图片", icon: ImageIcon, color: "text-node-green" },
-  { key: "video", label: "视频", icon: Video, color: "text-node-yellow" },
-  { key: "audio", label: "音频", icon: Music, color: "text-node-blue" },
+const FILTER_TABS: { key: FileTypeFilter; labelKey: string; icon: React.ElementType; color: string }[] = [
+  { key: "all", labelKey: "filter.all", icon: Layers, color: "text-foreground" },
+  { key: "image", labelKey: "filter.image", icon: ImageIcon, color: "text-node-green" },
+  { key: "video", labelKey: "filter.video", icon: Video, color: "text-node-yellow" },
+  { key: "audio", labelKey: "filter.audio", icon: Music, color: "text-node-blue" },
 ];
 
 // 视图模式配置
 const VIEW_MODES = [
-  { key: "grid", icon: LayoutGrid, label: "网格" },
-  { key: "list", icon: List, label: "列表" },
+  { key: "grid", icon: LayoutGrid, labelKey: "viewMode.grid" },
+  { key: "list", icon: List, labelKey: "viewMode.list" },
 ];
 
 // 文件类型颜色映射
@@ -60,7 +62,14 @@ const STATUS_STYLES: Record<string, string> = {
   error: "bg-destructive",
 };
 
+// 主题 aria-label 映射
+const THEME_LABELS: Record<string, string> = {
+  dark: "theme.switchToLight",
+  light: "theme.switchToDark",
+};
+
 export default function ResourcesPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const { theme, toggleTheme } = useTheme();
@@ -144,10 +153,10 @@ export default function ResourcesPage() {
       const label = SIZE_LABELS[type] ?? "50MB";
       f.size <= limit
         ? valid.push(f)
-        : oversized.push(`${f.name}（超出${label}限制）`);
+        : oversized.push(t("resources.exceedLabel", { name: f.name, limit: label }));
     });
 
-    oversized.length > 0 && setSizeError(`${oversized.join("、")}，已跳过`);
+    oversized.length > 0 && setSizeError(t("resources.sizeExceeded", { files: oversized.join(", ") }));
     valid.forEach(addUpload);
   };
 
@@ -191,6 +200,10 @@ export default function ResourcesPage() {
   const [deleteTarget, setDeleteTarget] = useState<AssetItem | null>(null);
   const [previewTarget, setPreviewTarget] = useState<AssetItem | null>(null);
 
+  // 空状态文案映射
+  const emptyTitle = searchQuery ? t("resources.noMatchTitle") : t("resources.emptyTitle");
+  const emptyDesc = searchQuery ? t("resources.noMatchDescription") : t("resources.emptyDescription");
+
   return (
     <main className="min-h-screen flex flex-col bg-background text-foreground">
       {/* Top Navigation Bar */}
@@ -228,7 +241,7 @@ export default function ResourcesPage() {
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
-                    {link.label}
+                    {t(link.labelKey)}
                     {isActive && (
                       <motion.div
                         layoutId="activeNavResources"
@@ -241,7 +254,7 @@ export default function ResourcesPage() {
               })}
             </nav>
 
-            {/* Right: Search + Theme + User */}
+            {/* Right: Search + Theme + Language + User */}
             <div className="flex items-center gap-2">
               {/* Search Container */}
               <div className="search-container relative flex items-center">
@@ -260,7 +273,7 @@ export default function ResourcesPage() {
                         <input
                           ref={searchInputRef}
                           type="text"
-                          placeholder="搜索资源..."
+                          placeholder={t("search.placeholder")}
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className={cn(
@@ -287,7 +300,7 @@ export default function ResourcesPage() {
                       exit={{ opacity: 0 }}
                       onClick={() => setSearchOpen(true)}
                       className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                      aria-label="搜索"
+                      aria-label={t("search.label")}
                     >
                       <Search className="w-5 h-5" />
                     </motion.button>
@@ -299,10 +312,13 @@ export default function ResourcesPage() {
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                aria-label={t(THEME_LABELS[theme])}
               >
                 {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
+
+              {/* Language Switcher */}
+              <LanguageSwitcher />
 
               {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
@@ -312,7 +328,7 @@ export default function ResourcesPage() {
                     "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
                     userMenuOpen && "bg-secondary text-foreground"
                   )}
-                  aria-label="用户菜单"
+                  aria-label={t("userMenu.label")}
                 >
                   <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
                     <User className="w-3 h-3 text-primary-foreground" />
@@ -334,8 +350,8 @@ export default function ResourcesPage() {
                       )}
                     >
                       <div className="px-3 py-2 border-b border-border/50">
-                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
-                        <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || t("userMenu.guest")}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user?.email || t("userMenu.notLoggedIn")}</p>
                       </div>
                       
                       {USER_MENU_ITEMS.map((item) => (
@@ -345,7 +361,7 @@ export default function ResourcesPage() {
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
                         >
                           <item.icon className="w-4 h-4 text-muted-foreground" />
-                          {item.label}
+                          {t(item.labelKey)}
                         </button>
                       ))}
                       
@@ -355,7 +371,7 @@ export default function ResourcesPage() {
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
-                          退出登录
+                          {t("userMenu.logout")}
                         </button>
                       </div>
                     </motion.div>
@@ -373,7 +389,7 @@ export default function ResourcesPage() {
           <div className="flex items-center justify-between h-14 gap-4">
             {/* Left: Title + Resource Count */}
             <div className="flex items-center gap-3 shrink-0">
-              <h1 className="text-base font-semibold text-foreground">我的资源库</h1>
+              <h1 className="text-base font-semibold text-foreground">{t("resources.title")}</h1>
               <span className="text-xs font-medium text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
                 {total}
               </span>
@@ -393,7 +409,7 @@ export default function ResourcesPage() {
                         "relative p-1.5 rounded-md transition-all",
                         isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                       )}
-                      title={tab.label}
+                      title={t(tab.labelKey)}
                     >
                       <tab.icon className={cn("w-4 h-4", isActive && tab.color)} />
                       {isActive && (
@@ -422,7 +438,7 @@ export default function ResourcesPage() {
                           ? "bg-background text-foreground shadow-sm" 
                           : "text-muted-foreground hover:text-foreground"
                       )}
-                      title={mode.label}
+                      title={t(mode.labelKey)}
                     >
                       <mode.icon className="w-4 h-4" />
                     </button>
@@ -436,7 +452,7 @@ export default function ResourcesPage() {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium shrink-0"
               >
                 <Upload className="w-4 h-4" />
-                <span className="hidden sm:inline">上传文件</span>
+                <span className="hidden sm:inline">{t("resources.uploadFile")}</span>
               </button>
             </div>
           </div>
@@ -453,7 +469,7 @@ export default function ResourcesPage() {
                     "relative p-1.5 rounded-md transition-all",
                     isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                   )}
-                  title={tab.label}
+                  title={t(tab.labelKey)}
                 >
                   <tab.icon className={cn("w-4 h-4", isActive && tab.color)} />
                   {isActive && (
@@ -558,8 +574,8 @@ export default function ResourcesPage() {
                   <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center">
                     <Upload className="w-8 h-8" />
                   </div>
-                  <p className="text-lg font-medium">释放以上传文件</p>
-                  <p className="text-sm text-primary/70">支持 JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV</p>
+                  <p className="text-lg font-medium">{t("resources.dropToUpload")}</p>
+                  <p className="text-sm text-primary/70">{t("resources.supportedFormats")}</p>
                 </div>
               </motion.div>
             )}
@@ -617,12 +633,10 @@ export default function ResourcesPage() {
                 <FolderOpen className="w-12 h-12 opacity-30" />
               </div>
               <h3 className="text-lg font-medium text-foreground mb-2">
-                {searchQuery ? "未找到匹配的资源" : "资源库为空"}
+                {emptyTitle}
               </h3>
               <p className="text-sm text-center max-w-sm mb-6">
-                {searchQuery 
-                  ? "尝试使用其他关键词搜索，或清除筛选条件" 
-                  : "拖拽文件到上方区域，或点击上传按钮添加您的第一个资源"}
+                {emptyDesc}
               </p>
             </motion.div>
           )

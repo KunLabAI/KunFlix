@@ -21,7 +21,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件聚焦于 Infinite Game 前端的自定义 Hook 系统，围绕以下关键能力进行深入解析与实践指导：
+本文件聚焦于 KunFlix 前端的自定义 Hook 系统，围绕以下关键能力进行深入解析与实践指导：
 - 实时通信 Hook（useSocket）：基于浏览器原生 WebSocket 的连接管理、消息处理与生命周期清理。
 - 富文本编辑 Hook（useTiptapEditor）：基于 TipTap 的编辑器实例选择、状态同步与命令可用性查询。
 - 窗口尺寸 Hook（useWindowSize）：使用 Visual Viewport API 获取精确尺寸与偏移，并通过回调节流优化性能。

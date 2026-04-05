@@ -1,16 +1,17 @@
 'use client';
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { Sparkles, UserRound, Film, MessageSquareText } from 'lucide-react';
 
-// 预设对话列表：icon + label + 发送内容
+// 预设对话列表：icon + labelKey + messageKey（通过 t() 在渲染时解析）
 const PRESET_PROMPTS = [
-  { icon: Sparkles, label: '创建科幻爱情剧本', message: '开始创建一个剧本，科幻爱情题材。' },
-  { icon: UserRound, label: '设计一个角色人物', message: '开始设计一个角色人物。' },
-  { icon: Film, label: '生成一段分镜脚本', message: '帮我生成一段分镜脚本。' },
-  { icon: MessageSquareText, label: '润色一段故事文案', message: '帮我润色一段故事文案。' },
+  { icon: Sparkles, labelKey: 'ai.presets.scifiScript', messageKey: 'ai.presets.scifiScriptMsg' },
+  { icon: UserRound, labelKey: 'ai.presets.designCharacter', messageKey: 'ai.presets.designCharacterMsg' },
+  { icon: Film, labelKey: 'ai.presets.storyboard', messageKey: 'ai.presets.storyboardMsg' },
+  { icon: MessageSquareText, labelKey: 'ai.presets.polishStory', messageKey: 'ai.presets.polishStoryMsg' },
 ];
 
 interface WelcomeMessageProps {
@@ -26,8 +27,9 @@ interface WelcomeMessageProps {
  * - 下方：可点击的预设对话按钮
  */
 export function WelcomeMessage({ onSend }: WelcomeMessageProps) {
+  const { t } = useTranslation();
   const { user } = useAuth();
-  const username = user?.nickname || '创作者';
+  const username = user?.nickname || t('ai.welcome.defaultUser');
 
   return (
     <div className="flex flex-col gap-4">
@@ -47,10 +49,10 @@ export function WelcomeMessage({ onSend }: WelcomeMessageProps) {
             👋
           </motion.span>
           <span className="font-medium">{username}</span>
-          <span>，欢迎回来！</span>
+          <span>{t('ai.welcome.greeting')}</span>
         </div>
         <div className="text-2xl font-bold text-[var(--color-text-secondary)]">
-          我们一起来创作吧~
+          {t('ai.welcome.subtitle')}
         </div>
       </div>
 
@@ -58,10 +60,10 @@ export function WelcomeMessage({ onSend }: WelcomeMessageProps) {
       <div className="grid grid-cols-2 gap-2">
         {PRESET_PROMPTS.map((preset) => (
           <motion.button
-            key={preset.label}
+            key={preset.labelKey}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
-            onClick={() => onSend?.(preset.message)}
+            onClick={() => onSend?.(t(preset.messageKey))}
             className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left
               bg-[var(--color-bg-panel)] hover:bg-[var(--color-bg-elevated)]
               border border-[var(--color-border-light)] hover:border-[var(--color-border)]
@@ -69,7 +71,7 @@ export function WelcomeMessage({ onSend }: WelcomeMessageProps) {
               transition-colors cursor-pointer"
           >
             <preset.icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
-            <span className="leading-tight">{preset.label}</span>
+            <span className="leading-tight">{t(preset.labelKey)}</span>
           </motion.button>
         ))}
       </div>

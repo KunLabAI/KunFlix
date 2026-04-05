@@ -24,7 +24,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件为 Infinite Game 项目提供端到端的 CI/CD 流水线配置与实施指南，覆盖以下方面：
+本文件为 KunFlix 项目提供端到端的 CI/CD 流水线配置与实施指南，覆盖以下方面：
 - GitHub Actions 或 GitLab CI 的配置思路与步骤
 - 代码质量检查、单元测试与集成测试流程
 - 自动化构建脚本：Docker 镜像构建、前端打包与依赖安装
@@ -35,7 +35,7 @@
 本指南以仓库现有配置为基础，结合 Next.js 前端与 FastAPI 后端的实际能力，给出可落地的流水线设计。
 
 ## 项目结构
-Infinite Game 采用前后端分离架构：
+KunFlix 采用前后端分离架构：
 - 前端：Next.js 应用，使用 TypeScript、TailwindCSS、Jest 进行测试与构建
 - 后端：FastAPI 应用，使用 Pydantic 设置管理、SQLAlchemy 异步 ORM、Alembic 迁移
 - 配置：前端通过 next.config.ts 暴露实验性配置与 API 代理；后端通过 config.py 提供运行时设置
@@ -294,7 +294,7 @@ FE_JEST["frontend/jest.config.js"] --> FE_PKG["frontend/package.json"]
 - [frontend/next.config.ts:1-21](file://frontend/next.config.ts#L1-L21)
 
 ## 结论
-通过将代码质量检查、单元测试、集成测试与自动化构建部署整合进 CI/CD 流水线，Infinite Game 可以显著提升交付效率与稳定性。结合蓝绿部署、滚动更新与回滚机制，以及安全扫描、覆盖率报告与发布通知，能够形成闭环的质量保障体系。建议从质量门禁与依赖扫描起步，逐步完善测试与部署策略。
+通过将代码质量检查、单元测试、集成测试与自动化构建部署整合进 CI/CD 流水线，KunFlix 可以显著提升交付效率与稳定性。结合蓝绿部署、滚动更新与回滚机制，以及安全扫描、覆盖率报告与发布通知，能够形成闭环的质量保障体系。建议从质量门禁与依赖扫描起步，逐步完善测试与部署策略。
 
 ## 附录
 - 建议的流水线阶段清单

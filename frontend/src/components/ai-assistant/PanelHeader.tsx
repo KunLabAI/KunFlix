@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trash2, Battery, BatteryMedium, BatteryLow, BatteryWarning } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ export function PanelHeader({
   contextUsage,
   isLoading = false,
 }: PanelHeaderProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -50,7 +52,7 @@ export function PanelHeader({
             onClearSession();
           }}
           onPointerDown={(e) => e.stopPropagation()}
-          title="清空对话"
+          title={t('ai.clearChat')}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -78,6 +80,7 @@ interface HeaderContextBatteryProps {
 }
 
 function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryProps) {
+  const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
   // 默认值为 0% 状态
@@ -143,7 +146,7 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
         variant="ghost"
         size="sm"
         className="h-8 px-2 rounded-lg hover:bg-muted/50 flex items-center gap-2"
-        title={`上下文: ${percentage.toFixed(0)}%`}
+        title={t('ai.context', { percentage: percentage.toFixed(0) })}
       >
         {getBatteryIcon()}
         <span className={cn(
@@ -185,7 +188,7 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
             <div className="space-y-2">
               {/* 标题 */}
               <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                上下文使用统计
+                {t('ai.contextStats')}
               </div>
 
               {/* 进度条 */}
@@ -208,22 +211,22 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
 
               {/* 详细数据 */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
-                <div className="text-muted-foreground">已使用</div>
+                <div className="text-muted-foreground">{t('ai.used')}</div>
                 <div className="text-right font-medium tabular-nums">
                   {usedTokens.toLocaleString()}
                 </div>
 
-                <div className="text-muted-foreground">上限</div>
+                <div className="text-muted-foreground">{t('ai.limit')}</div>
                 <div className="text-right font-medium tabular-nums">
                   {contextWindow.toLocaleString()}
                 </div>
 
-                <div className="text-muted-foreground">剩余</div>
+                <div className="text-muted-foreground">{t('ai.remaining')}</div>
                 <div className="text-right font-medium tabular-nums text-muted-foreground">
                   {remainingTokens.toLocaleString()}
                 </div>
 
-                <div className="text-muted-foreground">使用率</div>
+                <div className="text-muted-foreground">{t('ai.usageRate')}</div>
                 <div className={`text-right font-medium tabular-nums ${
                   percentage >= 100 ? 'text-[var(--color-status-error-text)]' :
                   percentage >= 90 ? 'text-[var(--color-status-error-text)]' :

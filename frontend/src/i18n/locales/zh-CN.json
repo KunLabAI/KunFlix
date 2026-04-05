@@ -1,0 +1,206 @@
+{
+  "nav": {
+    "home": "首页",
+    "resources": "资源库",
+    "community": "社区"
+  },
+  "userMenu": {
+    "profile": "个人资料",
+    "settings": "设置",
+    "logout": "退出登录",
+    "guest": "游客",
+    "notLoggedIn": "未登录",
+    "label": "用户菜单"
+  },
+  "search": {
+    "placeholder": "搜索资源...",
+    "homePlaceholder": "搜索剧场、资源...",
+    "mobilePlaceholder": "搜索...",
+    "label": "搜索"
+  },
+  "theme": {
+    "switchToLight": "切换到浅色模式",
+    "switchToDark": "切换到深色模式"
+  },
+  "language": {
+    "label": "切换语言",
+    "zh": "中文",
+    "en": "English"
+  },
+  "resources": {
+    "title": "我的资源库",
+    "uploadFile": "上传文件",
+    "dropToUpload": "释放以上传文件",
+    "supportedFormats": "支持 JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV",
+    "emptyTitle": "资源库为空",
+    "emptyDescription": "拖拽文件到上方区域，或点击上传按钮添加您的第一个资源",
+    "noMatchTitle": "未找到匹配的资源",
+    "noMatchDescription": "尝试使用其他关键词搜索，或清除筛选条件",
+    "sizeExceeded": "{{files}}，已跳过",
+    "exceedLabel": "{{name}}（超出{{limit}}限制）"
+  },
+  "filter": {
+    "all": "全部",
+    "image": "图片",
+    "video": "视频",
+    "audio": "音频"
+  },
+  "viewMode": {
+    "grid": "网格",
+    "list": "列表"
+  },
+  "home": {
+    "recentTheaters": "最近剧场",
+    "recentDesc": "继续您的创作或管理现有剧场",
+    "theaterCount": "{{count}} 个剧场",
+    "sharedTheaters": "社区剧场",
+    "sharedDesc": "发现和探索社区中的优秀作品",
+    "noSharedTitle": "暂无社区剧场",
+    "noSharedDesc": "社区功能即将上线，敬请期待",
+    "createTheater": "创建新剧场",
+    "createDesc": "开始您的创作之旅",
+    "renameFailed": "重命名失败",
+    "duplicateFailed": "创建副本失败",
+    "deleteFailed": "删除失败"
+  },
+  "theater": {
+    "status": {
+      "draft": "草稿",
+      "published": "已发布",
+      "archived": "已归档"
+    },
+    "nodeCount": "{{count}} 节点",
+    "today": "今天",
+    "yesterday": "昨天",
+    "openTheater": "打开剧场",
+    "moreOptions": "更多选项",
+    "rename": "重命名",
+    "duplicate": "创建副本",
+    "delete": "删除",
+    "renameDialog": {
+      "title": "重命名剧场",
+      "description": "请输入新的剧场名称",
+      "placeholder": "剧场名称",
+      "confirm": "保存",
+      "cancel": "取消"
+    },
+    "deleteDialog": {
+      "title": "删除剧场",
+      "description": "确定要删除\"{{title}}\"吗？此操作不可恢复，所有相关数据将被永久删除。",
+      "confirm": "删除",
+      "cancel": "取消"
+    }
+  },
+  "canvas": {
+    "loading": "正在加载剧场...",
+    "back": "返回",
+    "theaterName": "剧场名称",
+    "undo": "撤销 (Ctrl+Z)",
+    "redo": "重做 (Ctrl+Y)",
+    "saving": "保存中...",
+    "unsaved": "未保存",
+    "saved": "已保存",
+    "createConnectedNode": "创建连接的节点",
+    "textCard": "文本卡",
+    "imageCard": "图片卡",
+    "videoCard": "视频卡",
+    "storyboardCard": "多维表格卡",
+    "dropToCreateNode": "释放以创建 {{type}}节点",
+    "multiFileDrop": "支持拖拽多个文件",
+    "fileType": {
+      "text": "文本文件",
+      "image": "图像文件",
+      "video": "视频文件",
+      "audio": "音频文件",
+      "default": "文件"
+    },
+    "fileSizeError": {
+      "text": "文本文件大小不能超过 10MB",
+      "image": "图片大小不能超过 50MB",
+      "video": "视频大小不能超过 500MB",
+      "audio": "音频大小不能超过 100MB"
+    },
+    "uploadFailed": "上传失败: {{message}}",
+    "audioUploadFailed": "音频上传失败: {{message}}",
+    "unsupportedFile": "不支持的文件类型: {{name}}",
+    "retryHint": "请重试",
+    "batchLimit": "{{type}}最多 {{limit}} 个，已跳过 {{skipped}} 个",
+    "fileNames": {
+      "video": "视频",
+      "image": "图片",
+      "audio": "音频",
+      "text": "文本",
+      "default": "文件"
+    },
+    "uploadFailedHttp": "上传失败 (HTTP {{status}})",
+    "parseResponseFailed": "解析响应失败: {{status}} {{statusText}}",
+    "networkError": "网络请求失败或跨域错误",
+    "pdfPlaceholder": "[PDF 文件: {{name}}]\n\nPDF 文件内容需要在服务器端解析。文件已作为附件上传。",
+    "readFileFailed": "无法读取文件: {{name}}",
+    "contentTruncated": "\n\n[文件内容已截断，原文件共 {{original}} 字符，超出最大限制 {{max}} 字符]"
+  },
+  "sidebar": {
+    "addNode": "添加节点",
+    "textCard": "文本卡",
+    "textDesc": "剧本、广告等文案",
+    "imageCard": "图片卡",
+    "imageDesc": "角色、场景、海报等",
+    "videoCard": "视频卡",
+    "videoDesc": "动画、短片等媒体",
+    "storyboardCard": "多维表格卡",
+    "storyboardDesc": "分镜、脚本等数据管理",
+    "dropToAdd": "放置以添加节点",
+    "images": "图片",
+    "videos": "视频",
+    "music": "音乐",
+    "noImages": "暂无图片资产",
+    "noVideos": "暂无视频资产",
+    "noMusic": "暂无音乐资源",
+    "manageResources": "管理资源"
+  },
+  "ai": {
+    "title": "AI 助手",
+    "openButton": "唤起 AI 助手",
+    "clearChat": "清空对话",
+    "dropToAttach": "释放以附加到对话",
+    "editImage": "编辑: {{name}}",
+    "inputPlaceholder": "输入你的想法...",
+    "attachPlaceholder": "描述你对这{{plural}}节点的需求...",
+    "plural_one": "个",
+    "plural_other": "些",
+    "selectAgent": "选择智能体",
+    "supports": "支持: {{types}}",
+    "noAgents": "暂无可用智能体",
+    "sending": "发送中...",
+    "send": "发送",
+    "context": "上下文: {{percentage}}%",
+    "contextStats": "上下文使用统计",
+    "used": "已使用",
+    "limit": "上限",
+    "remaining": "剩余",
+    "usageRate": "使用率",
+    "loginExpired": "登录已过期",
+    "loginExpiredDesc": "您的登录状态已过期，请重新登录以继续使用AI助手功能。",
+    "cancel": "取消",
+    "relogin": "重新登录",
+    "requestFailed": "请求失败: {{message}}",
+    "errorCredits": "积分余额不足，请充值后继续使用",
+    "errorForbidden": "无权访问该功能",
+    "errorRateLimit": "请求过于频繁，请稍后再试",
+    "welcome": {
+      "greeting": "，欢迎回来！",
+      "subtitle": "我们一起来创作吧~",
+      "defaultUser": "创作者"
+    },
+    "presets": {
+      "scifiScript": "创建科幻爱情剧本",
+      "scifiScriptMsg": "开始创建一个剧本，科幻爱情题材。",
+      "designCharacter": "设计一个角色人物",
+      "designCharacterMsg": "开始设计一个角色人物。",
+      "storyboard": "生成一段分镜脚本",
+      "storyboardMsg": "帮我生成一段分镜脚本。",
+      "polishStory": "润色一段故事文案",
+      "polishStoryMsg": "帮我润色一段故事文案。"
+    }
+  }
+}

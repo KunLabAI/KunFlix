@@ -25,7 +25,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件针对 Infinite Game 前端的 React Context 系统进行系统性梳理，重点覆盖以下方面：
+本文件针对 KunFlix 前端的 React Context 系统进行系统性梳理，重点覆盖以下方面：
 - 认证上下文（AuthContext）：用户状态管理、登录/登出流程、token 自动刷新机制与并发请求队列处理
 - 主题上下文（ThemeContext）：主题切换、样式管理、响应式设计支持
 - Context Provider 的嵌套结构、状态提升策略与性能优化
@@ -360,7 +360,7 @@ Pkg --> ZS
 - [AIAssistantPanel.tsx:240-246](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L240-L246)
 
 ## 结论
-Infinite Game 的 React Context 系统通过清晰的职责划分与合理的 Provider 嵌套，实现了认证与主题两大核心能力的稳定运行。AuthContext 提供了完善的用户状态管理与 token 自动刷新机制，配合 createAuthFetch 的并发控制，有效提升了网络请求的可靠性与性能。ThemeContext 则通过 Ant Design 的主题注入与系统偏好检测，提供了良好的响应式设计支持。结合自定义 Hook 的设计模式与最佳实践，整体系统在可维护性与性能方面均表现良好。
+KunFlix 的 React Context 系统通过清晰的职责划分与合理的 Provider 嵌套，实现了认证与主题两大核心能力的稳定运行。AuthContext 提供了完善的用户状态管理与 token 自动刷新机制，配合 createAuthFetch 的并发控制，有效提升了网络请求的可靠性与性能。ThemeContext 则通过 Ant Design 的主题注入与系统偏好检测，提供了良好的响应式设计支持。结合自定义 Hook 的设计模式与最佳实践，整体系统在可维护性与性能方面均表现良好。
 
 ## 附录
 - 关键文件路径索引

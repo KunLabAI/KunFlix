@@ -28,7 +28,7 @@ const TheaterCanvas: React.FC<TheaterCanvasProps> = ({ width = 800, height = 600
       setPixiApp(app);
       
       // Basic text to confirm rendering
-      const text = new PIXI.Text({ text: 'Infinite Narrative Theater', style: { fill: 0xffffff } });
+      const text = new PIXI.Text({ text: 'KunFlix', style: { fill: 0xffffff } });
       text.x = 50;
       text.y = 50;
       app.stage.addChild(text);

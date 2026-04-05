@@ -5,7 +5,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "infinite_theater.db")
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Infinite Narrative Theater"
+    PROJECT_NAME: str = "KunFlix"
     VERSION: str = "1.0.0"
     
     # Database

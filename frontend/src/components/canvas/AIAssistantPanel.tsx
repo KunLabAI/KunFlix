@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { Sparkles, X, ImageIcon, Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,6 +50,8 @@ function buildAttachmentContext(attachments: NodeAttachment[], userMessage: stri
 }
 
 export function AIAssistantPanel() {
+  const { t } = useTranslation();
+
   // 登录状态
   const { isAuthenticated, refreshToken, logout } = useAuth();
   
@@ -179,6 +182,13 @@ export function AIAssistantPanel() {
     return () => abortControllerRef.current?.abort();
   }, []);
 
+  // 错误码 → 翻译键映射表
+  const ERROR_KEY_MAP: Record<number, string> = {
+    402: 'ai.errorCredits',
+    403: 'ai.errorForbidden',
+    429: 'ai.errorRateLimit',
+  };
+
   // 发送消息
   const handleSend = useCallback(
     async (content: string) => {
@@ -243,12 +253,8 @@ export function AIAssistantPanel() {
             setShowReloginDialog(true);
             throw new Error('LOGIN_EXPIRED');
           }
-          const _ERROR_MESSAGES: Record<number, string> = {
-            402: '积分余额不足，请充值后继续使用',
-            403: '无权访问该功能',
-            429: '请求过于频繁，请稍后再试',
-          };
-          throw new Error(_ERROR_MESSAGES[response.status] || `请求失败 (${response.status})`);
+          const errorKey = ERROR_KEY_MAP[response.status];
+          throw new Error(errorKey ? t(errorKey) : t('ai.requestFailed', { message: response.status }));
         }
 
         const reader = response.body?.getReader();
@@ -282,14 +288,14 @@ export function AIAssistantPanel() {
         const isLoginExpired = (err as Error).message === 'LOGIN_EXPIRED';
         // 登录过期不显示错误消息（弹窗已处理）
         !isAbort && !isLoginExpired &&
-          setMessages((prev) => [...prev, { role: 'ai', content: `请求失败: ${(err as Error).message}`, status: 'complete' }]);
+          setMessages((prev) => [...prev, { role: 'ai', content: t('ai.requestFailed', { message: (err as Error).message }), status: 'complete' }]);
       } finally {
         setIsLoading(false);
         clearImageEditContext();
         clearNodeAttachments();
       }
     },
-    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments]
+    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, t]
   );
 
   // 调整面板大小
@@ -362,7 +368,7 @@ export function AIAssistantPanel() {
             <Button
               onClick={() => setIsOpen(true)}
               className="h-10 w-10 rounded-full shadow-lg bg-primary hover:bg-primary/90 flex items-center justify-center animate-pulse group relative overflow-hidden"
-              title="唤起 AI 助手"
+              title={t('ai.openButton')}
             >
               <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
               <Sparkles className="h-5 w-5 text-primary-foreground" />
@@ -449,7 +455,7 @@ export function AIAssistantPanel() {
                     className="absolute inset-0 z-30 bg-primary/10 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none"
                   >
                     <Paperclip className="h-8 w-8 text-primary mb-2" />
-                    <span className="text-sm font-medium text-primary">释放以附加到对话</span>
+                    <span className="text-sm font-medium text-primary">{t('ai.dropToAttach')}</span>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -502,7 +508,7 @@ export function AIAssistantPanel() {
               <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b border-primary/20 text-sm shrink-0">
                 <ImageIcon className="h-4 w-4 text-primary shrink-0" />
                 <span className="truncate text-primary">
-                  编辑: {imageEditContext.nodeName}
+                  {t('ai.editImage', { name: imageEditContext.nodeName })}
                 </span>
                 <Button
                   variant="ghost"
@@ -532,7 +538,12 @@ export function AIAssistantPanel() {
               availableAgents={availableAgents}
               isLoadingAgents={isLoadingAgents}
               onSwitchAgent={switchAgent}
-              placeholder={nodeAttachments.length > 0 ? `描述你对这${nodeAttachments.length > 1 ? '些' : '个'}节点的需求...` : undefined}
+              placeholder={nodeAttachments.length > 0
+                ? t('ai.attachPlaceholder', {
+                    plural: nodeAttachments.length > 1 ? t('ai.plural_other') : t('ai.plural_one'),
+                    count: nodeAttachments.length,
+                  })
+                : undefined}
             />
 
             {/* 调整大小手柄 - 四边和四角 */}
@@ -584,9 +595,9 @@ export function AIAssistantPanel() {
       <Dialog open={showReloginDialog} onOpenChange={setShowReloginDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>登录已过期</DialogTitle>
+            <DialogTitle>{t('ai.loginExpired')}</DialogTitle>
             <DialogDescription>
-              您的登录状态已过期，请重新登录以继续使用AI助手功能。
+              {t('ai.loginExpiredDesc')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-2 sm:gap-0">
@@ -594,7 +605,7 @@ export function AIAssistantPanel() {
               variant="outline"
               onClick={() => setShowReloginDialog(false)}
             >
-              取消
+              {t('ai.cancel')}
             </Button>
             <Button
               onClick={() => {
@@ -602,7 +613,7 @@ export function AIAssistantPanel() {
                 logout();
               }}
             >
-              重新登录
+              {t('ai.relogin')}
             </Button>
           </DialogFooter>
         </DialogContent>

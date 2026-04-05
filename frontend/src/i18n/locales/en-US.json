@@ -1,0 +1,206 @@
+{
+  "nav": {
+    "home": "Home",
+    "resources": "Resources",
+    "community": "Community"
+  },
+  "userMenu": {
+    "profile": "Profile",
+    "settings": "Settings",
+    "logout": "Log Out",
+    "guest": "Guest",
+    "notLoggedIn": "Not logged in",
+    "label": "User menu"
+  },
+  "search": {
+    "placeholder": "Search resources...",
+    "homePlaceholder": "Search theaters, resources...",
+    "mobilePlaceholder": "Search...",
+    "label": "Search"
+  },
+  "theme": {
+    "switchToLight": "Switch to light mode",
+    "switchToDark": "Switch to dark mode"
+  },
+  "language": {
+    "label": "Switch language",
+    "zh": "中文",
+    "en": "English"
+  },
+  "resources": {
+    "title": "My Resources",
+    "uploadFile": "Upload",
+    "dropToUpload": "Drop files to upload",
+    "supportedFormats": "Supports JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV",
+    "emptyTitle": "No resources yet",
+    "emptyDescription": "Drag files to the area above, or click the upload button to add your first resource",
+    "noMatchTitle": "No matching resources",
+    "noMatchDescription": "Try different keywords or clear the filters",
+    "sizeExceeded": "{{files}}, skipped",
+    "exceedLabel": "{{name}} (exceeds {{limit}} limit)"
+  },
+  "filter": {
+    "all": "All",
+    "image": "Images",
+    "video": "Videos",
+    "audio": "Audio"
+  },
+  "viewMode": {
+    "grid": "Grid",
+    "list": "List"
+  },
+  "home": {
+    "recentTheaters": "Recent Theaters",
+    "recentDesc": "Continue your creations or manage existing theaters",
+    "theaterCount": "{{count}} theaters",
+    "sharedTheaters": "Community Theaters",
+    "sharedDesc": "Discover and explore outstanding works from the community",
+    "noSharedTitle": "No community theaters yet",
+    "noSharedDesc": "Community features are coming soon, stay tuned",
+    "createTheater": "Create New Theater",
+    "createDesc": "Start your creative journey",
+    "renameFailed": "Rename failed",
+    "duplicateFailed": "Duplication failed",
+    "deleteFailed": "Delete failed"
+  },
+  "theater": {
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "nodeCount": "{{count}} nodes",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "openTheater": "Open Theater",
+    "moreOptions": "More options",
+    "rename": "Rename",
+    "duplicate": "Duplicate",
+    "delete": "Delete",
+    "renameDialog": {
+      "title": "Rename Theater",
+      "description": "Enter a new name for the theater",
+      "placeholder": "Theater name",
+      "confirm": "Save",
+      "cancel": "Cancel"
+    },
+    "deleteDialog": {
+      "title": "Delete Theater",
+      "description": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone and all related data will be permanently deleted.",
+      "confirm": "Delete",
+      "cancel": "Cancel"
+    }
+  },
+  "canvas": {
+    "loading": "Loading theater...",
+    "back": "Back",
+    "theaterName": "Theater name",
+    "undo": "Undo (Ctrl+Z)",
+    "redo": "Redo (Ctrl+Y)",
+    "saving": "Saving...",
+    "unsaved": "Unsaved",
+    "saved": "Saved",
+    "createConnectedNode": "Create Connected Node",
+    "textCard": "Text Card",
+    "imageCard": "Image Card",
+    "videoCard": "Video Card",
+    "storyboardCard": "Pivot Table Card",
+    "dropToCreateNode": "Drop to create {{type}} node",
+    "multiFileDrop": "Multiple files supported",
+    "fileType": {
+      "text": "Text file",
+      "image": "Image file",
+      "video": "Video file",
+      "audio": "Audio file",
+      "default": "File"
+    },
+    "fileSizeError": {
+      "text": "Text file size cannot exceed 10MB",
+      "image": "Image size cannot exceed 50MB",
+      "video": "Video size cannot exceed 500MB",
+      "audio": "Audio size cannot exceed 100MB"
+    },
+    "uploadFailed": "Upload failed: {{message}}",
+    "audioUploadFailed": "Audio upload failed: {{message}}",
+    "unsupportedFile": "Unsupported file type: {{name}}",
+    "retryHint": "Please retry",
+    "batchLimit": "{{type}} max {{limit}}, skipped {{skipped}}",
+    "fileNames": {
+      "video": "Video",
+      "image": "Image",
+      "audio": "Audio",
+      "text": "Text",
+      "default": "File"
+    },
+    "uploadFailedHttp": "Upload failed (HTTP {{status}})",
+    "parseResponseFailed": "Failed to parse response: {{status}} {{statusText}}",
+    "networkError": "Network request failed or CORS error",
+    "pdfPlaceholder": "[PDF File: {{name}}]\n\nPDF content needs to be parsed on the server side. The file has been uploaded as an attachment.",
+    "readFileFailed": "Unable to read file: {{name}}",
+    "contentTruncated": "\n\n[Content truncated, original file had {{original}} characters, exceeding the maximum limit of {{max}} characters]"
+  },
+  "sidebar": {
+    "addNode": "Add Node",
+    "textCard": "Text Card",
+    "textDesc": "Scripts, ads, copywriting",
+    "imageCard": "Image Card",
+    "imageDesc": "Characters, scenes, posters",
+    "videoCard": "Video Card",
+    "videoDesc": "Animations, short films, media",
+    "storyboardCard": "Pivot Table Card",
+    "storyboardDesc": "Storyboards, scripts, data management",
+    "dropToAdd": "Drop to add node",
+    "images": "Images",
+    "videos": "Videos",
+    "music": "Music",
+    "noImages": "No image assets",
+    "noVideos": "No video assets",
+    "noMusic": "No music resources",
+    "manageResources": "Manage Resources"
+  },
+  "ai": {
+    "title": "AI Assistant",
+    "openButton": "Open AI Assistant",
+    "clearChat": "Clear conversation",
+    "dropToAttach": "Drop to attach to conversation",
+    "editImage": "Edit: {{name}}",
+    "inputPlaceholder": "Enter your thoughts...",
+    "attachPlaceholder": "Describe what you need for {{count}} node(s)...",
+    "plural_one": "",
+    "plural_other": "",
+    "selectAgent": "Select Agent",
+    "supports": "Supports: {{types}}",
+    "noAgents": "No agents available",
+    "sending": "Sending...",
+    "send": "Send",
+    "context": "Context: {{percentage}}%",
+    "contextStats": "Context Usage Stats",
+    "used": "Used",
+    "limit": "Limit",
+    "remaining": "Remaining",
+    "usageRate": "Usage",
+    "loginExpired": "Session Expired",
+    "loginExpiredDesc": "Your session has expired. Please log in again to continue using the AI assistant.",
+    "cancel": "Cancel",
+    "relogin": "Log In Again",
+    "requestFailed": "Request failed: {{message}}",
+    "errorCredits": "Insufficient credits, please recharge to continue",
+    "errorForbidden": "Access denied",
+    "errorRateLimit": "Too many requests, please try again later",
+    "welcome": {
+      "greeting": ", welcome back!",
+      "subtitle": "Let's create together~",
+      "defaultUser": "Creator"
+    },
+    "presets": {
+      "scifiScript": "Create a sci-fi romance script",
+      "scifiScriptMsg": "Start creating a script with a sci-fi romance theme.",
+      "designCharacter": "Design a character",
+      "designCharacterMsg": "Start designing a character.",
+      "storyboard": "Generate a storyboard",
+      "storyboardMsg": "Help me generate a storyboard script.",
+      "polishStory": "Polish a story",
+      "polishStoryMsg": "Help me polish a story copy."
+    }
+  }
+}

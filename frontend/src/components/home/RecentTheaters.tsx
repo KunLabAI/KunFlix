@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import TheaterCard from "./TheaterCard";
@@ -15,6 +16,7 @@ interface TheaterWithNodes extends TheaterResponse {
 }
 
 export default function RecentTheaters() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const carouselRef = useRef<HTMLDivElement>(null);
@@ -39,13 +41,11 @@ export default function RecentTheaters() {
     if (!isAuthenticated || fetched.current) return;
     fetched.current = true;
     
-    // 获取剧场列表，然后为每个剧场获取节点数据以提取背景
     const loadTheatersWithNodes = async () => {
       try {
         const listRes = await theaterApi.listTheaters(1, 20);
         const theatersWithNodes = await Promise.all(
           listRes.items.map(async (theater) => {
-            // 如果没有缩略图，获取详细数据提取节点背景
             if (!theater.thumbnail_url) {
               try {
                 const detail = await theaterApi.getTheater(theater.id);
@@ -71,10 +71,10 @@ export default function RecentTheaters() {
   const handleRename = async (id: string, newTitle: string) => {
     try {
       const updatedTheater = await theaterApi.updateTheater(id, { title: newTitle });
-      setTheaters((prev) => prev.map((t) => (t.id === id ? { ...t, title: updatedTheater.title } : t)));
+      setTheaters((prev) => prev.map((th) => (th.id === id ? { ...th, title: updatedTheater.title } : th)));
     } catch (err) {
       console.error("Failed to rename theater:", err);
-      alert("重命名失败");
+      alert(t("home.renameFailed"));
     }
   };
 
@@ -84,17 +84,17 @@ export default function RecentTheaters() {
       setTheaters((prev) => [newTheater, ...prev]);
     } catch (err) {
       console.error("Failed to duplicate theater:", err);
-      alert("创建副本失败");
+      alert(t("home.duplicateFailed"));
     }
   };
 
   const handleDelete = async (id: string) => {
     try {
       await theaterApi.deleteTheater(id);
-      setTheaters((prev) => prev.filter((t) => t.id !== id));
+      setTheaters((prev) => prev.filter((th) => th.id !== id));
     } catch (err) {
       console.error("Failed to delete theater:", err);
-      alert("删除失败");
+      alert(t("home.deleteFailed"));
     }
   };
 
@@ -103,13 +103,13 @@ export default function RecentTheaters() {
       {/* Section Header */}
       <div className="flex items-center justify-between px-6 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">最近剧场</h2>
+          <h2 className="text-2xl font-bold text-foreground">{t("home.recentTheaters")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            继续您的创作或管理现有剧场
+            {t("home.recentDesc")}
           </p>
         </div>
         <span className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-full">
-          {theaters.length} 个剧场
+          {t("home.theaterCount", { count: theaters.length })}
         </span>
       </div>
       
@@ -133,25 +133,26 @@ export default function RecentTheaters() {
             </div>
           )}
 
-          {theaters.map((t, index) => (
+          {theaters.map((th, index) => (
             <motion.div
-              key={t.id}
+              key={th.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
             >
               <TheaterCard
-                id={t.id}
-                title={t.title}
-                image={t.thumbnail_url}
-                status={t.status}
-                nodeCount={t.node_count}
-                updatedAt={t.updated_at}
-                nodes={t.nodes}
-                onClick={() => router.push(`/theater/${t.id}`)}
+                id={th.id}
+                title={th.title}
+                image={th.thumbnail_url}
+                status={th.status}
+                nodeCount={th.node_count}
+                updatedAt={th.updated_at}
+                nodes={th.nodes}
+                onClick={() => router.push(`/theater/${th.id}`)}
                 onRename={handleRename}
                 onDuplicate={handleDuplicate}
                 onDelete={handleDelete}
+                priority={index === 0}
               />
             </motion.div>
           ))}

@@ -8,23 +8,32 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 // 导航链接配置
 const NAV_LINKS = [
-  { key: "home", label: "首页", href: "/", icon: Home },
-  { key: "resources", label: "资源库", href: "/resources", icon: FolderOpen },
-  { key: "community", label: "社区", href: "#", icon: Users },
+  { key: "home", labelKey: "nav.home", href: "/", icon: Home },
+  { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen },
+  { key: "community", labelKey: "nav.community", href: "#", icon: Users },
 ];
 
 // 用户菜单配置
 const USER_MENU_ITEMS = [
-  { key: "profile", label: "个人资料", icon: User },
-  { key: "settings", label: "设置", icon: Settings },
+  { key: "profile", labelKey: "userMenu.profile", icon: User },
+  { key: "settings", labelKey: "userMenu.settings", icon: Settings },
 ];
 
+// 主题 aria-label 映射
+const THEME_LABELS: Record<string, string> = {
+  dark: "theme.switchToLight",
+  light: "theme.switchToDark",
+};
+
 export default function TopBar() {
+  const { t } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -121,7 +130,7 @@ export default function TopBar() {
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
-                    {link.label}
+                    {t(link.labelKey)}
                     {isActive && (
                       <motion.div
                         layoutId="activeNav"
@@ -134,7 +143,7 @@ export default function TopBar() {
               })}
             </nav>
 
-            {/* Right: Search + Theme + User */}
+            {/* Right: Search + Theme + Language + User */}
             <div className="flex items-center gap-2">
               {/* Search Container */}
               <div className="search-container relative flex items-center">
@@ -153,7 +162,7 @@ export default function TopBar() {
                         <input
                           ref={searchInputRef}
                           type="text"
-                          placeholder="搜索剧场、资源..."
+                          placeholder={t("search.homePlaceholder")}
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className={cn(
@@ -180,7 +189,7 @@ export default function TopBar() {
                       exit={{ opacity: 0 }}
                       onClick={() => setSearchOpen(true)}
                       className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                      aria-label="搜索"
+                      aria-label={t("search.label")}
                     >
                       <Search className="w-5 h-5" />
                     </motion.button>
@@ -192,12 +201,15 @@ export default function TopBar() {
               <button
                 onClick={toggleTheme}
                 className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                aria-label={t(THEME_LABELS[theme])}
               >
                 {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
 
-              {/* User Menu - 仅显示头像 */}
+              {/* Language Switcher */}
+              <LanguageSwitcher />
+
+              {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -205,7 +217,7 @@ export default function TopBar() {
                     "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
                     userMenuOpen && "bg-secondary text-foreground"
                   )}
-                  aria-label="用户菜单"
+                  aria-label={t("userMenu.label")}
                 >
                   <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
                     <User className="w-3 h-3 text-primary-foreground" />
@@ -227,8 +239,8 @@ export default function TopBar() {
                       )}
                     >
                       <div className="px-3 py-2 border-b border-border/50">
-                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
-                        <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{user?.nickname || t("userMenu.guest")}</p>
+                        <p className="text-xs text-muted-foreground truncate">{user?.email || t("userMenu.notLoggedIn")}</p>
                       </div>
                       
                       {USER_MENU_ITEMS.map((item) => (
@@ -238,7 +250,7 @@ export default function TopBar() {
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
                         >
                           <item.icon className="w-4 h-4 text-muted-foreground" />
-                          {item.label}
+                          {t(item.labelKey)}
                         </button>
                       ))}
                       
@@ -248,7 +260,7 @@ export default function TopBar() {
                           className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
                         >
                           <LogOut className="w-4 h-4" />
-                          退出登录
+                          {t("userMenu.logout")}
                         </button>
                       </div>
                     </motion.div>
@@ -284,7 +296,7 @@ export default function TopBar() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="搜索..."
+                  placeholder={t("search.mobilePlaceholder")}
                   className={cn(
                     "w-full h-10 pl-9 pr-4 text-sm rounded-lg",
                     "bg-secondary border border-transparent",
@@ -314,7 +326,7 @@ export default function TopBar() {
                       )}
                     >
                       <link.icon className="w-5 h-5" />
-                      <span className="font-medium">{link.label}</span>
+                      <span className="font-medium">{t(link.labelKey)}</span>
                     </motion.button>
                   );
                 })}
@@ -327,8 +339,8 @@ export default function TopBar() {
                     <User className="w-5 h-5 text-primary-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{user?.nickname || "游客"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email || "未登录"}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{user?.nickname || t("userMenu.guest")}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user?.email || t("userMenu.notLoggedIn")}</p>
                   </div>
                 </div>
                 <button
@@ -336,7 +348,7 @@ export default function TopBar() {
                   className="w-full flex items-center gap-3 px-3 py-3 mt-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                 >
                   <LogOut className="w-5 h-5" />
-                  <span className="font-medium">退出登录</span>
+                  <span className="font-medium">{t("userMenu.logout")}</span>
                 </button>
               </div>
             </div>

@@ -26,12 +26,13 @@
 - [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
 - [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
 - [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
+- [utils.ts](file://frontend/src/lib/utils.ts)
 </cite>
 
 ## 更新摘要
 **所做更改**
 - 新增确认对话框组件（ConfirmDialog）和输入对话框组件（InputDialog）的详细文档
-- 更新对话框组件章节，包含基础对话框和确认对话框两个层次
+- 更新对话框组件章节，包含基础对话框、确认对话框和输入对话框三个层次
 - 新增前端组件系统增强部分，涵盖登录页面、Home页面组件、资源页面等
 - 更新组件详解章节，补充确认对话框、输入对话框、资源卡片等新组件
 - 新增前端组件系统架构图和组件关系图
@@ -51,7 +52,7 @@
 11. [附录：使用示例与最佳实践](#附录使用示例与最佳实践)
 
 ## 简介
-本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新确认对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。
+本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新确认对话框组件和输入对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。
 
 ## 项目结构
 UI 组件主要位于前端与后台管理端两处：
@@ -69,6 +70,7 @@ F_CARD["card.tsx"]
 F_TABS["tabs.tsx"]
 F_DLG["dialog.tsx"]
 F_CDlg["confirm-dialog.tsx"]
+F_IDlg["input-dialog.tsx"]
 F_DROP["dropdown-menu.tsx"]
 F_TXT["textarea.tsx"]
 F_SLD["slider.tsx"]
@@ -87,18 +89,25 @@ RES["resources/page.tsx"]
 THEATER["theater/[id]/page.tsx"]
 HOME["home/TheaterCard.tsx"]
 ASSET["resources/AssetCard.tsx"]
+ASSET_EDIT["resources/AssetEditDialog.tsx"]
+ASSET_DELETE["resources/AssetDeleteDialog.tsx"]
+ASSET_PREVIEW["resources/AssetPreviewDialog.tsx"]
 end
 F_BTN --> |"使用"| F_BTN
 F_INP --> |"使用"| F_INP
 F_AV --> |"使用"| F_AV
 F_CARD --> |"使用"| F_CARD
 F_TABS --> |"使用"| F_TABS
-F_DLG --> |"使用"| F_DLG
+F_DLG --> |"基础对话框"| F_DLG
 F_CDlg --> |"确认对话框"| F_CDlg
+F_IDlg --> |"输入对话框"| F_IDlg
 LOGIN --> |"登录页面"| LOGIN
 RES --> |"资源页面"| RES
 HOME --> |"剧场卡片"| HOME
 ASSET --> |"资源卡片"| ASSET
+ASSET_EDIT --> |"资源编辑对话框"| ASSET_EDIT
+ASSET_DELETE --> |"资源删除对话框"| ASSET_DELETE
+ASSET_PREVIEW --> |"资源预览对话框"| ASSET_PREVIEW
 ```
 
 **图表来源**
@@ -114,6 +123,9 @@ ASSET --> |"资源卡片"| ASSET
 - [theater/[id]/page.tsx](file://frontend/src/app/theater/[id]/page.tsx)
 - [home/TheaterCard.tsx](file://frontend/src/components/home/TheaterCard.tsx)
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
+- [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
+- [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
+- [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -140,7 +152,7 @@ ASSET --> |"资源卡片"| ASSET
 - 表单组件：围绕 react-hook-form 构建，提供表单项上下文、标签、控制域、描述与错误信息的统一接入。
 - 反馈组件：用于信息提示与用户确认，包含警示框、对话框、提示条等，强调可访问性与动画过渡。
 - 布局组件：用于页面结构组织，如卡片、标签页等，强调语义化结构与响应式布局。
-- 对话框组件：包含基础对话框和确认对话框两个层次，提供用户确认、输入收集等功能。
+- 对话框组件：包含基础对话框、确认对话框和输入对话框三个层次，提供用户确认、输入收集等功能。
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -161,13 +173,14 @@ ASSET --> |"资源卡片"| ASSET
 - 变体与类名：通过 class-variance-authority 定义组件变体与默认值，结合 cn 工具合并类名，实现主题与尺寸的灵活切换。
 - 上下文与组合：表单组件通过 React Context 注入字段上下文，使标签、控制域、描述与错误信息形成统一的可访问性链路。
 - 原子与复合：基础组件多为原子级封装，反馈与布局组件为复合组件，内部组合多个原子组件并提供行为逻辑。
-- 对话框层次：基础对话框提供通用的模态交互，确认对话框和输入对话框提供特定的业务场景解决方案。
+- 对话框层次：基础对话框提供通用的模态交互，确认对话框和输入对话框提供特定的业务场景解决方案，均支持Promise风格的异步处理。
 
 ```mermaid
 graph TB
 subgraph "变体与样式"
 CVA["class-variance-authority<br/>定义变体与默认值"]
 CN["cn 工具<br/>合并类名"]
+UTILS["utils.ts<br/>cn函数实现"]
 end
 subgraph "上下文与表单"
 RHF["react-hook-form<br/>表单上下文"]
@@ -178,8 +191,9 @@ RADIX["Radix UI 原子组件<br/>触发器、内容、图标等"]
 end
 subgraph "对话框层次"
 BASE_DLG["基础对话框<br/>Dialog/DialogContent"]
-CONFIRM_DLG["确认对话框<br/>ConfirmDialog"]
-INPUT_DLG["输入对话框<br/>InputDialog"]
+CONFIRM_DLG["确认对话框<br/>ConfirmDialog + useConfirmDialog"]
+INPUT_DLG["输入对话框<br/>InputDialog + useInputDialog"]
+ASYNCHRONOUS["Promise风格接口<br/>异步处理"]
 end
 BTN["Button"] --> CVA
 BTN --> CN
@@ -188,6 +202,8 @@ AV["Avatar"] --> RADIX
 DLG["Dialog"] --> RADIX
 CDLG["ConfirmDialog"] --> BASE_DLG
 IDLG["InputDialog"] --> BASE_DLG
+CDLG --> ASYNCHRONOUS
+IDLG --> ASYNCHRONOUS
 TABS["Tabs"] --> |"内部状态与克隆子元素"| TABS
 FORM["Form/FormLabel/FormControl"] --> RHF
 FORM --> CTX
@@ -208,6 +224,7 @@ AD["AlertDialog"] --> RADIX
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
 - [alert.tsx](file://backend/admin/src/components/ui/alert.tsx)
 - [toast.tsx](file://backend/admin/src/components/ui/toast.tsx)
+- [utils.ts](file://frontend/src/lib/utils.ts)
 
 ## 组件详解
 
@@ -389,8 +406,8 @@ Close --> End(["完成"])
   - 输入对话框：InputDialog，提供文本输入的确认对话框
 - 组成与特性
   - 基础对话框：提供模态遮罩、居中内容区、关闭按钮等标准模态交互
-  - 确认对话框：内置图标分类、颜色主题、加载状态处理
-  - 输入对话框：支持文本输入验证、回车确认、ESC取消
+  - 确认对话框：内置图标分类、颜色主题、加载状态处理，支持Promise风格的异步确认
+  - 输入对话框：支持文本输入验证、回车确认、ESC取消，提供Promise风格的异步输入
 - 无障碍与可访问性
   - 关闭按钮包含 sr-only 文本，确保可读
   - 内容区支持键盘焦点陷阱与 ESC 关闭
@@ -546,6 +563,48 @@ Update --> Render
 **章节来源**
 - [sheet.tsx](file://frontend/src/components/ui/sheet.tsx)
 
+### 对话框组件
+
+#### 确认对话框 ConfirmDialog
+- 组件构成
+  - ConfirmDialog：提供删除、编辑、警告等类型的确认对话框
+  - useConfirmDialog：Hook，提供Promise风格的异步确认接口
+- 类型配置
+  - delete：红色主题，垃圾桶图标，用于删除确认
+  - edit：主色调主题，编辑图标，用于编辑确认
+  - warning：黄色主题，警告图标，用于一般性警告
+- 特性
+  - 支持自定义标题、描述、按钮文本
+  - 内置加载状态处理
+  - Promise风格异步接口，简化回调处理
+- 无障碍与可访问性
+  - 支持键盘导航与ESC关闭
+  - 加载状态提供视觉反馈
+- 示例路径
+  - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+
+**章节来源**
+- [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+
+#### 输入对话框 InputDialog
+- 组件构成
+  - InputDialog：提供文本输入的确认对话框
+  - useInputDialog：Hook，提供Promise风格的异步输入接口
+- 特性
+  - 支持默认值、占位符、输入验证
+  - 支持回车确认、ESC取消
+  - 内置加载状态处理
+  - Promise风格异步接口，简化回调处理
+- 无障碍与可访问性
+  - 自动聚焦输入框
+  - 支持键盘快捷键操作
+  - 输入验证提供即时反馈
+- 示例路径
+  - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+
+**章节来源**
+- [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+
 ## 前端组件系统增强
 
 ### 登录页面组件
@@ -585,6 +644,7 @@ Home 页面组件提供了丰富的剧场管理功能：
 - 交互模式
   - 下拉菜单提供操作选项
   - 对话框组件提供确认与输入功能
+  - Promise风格异步处理简化业务逻辑
 
 **章节来源**
 - [home/TheaterCard.tsx](file://frontend/src/components/home/TheaterCard.tsx)
@@ -621,6 +681,10 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 无边框对话框设计
   - 透明背景与模糊效果
   - 响应式内容布局
+- 预览渲染器映射表
+  - image：图片全屏预览
+  - video：视频全屏播放
+  - audio：音频播放器界面
 
 **章节来源**
 - [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
@@ -634,6 +698,9 @@ Home 页面组件提供了丰富的剧场管理功能：
   - Promise 风格的异步处理
   - 条件渲染不同的表单字段
   - 错误处理与状态同步
+- 交互模式
+  - 支持重命名和替换两种模式
+  - 实时文件选择反馈
 
 **章节来源**
 - [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
@@ -647,6 +714,9 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 红色主题的危险操作样式
   - 文件名称的醒目显示
   - 简洁的确认流程
+- 无障碍与可访问性
+  - 危险操作的明确视觉标识
+  - 加载状态的即时反馈
 
 **章节来源**
 - [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
@@ -678,6 +748,7 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 表单组件强依赖 react-hook-form 与上下文机制
   - 反馈组件依赖 Radix UI 动画与可访问性 API
   - 对话框组件提供 Promise 风格的异步接口，增强用户体验
+  - 确认对话框和输入对话框组件依赖基础对话框组件
 - 外部依赖
   - class-variance-authority：变体系统
   - @radix-ui/react-*：可访问性与动画抽象
@@ -694,6 +765,8 @@ AV["Avatar"] --> RADIX_AV["@radix-ui/react-avatar"]
 DLG["Dialog"] --> RADIX_D["@radix-ui/react-dialog"]
 CDLG["ConfirmDialog"] --> DLG
 IDLG["InputDialog"] --> DLG
+CDLG --> PROMISE["Promise风格接口"]
+IDLG --> PROMISE
 TABS["Tabs"] --> STATE["内部状态"]
 FORM["Form"] --> RHF["react-hook-form"]
 SEL["Select"] --> RADIX_S["@radix-ui/react-select"]
@@ -703,6 +776,9 @@ AD["AlertDialog"] --> RADIX_AD["@radix-ui/react-alert-dialog"]
 LOGIN["LoginPage"] --> FM["Framer Motion"]
 THEATER["InfiniteCanvas"] --> RF["@xyflow/react"]
 ASSET["AssetCard"] --> DROP["DropdownMenu"]
+ASSET_EDIT["AssetEditDialog"] --> DLG
+ASSET_DELETE["AssetDeleteDialog"] --> DLG
+ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
 ```
 
 **图表来源**
@@ -719,6 +795,9 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
 - [login/page.tsx](file://frontend/src/app/login/page.tsx)
 - [theater/[id]/page.tsx](file://frontend/src/app/theater/[id]/page.tsx)
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
+- [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
+- [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
+- [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -742,12 +821,14 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
   - Dialog 与 Select 使用 Portal 减少 DOM 深度对布局的影响
   - 对话框组件使用 Promise 风格接口，避免阻塞主线程
   - 资源卡片使用懒加载与条件渲染，优化大列表性能
+  - 确认对话框和输入对话框组件支持加载状态，提升用户体验
 - 可访问性
   - 表单组件自动注入 aria-* 属性，确保屏幕阅读器可用
   - 对话框与提示条提供键盘关闭与焦点管理
   - 头像与按钮保持原生语义，避免破坏默认可访问性
   - 下拉菜单支持键盘导航与焦点陷阱
   - 资源预览对话框提供下载与关闭的键盘快捷键
+  - 确认对话框和输入对话框提供明确的视觉反馈
 - 响应式与跨浏览器
   - 组件样式使用相对单位与媒体查询，保证在不同设备上的一致表现
   - 通过 Radix UI 的动画与过渡，确保在现代浏览器中的流畅体验
@@ -764,6 +845,7 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
   - 若遮罩点击无效，请确认 DialogOverlay 与 DialogPortal 正确嵌套
   - 若关闭按钮无提示，请检查 sr-only 文本是否可见
   - 若确认对话框无响应，请检查 Promise 回调是否正确处理
+  - 若输入对话框无法输入，请检查输入框的焦点状态
 - 提示条相关
   - 若提示条不出现，请确认 ToastProvider 已在应用根部提供
   - 若滑动关闭无效，请检查 Radix UI 动画变量是否生效
@@ -771,6 +853,10 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
   - 若资源预览失败，请检查文件 URL 是否有效
   - 若资源上传失败，请检查文件类型与大小限制
   - 若资源删除确认无效，请检查对话框状态管理
+- 确认对话框和输入对话框相关
+  - 若确认对话框不显示，请检查 useConfirmDialog hook 的状态管理
+  - 若输入对话框无法确认，请检查输入验证逻辑
+  - 若对话框加载状态异常，请检查 setLoading 函数的调用
 
 **章节来源**
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
@@ -783,7 +869,7 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
 ## 结论
 本组件库以 Ant Design 设计体系为蓝本，结合 Radix UI 的可访问性与 class-variance-authority 的变体系统，构建了高可组合、可定制、可扩展的 UI 基础设施。通过上下文与变体驱动的设计，组件在保持一致性的同时提供了足够的灵活性，满足从基础交互到复杂业务场景的需求。
 
-本次更新确认对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。这些增强不仅提升了用户体验，还为后续的功能扩展奠定了坚实的基础。
+本次更新确认对话框组件和输入对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。这些增强不仅提升了用户体验，还为后续的功能扩展奠定了坚实的基础。
 
 ## 附录：使用示例与最佳实践
 - 组合模式
@@ -794,11 +880,13 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
   - 表单场景优先使用 react-hook-form 的受控/非受控模式，结合 FormItem 与 FormControl 管理字段状态
   - Tabs 支持受控与非受控两种模式，根据业务需要选择
   - 对话框组件使用 Promise 风格接口，简化异步处理逻辑
+  - 确认对话框和输入对话框组件使用 useConfirmDialog 和 useInputDialog hook 管理状态
 - 性能优化
   - 将昂贵的子树放入 TabsContent，避免一次性渲染
   - 使用 asChild 将 Button 渲染为链接或其他元素，减少额外 DOM
   - 资源卡片使用懒加载与条件渲染，优化大列表性能
   - 对话框组件使用 Portal 渲染，减少 DOM 深度影响
+  - 确认对话框和输入对话框组件支持加载状态，提升用户体验
 - 主题与样式
   - 通过变体参数快速切换主题风格，必要时使用外部类名覆盖
   - 使用 cn 合并类名，避免样式冲突
@@ -808,7 +896,9 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
   - 对话框与提示条提供键盘操作与焦点管理
   - 下拉菜单支持键盘导航与焦点陷阱
   - 资源预览对话框提供下载与关闭的键盘快捷键
+  - 确认对话框和输入对话框提供明确的视觉反馈
 - 组件扩展
   - 基于现有对话框组件模式，可以扩展更多业务场景的确认对话框
   - 资源卡片的预览渲染器模式可以扩展支持更多文件类型
   - 剧场页面的节点类型注册模式可以扩展支持更多节点类型
+  - 对话框组件的Promise风格接口可以扩展支持更多异步操作场景
