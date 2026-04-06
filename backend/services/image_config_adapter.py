@@ -201,13 +201,18 @@ def resolve_image_configs(
     # 统一配置存在且启用 → 通过适配器转换
     provider_lower = provider_type.lower()
     _CONFIG_KEY_MAP = {
-        "gemini": lambda u: (_merge_gemini(agent.gemini_config, u), agent.xai_image_config),
+        "gemini": lambda u: (_merge_gemini(agent.gemini_config, u, agent.thinking_mode), agent.xai_image_config),
         "xai":    lambda u: (agent.gemini_config, u),
     }
     _fallback = lambda u: (agent.gemini_config, agent.xai_image_config)
 
     adapted = to_provider_config(provider_lower, unified) if has_unified else {}
     resolver = _CONFIG_KEY_MAP.get(provider_lower, _fallback)
+    
+    # 当没有启用统一图像配置时，仍然需要处理 thinking_mode 到 thinking_level 的映射
+    if not has_unified and provider_lower == "gemini":
+        return (_merge_gemini(agent.gemini_config, {}, agent.thinking_mode), agent.xai_image_config)
+    
     return resolver(adapted) if has_unified else (agent.gemini_config, agent.xai_image_config)
 
 
@@ -218,6 +223,9 @@ def resolve_global_image_configs(
 ) -> tuple[dict | None, dict | None]:
     """使用全局 ToolConfig 解析有效的图像配置。
 
+    注意：全局配置仅用于图像生成工具，不应强制开启智能体的原生图片生成模式。
+    智能体的原生图片生成应由 agent.gemini_config / agent.xai_image_config 控制。
+
     Args:
         global_config: 从 ToolConfig 表读取的全局图像生成配置
         agent: Agent 实例（用于读取 legacy 配置）
@@ -226,24 +234,45 @@ def resolve_global_image_configs(
     Returns:
         (effective_gemini_config, effective_xai_image_config)
     """
-    has_enabled = global_config.get("image_generation_enabled", False)
     provider_lower = provider_type.lower()
 
-    _CONFIG_KEY_MAP = {
-        "gemini": lambda u: (_merge_gemini(agent.gemini_config, u), agent.xai_image_config),
-        "xai":    lambda u: (agent.gemini_config, u),
-    }
-    _fallback = lambda u: (agent.gemini_config, agent.xai_image_config)
+    # 智能体级别的图像生成配置（优先使用 agent 自身的配置，不受全局配置影响）
+    agent_gemini_cfg = agent.gemini_config or {}
+    agent_xai_cfg = agent.xai_image_config or {}
+    
+    # 检查智能体自身是否启用了原生图片生成
+    agent_img_enabled = agent_gemini_cfg.get("image_generation_enabled", False)
+    
+    # Gemini 配置：合并智能体配置 + 处理 thinking_mode 映射
+    # 注意：全局 global_config 仅用于图像生成工具，不传递给 LLM 流式调用
+    if provider_lower == "gemini":
+        effective_gemini = _merge_gemini(agent_gemini_cfg, {}, agent.thinking_mode)
+        return (effective_gemini, agent_xai_cfg)
+    
+    # xAI 配置：直接使用智能体配置
+    if provider_lower == "xai":
+        return (agent_gemini_cfg, agent_xai_cfg)
+    
+    # 其他供应商
+    return (agent_gemini_cfg, agent_xai_cfg)
 
-    adapted = to_provider_config(provider_lower, global_config) if has_enabled else {}
-    resolver = _CONFIG_KEY_MAP.get(provider_lower, _fallback)
-    return resolver(adapted) if has_enabled else (agent.gemini_config, agent.xai_image_config)
 
-
-def _merge_gemini(legacy_config: dict | None, adapted: dict) -> dict:
-    """Merge adapted image config into legacy gemini_config, preserving non-image fields."""
+def _merge_gemini(legacy_config: dict | None, adapted: dict, thinking_mode: bool = False) -> dict:
+    """Merge adapted image config into legacy gemini_config, preserving non-image fields.
+    
+    Args:
+        legacy_config: 原始的 gemini_config
+        adapted: 适配后的图像配置
+        thinking_mode: 智能体的思考模式开关，为 True 时自动设置默认 thinking_level
+    """
     base = dict(legacy_config or {})
     # 覆盖图像相关字段
     base["image_generation_enabled"] = adapted.get("image_generation_enabled", False)
     adapted.get("image_config") and base.update(image_config=adapted["image_config"])
+    
+    # 思考模式：如果启用了 thinking_mode 但没有设置 thinking_level，自动设置为 "high"
+    # 这是向后兼容处理：前端 thinking_mode 开关需要映射到 Gemini 的 thinking_level
+    if thinking_mode and not base.get("thinking_level"):
+        base["thinking_level"] = "high"
+    
     return base

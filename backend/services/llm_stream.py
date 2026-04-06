@@ -939,8 +939,36 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
             for part in (getattr(getattr(candidate, 'content', None), 'parts', None) or []):
                 text = getattr(part, 'text', None)
                 if text:
-                    is_thought = getattr(part, 'thought', False)
+                    # 记录原始 thought 属性值
+                    raw_thought = getattr(part, 'thought', None)
+                    
+                    # Gemini 思考内容检测：
+                    # - raw_thought=True: 确定是思考内容
+                    # - raw_thought=False: 确定是正式回复内容
+                    # - raw_thought=None: 状态未明确，需要推断
+                    # 
+                    # 关键洞察：当思考结束时，raw_thought 会从 True 变为 None，
+                    # 而不是变为 False。我们需要检测这种变化来正确关闭思考标签。
+                    if raw_thought is True:
+                        is_thought = True
+                    elif raw_thought is False:
+                        is_thought = False
+                    else:  # raw_thought is None
+                        # 状态未明确，检查内容特征来推断
+                        # 如果已经在思考状态，且文本看起来像正式回复（不以 Markdown 标题开头），
+                        # 则认为思考已结束
+                        if in_thinking and not (text.startswith('**') or text.startswith('#') or text.startswith('\n**')):
+                            is_thought = False
+                        else:
+                            is_thought = in_thinking  # 保持当前状态
+                    
                     prefix = THINK_TRANSITIONS.get((in_thinking, is_thought), "")
+                    
+                    # 调试日志：记录每个 part 的详细信息
+                    prefix and logger.info(
+                        f"Gemini thinking transition: {in_thinking} -> {is_thought}, "
+                        f"prefix={prefix!r}, raw_thought={raw_thought}, text={text[:60]!r}"
+                    )
 
                     output = prefix + text
                     result.full_response += output
@@ -971,8 +999,12 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
     # 流结束后，确保关闭思考标签
     if in_thinking:
+        logger.debug(f"Gemini stream ended while in thinking state, appending </think>")
         result.full_response += "</think>\n"
         yield "</think>\n"
+    
+    # 调试：记录完整的响应内容（用于排查思考标签问题）
+    logger.debug(f"Gemini full_response ends with: {result.full_response[-50:]!r}")
 
     # Propagate result when only tool calls were received (no text)
     (result.tool_calls and not result.full_response) and (yield "")

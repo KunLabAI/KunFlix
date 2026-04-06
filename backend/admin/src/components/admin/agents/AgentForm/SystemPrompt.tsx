@@ -33,14 +33,14 @@ const TEMPLATE_TYPE_LABELS: Record<string, string> = {
   character: '角色设定',
   scene: '场景描述',
   storyboard: '分镜脚本',
+  custom: '自定义',
 };
 
 interface SystemPromptProps {
   disabled?: boolean;
-  agentType?: 'text' | 'image' | 'multimodal' | 'video';
 }
 
-const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled, agentType }) => {
+const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -49,10 +49,9 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled, agentType }) => {
   const { templates } = usePromptTemplates();
 
   const filtered = (templates || []).filter((t) => {
-    const matchAgent = !agentType || t.agent_type === agentType || t.agent_type === 'multimodal' || agentType === 'multimodal';
     const matchType = filterType === '__all__' || t.template_type === filterType;
     const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase()) || (t.description || '').toLowerCase().includes(search.toLowerCase());
-    return matchAgent && matchType && matchSearch && t.is_active;
+    return matchType && matchSearch && t.is_active;
   });
 
   const templateTypes = Array.from(new Set((templates || []).map((t) => t.template_type)));
@@ -97,7 +96,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled, agentType }) => {
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0">
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
             <DialogTitle>选择提示词模板</DialogTitle>
           </DialogHeader>
@@ -128,7 +127,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled, agentType }) => {
             </Select>
           </div>
 
-          <ScrollArea className="flex-1 min-h-0">
+          <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
             <div className="px-6 py-4 space-y-2">
               {filtered.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">没有匹配的模板</p>

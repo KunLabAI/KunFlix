@@ -10,6 +10,8 @@ Use this skill when the user asks to create, draw, generate, design, edit, modif
 
 Loading this skill activates the `generate_image` and `edit_image` tools.
 
+**IMPORTANT**: After loading this skill, you MUST call either `generate_image` or `edit_image` tool to perform image operations. Do NOT call `image_tools` directly - it is NOT a tool name.
+
 **Important:** The actual available parameters (aspect ratios, quality options, etc.) are determined by the system's configured image provider and model. Always refer to the tool definition's parameter enums for valid options — they reflect the current configuration. The descriptions below are for general guidance only.
 
 ## Tool: generate_image

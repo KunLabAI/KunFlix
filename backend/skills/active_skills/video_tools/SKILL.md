@@ -10,6 +10,8 @@ Use this skill when the user asks to create, generate, produce, edit, extend, or
 
 Loading this skill activates the `generate_video` and `edit_video` tools.
 
+**IMPORTANT**: After loading this skill, you MUST call either `generate_video` or `edit_video` tool to perform video operations. Do NOT call `video_tools` directly - it is NOT a tool name.
+
 **Important:** Video generation is asynchronous and takes 1-5 minutes. The tools return a task ID immediately; the user will be notified when the result is ready.
 
 ## Tool: generate_video

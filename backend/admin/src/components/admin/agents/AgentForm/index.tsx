@@ -308,7 +308,7 @@ export default function AgentForm({
             </Section>
             <div className="h-px bg-border my-8"></div>
             <Section title="系统设定">
-               <SystemPrompt disabled={loading} agentType={agentType} />
+               <SystemPrompt disabled={loading} />
             </Section>
           </div>
           <div className="lg:col-span-6 xl:col-span-5">
@@ -335,7 +335,7 @@ export default function AgentForm({
             
             <div className="h-px bg-border"></div>
             
-            <SystemPrompt disabled={loading} agentType={agentType} />
+            <SystemPrompt disabled={loading} />
             
             <div className="h-px bg-border"></div>
 

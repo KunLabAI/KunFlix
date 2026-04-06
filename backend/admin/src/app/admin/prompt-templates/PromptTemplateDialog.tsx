@@ -37,8 +37,6 @@ interface FormValues {
   name: string;
   description: string;
   template_type: string;
-  custom_template_type: string;
-  agent_type: 'text' | 'image' | 'multimodal' | 'video';
   system_prompt_template: string;
   user_prompt_template: string;
   is_active: boolean;
@@ -46,12 +44,12 @@ interface FormValues {
   variables: PromptTemplateVariable[];
 }
 
-const TEMPLATE_TYPES = [
+// 预设分类选项
+const PRESET_CATEGORIES = [
   { value: 'story_basic', label: '故事基础设定' },
   { value: 'character', label: '角色设定' },
   { value: 'scene', label: '场景描述' },
   { value: 'storyboard', label: '分镜脚本' },
-  { value: 'custom', label: '自定义' },
 ];
 
 const VARIABLE_TYPES = [
@@ -74,16 +72,11 @@ export default function PromptTemplateDialog({
   const [saving, setSaving] = useState(false);
   const [showUserPrompt, setShowUserPrompt] = useState(false);
 
-  const isCustomType = (type: string) =>
-    !TEMPLATE_TYPES.some((t) => t.value === type) || type === 'custom';
-
   const { register, handleSubmit, watch, setValue, control, reset, formState: { errors } } = useForm<FormValues>({
     defaultValues: {
       name: '',
       description: '',
-      template_type: 'story_basic',
-      custom_template_type: '',
-      agent_type: 'text',
+      template_type: '',
       system_prompt_template: '',
       user_prompt_template: '',
       is_active: true,
@@ -95,21 +88,15 @@ export default function PromptTemplateDialog({
   const { fields, append, remove, swap } = useFieldArray({ control, name: 'variables' });
 
   const watchedTemplateType = watch('template_type');
-  const watchedAgentType = watch('agent_type');
   const watchedIsActive = watch('is_active');
   const watchedIsDefault = watch('is_default');
 
   useEffect(() => {
     if (template) {
-      const existingType = TEMPLATE_TYPES.some((t) => t.value === template.template_type)
-        ? template.template_type
-        : 'custom';
       reset({
         name: template.name || '',
         description: template.description || '',
-        template_type: existingType,
-        custom_template_type: existingType === 'custom' ? template.template_type : '',
-        agent_type: template.agent_type || 'text',
+        template_type: template.template_type || '',
         system_prompt_template: template.system_prompt_template || '',
         user_prompt_template: template.user_prompt_template || '',
         is_active: template.is_active !== false,
@@ -121,9 +108,7 @@ export default function PromptTemplateDialog({
       reset({
         name: '',
         description: '',
-        template_type: 'story_basic',
-        custom_template_type: '',
-        agent_type: 'text',
+        template_type: '',
         system_prompt_template: '',
         user_prompt_template: '',
         is_active: true,
@@ -137,16 +122,11 @@ export default function PromptTemplateDialog({
   const handleSave = async (values: FormValues) => {
     setSaving(true);
     try {
-      const finalTemplateType =
-        values.template_type === 'custom'
-          ? values.custom_template_type || 'custom'
-          : values.template_type;
-
       const payload: Partial<PromptTemplate> = {
         name: values.name,
         description: values.description || null,
-        template_type: finalTemplateType,
-        agent_type: values.agent_type,
+        template_type: values.template_type || undefined,
+        agent_type: 'text', // 保持向后兼容，但不再使用
         system_prompt_template: values.system_prompt_template,
         user_prompt_template: values.user_prompt_template || null,
         is_active: values.is_active,
@@ -211,24 +191,30 @@ export default function PromptTemplateDialog({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="template_type">模板分类 <span className="text-destructive">*</span></Label>
-                    <Select value={watchedTemplateType} onValueChange={(v) => setValue('template_type', v)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {TEMPLATE_TYPES.map((t) => (
-                          <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {watchedTemplateType === 'custom' && (
-                      <Input
-                        placeholder="自定义分类名称（英文）"
-                        {...register('custom_template_type')}
-                        className="mt-2"
-                      />
-                    )}
+                    <Label htmlFor="template_type">分类标签（可选，最多8字）</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        value={watchedTemplateType || '__none__'}
+                        onValueChange={(v) => setValue('template_type', v === '__none__' ? '' : v)}
+                      >
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="选择或输入分类" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">无分类</SelectItem>
+                          {PRESET_CATEGORIES.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Input
+                      placeholder="自定义分类（最多8个字符）"
+                      maxLength={8}
+                      className="mt-2"
+                      value={watchedTemplateType}
+                      onChange={(e) => setValue('template_type', e.target.value.slice(0, 8))}
+                    />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -238,25 +224,6 @@ export default function PromptTemplateDialog({
                     placeholder="简要描述此模板的用途..."
                     {...register('description')}
                   />
-                </div>
-              </section>
-
-              {/* 智能体类型 */}
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">智能体类型</h3>
-                <div className="space-y-2">
-                  <Label>适用类型 <span className="text-destructive">*</span></Label>
-                  <Select value={watchedAgentType} onValueChange={(v) => setValue('agent_type', v as any)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="text">📝 文本处理</SelectItem>
-                      <SelectItem value="image">🎨 图像处理</SelectItem>
-                      <SelectItem value="multimodal">✨ 多模态</SelectItem>
-                      <SelectItem value="video">🎬 视频生成</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </section>
 

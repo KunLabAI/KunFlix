@@ -36,11 +36,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Plus, Pencil, Trash2, Search, FileText } from 'lucide-react';
 import PromptTemplateDialog from './PromptTemplateDialog';
 
-const AGENT_TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  text: { label: '文本处理', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  image: { label: '图像处理', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  multimodal: { label: '多模态', color: 'bg-green-100 text-green-700 border-green-200' },
-};
+
 
 const TEMPLATE_TYPE_LABELS: Record<string, string> = {
   story_basic: '故事基础设定',
@@ -50,16 +46,22 @@ const TEMPLATE_TYPE_LABELS: Record<string, string> = {
   custom: '自定义',
 };
 
+// 预设分类选项
+const PRESET_CATEGORIES = [
+  { value: 'story_basic', label: '故事基础设定' },
+  { value: 'character', label: '角色设定' },
+  { value: 'scene', label: '场景描述' },
+  { value: 'storyboard', label: '分镜脚本' },
+];
+
 export default function PromptTemplatesPage() {
   const [searchText, setSearchText] = useState('');
-  const [filterAgentType, setFilterAgentType] = useState<string>('');
   const [filterTemplateType, setFilterTemplateType] = useState<string>('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null);
   const { toast } = useToast();
 
   const { templates, isLoading, mutate } = usePromptTemplates({
-    agent_type: filterAgentType || undefined,
     template_type: filterTemplateType || undefined,
   });
   const { deleteTemplate } = useDeletePromptTemplate();
@@ -124,28 +126,15 @@ export default function PromptTemplatesPage() {
             onChange={(e) => setSearchText(e.target.value)}
           />
         </div>
-        <Select value={filterAgentType || '__all__'} onValueChange={(v) => setFilterAgentType(v === '__all__' ? '' : v)}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="智能体类型" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">全部类型</SelectItem>
-            <SelectItem value="text">文本处理</SelectItem>
-            <SelectItem value="image">图像处理</SelectItem>
-            <SelectItem value="multimodal">多模态</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={filterTemplateType || '__all__'} onValueChange={(v) => setFilterTemplateType(v === '__all__' ? '' : v)}>
           <SelectTrigger className="w-44">
             <SelectValue placeholder="模板分类" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部分类</SelectItem>
-            <SelectItem value="story_basic">故事基础设定</SelectItem>
-            <SelectItem value="character">角色设定</SelectItem>
-            <SelectItem value="scene">场景描述</SelectItem>
-            <SelectItem value="storyboard">分镜脚本</SelectItem>
-            <SelectItem value="custom">自定义</SelectItem>
+            {PRESET_CATEGORIES.map((cat) => (
+              <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -157,7 +146,6 @@ export default function PromptTemplatesPage() {
             <TableRow>
               <TableHead>模板名称</TableHead>
               <TableHead>分类</TableHead>
-              <TableHead>智能体类型</TableHead>
               <TableHead>变量数</TableHead>
               <TableHead>状态</TableHead>
               <TableHead className="text-right">操作</TableHead>
@@ -166,19 +154,18 @@ export default function PromptTemplatesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={5} className="h-24 text-center">
                   加载中...
                 </TableCell>
               </TableRow>
             ) : filteredTemplates?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
                   暂无模板，点击「创建模板」开始添加
                 </TableCell>
               </TableRow>
             ) : (
               filteredTemplates?.map((template) => {
-                const agentTypeInfo = AGENT_TYPE_LABELS[template.agent_type];
                 return (
                   <TableRow key={template.id}>
                     <TableCell>
@@ -195,16 +182,13 @@ export default function PromptTemplatesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">
-                        {TEMPLATE_TYPE_LABELS[template.template_type] || template.template_type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${agentTypeInfo?.color || ''}`}
-                      >
-                        {agentTypeInfo?.label || template.agent_type}
-                      </span>
+                      {template.template_type ? (
+                        <Badge variant="outline">
+                          {TEMPLATE_TYPE_LABELS[template.template_type] || template.template_type}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="text-sm">{template.variables_schema?.length || 0} 个</span>

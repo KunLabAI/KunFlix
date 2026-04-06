@@ -10,6 +10,8 @@ Use this skill when the user asks to create, draw, generate, design, edit, modif
 
 Loading this skill activates the `generate_image` and `edit_image` tools.
 
+**IMPORTANT**: After loading this skill, you MUST call either `generate_image` or `edit_image` tool to perform image operations. Do NOT call `image_tools` directly - it is NOT a tool name.
+
 ## Tool: generate_image
 
 Generate images from a text prompt using an AI image generation model.

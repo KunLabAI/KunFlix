@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useReactFlow, useStore } from '@xyflow/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -25,16 +25,29 @@ export function ZoomControls({
 }) {
   const { zoomIn, zoomOut, fitView, zoomTo } = useReactFlow();
   
-  // Get current zoom level from ReactFlow store
-  const zoom = useStore((state) => state.transform[2]);
+  // Use a ref to track zoom value to avoid re-renders during slider interaction
+  const zoomRef = useRef(1);
+  const [sliderValue, setSliderValue] = useState(1);
+  
+  // Subscribe to zoom changes from ReactFlow store
+  useStore(useCallback((state) => {
+    const newZoom = state.transform[2];
+    if (newZoom !== zoomRef.current) {
+      zoomRef.current = newZoom;
+      setSliderValue(newZoom);
+    }
+    return newZoom;
+  }, []));
   
   // Match minZoom/maxZoom with ReactFlow's props in page.tsx
   const minZoom = 0.25;
   const maxZoom = 3;
   
-  const handleSliderChange = (value: number[]) => {
-    zoomTo(value[0]);
-  };
+  const handleSliderChange = useCallback((value: number[]) => {
+    const newZoom = value[0];
+    setSliderValue(newZoom);
+    zoomTo(newZoom);
+  }, [zoomTo]);
 
   return (
     <div className="flex items-center bg-card border border-border/50 rounded-lg p-1 gap-1 pointer-events-auto">
@@ -47,7 +60,7 @@ export function ZoomControls({
           min={minZoom}
           max={maxZoom}
           step={0.05}
-          value={[zoom]}
+          value={[sliderValue]}
           onValueChange={handleSliderChange}
           className="w-full cursor-pointer"
         />

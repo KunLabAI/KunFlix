@@ -134,26 +134,4 @@ export function CanvasHints() {
 
   if (!showHints) return null;
 
-  return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-      <div className="flex items-center gap-4 px-4 py-2 bg-card/90 backdrop-blur-sm border border-border/50 rounded-full shadow-lg text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span>左键拖拽</span>
-          <span className="text-foreground">框选</span>
-        </span>
-        <span className="w-px h-3 bg-border" />
-        <span className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">Space</kbd>
-          <span>+ 拖拽</span>
-          <span className="text-foreground">移动画布</span>
-        </span>
-        <span className="w-px h-3 bg-border" />
-        <span className="flex items-center gap-1.5">
-          <kbd className="px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">Shift</kbd>
-          <span>+ 点击</span>
-          <span className="text-foreground">多选</span>
-        </span>
-      </div>
-    </div>
-  );
 }

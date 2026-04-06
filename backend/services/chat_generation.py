@@ -333,6 +333,10 @@ async def generate_single_agent(
     )
     logger.info(f"\nResponse: {result.full_response[:200]}{'...' if len(result.full_response) > 200 else ''}")
     logger.info(f"Output chars: {len(result.full_response)}")
+    # 调试：检查是否包含思考标签
+    has_think_start = '<think>' in result.full_response
+    has_think_end = '</think>' in result.full_response
+    logger.info(f"Think tags: start={has_think_start}, end={has_think_end}")
 
     # 将 generate_image 工具累计的图片数合并到 result（供计费使用）
     tool_generated_image_count and setattr(

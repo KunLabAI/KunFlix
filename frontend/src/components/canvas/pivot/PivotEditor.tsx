@@ -41,7 +41,13 @@ export const PivotEditor = ({ nodeId }: { nodeId: string }) => {
 
   useEffect(() => {
     if (data?.pivotConfig && Object.keys(data.pivotConfig).length > 0) {
-      setConfig(data.pivotConfig);
+      // 合并默认配置，确保所有必要字段都存在
+      setConfig({
+        rows: [],
+        cols: [],
+        values: [],
+        ...data.pivotConfig,
+      });
     }
   }, [data?.pivotConfig]);
 
