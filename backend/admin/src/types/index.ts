@@ -77,6 +77,8 @@ export interface Agent {
   // 上下文压缩配置
   compaction_config?: CompactionConfig;
   image_credit_per_image?: number;
+  // 工具调用轮次限制
+  max_tool_rounds?: number;
   created_at?: string;
   updated_at?: string;
 }

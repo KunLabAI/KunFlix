@@ -61,7 +61,7 @@ const defaultCompactionConfig = {
   reserve_ratio: 0.15,
   tool_old_threshold: 500,
   tool_recent_n: 5,
-  max_summary_tokens: 1024,
+  max_summary_tokens: 4096,
 };
 
 export default function AgentForm({ 
@@ -109,6 +109,7 @@ export default function AgentForm({
       image_credit_per_image: 0,
       video_config: defaultVideoConfig,
       compaction_config: defaultCompactionConfig,
+      max_tool_rounds: 100,
     },
   });
 
@@ -157,6 +158,7 @@ export default function AgentForm({
         image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
         video_config: (initialValues.video_config as any) || defaultVideoConfig,
         compaction_config: initialValues.compaction_config || defaultCompactionConfig,
+        max_tool_rounds: Number(initialValues.max_tool_rounds) || 100,
       };
       
       // 在 reset 之前设置为 false，防止 reset 触发的 onValueChange 重置 model
@@ -197,6 +199,7 @@ export default function AgentForm({
         image_credit_per_image: 0,
         video_config: defaultVideoConfig,
         compaction_config: defaultCompactionConfig,
+        max_tool_rounds: 100,
       });
       isFormInitialized.current = true;
     }
@@ -263,8 +266,8 @@ export default function AgentForm({
         reserve_ratio: compaction_config.reserve_ratio ?? 0.15,
         tool_old_threshold: compaction_config.tool_old_threshold ?? 500,
         tool_recent_n: compaction_config.tool_recent_n ?? 5,
-        max_summary_tokens: compaction_config.max_summary_tokens ?? 1024,
-      } : { enabled: false, compact_ratio: 0.75, reserve_ratio: 0.15, tool_old_threshold: 500, tool_recent_n: 5, max_summary_tokens: 1024 };
+        max_summary_tokens: compaction_config.max_summary_tokens ?? 4096,
+      } : { enabled: false, compact_ratio: 0.75, reserve_ratio: 0.15, tool_old_threshold: 500, tool_recent_n: 5, max_summary_tokens: 4096 };
 
       const payload: Partial<Agent> = {
         ...rest,

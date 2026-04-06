@@ -370,6 +370,61 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
         )}
       </div>
 
+      {/* 工具调用轮次限制 */}
+      <div className="rounded-xl border bg-card p-5">
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <div>
+              <Label className="text-sm font-medium">工具调用轮次限制</Label>
+              <p className="text-xs text-muted-foreground mt-1">单轮对话中最大工具调用次数</p>
+            </div>
+            <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
+              {watch('max_tool_rounds') ?? 100} 次
+            </span>
+          </div>
+          <FormField
+            control={control}
+            name="max_tool_rounds"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <div className="flex items-center gap-4">
+                    <Slider
+                      min={10}
+                      max={200}
+                      step={10}
+                      value={[field.value ?? 100]}
+                      onValueChange={(vals) => field.onChange(vals[0])}
+                      disabled={disabled}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      value={field.value ?? 100}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const num = val === '' ? 100 : Number(val);
+                        field.onChange(Math.max(10, Math.min(200, num)));
+                      }}
+                      step={10}
+                      min={10}
+                      max={200}
+                      className="w-20 font-mono"
+                      disabled={disabled}
+                    />
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-2">
+            <span>10次</span>
+            <span>200次</span>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border bg-card p-5">
         <div className="flex justify-between items-center mb-4">
           <Label className="text-sm font-medium">温度 (Temperature)</Label>

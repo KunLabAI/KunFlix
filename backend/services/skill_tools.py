@@ -105,6 +105,8 @@ def build_load_skill_tool_def(skill_names: list[str]) -> dict:
 
     The enum is restricted to only the skills configured for this agent.
     """
+    # 清理 skill 名称，确保没有多余空白字符
+    clean_skill_names = [name.strip() for name in skill_names]
     return {
         "type": "function",
         "function": {
@@ -119,8 +121,12 @@ def build_load_skill_tool_def(skill_names: list[str]) -> dict:
                 "properties": {
                     "skill_name": {
                         "type": "string",
-                        "description": "The name of the skill to load.",
-                        "enum": skill_names,
+                        "description": (
+                            "The name of the skill to load. "
+                            "MUST be exactly one of the values in the enum list, without any quotes, "
+                            "line breaks, or extra whitespace."
+                        ),
+                        "enum": clean_skill_names,
                     }
                 },
                 "required": ["skill_name"],

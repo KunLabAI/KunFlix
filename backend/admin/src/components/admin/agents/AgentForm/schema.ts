@@ -85,6 +85,8 @@ export const agentFormSchema = z.object({
   video_config: videoGenConfigSchema,
   // 上下文压缩配置
   compaction_config: compactionConfigSchema,
+  // 工具调用轮次限制
+  max_tool_rounds: z.number().min(10).max(200).default(100),
 }).refine((data) => {
   // 启用能力时，至少需要选择一个技能、启用图像/视频生成或画布工具
   const hasSkills = (data.tools?.length ?? 0) > 0;

@@ -14,7 +14,7 @@ from services.chat_utils import (
     sse, deserialize_content, extract_media_filename,
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
 )
-from services.chat_tool_dispatch import append_tool_round
+from services.chat_tool_dispatch import append_tool_round, append_tool_round_with_errors
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
@@ -174,7 +174,8 @@ async def generate_single_agent(
 
     # 调用 LLM 流式接口（含工具调用循环）
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
-    MAX_TOOL_ROUNDS = 5
+    # 从智能体配置读取工具调用轮次限制，默认100，范围10-200
+    MAX_TOOL_ROUNDS = max(10, min(200, agent.max_tool_rounds or 100))
     all_tool_calls = []  # 记录所有执行的普通工具
     tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
@@ -207,9 +208,22 @@ async def generate_single_agent(
             if not (result and result.tool_calls):
                 break
 
-            # 发送 tool 开始事件 (skill_call 或 tool_call)
+            # 处理工具调用，包括参数解析错误的情况
+            tool_calls_valid = []
+            tool_calls_with_error = []
+            
             for tc in result.tool_calls:
-                args = json.loads(tc.arguments)
+                try:
+                    args = json.loads(tc.arguments)
+                    tool_calls_valid.append((tc, args))
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse tool arguments for {tc.name}: {e}")
+                    logger.error(f"Raw arguments: {tc.arguments!r}")
+                    # 记录错误，让智能体知道参数格式有问题
+                    tool_calls_with_error.append((tc, f"Error: Invalid JSON in tool arguments: {e}. Raw arguments: {tc.arguments!r}"))
+            
+            # 发送 tool 开始事件 (skill_call 或 tool_call)
+            for tc, args in tool_calls_valid:
                 is_skill = tc.name == "load_skill"
                 if not is_skill:
                     all_tool_calls.append({"name": tc.name, "arguments": args})
@@ -220,13 +234,18 @@ async def generate_single_agent(
                     {"tool_name": tc.name, "arguments": args}
                 )
                 yield sse(_SSE_START[is_skill], event_data)
+            
+            # 发送参数解析错误的 tool 开始事件
+            for tc, _ in tool_calls_with_error:
+                yield sse("tool_call", {"tool_name": tc.name, "arguments": {"error": "JSON parse failed"}})
 
-            # 执行工具调用并追加结果到消息
-            logger.info(f"[Tool Round {_round + 1}] {len(result.tool_calls)} tool call(s)")
-            await append_tool_round(messages, result, tool_manager, ctx, is_anthropic)
+            # 执行工具调用并追加结果到消息（包含错误处理）
+            total_tool_calls = len(tool_calls_valid) + len(tool_calls_with_error)
+            logger.info(f"[Tool Round {_round + 1}] {total_tool_calls} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
+            await append_tool_round_with_errors(messages, result, tool_manager, ctx, is_anthropic, tool_calls_valid, tool_calls_with_error)
 
             # 输出工具轮次后新增的消息（assistant tool_calls + tool results）
-            _new_msgs = messages[-(1 + len(result.tool_calls)):] if not is_anthropic else messages[-2:]
+            _new_msgs = messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:]
             for nm in _new_msgs:
                 _r = nm.get("role", "?")
                 _c = nm.get("content", "")
@@ -239,21 +258,21 @@ async def generate_single_agent(
                 )
                 logger.info(f"  >> [{_r}] {_preview}{'...' if len(str(_c)) > 300 else ''}")
 
-            # 累计 generate_image 工具产生的图片数（用于计费）
+            # 累计 generate_image 工具产生的图片数（用于计费）- 只统计有效调用
             tool_generated_image_count += sum(
-                min(max(json.loads(tc.arguments).get("n", 1), 1), 4)
-                for tc in result.tool_calls
+                min(max(args.get("n", 1), 1), 4)
+                for tc, args in tool_calls_valid
                 if tc.name == IMAGE_GEN_TOOL_NAME
             )
 
-            # 追踪已加载的技能
+            # 追踪已加载的技能 - 只从有效调用中追踪
             tool_skill_loaded = False
-            for tc in result.tool_calls:
-                (tc.name == "load_skill") and loaded_skills.add(json.loads(tc.arguments).get("skill_name", ""))
+            for tc, args in tool_calls_valid:
+                (tc.name == "load_skill") and loaded_skills.add(args.get("skill_name", ""))
             # 检测本轮是否有工具Skill被加载（ctx.loaded_tool_skills 已在 _execute_skill 中更新）
             tool_skill_loaded = any(
-                tc.name == "load_skill" and json.loads(tc.arguments).get("skill_name", "") in TOOL_SKILL_GATE_MAP
-                for tc in result.tool_calls
+                tc.name == "load_skill" and args.get("skill_name", "") in TOOL_SKILL_GATE_MAP
+                for tc, args in tool_calls_valid
             )
 
             # 重建工具定义（技能 enum 自动缩减）
@@ -273,8 +292,7 @@ async def generate_single_agent(
             )
 
             # 发送 tool 完成事件 (skill_loaded 或 tool_result)
-            for tc in result.tool_calls:
-                args = json.loads(tc.arguments)
+            for tc, args in tool_calls_valid:
                 is_skill = tc.name == "load_skill"
                 is_canvas = tc.name in CANVAS_TOOL_NAMES
                 event_data = (
@@ -288,6 +306,10 @@ async def generate_single_agent(
                 (is_canvas or tc.name == "edit_image") and theater_id and (
                     yield sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
+            
+            # 发送错误调用的完成事件
+            for tc, _ in tool_calls_with_error:
+                yield sse("tool_result", {"tool_name": tc.name, "success": False, "error": "JSON parse failed"})
 
             # 发送视频任务创建事件（通知前端启动轮询UI）
             for vt in ctx.video_tasks:

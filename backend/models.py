@@ -268,6 +268,9 @@ class Agent(Base):
     # 可控制的画布节点类型: ["script", "character", "storyboard", "video"]
     target_node_types = Column(JSON, default=[])
 
+    # 工具调用轮次限制（智能体级别）
+    max_tool_rounds = Column(Integer, default=100)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

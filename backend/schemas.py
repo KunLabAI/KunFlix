@@ -275,6 +275,8 @@ class AgentBase(BaseModel):
     compaction_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: List[str] = Field(default_factory=list)
+    # 工具调用轮次限制
+    max_tool_rounds: int = Field(default=100, ge=10, le=200)
 
     @field_validator('target_node_types', mode='before')
     @classmethod
@@ -328,6 +330,8 @@ class AgentUpdate(BaseModel):
     compaction_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: Optional[List[str]] = None
+    # 工具调用轮次限制
+    max_tool_rounds: Optional[int] = Field(default=None, ge=10, le=200)
 
     @field_validator('target_node_types', mode='before')
     @classmethod

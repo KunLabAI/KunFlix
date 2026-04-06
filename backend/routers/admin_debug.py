@@ -383,7 +383,7 @@ async def _generate_single_agent_debug(
 
     # 调用 LLM 流式接口
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
-    MAX_TOOL_ROUNDS = 5
+    MAX_TOOL_ROUNDS = 200
     all_tool_calls = []
     tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
