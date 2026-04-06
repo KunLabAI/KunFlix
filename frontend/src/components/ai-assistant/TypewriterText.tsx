@@ -57,7 +57,18 @@ export function TypewriterText({
 }: TypewriterTextProps) {
   return (
     <div className={cn('relative', className)}>
-      <div className="prose prose-sm dark:prose-invert max-w-none break-words [&_p]:leading-7 [&_li]:leading-7 inline">
+      <div className="prose prose-sm dark:prose-invert max-w-none break-words
+        [&_p]:leading-7 [&_p]:my-2
+        [&_li]:leading-7 [&_li]:my-0.5
+        [&_h1]:mt-4 [&_h1]:mb-2
+        [&_h2]:mt-3 [&_h2]:mb-2
+        [&_h3]:mt-3 [&_h3]:mb-1.5
+        [&_h4]:mt-2 [&_h4]:mb-1
+        [&_hr]:my-4 [&_hr]:border-border/50
+        [&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r
+        [&_pre]:my-3
+        [&_ul]:my-2 [&_ol]:my-2
+        [&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50 inline">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {content}
         </ReactMarkdown>

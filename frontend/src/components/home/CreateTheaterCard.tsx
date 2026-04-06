@@ -39,7 +39,6 @@ export default function CreateTheaterCard({ onClick }: CreateTheaterCardProps) {
       {/* Icon */}
       <div className={cn(
         "relative p-6 rounded-2xl",
-        "bg-background",
         "group-hover:scale-110 transition-all duration-500"
       )}>
         <Plus className="w-12 h-12 text-primary" />

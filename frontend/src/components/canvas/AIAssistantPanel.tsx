@@ -462,7 +462,7 @@ export function AIAssistantPanel() {
 
               {/* 欢迎状态：仅有欢迎消息时，布局在底部 */}
               {messages.length === 1 && messages[0].isWelcome ? (
-                <div className="flex flex-col justify-end h-full px-4 pb-6 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                <div className="flex flex-col justify-end h-full px-4 pb-10 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <WelcomeMessage onSend={handleSend} />
                 </div>
               ) : (

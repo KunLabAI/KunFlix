@@ -249,7 +249,7 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
       >
         <List
           listRef={listRef}
-          className="scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
+          className="scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent pb-4"
           defaultHeight={containerHeight || 400}
           rowComponent={RowComponent}
           rowCount={totalRowCount}
