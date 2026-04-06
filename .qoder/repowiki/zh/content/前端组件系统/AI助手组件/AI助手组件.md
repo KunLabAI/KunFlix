@@ -14,7 +14,15 @@
 - [VideoTaskCard.tsx](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx)
 - [ThinkingIndicator.tsx](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx)
 - [ToolCallIndicator.tsx](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx)
+- [TypewriterText.tsx](file://frontend/src/components/ai-assistant/TypewriterText.tsx)
 </cite>
+
+## 更新摘要
+**所做更改**
+- 更新了ChatMessage组件的Markdown样式类，增加了15个新的CSS类来精确控制渲染效果
+- 为TypewriterText组件添加了相同的样式改进
+- 调整了AIAssistantPanel和VirtualMessageList组件的padding以改善视觉呈现
+- 增强了Markdown内容的排版控制和视觉一致性
 
 ## 目录
 1. [简介](#简介)
@@ -96,12 +104,12 @@ IDX --> SM
 IDX --> PM
 ```
 
-图表来源
-- [AIAssistantPanel.tsx:1-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L613)
+**图表来源**
+- [AIAssistantPanel.tsx:1-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L624)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
 
-章节来源
-- [AIAssistantPanel.tsx:1-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L613)
+**章节来源**
+- [AIAssistantPanel.tsx:1-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L624)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
 
 ## 核心组件
@@ -113,25 +121,27 @@ IDX --> PM
 - VideoTaskCard：视频任务状态卡片，支持轮询、拖拽到画布、下载与错误提示。
 - ThinkingIndicator：单智能体思考指示器，含计时与加载点点点。
 - ToolCallIndicator：工具调用执行状态指示器，支持展开查看参数与结果。
+- TypewriterText：打字机组件，专门处理Markdown内容的流式渲染。
 - useSSEHandler：SSE事件解析与状态机，驱动消息流式渲染与UI状态更新。
 - useSessionManager：会话生命周期管理，Agent加载、会话创建/切换、清空与上下文使用统计恢复。
 - usePerformanceMonitor：性能监控Hook，采集Long Task、LCP、FID、CLS与FPS。
 
-章节来源
-- [AIAssistantPanel.tsx:51-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L51-L613)
+**章节来源**
+- [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
 - [VirtualMessageList.tsx:1-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L293)
 - [MessageInput.tsx:1-182](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L182)
-- [ChatMessage.tsx:1-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L421)
+- [ChatMessage.tsx:1-471](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L471)
 - [WelcomeMessage.tsx:1-79](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L1-L79)
 - [VideoTaskCard.tsx:1-290](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L1-L290)
 - [ThinkingIndicator.tsx:1-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L1-L56)
 - [ToolCallIndicator.tsx:1-164](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L1-L164)
+- [TypewriterText.tsx:1-84](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L84)
 - [useSSEHandler.ts:1-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L391)
 - [useSessionManager.ts:1-226](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L226)
 - [usePerformanceMonitor.ts:1-236](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L1-L236)
 
 ## 架构总览
-AI助手采用“面板容器 + 虚拟消息列表 + 事件驱动渲染”的架构：
+AI助手采用"面板容器 + 虚拟消息列表 + 事件驱动渲染"的架构：
 - 面板容器负责会话初始化、SSE事件接入、消息发送与错误处理。
 - 虚拟列表负责高性能渲染消息，自动滚动与滚动状态反馈。
 - SSE事件驱动消息流式渲染与UI状态更新，包含文本增量、工具/技能调用、视频任务、多智能体协作等。
@@ -157,8 +167,8 @@ P->>P : "更新tool_calls/skill_calls/video_tasks"
 P->>VM : "刷新消息UI"
 ```
 
-图表来源
-- [AIAssistantPanel.tsx:182-293](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L182-L293)
+**图表来源**
+- [AIAssistantPanel.tsx:193-299](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L193-L299)
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)
 - [VirtualMessageList.tsx:97-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L97-L196)
 
@@ -186,12 +196,12 @@ UpdateMsg --> Render["VirtualMessageList渲染"]
 Render --> End(["完成一轮交互"])
 ```
 
-图表来源
-- [AIAssistantPanel.tsx:182-293](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L182-L293)
-- [AIAssistantPanel.tsx:36-49](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L36-L49)
+**图表来源**
+- [AIAssistantPanel.tsx:193-299](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L193-L299)
+- [AIAssistantPanel.tsx:37-50](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L37-L50)
 
-章节来源
-- [AIAssistantPanel.tsx:51-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L51-L613)
+**章节来源**
+- [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
 
 ### VirtualMessageList 虚拟消息列表
 特性与优化：
@@ -200,6 +210,7 @@ Render --> End(["完成一轮交互"])
 - 自动滚动：用户消息发送后强制滚动到底；AI回复时仅在未手动上滚时滚动。
 - 滚动状态回调：通知父组件是否到达底部，控制回到最新按钮显隐。
 - 等待动画：当AI正在回复且无内容时，显示浮动三点加载动画（由父组件注入）。
+- **更新** 增强的padding控制，改善视觉呈现和内容间距。
 
 ```mermaid
 flowchart TD
@@ -213,11 +224,11 @@ AutoScroll --> Done(["完成"])
 Keep --> Done
 ```
 
-图表来源
+**图表来源**
 - [VirtualMessageList.tsx:155-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L155-L196)
 - [VirtualMessageList.tsx:63-66](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L63-L66)
 
-章节来源
+**章节来源**
 - [VirtualMessageList.tsx:1-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L293)
 
 ### MessageInput 消息输入组件
@@ -227,7 +238,7 @@ Keep --> Done
 - Agent选择器下拉菜单，支持禁用态与加载态。
 - 发送后自动聚焦，重置高度。
 
-章节来源
+**章节来源**
 - [MessageInput.tsx:1-182](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L182)
 
 ### ChatMessage 消息渲染器
@@ -237,6 +248,15 @@ Keep --> Done
 - 附件解析：隐藏元数据与可读上下文分离，用于AI感知节点内容。
 - 指示器整合：技能调用、工具调用、多智能体协作、视频任务卡片。
 - Markdown渲染：流式与非流式差异化组件，懒加载图片与代码块。
+- **更新** 增强的Markdown样式类控制，包含15个新的CSS类来精确控制渲染效果：
+  - 段落间距控制：`[&_p]:leading-7 [&_p]:my-2`
+  - 列表间距控制：`[&_li]:leading-7 [&_li]:my-0.5`
+  - 标题层级控制：`[&_h1]:mt-4 [&_h1]:mb-2` 到 `[&_h4]:mt-2 [&_h4]:mb-1`
+  - 水平分割线控制：`[&_hr]:my-4 [&_hr]:border-border/50`
+  - 引用块控制：`[&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r`
+  - 代码块控制：`[&_pre]:my-3`
+  - 列表控制：`[&_ul]:my-2 [&_ol]:my-2`
+  - 表格控制：`[&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50`
 
 ```mermaid
 flowchart TD
@@ -249,18 +269,33 @@ Attach --> Render["渲染Markdown/指示器/卡片"]
 Render --> Out["输出消息UI"]
 ```
 
-图表来源
+**图表来源**
 - [ChatMessage.tsx:64-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L64-L126)
 - [ChatMessage.tsx:260-293](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L260-L293)
 
-章节来源
-- [ChatMessage.tsx:1-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L421)
+**章节来源**
+- [ChatMessage.tsx:1-471](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L471)
+
+### TypewriterText 打字机组件
+- **更新** 增强的Markdown样式类控制，与ChatMessage组件保持一致的渲染效果：
+  - 段落间距控制：`[&_p]:leading-7 [&_p]:my-2`
+  - 列表间距控制：`[&_li]:leading-7 [&_li]:my-0.5`
+  - 标题层级控制：`[&_h1]:mt-4 [&_h1]:mb-2` 到 `[&_h4]:mt-2 [&_h4]:mb-1`
+  - 水平分割线控制：`[&_hr]:my-4 [&_hr]:border-border/50`
+  - 引用块控制：`[&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r`
+  - 代码块控制：`[&_pre]:my-3`
+  - 列表控制：`[&_ul]:my-2 [&_ol]:my-2`
+  - 表格控制：`[&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50`
+- 专门处理Markdown内容的流式渲染，提供更好的用户体验。
+
+**章节来源**
+- [TypewriterText.tsx:1-84](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L84)
 
 ### WelcomeMessage 欢迎消息
 - 展示用户名与欢迎语，提供预设对话快捷入口。
 - 通过动画与布局引导用户开始创作。
 
-章节来源
+**章节来源**
 - [WelcomeMessage.tsx:1-79](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L1-L79)
 
 ### VideoTaskCard 视频任务卡片
@@ -281,17 +316,17 @@ V-->>C : "渲染进度/完成/失败UI"
 V->>V : "拖拽到画布/下载"
 ```
 
-图表来源
+**图表来源**
 - [VideoTaskCard.tsx:134-290](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L134-L290)
 
-章节来源
+**章节来源**
 - [VideoTaskCard.tsx:1-290](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L1-L290)
 
 ### ThinkingIndicator 思考指示器
 - 单智能体思考时显示，包含计时与加载点点点。
 - 渐变背景与脉冲星装饰，增强视觉反馈。
 
-章节来源
+**章节来源**
 - [ThinkingIndicator.tsx:1-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L1-L56)
 
 ### ToolCallIndicator 工具调用指示器
@@ -299,7 +334,7 @@ V->>V : "拖拽到画布/下载"
 - 支持展开查看参数与结果，错误格式自动识别。
 - 统计执行中/成功/失败数量，便于概览。
 
-章节来源
+**章节来源**
 - [ToolCallIndicator.tsx:1-164](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L1-L164)
 
 ### useSSEHandler SSE事件处理器
@@ -322,11 +357,11 @@ SetEvt --> Next
 HasData --> |否| Next
 ```
 
-图表来源
+**图表来源**
 - [useSSEHandler.ts:56-65](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L56-L65)
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)
 
-章节来源
+**章节来源**
 - [useSSEHandler.ts:1-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L391)
 
 ### useSessionManager 会话管理
@@ -351,10 +386,10 @@ API-->>SM : "返回历史消息"
 SM-->>P : "设置sessionId/agentId/messages"
 ```
 
-图表来源
+**图表来源**
 - [useSessionManager.ts:52-123](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L52-L123)
 
-章节来源
+**章节来源**
 - [useSessionManager.ts:1-226](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L226)
 
 ### usePerformanceMonitor 性能监控
@@ -364,13 +399,13 @@ SM-->>P : "设置sessionId/agentId/messages"
 - FPS：每秒采样，保留最近60帧，计算平均FPS。
 - 清理：断开观察者与定时器，避免内存泄漏。
 
-章节来源
+**章节来源**
 - [usePerformanceMonitor.ts:1-236](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L1-L236)
 
 ## 依赖关系分析
 - 组件间依赖：
   - AIAssistantPanel依赖VirtualMessageList、MessageInput、ChatMessage、WelcomeMessage、VideoTaskCard、ThinkingIndicator、ToolCallIndicator、useSSEHandler、useSessionManager、usePerformanceMonitor。
-  - ChatMessage依赖ThinkingIndicator、ToolCallIndicator、VideoTaskCard、LazyImage/LazyCodeBlock等。
+  - ChatMessage依赖ThinkingIndicator、ToolCallIndicator、VideoTaskCard、LazyImage/LazyCodeBlock、TypewriterText等。
 - 外部依赖：
   - react-window用于虚拟列表。
   - react-markdown + remark-gfm用于Markdown渲染。
@@ -392,15 +427,16 @@ AIP --> PM["usePerformanceMonitor.ts"]
 CM --> TI
 CM --> TCI
 CM --> VTC
+CM --> TT["TypewriterText.tsx"]
 ```
 
-图表来源
+**图表来源**
 - [AIAssistantPanel.tsx:20-26](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L20-L26)
 - [ChatMessage.tsx:8-18](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L8-L18)
 
-章节来源
-- [AIAssistantPanel.tsx:1-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L613)
-- [ChatMessage.tsx:1-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L421)
+**章节来源**
+- [AIAssistantPanel.tsx:1-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L624)
+- [ChatMessage.tsx:1-471](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L471)
 
 ## 性能考量
 - 虚拟列表与动态行高：减少DOM节点数量，避免重排重绘。
@@ -409,6 +445,7 @@ CM --> VTC
 - 懒加载：图片与代码块按需加载，缩短可交互时间。
 - 性能监控：Long Task与FPS告警，便于定位瓶颈。
 - 内存优化：SSE状态机在done后重置；轮询任务在终端状态停止；组件卸载清理定时器与观察者。
+- **更新** 增强的样式类控制提高了渲染效率和视觉一致性。
 
 ## 故障排查指南
 常见问题与处理：
@@ -419,14 +456,14 @@ CM --> VTC
 - 视频任务失败：显示错误摘要，支持重试或检查资源有效性。
 - 性能异常：关注Long Task与FPS，定位耗时操作并优化。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:240-290](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L240-L290)
 - [useSSEHandler.ts:374-380](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L374-L380)
 - [VideoTaskCard.tsx:174-195](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L174-L195)
 - [usePerformanceMonitor.ts:75-200](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L75-L200)
 
 ## 结论
-AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理，实现了高性能、可扩展的实时聊天体验。结合思考与工具调用指示器、视频任务卡片与性能监控，为用户提供了清晰的状态反馈与稳定的交互体验。建议在集成时重点关注SSE事件一致性、会话状态恢复与性能观测，持续优化滚动与渲染体验。
+AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理，实现了高性能、可扩展的实时聊天体验。结合思考与工具调用指示器、视频任务卡片与性能监控，为用户提供了清晰的状态反馈与稳定的交互体验。最新的样式改进进一步提升了Markdown内容的渲染质量和视觉一致性。建议在集成时重点关注SSE事件一致性、会话状态恢复与性能观测，持续优化滚动与渲染体验。
 
 ## 附录
 
@@ -439,7 +476,7 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 计费与上下文：event=billing/context_compacted。
 - 完成与错误：event=done/error。
 
-章节来源
+**章节来源**
 - [useSSEHandler.ts:70-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L70-L390)
 
 ### 实时更新机制
@@ -447,7 +484,7 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 流式文本增量追加，非流式文本分块渲染。
 - 工具/技能/视频任务状态在消息对象中携带，指示器实时反映。
 
-章节来源
+**章节来源**
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)
 - [VirtualMessageList.tsx:184-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L184-L196)
 
@@ -458,7 +495,7 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - SSE错误：追加错误消息并重置状态机。
 - 视频任务失败：显示错误摘要，支持重试。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:240-290](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L240-L290)
 - [useSSEHandler.ts:374-380](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L374-L380)
 
@@ -468,7 +505,7 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 轮询在终端状态停止，组件卸载清理定时器。
 - 虚拟列表动态行高缓存，避免消息数量变化导致的重算。
 
-章节来源
+**章节来源**
 - [useSSEHandler.ts:43-54](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L43-L54)
 - [VideoTaskCard.tsx:174-195](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L174-L195)
 - [VirtualMessageList.tsx:63-66](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L63-L66)
@@ -479,8 +516,9 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 加载指示：思考指示器与三点加载动画，减少等待焦虑。
 - 拖拽/缩放：面板拖拽吸附与四边四角缩放，提升可用性。
 - 性能监控：长任务与FPS告警，及时发现并优化性能问题。
+- **更新** 增强的样式控制提供更一致的视觉体验。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:488-496](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L488-L496)
 - [VirtualMessageList.tsx:155-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L155-L196)
 - [ThinkingIndicator.tsx:13-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L13-L56)
@@ -491,7 +529,8 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 确保NEXT_PUBLIC_API_URL环境变量正确指向后端API。
 - 如需扩展SSE事件，可在useSSEHandler中添加事件处理器与状态更新逻辑。
 - 如需自定义附件上下文，修改AIAssistantPanel中的buildAttachmentContext函数。
+- **更新** 新的样式类已内置，无需额外配置即可获得改进的渲染效果。
 
-章节来源
-- [AIAssistantPanel.tsx:51-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L51-L613)
+**章节来源**
+- [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)

@@ -30,7 +30,7 @@
 10. [附录](#附录)
 
 ## 简介
-本文件面向KunFlix的前端Next.js应用，系统性梳理基于App Router的页面结构与路由体系，重点阐释：
+本文件面向Infinite Game的前端Next.js应用，系统性梳理基于App Router的页面结构与路由体系，重点阐释：
 - 根布局RootLayout的设计与职责边界（字体加载、Ant Design注册表、全局样式与主题/认证上下文）
 - 页面路由约定、动态路由参数处理与中间件式鉴权策略
 - 构建配置、TypeScript与TailwindCSS设置

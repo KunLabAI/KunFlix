@@ -27,16 +27,23 @@
 - [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
 - [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
 - [utils.ts](file://frontend/src/lib/utils.ts)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
+- [zh-CN.json](file://frontend/src/i18n/locales/zh-CN.json)
+- [en-US.json](file://frontend/src/i18n/locales/en-US.json)
+- [layout.tsx](file://frontend/src/app/layout.tsx)
+- [home/TopBar.tsx](file://frontend/src/components/home/TopBar.tsx)
+- [canvas/Sidebar.tsx](file://frontend/src/components/canvas/Sidebar.tsx)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 新增确认对话框组件（ConfirmDialog）和输入对话框组件（InputDialog）的详细文档
-- 更新对话框组件章节，包含基础对话框、确认对话框和输入对话框三个层次
-- 新增前端组件系统增强部分，涵盖登录页面、Home页面组件、资源页面等
-- 更新组件详解章节，补充确认对话框、输入对话框、资源卡片等新组件
-- 新增前端组件系统架构图和组件关系图
-- 更新依赖关系分析，反映新增组件的依赖关系
+- 新增国际化支持章节，详细介绍i18n系统的实现与配置
+- 更新组件详解章节，补充国际化相关的useTranslation钩子使用
+- 新增语言切换器组件的详细文档
+- 更新国际化资源文件，包含完整的中英文翻译
+- 新增国际化在各组件中的实际应用示例
 
 ## 目录
 1. [简介](#简介)
@@ -44,21 +51,23 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [组件详解](#组件详解)
-6. [前端组件系统增强](#前端组件系统增强)
-7. [依赖关系分析](#依赖关系分析)
-8. [性能与可访问性](#性能与可访问性)
-9. [故障排查指南](#故障排查指南)
-10. [结论](#结论)
-11. [附录：使用示例与最佳实践](#附录使用示例与最佳实践)
+6. [国际化支持](#国际化支持)
+7. [前端组件系统增强](#前端组件系统增强)
+8. [依赖关系分析](#依赖关系分析)
+9. [性能与可访问性](#性能与可访问性)
+10. [故障排查指南](#故障排查指南)
+11. [结论](#结论)
+12. [附录：使用示例与最佳实践](#附录使用示例与最佳实践)
 
 ## 简介
-本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新确认对话框组件和输入对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。
+本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新新增了完整的国际化支持系统，确保一致的多语言用户体验。
 
 ## 项目结构
 UI 组件主要位于前端与后台管理端两处：
 - 前端组件库：位于 frontend/src/components/ui，采用 Radix UI 作为底层交互抽象，结合 Tailwind CSS 类名工具与 class-variance-authority 实现变体与主题。
 - 后台管理组件库：位于 backend/admin/src/components/ui，同样以 Radix UI 为基础，配合 react-hook-form 实现表单体系。
 - 前端页面组件：位于 frontend/src/app 和 frontend/src/components 下，包含完整的页面级组件和业务组件。
+- 国际化系统：位于 frontend/src/i18n，提供完整的多语言支持。
 
 ```mermaid
 graph TB
@@ -93,6 +102,13 @@ ASSET_EDIT["resources/AssetEditDialog.tsx"]
 ASSET_DELETE["resources/AssetDeleteDialog.tsx"]
 ASSET_PREVIEW["resources/AssetPreviewDialog.tsx"]
 end
+subgraph "国际化系统"
+I18N_INDEX["i18n/index.ts"]
+I18N_PROVIDER["i18n/I18nProvider.tsx"]
+LANG_SWITCHER["components/LanguageSwitcher.tsx"]
+ZH_CN["locales/zh-CN.json"]
+EN_US["locales/en-US.json"]
+end
 F_BTN --> |"使用"| F_BTN
 F_INP --> |"使用"| F_INP
 F_AV --> |"使用"| F_AV
@@ -108,6 +124,10 @@ ASSET --> |"资源卡片"| ASSET
 ASSET_EDIT --> |"资源编辑对话框"| ASSET_EDIT
 ASSET_DELETE --> |"资源删除对话框"| ASSET_DELETE
 ASSET_PREVIEW --> |"资源预览对话框"| ASSET_PREVIEW
+I18N_INDEX --> |"初始化i18n"| I18N_PROVIDER
+I18N_PROVIDER --> |"提供语言上下文"| LANG_SWITCHER
+LANG_SWITCHER --> |"切换语言"| ZH_CN
+LANG_SWITCHER --> |"切换语言"| EN_US
 ```
 
 **图表来源**
@@ -126,6 +146,11 @@ ASSET_PREVIEW --> |"资源预览对话框"| ASSET_PREVIEW
 - [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
 - [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
 - [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
+- [zh-CN.json](file://frontend/src/i18n/locales/zh-CN.json)
+- [en-US.json](file://frontend/src/i18n/locales/en-US.json)
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -153,6 +178,7 @@ ASSET_PREVIEW --> |"资源预览对话框"| ASSET_PREVIEW
 - 反馈组件：用于信息提示与用户确认，包含警示框、对话框、提示条等，强调可访问性与动画过渡。
 - 布局组件：用于页面结构组织，如卡片、标签页等，强调语义化结构与响应式布局。
 - 对话框组件：包含基础对话框、确认对话框和输入对话框三个层次，提供用户确认、输入收集等功能。
+- **国际化组件**：提供语言切换、文本翻译、本地化支持等功能，确保多语言用户体验的一致性。
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -169,11 +195,12 @@ ASSET_PREVIEW --> |"资源预览对话框"| ASSET_PREVIEW
 - [toast.tsx](file://backend/admin/src/components/ui/toast.tsx)
 
 ## 架构总览
-组件库整体采用"变体驱动 + 上下文注入 + 组合模式"的架构：
+组件库整体采用"变体驱动 + 上下文注入 + 组合模式 + 国际化支持"的架构：
 - 变体与类名：通过 class-variance-authority 定义组件变体与默认值，结合 cn 工具合并类名，实现主题与尺寸的灵活切换。
 - 上下文与组合：表单组件通过 React Context 注入字段上下文，使标签、控制域、描述与错误信息形成统一的可访问性链路。
 - 原子与复合：基础组件多为原子级封装，反馈与布局组件为复合组件，内部组合多个原子组件并提供行为逻辑。
 - 对话框层次：基础对话框提供通用的模态交互，确认对话框和输入对话框提供特定的业务场景解决方案，均支持Promise风格的异步处理。
+- **国际化架构**：i18n系统通过react-i18next提供语言切换与文本翻译，支持中英文双语，具备持久化存储与SSR水合兼容性。
 
 ```mermaid
 graph TB
@@ -195,6 +222,12 @@ CONFIRM_DLG["确认对话框<br/>ConfirmDialog + useConfirmDialog"]
 INPUT_DLG["输入对话框<br/>InputDialog + useInputDialog"]
 ASYNCHRONOUS["Promise风格接口<br/>异步处理"]
 end
+subgraph "国际化系统"
+I18N_CORE["i18n核心<br/>index.ts"]
+I18N_PROVIDER["I18nProvider<br/>语言上下文"]
+LANG_SWITCHER["LanguageSwitcher<br/>语言切换器"]
+LOCALES["本地化资源<br/>zh-CN.json & en-US.json"]
+end
 BTN["Button"] --> CVA
 BTN --> CN
 INP["Input"] --> CN
@@ -204,13 +237,9 @@ CDLG["ConfirmDialog"] --> BASE_DLG
 IDLG["InputDialog"] --> BASE_DLG
 CDLG --> ASYNCHRONOUS
 IDLG --> ASYNCHRONOUS
-TABS["Tabs"] --> |"内部状态与克隆子元素"| TABS
-FORM["Form/FormLabel/FormControl"] --> RHF
-FORM --> CTX
-SEL["Select"] --> RADIX
-ALERT["Alert"] --> CVA
-TOAST["Toast"] --> RADIX
-AD["AlertDialog"] --> RADIX
+I18N_CORE --> I18N_PROVIDER
+I18N_PROVIDER --> LANG_SWITCHER
+LANG_SWITCHER --> LOCALES
 ```
 
 **图表来源**
@@ -225,6 +254,9 @@ AD["AlertDialog"] --> RADIX
 - [alert.tsx](file://backend/admin/src/components/ui/alert.tsx)
 - [toast.tsx](file://backend/admin/src/components/ui/toast.tsx)
 - [utils.ts](file://frontend/src/lib/utils.ts)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
 
 ## 组件详解
 
@@ -605,6 +637,85 @@ Update --> Render
 **章节来源**
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
 
+## 国际化支持
+
+### i18n系统架构
+KunFlix采用react-i18next作为国际化解决方案，提供完整的多语言支持：
+
+- **核心配置**：在index.ts中初始化i18n实例，配置中英文资源、默认语言与回退语言
+- **提供者模式**：I18nProvider组件在应用根部提供语言上下文，支持客户端挂载后的语言偏好恢复
+- **持久化存储**：语言切换时自动保存到localStorage，避免SSR水合不匹配问题
+- **资源管理**：独立的locales目录管理翻译资源，支持复杂的嵌套结构与参数化翻译
+
+```mermaid
+graph TB
+subgraph "国际化核心"
+I18N_INDEX["i18n/index.ts<br/>初始化与配置"]
+I18N_PROVIDER["I18nProvider.tsx<br/>语言上下文提供者"]
+I18N_LAYOUT["layout.tsx<br/>应用根布局"]
+end
+subgraph "本地化资源"
+ZH_CN["zh-CN.json<br/>中文翻译"]
+EN_US["en-US.json<br/>英文翻译"]
+end
+subgraph "语言切换"
+LANG_SWITCHER["LanguageSwitcher.tsx<br/>语言切换器"]
+USE_TRANSLATION["useTranslation Hook<br/>翻译函数"]
+end
+I18N_INDEX --> I18N_PROVIDER
+I18N_PROVIDER --> I18N_LAYOUT
+I18N_INDEX --> ZH_CN
+I18N_INDEX --> EN_US
+LANG_SWITCHER --> USE_TRANSLATION
+USE_TRANSLATION --> ZH_CN
+USE_TRANSLATION --> EN_US
+```
+
+**图表来源**
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [layout.tsx](file://frontend/src/app/layout.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
+- [zh-CN.json](file://frontend/src/i18n/locales/zh-CN.json)
+- [en-US.json](file://frontend/src/i18n/locales/en-US.json)
+
+### 语言切换器组件
+LanguageSwitcher组件提供直观的语言切换功能：
+
+- **组件特性**：支持中英文切换，带旗帜标识，动画展开菜单
+- **状态管理**：使用useState管理菜单开关状态，useEffect处理外部点击事件
+- **无障碍支持**：提供aria-label属性，支持键盘导航
+- **样式设计**：基于Tailwind CSS的现代化设计，支持悬停与选中状态
+
+**章节来源**
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
+
+### 国际化资源文件
+翻译资源文件采用JSON格式，提供完整的多语言支持：
+
+- **结构设计**：采用层级结构管理翻译键，支持嵌套对象与数组
+- **参数化翻译**：支持{{variable}}占位符，用于动态内容插入
+- **复数形式**：提供plural_one/plural_other等键处理复数形式
+- **完整覆盖**：涵盖导航、用户菜单、搜索、主题切换、资源管理等所有功能模块
+
+**章节来源**
+- [zh-CN.json](file://frontend/src/i18n/locales/zh-CN.json)
+- [en-US.json](file://frontend/src/i18n/locales/en-US.json)
+
+### 组件中的国际化应用
+各组件通过useTranslation钩子实现国际化：
+
+- **TopBar组件**：导航链接、用户菜单、搜索占位符等全部支持国际化
+- **资源页面**：上传提示、错误信息、筛选标签、视图模式等完全本地化
+- **剧场卡片**：状态显示、操作按钮、对话框文本等多语言支持
+- **侧边栏组件**：节点类型名称、描述文本、空状态提示等国际化
+
+**章节来源**
+- [home/TopBar.tsx](file://frontend/src/components/home/TopBar.tsx)
+- [resources/page.tsx](file://frontend/src/app/resources/page.tsx)
+- [home/TheaterCard.tsx](file://frontend/src/components/home/TheaterCard.tsx)
+- [canvas/Sidebar.tsx](file://frontend/src/components/canvas/Sidebar.tsx)
+
 ## 前端组件系统增强
 
 ### 登录页面组件
@@ -645,6 +756,9 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 下拉菜单提供操作选项
   - 对话框组件提供确认与输入功能
   - Promise风格异步处理简化业务逻辑
+- **国际化特性**
+  - 状态标签、操作按钮、对话框文本完全本地化
+  - 时间格式化支持不同语言的日期显示
 
 **章节来源**
 - [home/TheaterCard.tsx](file://frontend/src/components/home/TheaterCard.tsx)
@@ -665,6 +779,9 @@ Home 页面组件提供了丰富的剧场管理功能：
 - 交互设计
   - 点击预览与操作菜单
   - 响应式布局适配
+- **国际化特性**
+  - 文件类型标签、操作按钮、状态信息完全本地化
+  - 错误提示与帮助文本支持多语言
 
 **章节来源**
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
@@ -738,6 +855,9 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 快速添加菜单
   - 缩放控制与小地图
   - 状态指示器与保存状态
+- **国际化特性**
+  - 节点类型名称、描述文本、操作提示完全本地化
+  - 拖拽提示与状态信息支持多语言
 
 **章节来源**
 - [theater/[id]/page.tsx](file://frontend/src/app/theater/[id]/page.tsx)
@@ -749,6 +869,7 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 反馈组件依赖 Radix UI 动画与可访问性 API
   - 对话框组件提供 Promise 风格的异步接口，增强用户体验
   - 确认对话框和输入对话框组件依赖基础对话框组件
+  - **国际化组件**：LanguageSwitcher依赖i18n系统，各业务组件依赖useTranslation钩子
 - 外部依赖
   - class-variance-authority：变体系统
   - @radix-ui/react-*：可访问性与动画抽象
@@ -756,6 +877,8 @@ Home 页面组件提供了丰富的剧场管理功能：
   - react-hook-form：表单状态与验证
   - framer-motion：动画系统
   - @xyflow/react：可视化画布
+  - **react-i18next**：国际化支持
+  - i18next：核心国际化引擎
 
 ```mermaid
 graph LR
@@ -779,6 +902,11 @@ ASSET["AssetCard"] --> DROP["DropdownMenu"]
 ASSET_EDIT["AssetEditDialog"] --> DLG
 ASSET_DELETE["AssetDeleteDialog"] --> DLG
 ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
+I18N["i18n系统"] --> I18NEXT["react-i18next"]
+I18N --> I18NEXT_CORE["i18next核心"]
+LANG_SWITCHER["LanguageSwitcher"] --> I18N
+COMPONENTS["业务组件"] --> USE_TRANSLATION["useTranslation钩子"]
+USE_TRANSLATION --> I18N
 ```
 
 **图表来源**
@@ -798,6 +926,9 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
 - [resources/AssetEditDialog.tsx](file://frontend/src/components/resources/AssetEditDialog.tsx)
 - [resources/AssetDeleteDialog.tsx](file://frontend/src/components/resources/AssetDeleteDialog.tsx)
 - [resources/AssetPreviewDialog.tsx](file://frontend/src/components/resources/AssetPreviewDialog.tsx)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
 
 **章节来源**
 - [button.tsx](file://frontend/src/components/ui/button.tsx)
@@ -813,6 +944,9 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
 - [login/page.tsx](file://frontend/src/app/login/page.tsx)
 - [theater/[id]/page.tsx](file://frontend/src/app/theater/[id]/page.tsx)
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
 
 ## 性能与可访问性
 - 性能
@@ -822,6 +956,7 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
   - 对话框组件使用 Promise 风格接口，避免阻塞主线程
   - 资源卡片使用懒加载与条件渲染，优化大列表性能
   - 确认对话框和输入对话框组件支持加载状态，提升用户体验
+  - **国际化性能**：i18n系统采用按需加载，避免不必要的翻译计算
 - 可访问性
   - 表单组件自动注入 aria-* 属性，确保屏幕阅读器可用
   - 对话框与提示条提供键盘关闭与焦点管理
@@ -829,10 +964,12 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
   - 下拉菜单支持键盘导航与焦点陷阱
   - 资源预览对话框提供下载与关闭的键盘快捷键
   - 确认对话框和输入对话框提供明确的视觉反馈
+  - **国际化可访问性**：语言切换器提供aria-label，支持屏幕阅读器
 - 响应式与跨浏览器
   - 组件样式使用相对单位与媒体查询，保证在不同设备上的一致表现
   - 通过 Radix UI 的动画与过渡，确保在现代浏览器中的流畅体验
   - 登录页面与资源页面提供移动端优化的响应式设计
+  - **国际化兼容性**：支持RTL语言与复杂文字系统
 
 ## 故障排查指南
 - 表单相关
@@ -857,6 +994,11 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
   - 若确认对话框不显示，请检查 useConfirmDialog hook 的状态管理
   - 若输入对话框无法确认，请检查输入验证逻辑
   - 若对话框加载状态异常，请检查 setLoading 函数的调用
+- **国际化相关**
+  - 若语言切换无效，请检查LanguageSwitcher组件的i18n.changeLanguage调用
+  - 若翻译文本不显示，请确认翻译键是否存在且拼写正确
+  - 若SSR水合不匹配，请检查I18nProvider的客户端挂载逻辑
+  - 若语言偏好未保存，请检查localStorage的访问权限
 
 **章节来源**
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
@@ -865,11 +1007,19 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
 - [toast.tsx](file://backend/admin/src/components/ui/toast.tsx)
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
+- [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
 
 ## 结论
 本组件库以 Ant Design 设计体系为蓝本，结合 Radix UI 的可访问性与 class-variance-authority 的变体系统，构建了高可组合、可定制、可扩展的 UI 基础设施。通过上下文与变体驱动的设计，组件在保持一致性的同时提供了足够的灵活性，满足从基础交互到复杂业务场景的需求。
 
-本次更新确认对话框组件和输入对话框组件已添加到UI组件库中，同时前端组件系统得到显著增强，包括登录页面、Home页面组件、资源页面等的改进。这些增强不仅提升了用户体验，还为后续的功能扩展奠定了坚实的基础。
+本次更新新增了完整的国际化支持系统，采用react-i18next提供多语言支持，包括：
+- 完整的中英文翻译资源
+- 语言切换器组件
+- 组件级别的国际化集成
+- 持久化语言偏好存储
+- SSR水合兼容性处理
+
+这些增强不仅提升了用户体验，还为后续的功能扩展奠定了坚实的基础，确保KunFlix能够在国际化环境中提供一致、高质量的用户界面。
 
 ## 附录：使用示例与最佳实践
 - 组合模式
@@ -887,6 +1037,7 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
   - 资源卡片使用懒加载与条件渲染，优化大列表性能
   - 对话框组件使用 Portal 渲染，减少 DOM 深度影响
   - 确认对话框和输入对话框组件支持加载状态，提升用户体验
+  - **国际化性能**：合理使用翻译函数，避免在渲染循环中频繁调用
 - 主题与样式
   - 通过变体参数快速切换主题风格，必要时使用外部类名覆盖
   - 使用 cn 合并类名，避免样式冲突
@@ -897,8 +1048,17 @@ ASSET_PREVIEW["AssetPreviewDialog"] --> DLG
   - 下拉菜单支持键盘导航与焦点陷阱
   - 资源预览对话框提供下载与关闭的键盘快捷键
   - 确认对话框和输入对话框提供明确的视觉反馈
+  - **国际化无障碍**：确保语言切换器提供适当的aria-label
 - 组件扩展
   - 基于现有对话框组件模式，可以扩展更多业务场景的确认对话框
   - 资源卡片的预览渲染器模式可以扩展支持更多文件类型
   - 剧场页面的节点类型注册模式可以扩展支持更多节点类型
   - 对话框组件的Promise风格接口可以扩展支持更多异步操作场景
+  - **国际化扩展**：新增语言时，只需添加对应的JSON资源文件即可
+- **国际化最佳实践**
+  - 使用层级结构组织翻译键，便于维护和查找
+  - 参数化翻译时使用{{variable}}占位符，支持动态内容
+  - 复数形式使用plural_one/plural_other等键处理
+  - 在组件中统一使用useTranslation钩子获取翻译函数
+  - 语言切换时确保用户偏好得到持久化保存
+  - 考虑RTL语言的支持与文本方向调整

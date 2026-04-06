@@ -188,7 +188,7 @@ interface ChatMessageProps {
   className?: string;
 }
 
-// 浮动跳跃的三点加载动画
+// 浮动跳跃的三点加载动画（用于初始加载）
 function FloatingLoadingDots() {
   return (
     <div className="flex items-center gap-1 h-5">
@@ -204,6 +204,31 @@ function FloatingLoadingDots() {
             duration: 0.8,
             repeat: Infinity,
             delay: i * 0.15,
+            ease: "easeInOut",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// 平滑流式指示器（用于内容生成中）
+function StreamingIndicator() {
+  return (
+    <div className="flex items-center gap-1.5 h-5">
+      {/* 波浪动画 */}
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-primary/60"
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.5, 1, 0.5],
+          }}
+          transition={{
+            duration: 1.2,
+            repeat: Infinity,
+            delay: i * 0.2,
             ease: "easeInOut",
           }}
         />
@@ -349,21 +374,23 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                     />
                   )}
                   
-                  {/* 流式输出且无思考内容时显示点点点动画占位 */}
+                  {/* 流式输出且无思考内容时显示平滑加载动画 */}
                   {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
                     <div className="py-2 px-1">
-                      <FloatingLoadingDots />
+                      <StreamingIndicator />
                     </div>
                   )}
 
                   {/* 正式回复内容：思考完成后或无思考内容时显示 */}
                   {cleanContent && (isThinkingComplete || !thinkingContent) && (
                     isStreaming ? (
+                      // 流式输出：直接渲染内容，无打字机动画
                       <TypewriterText
                         content={cleanContent}
                         isStreaming={isStreaming}
                       />
                     ) : needsChunking ? (
+                      // 长内容分块渲染（非流式）
                       <MessageChunk
                         content={cleanContent}
                         maxChunkSize={2000}
@@ -387,6 +414,7 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                         )}
                       />
                     ) : (
+                      // 普通内容渲染（非流式）
                       <div className="prose prose-sm dark:prose-invert max-w-none break-words
                         [&_p]:leading-7 [&_p]:my-2
                         [&_li]:leading-7 [&_li]:my-0.5

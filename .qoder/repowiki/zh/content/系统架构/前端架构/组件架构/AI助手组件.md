@@ -14,6 +14,13 @@
 - [ToolCallIndicator.tsx](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx)
 - [SkillCallIndicator.tsx](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx)
 - [VirtualMessageList.tsx](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx)
+- [MessageInput.tsx](file://frontend/src/components/ai-assistant/MessageInput.tsx)
+- [PanelHeader.tsx](file://frontend/src/components/ai-assistant/PanelHeader.tsx)
+- [WelcomeMessage.tsx](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx)
+- [I18nProvider.tsx](file://frontend/src/i18n/I18nProvider.tsx)
+- [index.ts](file://frontend/src/i18n/index.ts)
+- [en-US.json](file://frontend/src/i18n/locales/en-US.json)
+- [zh-CN.json](file://frontend/src/i18n/locales/zh-CN.json)
 </cite>
 
 ## 目录
@@ -22,18 +29,20 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考量](#性能考量)
-8. [故障排查指南](#故障排查指南)
-9. [结论](#结论)
-10. [附录](#附录)
+6. [国际化支持](#国际化支持)
+7. [依赖关系分析](#依赖关系分析)
+8. [性能考量](#性能考量)
+9. [故障排查指南](#故障排查指南)
+10. [结论](#结论)
+11. [附录](#附录)
 
 ## 简介
-本文件面向KunFlix的AI助手组件，系统性梳理其架构设计与实现细节，重点覆盖以下方面：
+本文件面向Infinite Game的AI助手组件，系统性梳理其架构设计与实现细节，重点覆盖以下方面：
 - 面板整体架构与交互流程
 - 聊天消息组件、思考过程显示与工具调用指示器的实现
 - 实时消息流处理、SSE事件处理与会话管理机制
 - 状态管理、性能监控与错误处理策略
+- 国际化支持，包括错误消息、提示文本、Agent选择器等所有用户界面元素
 - 使用示例、自定义消息格式与交互模式
 - 消息渲染优化、代码块高亮与图片懒加载等用户体验改进
 
@@ -43,6 +52,7 @@ AI助手相关代码主要位于前端工程的以下路径：
 - 组件导出聚合：frontend/src/components/ai-assistant/index.ts
 - 状态存储：frontend/src/store/useAIAssistantStore.ts
 - 子组件与Hooks：frontend/src/components/ai-assistant/* 与 frontend/src/components/ai-assistant/hooks/*
+- 国际化配置：frontend/src/i18n/*
 
 ```mermaid
 graph TB
@@ -59,9 +69,18 @@ G["LazyImage<br/>懒加载图片"]
 H["LazyCodeBlock<br/>懒加载代码块"]
 I["useSSEHandler<br/>SSE处理器"]
 J["useSessionManager<br/>会话管理器"]
+K["MessageInput<br/>消息输入框"]
+L["PanelHeader<br/>面板头部"]
+M["WelcomeMessage<br/>欢迎消息"]
+end
+subgraph "国际化系统"
+N["I18nProvider<br/>国际化提供者"]
+O["i18n配置<br/>多语言配置"]
+P["英文翻译<br/>en-US.json"]
+Q["中文翻译<br/>zh-CN.json"]
 end
 subgraph "状态存储"
-K["useAIAssistantStore<br/>Zustand状态"]
+R["useAIAssistantStore<br/>Zustand状态"]
 end
 A --> B
 A --> C
@@ -73,21 +92,31 @@ B --> H
 A --> I
 A --> J
 A --> K
-B --> K
-C --> K
-D --> K
-E --> K
-F --> K
-I --> K
-J --> K
+A --> L
+A --> M
+B --> R
+C --> R
+D --> R
+E --> R
+F --> R
+I --> R
+J --> R
+K --> R
+L --> R
+M --> R
+N --> O
+O --> P
+O --> Q
 ```
 
-图表来源
+**图表来源**
 - [AIAssistantPanel.tsx:1-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L613)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
 - [useAIAssistantStore.ts:1-381](file://frontend/src/store/useAIAssistantStore.ts#L1-L381)
+- [I18nProvider.tsx:1-20](file://frontend/src/i18n/I18nProvider.tsx#L1-L20)
+- [index.ts:1-28](file://frontend/src/i18n/index.ts#L1-L28)
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:1-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L613)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
 
@@ -100,8 +129,11 @@ J --> K
 - 懒加载组件：LazyImage与LazyCodeBlock通过IntersectionObserver与动态导入优化首屏与滚动性能。
 - SSE处理器：useSSEHandler统一解析SSE事件，维护流式状态并更新消息与指标。
 - 会话管理：useSessionManager负责Agent列表加载、会话创建/切换/清空与上下文使用统计恢复。
+- 消息输入：MessageInput提供Agent选择器、占位符文本和发送按钮的国际化支持。
+- 面板头部：PanelHeader显示上下文使用统计和操作按钮，支持国际化标题和提示。
+- 欢迎消息：WelcomeMessage展示预设对话和欢迎文案，支持多语言配置。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:51-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L51-L613)
 - [ChatMessage.tsx:253-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L253-L421)
 - [ThinkPanel.tsx:39-290](file://frontend/src/components/ai-assistant/ThinkPanel.tsx#L39-L290)
@@ -112,23 +144,30 @@ J --> K
 - [LazyCodeBlock.tsx:50-166](file://frontend/src/components/ai-assistant/LazyCodeBlock.tsx#L50-L166)
 - [useSSEHandler.ts:25-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L25-L391)
 - [useSessionManager.ts:12-226](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L226)
+- [MessageInput.tsx:30-186](file://frontend/src/components/ai-assistant/MessageInput.tsx#L30-L186)
+- [PanelHeader.tsx:20-200](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L20-L200)
+- [WelcomeMessage.tsx:29-81](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L29-L81)
 
 ## 架构总览
-AI助手采用“面板容器 + 子组件 + 状态存储 + Hooks”的分层架构：
+AI助手采用"面板容器 + 子组件 + 状态存储 + Hooks + 国际化"的分层架构：
 - 面板容器负责UI交互、拖拽约束、面板尺寸与位置管理、会话初始化与SSE事件接入。
 - 子组件聚焦单一职责：消息渲染、思考过程、工具/技能状态、虚拟滚动、懒加载。
 - 状态存储统一管理消息、会话、面板尺寸、上下文使用统计与附件等。
 - Hooks封装跨组件共享的业务逻辑：SSE事件解析、会话生命周期管理与性能监控。
+- 国际化系统提供多语言支持，覆盖所有用户界面元素。
 
 ```mermaid
 sequenceDiagram
 participant U as "用户"
 participant P as "AIAssistantPanel"
+participant N as "国际化系统"
 participant S as "useSessionManager"
 participant SSE as "useSSEHandler"
 participant M as "ChatMessage"
 participant V as "VirtualMessageList"
 U->>P : 打开面板/输入消息
+P->>N : 获取翻译函数(t)
+N-->>P : 返回翻译函数
 P->>S : 初始化/获取会话(createSessionForTheater)
 S-->>P : 返回sessionId/agentId
 P->>P : 发送POST /api/chats/{sessionId}/messages
@@ -139,12 +178,13 @@ V->>M : 渲染单条消息
 M-->>U : 展示思考过程/工具/技能/媒体
 ```
 
-图表来源
+**图表来源**
 - [AIAssistantPanel.tsx:182-293](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L182-L293)
 - [useSessionManager.ts:52-123](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L52-L123)
 - [useSSEHandler.ts:67-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L391)
 - [VirtualMessageList.tsx:43-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L43-L293)
 - [ChatMessage.tsx:253-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L253-L421)
+- [I18nProvider.tsx:1-20](file://frontend/src/i18n/I18nProvider.tsx#L1-L20)
 
 ## 详细组件分析
 
@@ -155,9 +195,11 @@ M-->>U : 展示思考过程/工具/技能/媒体
   - 实时消息：构建带附件上下文的消息，发起POST请求，解析SSE事件，处理HTTP错误与中断。
   - 附件与图像编辑上下文：支持多图拖拽、缩略图预览与编辑目标节点绑定。
   - 性能监控：长任务告警与FPS监控。
+  - 国际化支持：使用useTranslation Hook获取翻译函数，处理错误消息和用户提示。
 - 关键流程
   - 发送消息：校验/创建会话 → 构建附件上下文 → 发起请求 → 逐行解析SSE → 更新状态 → 清理附件与编辑上下文。
   - 会话初始化：面板打开时检查sessionId/agentId，若缺失则按当前theaterId创建或恢复。
+  - 错误处理：通过ERROR_KEY_MAP映射HTTP状态码到国际化键，使用t()函数获取本地化错误消息。
 
 ```mermaid
 flowchart TD
@@ -170,15 +212,20 @@ SendReq --> ReadSSE["读取SSE流"]
 ReadSSE --> ParseLine["parseSSELine"]
 ParseLine --> HandleEvent["handleSSEEvent"]
 HandleEvent --> UpdateState["更新消息/指标/多智能体状态"]
-UpdateState --> Done(["结束"])
+UpdateState --> CheckError["检查HTTP错误"]
+CheckError --> |401| ShowRelogin["显示重新登录弹窗"]
+CheckError --> |其他| MapError["映射到国际化键"]
+MapError --> ShowTranslatedError["显示本地化错误消息"]
+ShowTranslatedError --> Done(["结束"])
+ShowRelogin --> Done
 ```
 
-图表来源
+**图表来源**
 - [AIAssistantPanel.tsx:182-293](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L182-L293)
 - [useSSEHandler.ts:56-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L56-L391)
 - [useSessionManager.ts:52-123](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L52-L123)
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:51-613](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L51-L613)
 
 ### 聊天消息：ChatMessage
@@ -214,12 +261,12 @@ LazyCode --> RenderDone
 LazyImg --> RenderDone
 ```
 
-图表来源
+**图表来源**
 - [ChatMessage.tsx:64-127](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L64-L127)
 - [ChatMessage.tsx:128-182](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L128-L182)
 - [ChatMessage.tsx:253-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L253-L421)
 
-章节来源
+**章节来源**
 - [ChatMessage.tsx:253-421](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L253-L421)
 
 ### 思考过程：ThinkPanel
@@ -240,10 +287,10 @@ stateDiagram-v2
 已展开 --> 已展开 : "用户手动展开"
 ```
 
-图表来源
+**图表来源**
 - [ThinkPanel.tsx:39-290](file://frontend/src/components/ai-assistant/ThinkPanel.tsx#L39-L290)
 
-章节来源
+**章节来源**
 - [ThinkPanel.tsx:39-290](file://frontend/src/components/ai-assistant/ThinkPanel.tsx#L39-L290)
 
 ### 工具调用指示器：ToolCallIndicator
@@ -270,11 +317,11 @@ class ToolCallData {
 ToolCallIndicator --> ToolCallData : "渲染多个工具状态"
 ```
 
-图表来源
+**图表来源**
 - [ToolCallIndicator.tsx:36-164](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L36-L164)
 - [ToolCallIndicator.tsx:7-13](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L7-L13)
 
-章节来源
+**章节来源**
 - [ToolCallIndicator.tsx:36-164](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L36-L164)
 
 ### 技能调用指示器：SkillCallIndicator
@@ -295,11 +342,11 @@ class SkillCallData {
 SkillCallIndicator --> SkillCallData : "渲染技能状态"
 ```
 
-图表来源
+**图表来源**
 - [SkillCallIndicator.tsx:18-55](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx#L18-L55)
 - [SkillCallIndicator.tsx:7-11](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx#L7-L11)
 
-章节来源
+**章节来源**
 - [SkillCallIndicator.tsx:18-55](file://frontend/src/components/ai-assistant/SkillCallIndicator.tsx#L18-L55)
 
 ### 虚拟消息列表：VirtualMessageList
@@ -323,10 +370,10 @@ ScrollToBottom --> End(["完成"])
 WaitAnim --> End
 ```
 
-图表来源
+**图表来源**
 - [VirtualMessageList.tsx:43-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L43-L293)
 
-章节来源
+**章节来源**
 - [VirtualMessageList.tsx:43-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L43-L293)
 
 ### 懒加载组件：LazyImage 与 LazyCodeBlock
@@ -347,11 +394,11 @@ DL-->>L : 返回高亮器/语言
 L-->>用户 : 渲染占位符/高亮代码
 ```
 
-图表来源
+**图表来源**
 - [LazyImage.tsx:15-111](file://frontend/src/components/ai-assistant/LazyImage.tsx#L15-L111)
 - [LazyCodeBlock.tsx:50-166](file://frontend/src/components/ai-assistant/LazyCodeBlock.tsx#L50-L166)
 
-章节来源
+**章节来源**
 - [LazyImage.tsx:15-111](file://frontend/src/components/ai-assistant/LazyImage.tsx#L15-L111)
 - [LazyCodeBlock.tsx:50-166](file://frontend/src/components/ai-assistant/LazyCodeBlock.tsx#L50-L166)
 
@@ -384,10 +431,10 @@ Route --> |done| Done["标记消息完成并重置状态"]
 Route --> |error| Err["记录错误并重置状态"]
 ```
 
-图表来源
+**图表来源**
 - [useSSEHandler.ts:56-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L56-L391)
 
-章节来源
+**章节来源**
 - [useSSEHandler.ts:25-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L25-L391)
 
 ### 会话管理：useSessionManager
@@ -418,18 +465,112 @@ end
 S-->>调用方 : 返回sessionId/agentId/agentName
 ```
 
-图表来源
+**图表来源**
 - [useSessionManager.ts:52-123](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L52-L123)
 - [useSessionManager.ts:165-189](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L165-L189)
 
-章节来源
+**章节来源**
 - [useSessionManager.ts:12-226](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L12-L226)
+
+### 消息输入：MessageInput
+- 职责
+  - 提供用户输入区域，支持多行文本和自动高度调整。
+  - Agent选择器：下拉菜单展示可用Agent及其描述和支持的节点类型。
+  - 国际化支持：占位符文本、Agent名称、发送按钮标题均来自翻译键。
+- 关键机制
+  - 占位符解析：优先使用传入的placeholder，否则使用t('ai.inputPlaceholder')。
+  - Agent显示：resolvedAgentName用于显示当前Agent名称或默认标题。
+  - Agent切换：通过onSwitchAgent回调处理Agent选择。
+
+**章节来源**
+- [MessageInput.tsx:30-186](file://frontend/src/components/ai-assistant/MessageInput.tsx#L30-L186)
+
+### 面板头部：PanelHeader
+- 职责
+  - 显示面板操作区域：清空会话、关闭面板。
+  - 上下文使用统计：电池图标显示token使用率，悬停显示详细信息。
+  - 国际化支持：清空按钮标题、上下文百分比显示等。
+- 关键机制
+  - 电池图标：根据使用率动态选择不同图标和颜色。
+  - 悬停面板：显示详细的使用统计信息，包括已用、上限、剩余和使用率。
+
+**章节来源**
+- [PanelHeader.tsx:20-200](file://frontend/src/components/ai-assistant/PanelHeader.tsx#L20-L200)
+
+### 欢迎消息：WelcomeMessage
+- 职责
+  - 面板空状态下的欢迎文案和预设对话入口。
+  - 国际化支持：用户名显示、欢迎语、标语和预设对话标签。
+- 关键机制
+  - 预设对话：通过PRESET_PROMPTS数组定义图标、标签键和消息键。
+  - 用户名处理：从认证上下文中获取昵称，不存在时使用默认用户键。
+
+**章节来源**
+- [WelcomeMessage.tsx:29-81](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L29-L81)
+
+## 国际化支持
+Infinite Game的AI助手组件已全面集成国际化支持，覆盖所有用户界面元素：
+
+### 国际化系统架构
+- **i18n配置**：frontend/src/i18n/index.ts配置多语言资源，支持中文(zh-CN)和英文(en-US)。
+- **国际化提供者**：I18nProvider.tsx在客户端挂载时从localStorage恢复用户语言偏好。
+- **翻译键结构**：所有AI助手相关的文本都通过统一的"ai"命名空间管理。
+
+### 支持的国际化键
+- **基础功能**：标题、打开按钮、清空对话、输入占位符等
+- **Agent管理**：Agent选择器、支持类型显示、无Agent提示等
+- **上下文统计**：上下文使用百分比、统计标题、使用状态等
+- **错误处理**：登录过期、请求失败、积分不足、访问拒绝、频率限制等
+- **欢迎消息**：用户名显示、欢迎语、标语、预设对话等
+- **预设对话**：科幻剧本、角色设计、分镜脚本、文案润色等
+
+### 国际化实现方式
+- **Hook使用**：所有组件通过useTranslation Hook获取t函数。
+- **动态翻译**：错误消息通过ERROR_KEY_MAP映射HTTP状态码到翻译键。
+- **参数化文本**：支持占位符替换，如上下文百分比、节点数量等。
+- **复数形式**：中文环境支持复数标记(单数/复数)。
+
+```mermaid
+graph TB
+subgraph "国际化系统"
+A["i18n配置<br/>index.ts"]
+B["国际化提供者<br/>I18nProvider.tsx"]
+C["翻译资源<br/>locales/*.json"]
+end
+subgraph "AI助手组件"
+D["AIAssistantPanel<br/>错误处理"]
+E["MessageInput<br/>Agent选择器"]
+F["PanelHeader<br/>上下文统计"]
+G["WelcomeMessage<br/>欢迎消息"]
+H["ToolCallIndicator<br/>工具状态"]
+end
+A --> B
+B --> C
+C --> D
+C --> E
+C --> F
+C --> G
+C --> H
+```
+
+**图表来源**
+- [I18nProvider.tsx:1-20](file://frontend/src/i18n/I18nProvider.tsx#L1-L20)
+- [index.ts:1-28](file://frontend/src/i18n/index.ts#L1-L28)
+- [en-US.json:161-205](file://frontend/src/i18n/locales/en-US.json#L161-L205)
+- [zh-CN.json:161-205](file://frontend/src/i18n/locales/zh-CN.json#L161-L205)
+
+**章节来源**
+- [I18nProvider.tsx:1-20](file://frontend/src/i18n/I18nProvider.tsx#L1-L20)
+- [index.ts:1-28](file://frontend/src/i18n/index.ts#L1-L28)
+- [en-US.json:161-205](file://frontend/src/i18n/locales/en-US.json#L161-L205)
+- [zh-CN.json:161-205](file://frontend/src/i18n/locales/zh-CN.json#L161-L205)
 
 ## 依赖关系分析
 - 组件耦合
   - AIAssistantPanel依赖useSSEHandler与useSessionManager进行事件与会话处理。
   - ChatMessage依赖ThinkPanel、ToolCallIndicator、SkillCallIndicator、LazyImage、LazyCodeBlock等子组件。
   - VirtualMessageList被AIAssistantPanel与ChatMessage共同使用。
+  - 所有UI组件依赖国际化系统提供翻译函数。
 - 状态依赖
   - 所有组件通过useAIAssistantStore共享状态，包括消息、会话、面板尺寸、上下文使用统计与附件。
 - 外部依赖
@@ -437,6 +578,7 @@ S-->>调用方 : 返回sessionId/agentId/agentName
   - react-window用于虚拟滚动。
   - react-syntax-highlighter用于代码高亮（动态导入）。
   - IntersectionObserver用于懒加载。
+  - react-i18next用于国际化支持。
 
 ```mermaid
 graph TB
@@ -444,6 +586,7 @@ Panel["AIAssistantPanel"] --> SSE["useSSEHandler"]
 Panel --> SM["useSessionManager"]
 Panel --> Store["useAIAssistantStore"]
 Panel --> VM["VirtualMessageList"]
+Panel --> I18n["国际化系统"]
 VM --> CM["ChatMessage"]
 CM --> TP["ThinkPanel"]
 CM --> TCI["ToolCallIndicator"]
@@ -452,14 +595,23 @@ CM --> LI["LazyImage"]
 CM --> LCB["LazyCodeBlock"]
 SSE --> Store
 SM --> Store
+I18n --> Panel
+I18n --> CM
+I18n --> TP
+I18n --> TCI
+I18n --> SCI
+I18n --> VM
+I18n --> SSE
+I18n --> SM
 ```
 
-图表来源
+**图表来源**
 - [AIAssistantPanel.tsx:18-25](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L18-L25)
 - [ChatMessage.tsx:1-20](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L20)
 - [VirtualMessageList.tsx:1-7](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L7)
+- [I18nProvider.tsx:1-20](file://frontend/src/i18n/I18nProvider.tsx#L1-L20)
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:18-25](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L18-L25)
 - [ChatMessage.tsx:1-20](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L20)
 - [VirtualMessageList.tsx:1-7](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L7)
@@ -471,6 +623,7 @@ SM --> Store
 - 流式渲染：打字机效果与增量更新，提升交互流畅度。
 - 长任务监控：面板级性能监控，对长时间任务发出告警。
 - 自动滚动策略：仅在用户未手动向上滚动时自动滚动，避免打断用户阅读。
+- 国际化优化：翻译函数缓存，避免重复翻译调用。
 
 ## 故障排查指南
 - 登录过期
@@ -488,8 +641,11 @@ SM --> Store
 - 上下文使用统计异常
   - 现象：context_compacted事件或restore失败。
   - 处理：确认后端会话信息与Agent上下文窗口配置。
+- 国际化问题
+  - 现象：文本显示为键名而非翻译内容。
+  - 处理：检查翻译键是否存在、语言包加载是否正确、localStorage语言偏好设置。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:240-252](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L240-L252)
 - [useSSEHandler.ts:375-380](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L375-L380)
 - [useSSEHandler.ts:255-267](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L255-L267)
@@ -502,6 +658,7 @@ AI助手组件通过清晰的分层架构与完善的Hooks抽象，实现了高�
 - 基于虚拟滚动与懒加载的渲染优化，保障大规模消息场景下的流畅性。
 - 完整的工具/技能状态展示与错误处理，提升调试与运维效率。
 - 会话与上下文使用统计的持久化与恢复，增强用户体验连续性。
+- 全面的国际化支持，覆盖所有用户界面元素，提供多语言本地化体验。
 
 ## 附录
 
@@ -514,8 +671,10 @@ AI助手组件通过清晰的分层架构与完善的Hooks抽象，实现了高�
   - 从画布拖拽节点到面板 → 预览缩略图 → 发送消息时自动拼接上下文 → 图像编辑上下文横幅提示。
 - 会话管理
   - Agent切换 → 清空会话 → 上下文使用统计恢复。
+- 国际化切换
+  - 通过语言切换器在中文和英文之间切换 → 所有界面元素自动更新为对应语言。
 
-章节来源
+**章节来源**
 - [AIAssistantPanel.tsx:182-293](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L182-L293)
 - [useSessionManager.ts:125-146](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L125-L146)
 - [ChatMessage.tsx:215-251](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L215-L251)
@@ -528,8 +687,20 @@ AI助手组件通过清晰的分层架构与完善的Hooks抽象，实现了高�
 - 附件元数据
   - 用户消息中嵌入隐藏元数据块与消息起始标记，用于AI感知节点内容。
 
-章节来源
+**章节来源**
 - [ChatMessage.tsx:24-28](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L24-L28)
 - [ChatMessage.tsx:36-51](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L36-L51)
 - [ChatMessage.tsx:102-126](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L102-L126)
 - [AIAssistantPanel.tsx:36-49](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L36-L49)
+
+### 国际化键参考
+- **基础AI功能**：ai.title, ai.openButton, ai.clearChat, ai.inputPlaceholder, ai.send, ai.sending
+- **Agent管理**：ai.selectAgent, ai.supports, ai.noAgents
+- **上下文统计**：ai.context, ai.contextStats, ai.used, ai.limit, ai.remaining, ai.usageRate
+- **错误处理**：ai.loginExpired, ai.loginExpiredDesc, ai.cancel, ai.relogin, ai.requestFailed
+- **预设对话**：ai.presets.scifiScript, ai.presets.designCharacter, ai.presets.storyboard, ai.presets.polishStory
+- **欢迎消息**：ai.welcome.greeting, ai.welcome.subtitle, ai.welcome.defaultUser
+
+**章节来源**
+- [en-US.json:161-205](file://frontend/src/i18n/locales/en-US.json#L161-L205)
+- [zh-CN.json:161-205](file://frontend/src/i18n/locales/zh-CN.json#L161-L205)
