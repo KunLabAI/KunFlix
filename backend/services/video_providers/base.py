@@ -38,6 +38,14 @@ class VideoContext:
     fast_pretreatment: bool = False
     # 主题参考 (MiniMax S2V-01)
     subject_reference: List[Dict] = field(default_factory=list)
+    # 参考音频 (Seedance 2.0 支持, 最多 3 个)
+    reference_audios: List[Dict] = field(default_factory=list)
+    # 多参考视频 (Seedance 2.0 支持, 最多 3 个)
+    reference_videos: List[Dict] = field(default_factory=list)
+    # 是否返回生成视频的尾帧图像 (用于连续视频生成)
+    return_last_frame: bool = False
+    # 联网搜索工具 (Seedance 2.0 支持)
+    enable_web_search: bool = False
 
 
 @dataclass
@@ -51,6 +59,7 @@ class VideoResult:
     video_width: int = 0
     video_height: int = 0
     error: str = ""
+    last_frame_image_url: str = ""  # 视频尾帧图像 URL (Seedance 2.0 return_last_frame)
 
 
 class VideoProviderAdapter(ABC):

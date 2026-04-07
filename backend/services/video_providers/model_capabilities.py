@@ -330,40 +330,54 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
     # 火山方舟 Seedance 模型
     # =========================================================================
     
-    # Seedance 2.0: T2V, I2V, 首尾帧, 多模态参考(图/视频/音频), 有声视频
+    # Seedance 2.0: T2V, I2V, 首尾帧, 多模态参考(图/视频/音频), 编辑, 延长, 有声视频
     "doubao-seedance-2-0-260128": {
         "provider": "ark",
         "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
-        "durations": list(range(4, 16)),  # 4-15 秒
+        "durations": [-1] + list(range(4, 16)),  # -1 智能选时长, 4-15 秒
         "resolutions": ["480p", "720p"],
         "supports_first_frame": True,
         "supports_last_frame": True,
         "supports_reference_images": True,
+        "supports_reference_videos": True,
+        "max_reference_videos": 3,
+        "supports_reference_audios": True,
+        "max_reference_audios": 3,
         "supports_video_extension": True,
         "supports_video_edit": True,
         "supports_audio": True,
         "max_reference_images": 9,
+        "supports_return_last_frame": True,
+        "supports_web_search": True,
+        "supports_auto_duration": True,
         "supports_prompt_optimizer": False,
         "supports_fast_pretreatment": False,
-        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9", "adaptive"],
     },
     
     # Seedance 2.0 Fast: 快速版, 与 2.0 同等能力
     "doubao-seedance-2-0-fast-260128": {
         "provider": "ark",
         "modes": ["text_to_video", "image_to_video", "reference_images", "video_extension"],
-        "durations": list(range(4, 16)),
+        "durations": [-1] + list(range(4, 16)),
         "resolutions": ["480p", "720p"],
         "supports_first_frame": True,
         "supports_last_frame": True,
         "supports_reference_images": True,
+        "supports_reference_videos": True,
+        "max_reference_videos": 3,
+        "supports_reference_audios": True,
+        "max_reference_audios": 3,
         "supports_video_extension": True,
         "supports_video_edit": True,
         "supports_audio": True,
         "max_reference_images": 9,
+        "supports_return_last_frame": True,
+        "supports_web_search": True,
+        "supports_auto_duration": True,
         "supports_prompt_optimizer": False,
         "supports_fast_pretreatment": False,
-        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9", "adaptive"],
     },
     
     # Seedance 1.5 Pro: T2V, I2V, 首尾帧, 有声视频

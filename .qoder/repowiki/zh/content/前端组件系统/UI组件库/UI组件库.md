@@ -13,6 +13,7 @@
 - [textarea.tsx](file://frontend/src/components/ui/textarea.tsx)
 - [slider.tsx](file://frontend/src/components/ui/slider.tsx)
 - [sheet.tsx](file://frontend/src/components/ui/sheet.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -39,11 +40,10 @@
 
 ## 更新摘要
 **所做更改**
-- 新增国际化支持章节，详细介绍i18n系统的实现与配置
-- 更新组件详解章节，补充国际化相关的useTranslation钩子使用
-- 新增语言切换器组件的详细文档
-- 更新国际化资源文件，包含完整的中英文翻译
-- 新增国际化在各组件中的实际应用示例
+- 新增TextEffect组件的详细说明和使用指南
+- 更新基础组件章节，添加TextEffect组件的完整文档
+- 添加TextEffect组件的属性接口、动画效果和使用示例
+- 更新组件详解章节，完善基础组件的完整性
 
 ## 目录
 1. [简介](#简介)
@@ -60,7 +60,7 @@
 12. [附录：使用示例与最佳实践](#附录使用示例与最佳实践)
 
 ## 简介
-本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新新增了完整的国际化支持系统，确保一致的多语言用户体验。
+本文件为 KunFlix 的 UI 组件库文档，聚焦于基于 Ant Design 设计体系的组件实现与使用说明。内容覆盖基础组件（按钮、输入框、头像、文本特效等）、表单组件（表单容器、选择器等）、反馈组件（警示、对话框、提示条等）以及布局组件（卡片、标签页等）。本次更新新增了完整的国际化支持系统，确保一致的多语言用户体验。
 
 ## 项目结构
 UI 组件主要位于前端与后台管理端两处：
@@ -84,6 +84,7 @@ F_DROP["dropdown-menu.tsx"]
 F_TXT["textarea.tsx"]
 F_SLD["slider.tsx"]
 F_SHT["sheet.tsx"]
+F_TEXTEFFECT["text-effect.tsx"]
 end
 subgraph "后台管理组件库"
 B_FORM["form.tsx"]
@@ -117,6 +118,7 @@ F_TABS --> |"使用"| F_TABS
 F_DLG --> |"基础对话框"| F_DLG
 F_CDlg --> |"确认对话框"| F_CDlg
 F_IDlg --> |"输入对话框"| F_IDlg
+F_TEXTEFFECT --> |"文本特效"| F_TEXTEFFECT
 LOGIN --> |"登录页面"| LOGIN
 RES --> |"资源页面"| RES
 HOME --> |"剧场卡片"| HOME
@@ -138,6 +140,7 @@ LANG_SWITCHER --> |"切换语言"| EN_US
 - [tabs.tsx](file://frontend/src/components/ui/tabs.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [login/page.tsx](file://frontend/src/app/login/page.tsx)
 - [resources/page.tsx](file://frontend/src/app/resources/page.tsx)
 - [theater/[id]/page.tsx](file://frontend/src/app/theater/[id]/page.tsx)
@@ -160,6 +163,7 @@ LANG_SWITCHER --> |"切换语言"| EN_US
 - [tabs.tsx](file://frontend/src/components/ui/tabs.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -173,7 +177,7 @@ LANG_SWITCHER --> |"切换语言"| EN_US
 
 ## 核心组件
 本节概述各类型组件的职责与通用能力：
-- 基础组件：提供语义化与可复用的 UI 原子能力，如按钮、输入框、头像等，强调变体与尺寸控制、可组合渲染与无障碍属性。
+- 基础组件：提供语义化与可复用的 UI 原子能力，如按钮、输入框、头像、文本特效等，强调变体与尺寸控制、可组合渲染与无障碍属性。
 - 表单组件：围绕 react-hook-form 构建，提供表单项上下文、标签、控制域、描述与错误信息的统一接入。
 - 反馈组件：用于信息提示与用户确认，包含警示框、对话框、提示条等，强调可访问性与动画过渡。
 - 布局组件：用于页面结构组织，如卡片、标签页等，强调语义化结构与响应式布局。
@@ -188,6 +192,7 @@ LANG_SWITCHER --> |"切换语言"| EN_US
 - [tabs.tsx](file://frontend/src/components/ui/tabs.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -198,6 +203,7 @@ LANG_SWITCHER --> |"切换语言"| EN_US
 组件库整体采用"变体驱动 + 上下文注入 + 组合模式 + 国际化支持"的架构：
 - 变体与类名：通过 class-variance-authority 定义组件变体与默认值，结合 cn 工具合并类名，实现主题与尺寸的灵活切换。
 - 上下文与组合：表单组件通过 React Context 注入字段上下文，使标签、控制域、描述与错误信息形成统一的可访问性链路。
+- 原子与复合：基础组件多为原子级封装，反馈与布局组件为复合组件，内部组合多个原子组件并提供行为逻辑。
 - 原子与复合：基础组件多为原子级封装，反馈与布局组件为复合组件，内部组合多个原子组件并提供行为逻辑。
 - 对话框层次：基础对话框提供通用的模态交互，确认对话框和输入对话框提供特定的业务场景解决方案，均支持Promise风格的异步处理。
 - **国际化架构**：i18n系统通过react-i18next提供语言切换与文本翻译，支持中英文双语，具备持久化存储与SSR水合兼容性。
@@ -222,6 +228,12 @@ CONFIRM_DLG["确认对话框<br/>ConfirmDialog + useConfirmDialog"]
 INPUT_DLG["输入对话框<br/>InputDialog + useInputDialog"]
 ASYNCHRONOUS["Promise风格接口<br/>异步处理"]
 end
+subgraph "文本特效系统"
+TEXTEFFECT["TextEffect<br/>文本动画组件"]
+FRAMERMOTION["Framer Motion<br/>动画引擎"]
+ANIMATIONCOMPONENT["AnimationComponent<br/>动画子组件"]
+PRESETVARIANTS["预设动画变体<br/>blur/shake/scale/fade/slide"]
+END
 subgraph "国际化系统"
 I18N_CORE["i18n核心<br/>index.ts"]
 I18N_PROVIDER["I18nProvider<br/>语言上下文"]
@@ -237,6 +249,9 @@ CDLG["ConfirmDialog"] --> BASE_DLG
 IDLG["InputDialog"] --> BASE_DLG
 CDLG --> ASYNCHRONOUS
 IDLG --> ASYNCHRONOUS
+TEXTEFFECT --> FRAMERMOTION
+TEXTEFFECT --> ANIMATIONCOMPONENT
+TEXTEFFECT --> PRESETVARIANTS
 I18N_CORE --> I18N_PROVIDER
 I18N_PROVIDER --> LANG_SWITCHER
 LANG_SWITCHER --> LOCALES
@@ -248,6 +263,7 @@ LANG_SWITCHER --> LOCALES
 - [avatar.tsx](file://frontend/src/components/ui/avatar.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -351,6 +367,79 @@ Avatar --> AvatarFallback : "包含"
 
 **章节来源**
 - [avatar.tsx](file://frontend/src/components/ui/avatar.tsx)
+
+#### 文本特效 TextEffect
+- 组件概述
+  - TextEffect 是一个强大的文本动画组件，基于 Framer Motion 实现，支持多种动画效果和分段渲染
+  - 可以按字符、单词或行进行分段，提供流畅的文本进入、退出和交互动画
+- 属性接口
+  - children: string - 要动画化的文本内容
+  - per?: 'word' | 'char' | 'line' - 分段粒度，默认为 'word'
+  - as?: keyof React.JSX.IntrinsicElements - HTML标签类型，默认为 'p'
+  - variants?: { container?: Variants; item?: Variants } - 自定义动画变体
+  - className?: string - 外部类名
+  - preset?: 'blur' | 'shake' | 'scale' | 'fade' | 'slide' - 预设动画效果
+  - delay?: number - 动画延迟时间（秒）
+  - trigger?: boolean - 控制动画触发的布尔值
+  - onAnimationComplete?: () => void - 动画完成回调
+  - segmentWrapperClassName?: string - 分段包装器类名
+- 预设动画效果
+  - blur: 模糊渐显效果，适合标题或重要文本
+  - shake: 摇摆动画，增加趣味性和注意力
+  - scale: 缩放效果，突出文本的出现
+  - fade: 淡入淡出，简洁优雅
+  - slide: 滑动效果，适合列表或段落
+- 动画分段策略
+  - 字符级别：逐个字符动画，适合短文本或强调效果
+  - 单词级别：按空格分段，适合正常文本阅读
+  - 行级别：按换行符分段，适合段落或诗歌
+- 无障碍与可访问性
+  - 行级别分段时提供完整的 aria-label
+  - 字符和单词级别分段时设置 aria-hidden，避免重复读取
+  - 支持 AnimatePresence 的 popLayout 模式
+- 性能优化
+  - 使用 React.memo 优化 AnimationComponent 渲染
+  - 支持受控触发，避免不必要的动画
+  - 提供自定义变体，减少重复代码
+- 示例路径
+  - [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
+
+```mermaid
+classDiagram
+class TextEffect {
++children : string
++per : "word"|"char"|"line"
++as : "p"|"h1"|"h2"|"h3"|"h4"|"h5"|"h6"
++variants : Variants
++className : string
++preset : "blur"|"shake"|"scale"|"fade"|"slide"
++delay : number
++trigger : boolean
++onAnimationComplete : Function
++segmentWrapperClassName : string
+}
+class AnimationComponent {
++segment : string
++variants : Variants
++per : "line"|"word"|"char"
++segmentWrapperClassName : string
+}
+class PresetVariants {
++blur : Variants
++shake : Variants
++scale : Variants
++fade : Variants
++slide : Variants
+}
+TextEffect --> AnimationComponent : "使用"
+TextEffect --> PresetVariants : "应用预设"
+```
+
+**图表来源**
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
+
+**章节来源**
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 
 ### 表单组件
 
@@ -870,6 +959,7 @@ Home 页面组件提供了丰富的剧场管理功能：
   - 对话框组件提供 Promise 风格的异步接口，增强用户体验
   - 确认对话框和输入对话框组件依赖基础对话框组件
   - **国际化组件**：LanguageSwitcher依赖i18n系统，各业务组件依赖useTranslation钩子
+  - **文本特效组件**：TextEffect组件依赖Framer Motion动画引擎
 - 外部依赖
   - class-variance-authority：变体系统
   - @radix-ui/react-*：可访问性与动画抽象
@@ -907,6 +997,9 @@ I18N --> I18NEXT_CORE["i18next核心"]
 LANG_SWITCHER["LanguageSwitcher"] --> I18N
 COMPONENTS["业务组件"] --> USE_TRANSLATION["useTranslation钩子"]
 USE_TRANSLATION --> I18N
+TEXTEFFECT["TextEffect"] --> FRAMERMOTION["Framer Motion"]
+TEXTEFFECT --> ANIMATIONCOMPONENT["AnimationComponent"]
+TEXTEFFECT --> PRESETVARIANTS["预设动画变体"]
 ```
 
 **图表来源**
@@ -915,6 +1008,7 @@ USE_TRANSLATION --> I18N
 - [avatar.tsx](file://frontend/src/components/ui/avatar.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -936,6 +1030,7 @@ USE_TRANSLATION --> I18N
 - [avatar.tsx](file://frontend/src/components/ui/avatar.tsx)
 - [dialog.tsx](file://frontend/src/components/ui/dialog.tsx)
 - [confirm-dialog.tsx](file://frontend/src/components/ui/confirm-dialog.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
 - [select.tsx](file://backend/admin/src/components/ui/select.tsx)
 - [alert-dialog.tsx](file://backend/admin/src/components/ui/alert-dialog.tsx)
@@ -957,6 +1052,7 @@ USE_TRANSLATION --> I18N
   - 资源卡片使用懒加载与条件渲染，优化大列表性能
   - 确认对话框和输入对话框组件支持加载状态，提升用户体验
   - **国际化性能**：i18n系统采用按需加载，避免不必要的翻译计算
+  - **文本特效性能**：TextEffect组件使用React.memo优化渲染，支持受控触发
 - 可访问性
   - 表单组件自动注入 aria-* 属性，确保屏幕阅读器可用
   - 对话框与提示条提供键盘关闭与焦点管理
@@ -965,6 +1061,7 @@ USE_TRANSLATION --> I18N
   - 资源预览对话框提供下载与关闭的键盘快捷键
   - 确认对话框和输入对话框提供明确的视觉反馈
   - **国际化可访问性**：语言切换器提供aria-label，支持屏幕阅读器
+  - **文本特效可访问性**：行级别分段提供完整aria-label，字符和单词级别设置aria-hidden
 - 响应式与跨浏览器
   - 组件样式使用相对单位与媒体查询，保证在不同设备上的一致表现
   - 通过 Radix UI 的动画与过渡，确保在现代浏览器中的流畅体验
@@ -999,6 +1096,11 @@ USE_TRANSLATION --> I18N
   - 若翻译文本不显示，请确认翻译键是否存在且拼写正确
   - 若SSR水合不匹配，请检查I18nProvider的客户端挂载逻辑
   - 若语言偏好未保存，请检查localStorage的访问权限
+- **文本特效相关**
+  - 若动画不显示，请检查trigger属性是否为true
+  - 若分段不正确，请检查per属性设置（word/char/line）
+  - 若动画效果异常，请检查variants配置或preset属性
+  - 若性能问题，请检查是否使用了过多的TextEffect组件
 
 **章节来源**
 - [form.tsx](file://backend/admin/src/components/ui/form.tsx)
@@ -1008,6 +1110,7 @@ USE_TRANSLATION --> I18N
 - [toast.tsx](file://backend/admin/src/components/ui/toast.tsx)
 - [resources/AssetCard.tsx](file://frontend/src/components/resources/AssetCard.tsx)
 - [LanguageSwitcher.tsx](file://frontend/src/components/LanguageSwitcher.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 
 ## 结论
 本组件库以 Ant Design 设计体系为蓝本，结合 Radix UI 的可访问性与 class-variance-authority 的变体系统，构建了高可组合、可定制、可扩展的 UI 基础设施。通过上下文与变体驱动的设计，组件在保持一致性的同时提供了足够的灵活性，满足从基础交互到复杂业务场景的需求。
@@ -1019,6 +1122,8 @@ USE_TRANSLATION --> I18N
 - 持久化语言偏好存储
 - SSR水合兼容性处理
 
+同时，新增了强大的TextEffect文本特效组件，基于Framer Motion实现，提供多种动画效果和分段渲染能力，支持字符、单词、行三种分段粒度，满足各种文本动画需求。
+
 这些增强不仅提升了用户体验，还为后续的功能扩展奠定了坚实的基础，确保KunFlix能够在国际化环境中提供一致、高质量的用户界面。
 
 ## 附录：使用示例与最佳实践
@@ -1026,11 +1131,13 @@ USE_TRANSLATION --> I18N
   - 使用 Tabs 将多个内容面板组合，仅渲染当前激活项
   - 使用 Card 组织信息区块，配合 Header/Title/Description 提升可读性
   - 使用 ConfirmDialog 和 InputDialog 提供一致的用户确认体验
+  - 使用 TextEffect 为文本内容添加动画效果，提升视觉吸引力
 - 状态管理
   - 表单场景优先使用 react-hook-form 的受控/非受控模式，结合 FormItem 与 FormControl 管理字段状态
   - Tabs 支持受控与非受控两种模式，根据业务需要选择
   - 对话框组件使用 Promise 风格接口，简化异步处理逻辑
   - 确认对话框和输入对话框组件使用 useConfirmDialog 和 useInputDialog hook 管理状态
+  - TextEffect 组件支持受控触发，通过trigger属性精确控制动画时机
 - 性能优化
   - 将昂贵的子树放入 TabsContent，避免一次性渲染
   - 使用 asChild 将 Button 渲染为链接或其他元素，减少额外 DOM
@@ -1038,10 +1145,12 @@ USE_TRANSLATION --> I18N
   - 对话框组件使用 Portal 渲染，减少 DOM 深度影响
   - 确认对话框和输入对话框组件支持加载状态，提升用户体验
   - **国际化性能**：合理使用翻译函数，避免在渲染循环中频繁调用
+  - **文本特效性能**：使用React.memo优化渲染，避免不必要的重新渲染
 - 主题与样式
   - 通过变体参数快速切换主题风格，必要时使用外部类名覆盖
   - 使用 cn 合并类名，避免样式冲突
   - 对话框组件提供颜色主题映射，统一视觉风格
+  - TextEffect 组件支持自定义样式，通过className属性扩展
 - 无障碍访问
   - 表单组件自动注入可访问性属性，确保屏幕阅读器可用
   - 对话框与提示条提供键盘操作与焦点管理
@@ -1049,12 +1158,14 @@ USE_TRANSLATION --> I18N
   - 资源预览对话框提供下载与关闭的键盘快捷键
   - 确认对话框和输入对话框提供明确的视觉反馈
   - **国际化无障碍**：确保语言切换器提供适当的aria-label
+  - **文本特效无障碍**：合理使用aria-hidden和aria-label属性
 - 组件扩展
   - 基于现有对话框组件模式，可以扩展更多业务场景的确认对话框
   - 资源卡片的预览渲染器模式可以扩展支持更多文件类型
   - 剧场页面的节点类型注册模式可以扩展支持更多节点类型
   - 对话框组件的Promise风格接口可以扩展支持更多异步操作场景
   - **国际化扩展**：新增语言时，只需添加对应的JSON资源文件即可
+  - **文本特效扩展**：可以基于AnimationComponent扩展更多动画效果
 - **国际化最佳实践**
   - 使用层级结构组织翻译键，便于维护和查找
   - 参数化翻译时使用{{variable}}占位符，支持动态内容
@@ -1062,3 +1173,10 @@ USE_TRANSLATION --> I18N
   - 在组件中统一使用useTranslation钩子获取翻译函数
   - 语言切换时确保用户偏好得到持久化保存
   - 考虑RTL语言的支持与文本方向调整
+- **文本特效最佳实践**
+  - 根据内容长度选择合适的分段粒度（字符/单词/行）
+  - 合理使用delay属性创建层次化的动画序列
+  - 使用preset属性快速实现常见动画效果
+  - 通过variants属性实现自定义动画，保持动画的一致性
+  - 注意性能优化，避免在同一页面中使用过多的TextEffect组件
+  - 在移动设备上谨慎使用复杂的动画效果，确保流畅性

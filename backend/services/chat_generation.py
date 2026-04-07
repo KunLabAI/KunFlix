@@ -13,6 +13,7 @@ from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, To
 from services.chat_utils import (
     sse, deserialize_content, extract_media_filename,
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
+    inject_attachment_images,
 )
 from services.chat_tool_dispatch import append_tool_round, append_tool_round_with_errors
 from services.llm_stream import stream_completion
@@ -91,29 +92,40 @@ async def generate_single_agent(
     image_gen_enabled = global_image_cfg.get("image_generation_enabled", False)
 
     # 图片注入：将画布节点的图片或历史图片注入为本轮多模态输入
-    # 两条路径：
-    #   1. edit_image_url（画布节点附件）→ 始终注入（用于 AI 分析/查看），不依赖 image_generation_enabled
-    #   2. edit_last_image（编辑历史图片）→ 仅在 image_generation_enabled 时注入（图片编辑工作流）
-    _edit_image_data_url = None
-    # 路径 1：画布节点图片
-    _img_filename = None
-    if edit_image_url:
-        _img_filename = extract_media_filename(edit_image_url)
-        _img_filename and (_edit_image_data_url := image_file_to_data_url(str(MEDIA_DIR / _img_filename)))
-    # 路径 2：历史图片编辑 — 需要 image_generation_enabled
-    elif edit_last_image and image_gen_enabled:
-        last_image_path = get_last_image_path(history)
-        last_image_path and (_edit_image_data_url := image_file_to_data_url(last_image_path))
+    # 三条路径（优先级递减）：
+    #   1. __ATTACHMENTS__ 元数据 → 解析所有图片附件，批量注入（最常见：用户引用多张画布图片）
+    #   2. edit_image_url（画布单图编辑）→ 注入单张图（用于 AI 分析/查看）
+    #   3. edit_last_image（编辑历史图片）→ 仅在 image_generation_enabled 时注入（图片编辑工作流）
+    _injected_images: list[str] = []
 
-    if _edit_image_data_url and messages:
-        last_msg = messages[-1]
-        (last_msg.get("role") == "user") and inject_image_to_message(last_msg, _edit_image_data_url)
-        # 附带媒体路径提示，让 LLM 使用路径调用 edit_image（而非尝试复制 base64）
-        _media_path = _img_filename and f"/api/media/{_img_filename}"
-        _media_path and isinstance(last_msg.get("content"), list) and last_msg["content"].append(
-            {"type": "text", "text": f"[Image source path: {_media_path} — use this path as image_url for edit_image tool, do NOT pass base64 data]"}
-        )
-        logger.info(f"Injected image into user message: {_img_filename or 'history_image'}")
+    # 路径 1：从消息文本的 __ATTACHMENTS__ 解析所有图片附件
+    last_msg = messages[-1] if messages else None
+    (last_msg and last_msg.get("role") == "user") and (
+        _injected_images := inject_attachment_images(last_msg)
+    )
+
+    # 路径 2/3：__ATTACHMENTS__ 未注入任何图片时，回退到单图注入
+    _edit_image_data_url = None
+    _img_filename = None
+    if not _injected_images:
+        # 路径 2：画布节点单图
+        if edit_image_url:
+            _img_filename = extract_media_filename(edit_image_url)
+            _img_filename and (_edit_image_data_url := image_file_to_data_url(str(MEDIA_DIR / _img_filename)))
+        # 路径 3：历史图片编辑 — 需要 image_generation_enabled
+        elif edit_last_image and image_gen_enabled:
+            last_image_path = get_last_image_path(history)
+            last_image_path and (_edit_image_data_url := image_file_to_data_url(last_image_path))
+
+        if _edit_image_data_url and last_msg and last_msg.get("role") == "user":
+            inject_image_to_message(last_msg, _edit_image_data_url)
+            _media_path = _img_filename and f"/api/media/{_img_filename}"
+            _media_path and isinstance(last_msg.get("content"), list) and last_msg["content"].append(
+                {"type": "text", "text": f"[Image source path: {_media_path} — use this path as image_url for edit_image tool, do NOT pass base64 data]"}
+            )
+            _injected_images = [_img_filename or "history_image"]
+
+    _injected_images and logger.info(f"Injected {len(_injected_images)} image(s) into user message: {', '.join(_injected_images)}")
 
     # 工具管理器 — 构建工具定义
     tool_manager = ToolManager()

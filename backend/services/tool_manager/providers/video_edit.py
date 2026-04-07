@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import LLMProvider, VideoTask, ToolConfig
 from services.video_generation import submit_video_task, infer_provider_type
+from services.video_providers import extract_video_provider_type
 from services.video_providers.base import VideoContext
 from services.video_providers.model_capabilities import get_model_capabilities
 
@@ -64,44 +65,93 @@ def _build_video_edit_tool_def(
         if caps.get(cap_key, False)
     ] or ["edit", "extend"]  # 回退: 全部模式
 
+    properties: dict = {
+        "video_url": {
+            "type": "string",
+            "description": (
+                "URL of the source video to edit or extend. "
+                "Can be a public URL or a local path (e.g. /api/media/filename.mp4)."
+            ),
+        },
+        "prompt": {
+            "type": "string",
+            "description": (
+                "For edit mode: describe the desired changes to the video. "
+                "For extend mode: describe what should happen in the extended portion. "
+                "Refer to input media as 视频1, 图片1, 音频1, etc."
+            ),
+        },
+        "mode": {
+            "type": "string",
+            "enum": available_modes,
+            "description": "Operation mode: 'edit' to modify the video, 'extend' to add more frames or concatenate videos.",
+        },
+        "duration": {
+            "type": "integer",
+            "description": "Duration in seconds for the output video. Default is 6.",
+        },
+    }
+
+    # 参考图片 (编辑模式: 用于替换视频主体等)
+    caps.get("supports_reference_images") and properties.update(
+        reference_images={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of reference image URLs for video editing. "
+                "Used to replace objects, add elements, or guide style changes in the video. "
+                "NUMBERING: index 0 = 图片1, index 1 = 图片2, etc. "
+                "Get URLs from canvas image nodes via get_canvas_node (data.imageUrl field)."
+            ),
+        }
+    )
+
+    # 参考音频 (编辑模式: 用于更换音轨等)
+    caps.get("supports_reference_audios") and properties.update(
+        reference_audios={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of reference audio URLs for video editing. "
+                "Used to replace or add audio tracks (wav/mp3, 2-15s each). "
+                "NUMBERING: index 0 = 音频1, index 1 = 音频2, etc."
+            ),
+        }
+    )
+
+    # 额外视频 (延长模式: 串联多个视频片段)
+    caps.get("supports_reference_videos") and properties.update(
+        additional_videos={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of additional video URLs for video extension/concatenation. "
+                "Combined with video_url (=视频1), additional_videos[0]=视频2, additional_videos[1]=视频3 (up to 3 total). "
+                "Get URLs from canvas video nodes via get_canvas_node (data.videoUrl field)."
+            ),
+        }
+    )
+
     return {
         "type": "function",
         "function": {
             "name": VIDEO_EDIT_TOOL_NAME,
             "description": (
                 "Edit or extend an existing video using AI. "
-                "Use 'edit' mode to modify a video based on a text prompt (e.g., change style, add effects). "
-                "Use 'extend' mode to extend a video by generating additional frames. "
+                "Use 'edit' mode to modify a video based on a text prompt (e.g., replace objects, change style, add effects). "
+                "Use 'extend' mode to extend a video or concatenate multiple video clips into one continuous video. "
                 "Video processing is asynchronous and takes 1-5 minutes. "
-                "The tool returns a task ID; the user will be notified when the result is ready."
+                "The tool returns a task ID; the user will be notified when the result is ready.\n\n"
+                "IMPORTANT — Media numbering convention:\n"
+                "video_url = 视频1; additional_videos[0] = 视频2, additional_videos[1] = 视频3.\n"
+                "reference_images[0] = 图片1, reference_images[1] = 图片2.\n"
+                "reference_audios[0] = 音频1, reference_audios[1] = 音频2.\n"
+                "To use canvas node media: call list_canvas_nodes/get_canvas_node to get imageUrl/videoUrl, "
+                "then pass URLs in the desired order and write the prompt using numbered references."
             ),
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "video_url": {
-                        "type": "string",
-                        "description": (
-                            "URL of the source video to edit or extend. "
-                            "Can be a public URL or a local path (e.g. /api/media/filename.mp4)."
-                        ),
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": (
-                            "For edit mode: describe the desired changes to the video. "
-                            "For extend mode: describe what should happen in the extended portion."
-                        ),
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": available_modes,
-                        "description": "Operation mode: 'edit' to modify the video, 'extend' to add more frames.",
-                    },
-                    "duration": {
-                        "type": "integer",
-                        "description": "Duration in seconds for the extended portion (extend mode only). Default is 6.",
-                    },
-                },
+                "properties": properties,
                 "required": ["video_url", "prompt", "mode"],
             },
         },
@@ -133,6 +183,9 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
     prompt = args.get("prompt", "")
     mode = args.get("mode", "edit")
     duration = args.get("duration")
+    reference_images_raw = args.get("reference_images", [])
+    reference_audios_raw = args.get("reference_audios", [])
+    additional_videos_raw = args.get("additional_videos", [])
 
     # 映射工具模式到 video_mode
     video_mode = _MODE_TO_VIDEO_MODE.get(mode, "edit")
@@ -152,16 +205,27 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
     if not provider:
         return json.dumps({"error": "Video provider not found or inactive. Please configure video generation in admin tools."})
 
-    provider_type = provider.provider_type or infer_provider_type(model)
+    # 从 LLMProvider.provider_type 提取视频供应商类型
+    provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(model, provider.provider_type)
 
     # 合并配置
     final_duration = duration or video_cfg.get("duration", 6)
     final_quality = video_cfg.get("quality", "720p")
     final_aspect = video_cfg.get("aspect_ratio", "16:9")
 
+    # 构建参考媒体列表
+    ref_images = [{"url": u} for u in reference_images_raw] if reference_images_raw else []
+    ref_audios = [{"url": u} for u in reference_audios_raw] if reference_audios_raw else []
+
+    # 构建参考视频列表:
+    # - edit 模式: video_url 作为参考视频 (Ark 使用 reference_video 角色)
+    # - extend 模式: video_url + additional_videos 合并为参考视频列表
+    ref_videos = [{"url": video_url}]
+    ref_videos.extend({"url": u} for u in additional_videos_raw)
+
     # 构建 VideoContext
-    # edit 模式: image_url 携带视频帧 (xAI 的 edit 端点使用 image 字段)
-    # extend 模式: extension_video_url 携带源视频
+    # 保持向后兼容: image_url 仍传递给 xAI 等使用 image 字段的供应商
+    # reference_videos 用于 Ark Seedance 等使用 reference_video 角色的供应商
     video_ctx = VideoContext(
         api_key=provider.api_key,
         model=model,
@@ -173,6 +237,9 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
         quality=final_quality,
         aspect_ratio=final_aspect,
         video_mode=video_mode,
+        reference_images=ref_images,
+        reference_videos=ref_videos,
+        reference_audios=ref_audios,
     )
 
     # 提交任务
@@ -186,6 +253,7 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
         return json.dumps({"error": "Video editing failed: " + (video_result.error or "Unknown error")})
 
     # 创建 VideoTask 记录
+    input_image_count = len(ref_images)
     task = VideoTask(
         xai_task_id=video_result.task_id,
         session_id=ctx.session_id,
@@ -199,7 +267,7 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
         quality=final_quality,
         aspect_ratio=final_aspect,
         status="pending",
-        input_image_count=0,
+        input_image_count=input_image_count,
     )
     db.add(task)
     await db.commit()
@@ -242,8 +310,11 @@ class VideoEditProvider:
         if ctx.is_skill_gated("video_tools"):
             return []
 
-        # 检查智能体级别的视频开关
-        agent_video_enabled = (ctx.agent.video_config or {}).get("video_generation_enabled", False)
+        # 当 video_tools skill 被显式加载时，跳过 agent 级别的开关检查
+        skill_explicitly_loaded = "video_tools" in ctx.loaded_tool_skills
+
+        # 检查智能体级别的视频开关（仅在非 skill-gate 模式下检查）
+        agent_video_enabled = skill_explicitly_loaded or (ctx.agent.video_config or {}).get("video_generation_enabled", False)
         if not agent_video_enabled:
             return []
 

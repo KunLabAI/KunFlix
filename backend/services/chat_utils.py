@@ -33,6 +33,10 @@ def deserialize_content(content: str) -> Any:
 
 
 IMAGE_MD_PATTERN = re.compile(r"!\[image\]\((/api/media/[^)]+)\)")
+ATTACHMENTS_PATTERN = re.compile(r"<!-- __ATTACHMENTS__(\[.*?\]) -->", re.DOTALL)
+
+# 单次消息最多注入的图片附件数量（避免 base64 撑爆上下文窗口）
+MAX_ATTACHMENT_IMAGES = 5
 
 
 _URL_EXTRACTORS = [
@@ -91,3 +95,55 @@ def inject_image_to_message(msg: dict, data_url: str):
     }
     builder = _builders.get(type(user_content), lambda c: [{"type": "image_url", "image_url": {"url": data_url}}])
     msg["content"] = builder(user_content)
+
+
+def inject_attachment_images(msg: dict) -> list[str]:
+    """Parse __ATTACHMENTS__ metadata from message text, inject ALL image attachments as multimodal parts.
+
+    Returns list of injected filenames for logging.
+    """
+    content = msg.get("content", "")
+    raw_text = content if isinstance(content, str) else next(
+        (p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text" and "<!-- __ATTACHMENTS__" in p.get("text", "")),
+        "",
+    )
+    match = ATTACHMENTS_PATTERN.search(raw_text)
+    if not match:
+        return []
+
+    try:
+        attachments = json.loads(match.group(1))
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+    # Collect image attachment URLs (only image nodeType), capped at MAX_ATTACHMENT_IMAGES
+    image_urls = [
+        (a.get("thumbnailUrl", ""), a.get("label", ""))
+        for a in attachments
+        if isinstance(a, dict) and a.get("nodeType") == "image" and a.get("thumbnailUrl")
+    ][:MAX_ATTACHMENT_IMAGES]
+    if not image_urls:
+        return []
+
+    # Convert each to data URL and build multimodal parts
+    image_parts = []
+    injected = []
+    for url, label in image_urls:
+        filename = extract_media_filename(url)
+        if not filename:
+            continue
+        data_url = image_file_to_data_url(str(MEDIA_DIR / filename))
+        if not data_url:
+            continue
+        image_parts.append({"type": "image_url", "image_url": {"url": data_url}})
+        image_parts.append({"type": "text", "text": f"[Image source path: /api/media/{filename} — use this path when passing to tools, do NOT pass base64 data]"})
+        injected.append(filename)
+
+    if not image_parts:
+        return []
+
+    # Prepend image parts to message content
+    existing = msg.get("content")
+    text_parts = [{"type": "text", "text": existing}] if isinstance(existing, str) else (list(existing) if isinstance(existing, list) else [])
+    msg["content"] = image_parts + text_parts
+    return injected

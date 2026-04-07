@@ -111,6 +111,11 @@ async def create_video_task(
         video_mode=request.video_mode,
         prompt_optimizer=config.prompt_optimizer,
         fast_pretreatment=config.fast_pretreatment,
+        reference_images=request.reference_images or [],
+        extension_video_url=request.extension_video_url,
+        reference_videos=request.reference_videos or [],
+        reference_audios=request.reference_audios or [],
+        return_last_frame=request.return_last_frame,
     )
 
     # 提交到供应商 (根据 provider_type 自动路由)

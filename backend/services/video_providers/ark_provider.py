@@ -8,7 +8,7 @@ REST 端点:
   轮询: GET  /contents/generations/tasks/{task_id}
 
 模型系列:
-  - doubao-seedance-2-0-260128      (T2V, I2V, 首尾帧, 多模态参考, 有声视频)
+  - doubao-seedance-2-0-260128      (T2V, I2V, 首尾帧, 多模态参考, 编辑, 延长, 有声视频)
   - doubao-seedance-2-0-fast-260128 (快速版, 与 2.0 同等能力)
   - doubao-seedance-1-5-pro-251215  (T2V, I2V, 首尾帧, 有声视频)
   - doubao-seedance-1-0-pro-250801  (T2V, I2V, 首尾帧)
@@ -16,10 +16,13 @@ REST 端点:
   - doubao-seedance-1-0-lite-t2v    (纯文本)
   - doubao-seedance-1-0-lite-i2v    (首帧, 首尾帧, 参考图)
 
-输入模式:
-  - text_to_video:    content[text] -> 视频
-  - image_to_video:   content[text + image_url(first_frame)] -> 视频
-  - 首尾帧:           content[text + image_url(first_frame) + image_url(last_frame)] -> 视频
+输入模式 (Seedance 2.0):
+  - text_to_video:      content[text] -> 视频
+  - image_to_video:     content[text + image_url(first_frame)] -> 视频
+  - 首尾帧:              content[text + image_url(first_frame) + image_url(last_frame)] -> 视频
+  - 多模态参考:          content[text + reference_image(0-9) + reference_video(0-3) + reference_audio(0-3)] -> 视频
+  - 编辑视频:            content[text + reference_video + reference_image/audio] -> 视频
+  - 延长视频:            content[text + reference_video(1-3)] -> 视频
 """
 from __future__ import annotations
 from typing import Dict, List, ClassVar
@@ -97,8 +100,13 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
         return await self._call_submit(ctx, payload)
 
     def _build_payload(self, ctx: VideoContext) -> dict:
-        """构建 Seedance 请求 payload"""
+        """构建 Seedance 请求 payload
+
+        Seedance 2.0 的所有操作 (生成/编辑/延长/多模态参考) 通过同一端点,
+        仅靠 content[] 的模态组合来区分场景。
+        """
         content: list[dict] = []
+        is_v2 = ctx.model in self._V2_MODELS
 
         # 文本提示词
         ctx.prompt and content.append({
@@ -106,6 +114,7 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
             "text": ctx.prompt,
         })
 
+        # --- 首帧/尾帧 (与多模态参考互斥, 由调用方通过 video_mode 控制) ---
         # 首帧图片
         (ctx.image_url and ctx.video_mode in ("image_to_video", "edit")) and content.append({
             "type": "image_url",
@@ -120,8 +129,9 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
             "role": "last_frame",
         })
 
-        # 参考图片 (Seedance 2.0 系列, 最多 9 张)
-        (ctx.reference_images and ctx.model in self._V2_MODELS) and content.extend([
+        # --- 多模态参考 (Seedance 2.0 系列) ---
+        # 参考图片 (最多 9 张)
+        (ctx.reference_images and is_v2) and content.extend([
             {
                 "type": "image_url",
                 "image_url": {"url": img.get("url", img.get("image_url", ""))},
@@ -130,12 +140,28 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
             for img in ctx.reference_images[:9]
         ])
 
-        # 视频扩展/编辑 (Seedance 2.0 系列)
-        (ctx.extension_video_url and ctx.model in self._V2_MODELS) and content.append({
-            "type": "video_url",
-            "video_url": {"url": ctx.extension_video_url},
-            "role": "reference_video",
-        })
+        # 参考视频 (最多 3 个) — 优先使用 reference_videos 列表
+        _ref_videos = ctx.reference_videos[:3] if ctx.reference_videos else (
+            [{"url": ctx.extension_video_url}] if ctx.extension_video_url else []
+        )
+        (is_v2 and _ref_videos) and content.extend([
+            {
+                "type": "video_url",
+                "video_url": {"url": v.get("url", "")},
+                "role": "reference_video",
+            }
+            for v in _ref_videos[:3]
+        ])
+
+        # 参考音频 (最多 3 个, Seedance 2.0 系列)
+        (ctx.reference_audios and is_v2) and content.extend([
+            {
+                "type": "audio_url",
+                "audio_url": {"url": a.get("url", "")},
+                "role": "reference_audio",
+            }
+            for a in ctx.reference_audios[:3]
+        ])
 
         payload: dict = {
             "model": ctx.model,
@@ -150,11 +176,22 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
         ratio = _RATIO_MAP.get(ctx.aspect_ratio, "16:9")
         payload["ratio"] = ratio
 
-        # 时长
+        # 时长 (支持 -1 智能选时长, 仅 V2 模型)
         payload["duration"] = ctx.duration
 
         # 有声视频 (默认 True, 仅支持的模型)
         (ctx.model in self._AUDIO_MODELS) and payload.update({"generate_audio": True})
+
+        # seed 随机种子
+        (ctx.seed is not None) and payload.update({"seed": ctx.seed})
+
+        # 返回尾帧图像
+        ctx.return_last_frame and payload.update({"return_last_frame": True})
+
+        # 联网搜索工具 (仅 Seedance 2.0)
+        (ctx.enable_web_search and is_v2) and payload.update({
+            "tools": [{"type": "web_search"}],
+        })
 
         return payload
 
@@ -185,6 +222,19 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
                 resp.status_code >= 400 and logger.error(
                     f"Ark Seedance submit error {resp.status_code}: {resp.text[:500]}"
                 )
+
+                # 提取 API 错误详情（在 raise_for_status 之前，保留具体错误码和消息）
+                api_error_msg = ""
+                (resp.status_code >= 400) and (
+                    api_error_msg := self._extract_error_message(resp.json())
+                    if resp.headers.get("content-type", "").startswith("application/json")
+                    else resp.text[:300]
+                ) and None
+                # 如有 API 错误，直接返回失败结果（携带具体错误信息），不走 raise_for_status
+                api_error_msg and None  # ensure expression is evaluated
+                if api_error_msg:
+                    return VideoResult(status="failed", error=api_error_msg)
+
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -260,6 +310,13 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
         (not video_url and isinstance(content, dict)) and setattr(
             result, "video_url", content.get("video_url", ""),
         )
+
+        # 提取尾帧图像 URL (return_last_frame=True 时返回)
+        last_frame_url = data.get("last_frame_image_url", "")
+        (not last_frame_url and isinstance(content, dict)) and (
+            last_frame_url := content.get("last_frame_image_url", "")
+        )
+        last_frame_url and setattr(result, "last_frame_image_url", last_frame_url)
 
     @staticmethod
     def _extract_error_message(data: dict) -> str:

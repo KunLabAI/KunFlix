@@ -26,6 +26,8 @@ async def get_tool_result(
     tool_manager: "ToolManager", tc_name: str, tc_args: dict, ctx: "ToolContext",
 ) -> str:
     """Dispatch tool execution with timing and logging."""
+    # 容错：LLM 可能发送 "skill_name:tool_name" 格式（如 "video_tools:generate_video"），自动提取真实工具名
+    tc_name = tc_name.rsplit(":", 1)[-1] if ":" in tc_name else tc_name
     start = time.perf_counter()
     status = "success"
     try:

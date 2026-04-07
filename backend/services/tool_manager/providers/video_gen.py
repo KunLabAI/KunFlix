@@ -103,19 +103,22 @@ def _build_video_gen_tool_def(
             "description": (
                 "Video generation mode. "
                 "text_to_video: generate from text only. "
-                "image_to_video: generate from a reference image. "
+                "image_to_video: generate from a reference image (first frame). "
+                "reference_images: multimodal reference generation using reference images/videos/audios. "
                 "Default is text_to_video."
             ),
         },
         "aspect_ratio": {
             "type": "string",
             "enum": aspect_ratios,
-            "description": "Video aspect ratio. Default is 16:9.",
+            "description": "Video aspect ratio. 'adaptive' lets the model auto-select. Default is 16:9.",
         },
         "duration": {
             "type": "integer",
-            "enum": durations,
-            "description": "Video duration in seconds.",
+            "description": (
+                "Video duration in seconds. Use -1 to let the model auto-select duration. "
+                f"Available values: {', '.join(str(d) for d in durations)}."
+            ),
         },
         "quality": {
             "type": "string",
@@ -129,8 +132,75 @@ def _build_video_gen_tool_def(
         image_url={
             "type": "string",
             "description": (
-                "URL of a reference image for image_to_video mode. "
+                "URL of a reference image for image_to_video mode (used as first frame). "
                 "Required when video_mode is image_to_video."
+            ),
+        }
+    )
+
+    # 尾帧图片 (supports_last_frame)
+    caps.get("supports_last_frame") and properties.update(
+        last_frame_image={
+            "type": "string",
+            "description": (
+                "URL of the last frame image. Used with image_to_video mode "
+                "to create a video transitioning from first frame to last frame."
+            ),
+        }
+    )
+
+    # 参考图片数组 (supports_reference_images)
+    caps.get("supports_reference_images") and properties.update(
+        reference_images={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of reference image URLs for multimodal reference generation. "
+                f"Max {caps.get('max_reference_images', 9)} images. "
+                "Use video_mode='reference_images'. "
+                "NUMBERING: array index determines prompt reference — "
+                "index 0 = 图片1, index 1 = 图片2, etc. "
+                "Get URLs from canvas image nodes via get_canvas_node (data.imageUrl field)."
+            ),
+        }
+    )
+
+    # 参考视频数组 (supports_reference_videos)
+    caps.get("supports_reference_videos") and properties.update(
+        reference_videos={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of reference video URLs for multimodal reference or video extension. "
+                f"Max {caps.get('max_reference_videos', 3)} videos. "
+                "NUMBERING: array index determines prompt reference — "
+                "index 0 = 视频1, index 1 = 视频2, etc. "
+                "Get URLs from canvas video nodes via get_canvas_node (data.videoUrl field)."
+            ),
+        }
+    )
+
+    # 参考音频数组 (supports_reference_audios)
+    caps.get("supports_reference_audios") and properties.update(
+        reference_audios={
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Array of reference audio URLs for multimodal reference generation. "
+                f"Max {caps.get('max_reference_audios', 3)} audios (wav/mp3, 2-15s each). "
+                "NUMBERING: array index determines prompt reference — "
+                "index 0 = 音频1, index 1 = 音频2, etc."
+            ),
+        }
+    )
+
+    # 返回尾帧 (supports_return_last_frame)
+    caps.get("supports_return_last_frame") and properties.update(
+        return_last_frame={
+            "type": "boolean",
+            "description": (
+                "Set to true to return the last frame image of the generated video. "
+                "Useful for generating consecutive videos by chaining last frame as next first frame."
             ),
         }
     )
@@ -140,10 +210,17 @@ def _build_video_gen_tool_def(
         "function": {
             "name": VIDEO_GEN_TOOL_NAME,
             "description": (
-                "Generate a video from a text prompt or image using an AI video generation model. "
+                "Generate a video from a text prompt, images, videos, audio references, or any combination. "
                 "Use this tool when the user asks you to create, generate, or produce a video, "
                 "animation, or motion content. Video generation is asynchronous and takes 1-5 minutes. "
-                "The tool returns a task ID; the user will be notified when the video is ready."
+                "The tool returns a task ID; the user will be notified when the video is ready.\n\n"
+                "IMPORTANT — Multimodal reference numbering convention:\n"
+                "The array ORDER determines the number used in the prompt. "
+                "reference_images[0]=图片1, reference_images[1]=图片2; "
+                "reference_videos[0]=视频1, reference_videos[1]=视频2; "
+                "reference_audios[0]=音频1, reference_audios[1]=音频2.\n"
+                "To use canvas node media: first call list_canvas_nodes/get_canvas_node to get imageUrl/videoUrl, "
+                "then pass URLs in the desired order and write the prompt using numbered references."
             ),
             "parameters": {
                 "type": "object",
@@ -181,6 +258,11 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
     duration = args.get("duration")
     quality = args.get("quality")
     image_url = args.get("image_url")
+    last_frame_image = args.get("last_frame_image")
+    reference_images_raw = args.get("reference_images", [])
+    reference_videos_raw = args.get("reference_videos", [])
+    reference_audios_raw = args.get("reference_audios", [])
+    return_last_frame = args.get("return_last_frame", False)
 
     # 从全局 ToolConfig 读取配置
     cfg = await _get_global_video_config(db)
@@ -209,6 +291,12 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
 
     # 将本地媒体路径转换为 base64 data URI（供应商 API 需要 data: 或 http URL）
     image_url = _resolve_local_media(image_url)
+    last_frame_image = _resolve_local_media(last_frame_image)
+
+    # 构建参考媒体列表
+    ref_images = [{"url": _resolve_local_media(u)} for u in reference_images_raw] if reference_images_raw else []
+    ref_videos = [{"url": _resolve_local_media(u)} for u in reference_videos_raw] if reference_videos_raw else []
+    ref_audios = [{"url": u} for u in reference_audios_raw] if reference_audios_raw else []
 
     # 构建 VideoContext
     video_ctx = VideoContext(
@@ -217,10 +305,15 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
         prompt=prompt,
         provider_type=video_provider_type,
         image_url=image_url,
+        last_frame_image=last_frame_image,
         duration=final_duration,
         quality=final_quality,
         aspect_ratio=final_aspect,
         video_mode=video_mode,
+        reference_images=ref_images,
+        reference_videos=ref_videos,
+        reference_audios=ref_audios,
+        return_last_frame=return_last_frame,
     )
 
     # 提交视频生成任务
@@ -236,6 +329,8 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
 
     # 计算输入图片数量
     input_image_count = 1 if image_url and video_mode == "image_to_video" else 0
+    input_image_count += 1 if last_frame_image else 0
+    input_image_count += len(ref_images)
 
     # 创建 VideoTask 记录（轮询基础设施依赖此记录）
     task = VideoTask(
@@ -297,8 +392,12 @@ class VideoGenProvider:
         if ctx.is_skill_gated("video_tools"):
             return []
 
-        # 检查智能体级别的视频生成开关
-        agent_video_enabled = (ctx.agent.video_config or {}).get("video_generation_enabled", False)
+        # 当 video_tools skill 被显式加载时，跳过 agent 级别的开关检查
+        # （skill 加载本身就是授权）
+        skill_explicitly_loaded = "video_tools" in ctx.loaded_tool_skills
+
+        # 检查智能体级别的视频生成开关（仅在非 skill-gate 模式下检查）
+        agent_video_enabled = skill_explicitly_loaded or (ctx.agent.video_config or {}).get("video_generation_enabled", False)
         if not agent_video_enabled:
             return []
 

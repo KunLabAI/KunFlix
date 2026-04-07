@@ -660,9 +660,12 @@ class VideoGenerateRequest(BaseModel):
     video_mode: Literal["text_to_video", "image_to_video", "edit", "reference_images", "video_extension"] = "text_to_video"
     prompt: str = Field(..., min_length=1, max_length=2000)
     image_url: Optional[str] = None  # 首帧图片 (image_to_video/edit)
-    last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 支持)
-    reference_images: Optional[List[dict]] = None  # 参考图片列表 (Grok/Gemini Veo 3.1)
-    extension_video_url: Optional[str] = None  # 视频扩展源视频 URL
+    last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 / Seedance 2.0 支持)
+    reference_images: Optional[List[dict]] = None  # 参考图片列表 (Grok/Gemini Veo 3.1/Seedance 2.0)
+    extension_video_url: Optional[str] = None  # 视频扩展源视频 URL (向后兼容)
+    reference_videos: Optional[List[dict]] = None  # 参考视频列表 (Seedance 2.0, 最多 3 个)
+    reference_audios: Optional[List[dict]] = None  # 参考音频列表 (Seedance 2.0, 最多 3 个)
+    return_last_frame: bool = False  # 返回视频尾帧图像 (Seedance 2.0)
     config: Optional[VideoConfig] = None
 
 

@@ -15,14 +15,17 @@
 - [ThinkingIndicator.tsx](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx)
 - [ToolCallIndicator.tsx](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx)
 - [TypewriterText.tsx](file://frontend/src/components/ai-assistant/TypewriterText.tsx)
+- [text-effect.tsx](file://frontend/src/components/ui/text-effect.tsx)
 </cite>
 
 ## 更新摘要
 **所做更改**
-- 更新了ChatMessage组件的Markdown样式类，增加了15个新的CSS类来精确控制渲染效果
-- 为TypewriterText组件添加了相同的样式改进
-- 调整了AIAssistantPanel和VirtualMessageList组件的padding以改善视觉呈现
-- 增强了Markdown内容的排版控制和视觉一致性
+- 新增TextEffect组件，提供丰富的文本动画效果和预设样式
+- 改进TypewriterText组件的流式渲染性能，优化字符渲染算法
+- 增强VirtualMessageList的滚动行为，优化流式内容滚动体验
+- 新增StreamingIndicator组件，提供更平滑的流式加载动画
+- 改进ChatMessage组件的流式渲染逻辑，优化用户体验
+- 更新组件样式类控制，提升Markdown内容渲染质量
 
 ## 目录
 1. [简介](#简介)
@@ -61,6 +64,8 @@ AI助手相关代码主要位于前端工程的以下位置：
   - frontend/src/components/ai-assistant/hooks/useSSEHandler.ts
   - frontend/src/components/ai-assistant/hooks/useSessionManager.ts
   - frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts
+- 新增UI组件：
+  - frontend/src/components/ui/text-effect.tsx
 
 ```mermaid
 graph TB
@@ -77,6 +82,9 @@ TI["ThinkingIndicator.tsx"]
 TCI["ToolCallIndicator.tsx"]
 IDX["index.ts"]
 end
+subgraph "新增UI组件"
+TE["TextEffect.tsx"]
+end
 subgraph "Hooks"
 SSE["useSSEHandler.ts"]
 SM["useSessionManager.ts"]
@@ -92,6 +100,7 @@ AIP --> TCI
 AIP --> SSE
 AIP --> SM
 AIP --> PM
+AIP --> TE
 IDX --> VML
 IDX --> MI
 IDX --> CM
@@ -107,35 +116,40 @@ IDX --> PM
 **图表来源**
 - [AIAssistantPanel.tsx:1-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L624)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
+- [text-effect.tsx:1-225](file://frontend/src/components/ui/text-effect.tsx#L1-L225)
 
 **章节来源**
 - [AIAssistantPanel.tsx:1-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L1-L624)
 - [index.ts:1-38](file://frontend/src/components/ai-assistant/index.ts#L1-L38)
+- [text-effect.tsx:1-225](file://frontend/src/components/ui/text-effect.tsx#L1-L225)
 
 ## 核心组件
 - AIAssistantPanel：面板入口，负责面板生命周期、拖拽/缩放、会话初始化、SSE事件处理、消息发送与错误弹窗等。
 - VirtualMessageList：基于react-window的虚拟列表，支持动态行高、overscan、自动滚动与滚动状态回调。
 - MessageInput：输入框与Agent选择器，支持多行自适应高度、回车发送、禁用态与加载态。
-- ChatMessage：消息渲染器，解析<think>、视频标记、附件元数据，整合技能/工具调用指示器与视频任务卡片。
+- ChatMessage：消息渲染器，解析思考标记、视频标记、附件元数据，整合技能/工具调用指示器与视频任务卡片。
 - WelcomeMessage：欢迎消息与预设对话入口。
 - VideoTaskCard：视频任务状态卡片，支持轮询、拖拽到画布、下载与错误提示。
 - ThinkingIndicator：单智能体思考指示器，含计时与加载点点点。
 - ToolCallIndicator：工具调用执行状态指示器，支持展开查看参数与结果。
-- TypewriterText：打字机组件，专门处理Markdown内容的流式渲染。
+- TypewriterText：打字机组件，专门处理Markdown内容的流式渲染，**更新**优化字符渲染算法。
+- StreamingIndicator：**新增**流式指示器组件，提供平滑的波浪动画效果。
+- TextEffect：**新增**文本特效组件，提供多种预设动画效果和自定义变体。
 - useSSEHandler：SSE事件解析与状态机，驱动消息流式渲染与UI状态更新。
 - useSessionManager：会话生命周期管理，Agent加载、会话创建/切换、清空与上下文使用统计恢复。
 - usePerformanceMonitor：性能监控Hook，采集Long Task、LCP、FID、CLS与FPS。
 
 **章节来源**
 - [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
-- [VirtualMessageList.tsx:1-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L293)
+- [VirtualMessageList.tsx:1-389](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L389)
 - [MessageInput.tsx:1-182](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L182)
 - [ChatMessage.tsx:1-471](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L471)
 - [WelcomeMessage.tsx:1-79](file://frontend/src/components/ai-assistant/WelcomeMessage.tsx#L1-L79)
 - [VideoTaskCard.tsx:1-290](file://frontend/src/components/ai-assistant/VideoTaskCard.tsx#L1-L290)
 - [ThinkingIndicator.tsx:1-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L1-L56)
 - [ToolCallIndicator.tsx:1-164](file://frontend/src/components/ai-assistant/ToolCallIndicator.tsx#L1-L164)
-- [TypewriterText.tsx:1-84](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L84)
+- [TypewriterText.tsx:1-128](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L128)
+- [text-effect.tsx:1-225](file://frontend/src/components/ui/text-effect.tsx#L1-L225)
 - [useSSEHandler.ts:1-391](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L1-L391)
 - [useSessionManager.ts:1-226](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L1-L226)
 - [usePerformanceMonitor.ts:1-236](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L1-L236)
@@ -204,13 +218,13 @@ Render --> End(["完成一轮交互"])
 - [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
 
 ### VirtualMessageList 虚拟消息列表
-特性与优化：
+**更新** 增强的滚动行为与性能优化：
 - 动态行高：useDynamicRowHeight，避免消息数量变化导致的缓存失效。
 - overscan：默认5，提升滚动顺滑度。
 - 自动滚动：用户消息发送后强制滚动到底；AI回复时仅在未手动上滚时滚动。
 - 滚动状态回调：通知父组件是否到达底部，控制回到最新按钮显隐。
-- 等待动画：当AI正在回复且无内容时，显示浮动三点加载动画（由父组件注入）。
-- **更新** 增强的padding控制，改善视觉呈现和内容间距。
+- 流式滚动优化：新增120ms轮询间隔，确保流式内容持续滚动到底部。
+- **更新** 增强的等待动画：当AI正在回复且无内容时，显示浮动三点加载动画（由父组件注入）。
 
 ```mermaid
 flowchart TD
@@ -218,18 +232,18 @@ MCount["消息数量变更"] --> NewMsg{"新增用户消息？"}
 NewMsg --> |是| ResetScroll["重置用户上滚标记"]
 NewMsg --> |否| StreamCheck["AI流式更新？"]
 ResetScroll --> AutoScroll["滚动到底部"]
-StreamCheck --> |是且未上滚| AutoScroll
+StreamCheck --> |是且未上滑| AutoScroll
 StreamCheck --> |否| Keep["保持当前视图"]
 AutoScroll --> Done(["完成"])
 Keep --> Done
 ```
 
 **图表来源**
-- [VirtualMessageList.tsx:155-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L155-L196)
+- [VirtualMessageList.tsx:244-292](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L244-L292)
 - [VirtualMessageList.tsx:63-66](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L63-L66)
 
 **章节来源**
-- [VirtualMessageList.tsx:1-293](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L293)
+- [VirtualMessageList.tsx:1-389](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L1-L389)
 
 ### MessageInput 消息输入组件
 特性：
@@ -242,25 +256,18 @@ Keep --> Done
 - [MessageInput.tsx:1-182](file://frontend/src/components/ai-assistant/MessageInput.tsx#L1-L182)
 
 ### ChatMessage 消息渲染器
-能力与解析：
-- 解析<think>标记：区分思考内容与正式回复，支持思考完成状态。
+**更新** 改进的流式渲染逻辑：
+- 解析思考标记：区分思考内容与正式回复，支持思考完成状态。
 - 解析视频标记：支持内嵌任务标记与完成标记，合并SSE事件中的视频任务。
 - 附件解析：隐藏元数据与可读上下文分离，用于AI感知节点内容。
 - 指示器整合：技能调用、工具调用、多智能体协作、视频任务卡片。
 - Markdown渲染：流式与非流式差异化组件，懒加载图片与代码块。
-- **更新** 增强的Markdown样式类控制，包含15个新的CSS类来精确控制渲染效果：
-  - 段落间距控制：`[&_p]:leading-7 [&_p]:my-2`
-  - 列表间距控制：`[&_li]:leading-7 [&_li]:my-0.5`
-  - 标题层级控制：`[&_h1]:mt-4 [&_h1]:mb-2` 到 `[&_h4]:mt-2 [&_h4]:mb-1`
-  - 水平分割线控制：`[&_hr]:my-4 [&_hr]:border-border/50`
-  - 引用块控制：`[&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r`
-  - 代码块控制：`[&_pre]:my-3`
-  - 列表控制：`[&_ul]:my-2 [&_ol]:my-2`
-  - 表格控制：`[&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50`
+- **新增** StreamingIndicator：提供平滑的波浪动画，替代原有的浮动三点加载动画。
+- **更新** TypewriterText集成：在流式状态下直接使用TypewriterText进行渲染。
 
 ```mermaid
 flowchart TD
-In["接收消息对象"] --> ParseThink["解析<think>标记"]
+In["接收消息对象"] --> ParseThink["解析思考标记"]
 ParseThink --> Split["分离思考/回复内容"]
 Split --> ParseVideo["解析视频标记(__VIDEO_TASK__/__VIDEO_DONE__)"]
 ParseVideo --> MergeVid["合并SSE视频任务"]
@@ -277,19 +284,51 @@ Render --> Out["输出消息UI"]
 - [ChatMessage.tsx:1-471](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L1-L471)
 
 ### TypewriterText 打字机组件
-- **更新** 增强的Markdown样式类控制，与ChatMessage组件保持一致的渲染效果：
-  - 段落间距控制：`[&_p]:leading-7 [&_p]:my-2`
-  - 列表间距控制：`[&_li]:leading-7 [&_li]:my-0.5`
-  - 标题层级控制：`[&_h1]:mt-4 [&_h1]:mb-2` 到 `[&_h4]:mt-2 [&_h4]:mb-1`
-  - 水平分割线控制：`[&_hr]:my-4 [&_hr]:border-border/50`
-  - 引用块控制：`[&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r`
-  - 代码块控制：`[&_pre]:my-3`
-  - 列表控制：`[&_ul]:my-2 [&_ol]:my-2`
-  - 表格控制：`[&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50`
-- 专门处理Markdown内容的流式渲染，提供更好的用户体验。
+**更新** 优化的流式渲染性能：
+- **更新** 改进的字符渲染算法：根据剩余字符数量动态调整渲染速度
+  - 剩余>200字符：每次渲染5个字符
+  - 剩余>100字符：每次渲染3个字符  
+  - 剩余>30字符：每次渲染2个字符
+  - 剩余<=30字符：每次渲染1个字符
+- 基于requestAnimationFrame的高效动画循环
+- 优化的ref管理模式，避免不必要的重渲染
+- 保持原有的Markdown样式类控制，确保渲染一致性
 
 **章节来源**
-- [TypewriterText.tsx:1-84](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L84)
+- [TypewriterText.tsx:1-128](file://frontend/src/components/ai-assistant/TypewriterText.tsx#L1-L128)
+
+### StreamingIndicator 流式指示器组件
+**新增** 平滑的波浪动画效果：
+- 三个圆形点组成的波浪动画序列
+- 每个点有不同的延迟和缩放动画
+- 使用framer-motion实现流畅的动画过渡
+- 适用于纯流式状态下的内容生成指示
+
+**章节来源**
+- [ChatMessage.tsx:215-238](file://frontend/src/components/ai-assistant/ChatMessage.tsx#L215-L238)
+
+### TextEffect 文本特效组件
+**新增** 丰富的文本动画效果：
+- 支持三种分段模式：按字符(char)、按单词(word)、按行(line)
+- 提供五种预设动画效果：blur、shake、scale、fade、slide
+- 完全可定制的动画变体，支持自定义容器和项目变体
+- 基于framer-motion的高性能动画系统
+- 支持延迟动画、退出动画和自定义标签
+- 适配无障碍访问，提供适当的aria标签
+
+```mermaid
+flowchart TD
+Input["输入文本"] --> Segment["按模式分段"]
+Segment --> Animate["应用动画变体"]
+Animate --> Render["渲染动画元素"]
+Render --> Output["输出带动画的文本"]
+```
+
+**图表来源**
+- [text-effect.tsx:164-224](file://frontend/src/components/ui/text-effect.tsx#L164-L224)
+
+**章节来源**
+- [text-effect.tsx:1-225](file://frontend/src/components/ui/text-effect.tsx#L1-L225)
 
 ### WelcomeMessage 欢迎消息
 - 展示用户名与欢迎语，提供预设对话快捷入口。
@@ -405,7 +444,8 @@ SM-->>P : "设置sessionId/agentId/messages"
 ## 依赖关系分析
 - 组件间依赖：
   - AIAssistantPanel依赖VirtualMessageList、MessageInput、ChatMessage、WelcomeMessage、VideoTaskCard、ThinkingIndicator、ToolCallIndicator、useSSEHandler、useSessionManager、usePerformanceMonitor。
-  - ChatMessage依赖ThinkingIndicator、ToolCallIndicator、VideoTaskCard、LazyImage/LazyCodeBlock、TypewriterText等。
+  - ChatMessage依赖ThinkingIndicator、ToolCallIndicator、VideoTaskCard、LazyImage/LazyCodeBlock、TypewriterText、StreamingIndicator。
+  - TextEffect作为独立UI组件，可被其他组件直接使用。
 - 外部依赖：
   - react-window用于虚拟列表。
   - react-markdown + remark-gfm用于Markdown渲染。
@@ -428,6 +468,8 @@ CM --> TI
 CM --> TCI
 CM --> VTC
 CM --> TT["TypewriterText.tsx"]
+CM --> SI["StreamingIndicator.tsx"]
+TE["TextEffect.tsx"] -.-> CM
 ```
 
 **图表来源**
@@ -445,7 +487,8 @@ CM --> TT["TypewriterText.tsx"]
 - 懒加载：图片与代码块按需加载，缩短可交互时间。
 - 性能监控：Long Task与FPS告警，便于定位瓶颈。
 - 内存优化：SSE状态机在done后重置；轮询任务在终端状态停止；组件卸载清理定时器与观察者。
-- **更新** 增强的样式类控制提高了渲染效率和视觉一致性。
+- **更新** 优化的TypewriterText渲染算法，提升大量文本的流式显示性能。
+- **更新** 增强的VirtualMessageList滚动行为，改善流式内容的用户体验。
 
 ## 故障排查指南
 常见问题与处理：
@@ -455,6 +498,7 @@ CM --> TT["TypewriterText.tsx"]
 - SSE错误事件：统一追加错误消息并重置状态机。
 - 视频任务失败：显示错误摘要，支持重试或检查资源有效性。
 - 性能异常：关注Long Task与FPS，定位耗时操作并优化。
+- **新增** TextEffect动画问题：检查framer-motion版本兼容性和动画变体配置。
 
 **章节来源**
 - [AIAssistantPanel.tsx:240-290](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L240-L290)
@@ -463,7 +507,7 @@ CM --> TT["TypewriterText.tsx"]
 - [usePerformanceMonitor.ts:75-200](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L75-L200)
 
 ## 结论
-AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理，实现了高性能、可扩展的实时聊天体验。结合思考与工具调用指示器、视频任务卡片与性能监控，为用户提供了清晰的状态反馈与稳定的交互体验。最新的样式改进进一步提升了Markdown内容的渲染质量和视觉一致性。建议在集成时重点关注SSE事件一致性、会话状态恢复与性能观测，持续优化滚动与渲染体验。
+AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理，实现了高性能、可扩展的实时聊天体验。结合思考与工具调用指示器、视频任务卡片与性能监控，为用户提供了清晰的状态反馈与稳定的交互体验。最新的组件更新进一步提升了用户体验，包括TextEffect的丰富动画效果、优化的TypewriterText流式渲染性能、增强的VirtualMessageList滚动行为以及新的StreamingIndicator组件。建议在集成时重点关注SSE事件一致性、会话状态恢复与性能观测，持续优化滚动与渲染体验。
 
 ## 附录
 
@@ -483,10 +527,11 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - SSE事件逐行解析，按事件类型更新消息状态与UI。
 - 流式文本增量追加，非流式文本分块渲染。
 - 工具/技能/视频任务状态在消息对象中携带，指示器实时反映。
+- **更新** StreamingIndicator提供更平滑的流式加载体验。
 
 **章节来源**
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)
-- [VirtualMessageList.tsx:184-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L184-L196)
+- [VirtualMessageList.tsx:272-292](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L272-L292)
 
 ### 错误处理与重连策略
 - 401：弹窗提示并触发重新登录，不再显示通用错误消息。
@@ -504,6 +549,7 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - SSE状态机在done后重置，防止累积。
 - 轮询在终端状态停止，组件卸载清理定时器。
 - 虚拟列表动态行高缓存，避免消息数量变化导致的重算。
+- **更新** 优化的TypewriterText状态管理模式，减少不必要的重渲染。
 
 **章节来源**
 - [useSSEHandler.ts:43-54](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L43-L54)
@@ -514,13 +560,13 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 自动滚动：用户消息发送后强制滚动到底；AI回复时仅在未上滚时滚动。
 - 回到最新按钮：消息过多时显示，平滑滚动到底部。
 - 加载指示：思考指示器与三点加载动画，减少等待焦虑。
+- **新增** 平滑流式指示器：使用波浪动画替代传统的三点动画，提供更好的视觉体验。
 - 拖拽/缩放：面板拖拽吸附与四边四角缩放，提升可用性。
 - 性能监控：长任务与FPS告警，及时发现并优化性能问题。
-- **更新** 增强的样式控制提供更一致的视觉体验。
 
 **章节来源**
 - [AIAssistantPanel.tsx:488-496](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L488-L496)
-- [VirtualMessageList.tsx:155-196](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L155-L196)
+- [VirtualMessageList.tsx:244-292](file://frontend/src/components/ai-assistant/VirtualMessageList.tsx#L244-L292)
 - [ThinkingIndicator.tsx:13-56](file://frontend/src/components/ai-assistant/ThinkingIndicator.tsx#L13-L56)
 - [usePerformanceMonitor.ts:75-200](file://frontend/src/components/ai-assistant/hooks/usePerformanceMonitor.ts#L75-L200)
 
@@ -529,8 +575,10 @@ AI助手组件通过虚拟列表渲染、SSE事件驱动与完善的会话管理
 - 确保NEXT_PUBLIC_API_URL环境变量正确指向后端API。
 - 如需扩展SSE事件，可在useSSEHandler中添加事件处理器与状态更新逻辑。
 - 如需自定义附件上下文，修改AIAssistantPanel中的buildAttachmentContext函数。
-- **更新** 新的样式类已内置，无需额外配置即可获得改进的渲染效果。
+- **新增** TextEffect组件集成：可通过`import { TextEffect } from '@/components/ui/text-effect'`引入，在需要的地方使用。
+- **更新** TypewriterText组件：已优化流式渲染性能，无需额外配置即可获得改进的渲染效果。
 
 **章节来源**
 - [AIAssistantPanel.tsx:52-624](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L52-L624)
 - [useSSEHandler.ts:67-390](file://frontend/src/components/ai-assistant/hooks/useSSEHandler.ts#L67-L390)
+- [text-effect.tsx:1-225](file://frontend/src/components/ui/text-effect.tsx#L1-L225)
