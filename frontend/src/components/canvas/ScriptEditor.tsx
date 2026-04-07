@@ -112,9 +112,10 @@ interface ScriptEditorProps {
   initialContent?: JSONContent;
   isEditable: boolean;
   onUpdate: (content: JSONContent, charCount: number) => void;
+  onCharCountChange?: (charCount: number) => void;
 }
 
-export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEditorProps) {
+export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCountChange }: ScriptEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Memoize normalized content to prevent unnecessary re-parsing
@@ -126,6 +127,12 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
       return { type: 'doc' as const, content: [{ type: 'paragraph' as const }] };
     }
   }, [initialContent]);
+
+  // Ref to suppress onUpdate during programmatic content sync (e.g., Agent update)
+  const isSyncingRef = useRef(false);
+  // Ref to always access latest onUpdate callback (avoid stale closure in tiptap handler)
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
 
   const editor = useEditor({
     extensions: [
@@ -157,14 +164,16 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
     editable: isEditable,
     immediatelyRender: false,
     onUpdate: ({ editor: ed }) => {
+      // Skip callback during programmatic sync to avoid circular updates
+      if (isSyncingRef.current) return;
       const content = ed.getJSON();
       const chars = ed.storage.characterCount.characters();
-      onUpdate(content, chars);
+      onUpdateRef.current(content, chars);
     },
     onCreate: ({ editor: ed }) => {
       // Calculate initial char count when editor is created
       const chars = ed.storage.characterCount.characters();
-      onUpdate(ed.getJSON(), chars);
+      onUpdateRef.current(ed.getJSON(), chars);
     },
     editorProps: {
       attributes: {
@@ -194,7 +203,14 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate }: ScriptEdi
       // Only update if content actually changed
       if (incomingStr !== currentStr && incomingStr !== contentRef.current) {
         contentRef.current = incomingStr;
+        isSyncingRef.current = true;
         editor.commands.setContent(normalizedContent);
+        isSyncingRef.current = false;
+        // Only update char count display — do NOT call onUpdate here
+        // because syncTheater already placed correct data in the store.
+        // Calling onUpdate would trigger updateNodeData → isDirty → auto-save race.
+        const chars = editor.storage.characterCount.characters();
+        onCharCountChange?.(chars);
       }
     } catch (error) {
       console.error('Failed to sync editor content:', error);

@@ -87,7 +87,7 @@ function InfiniteCanvas() {
   const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
 
   const { 
-    nodes, edges, isLoading, isSaving, isDirty, lastSavedAt,
+    nodes, edges, isLoading, isSaving, isDirty, isSyncing, lastSavedAt,
     onNodesChange, onEdgesChange, onConnect,
     addNode,
     undo, redo, takeSnapshot,
@@ -125,14 +125,14 @@ function InfiniteCanvas() {
 
   // Auto-save logic
   useEffect(() => {
-    if (!isDirty || isSaving) return;
+    if (!isDirty || isSaving || isSyncing) return;
 
     const timer = setTimeout(() => {
       saveToBackend().catch(console.error);
     }, 2000); // 2 seconds debounce
 
     return () => clearTimeout(timer);
-  }, [isDirty, isSaving, saveToBackend]);
+  }, [isDirty, isSaving, isSyncing, saveToBackend]);
 
   // Load theater on mount (wait for auth)
   const loaded = useRef(false);

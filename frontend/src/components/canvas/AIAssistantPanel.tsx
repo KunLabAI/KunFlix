@@ -461,7 +461,7 @@ export function AIAssistantPanel() {
             />
 
             {/* 消息列表 - 使用虚拟滚动 */}
-            <div className="flex-1 relative bg-muted/10 h-full min-h-0">
+            <div className="flex-1 relative bg-background h-full min-h-0">
 
               {/* 欢迎状态：仅有欢迎消息时，布局在底部 */}
               {messages.length === 1 && messages[0].isWelcome ? (

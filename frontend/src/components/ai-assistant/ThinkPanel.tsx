@@ -124,7 +124,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
       {/* 面板头部 */}
       <div
         className={cn(
-          'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors border border-border/50',
+          'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors',
           isThinking
             ? 'bg-muted/40'
             : progress.isAllDone
@@ -147,12 +147,12 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">
               {isThinking 
-                ? (agentName ? `${agentName} 思考中...` : 'AI 思考中...')
+                ? (agentName ? `${agentName} Think...` : 'AI Thinking...')
                 : progress.isAllDone 
-                  ? '思考完成' 
+                  ? 'Think Complete' 
                   : isMultiAgent 
                     ? '多智能体协作' 
-                    : '思考完成'}
+                    : 'Think complete'}
             </span>
             {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>

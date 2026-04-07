@@ -29,7 +29,7 @@ export function PanelHeader({
   return (
     <div
       className={cn(
-        'flex items-center justify-between p-3 border-b bg-secondary/30 cursor-grab active:cursor-grabbing',
+        'flex items-center justify-between p-3 bg-background cursor-grab active:cursor-grabbing',
         className
       )}
       onPointerDown={onDragStart}

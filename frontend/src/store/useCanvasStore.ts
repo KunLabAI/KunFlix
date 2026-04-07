@@ -47,6 +47,8 @@ export type StoryboardNodeData = {
   duration: number; // in seconds
   pivotConfig?: any; // From PivotConfig in types.ts
   pivotData?: any; // Cached or computed data
+  tableData?: Record<string, unknown>[]; // Raw table rows provided by Agent
+  tableColumns?: { key: string; label: string; type?: string }[]; // Column definitions from Agent
 };
 
 export type VideoNodeData = {
@@ -76,6 +78,7 @@ interface CanvasState {
   isLoading: boolean;
   lastSavedAt: number | null;
   isDirty: boolean;
+  isSyncing: boolean;
   
   // History
   history: HistoryState[];
@@ -196,6 +199,7 @@ export const useCanvasStore = create<CanvasState>()(
       isLoading: false,
       lastSavedAt: null,
       isDirty: false,
+      isSyncing: false,
 
       history: [],
       historyIndex: -1,
@@ -398,6 +402,7 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       syncTheater: async (theaterId: string) => {
+        set({ isSyncing: true });
         try {
           const detail = await theaterApi.getTheater(theaterId);
           const currentNodes = get().nodes;
@@ -472,12 +477,14 @@ export const useCanvasStore = create<CanvasState>()(
           }
         } catch (err) {
           console.error('Failed to sync theater:', err);
+        } finally {
+          set({ isSyncing: false });
         }
       },
 
       saveToBackend: async () => {
-        const { theaterId, nodes, edges, viewport, isSaving, theaterTitle } = get();
-        if (!theaterId || isSaving) return;
+        const { theaterId, nodes, edges, viewport, isSaving, isSyncing, theaterTitle } = get();
+        if (!theaterId || isSaving || isSyncing) return;
 
         set({ isSaving: true });
         try {

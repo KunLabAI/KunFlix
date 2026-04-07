@@ -1,11 +1,9 @@
 
-import { memo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow, NodeResizer } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Clapperboard, Database, Trash2, Copy, Maximize2 } from 'lucide-react';
+import { Clapperboard, Trash2, Copy } from 'lucide-react';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
-import { PivotEditor } from './pivot/PivotEditor';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -13,17 +11,10 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
+  const [isEditing, setIsEditing] = useState(false);
   const { getNode } = useReactFlow();
-  
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-
-  const handleEdit = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditorOpen(true);
-  };
 
   const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
     if (confirm("确定要删除这张多维表格卡吗？")) {
       deleteNode(id);
     }
@@ -49,9 +40,28 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
     }
   };
 
-  const rowCount = data.pivotConfig?.rows?.length || 0;
-  const colCount = data.pivotConfig?.cols?.length || 0;
-  const valCount = data.pivotConfig?.values?.length || 0;
+  // Extract table data
+  const tableInfo = useMemo(() => {
+    const td = data.tableData;
+    const tc = data.tableColumns;
+    const hasTableData = Array.isArray(td) && td.length > 0;
+    const hasTableCols = Array.isArray(tc) && tc.length > 0;
+    const columns: { key: string; label: string }[] = hasTableCols
+      ? tc.map((c: any) => ({ key: c.key, label: c.label || c.key }))
+      : hasTableData
+        ? Object.keys(td[0]).filter(k => k !== 'key').map(k => ({ key: k, label: k }))
+        : [];
+    return { columns, rows: hasTableData ? td : [], total: hasTableData ? td.length : 0 };
+  }, [data.tableData, data.tableColumns]);
+
+  const hasData = tableInfo.total > 0;
+
+  const handleCellBlur = useCallback((rowIndex: number, colKey: string, value: string) => {
+    const td = data.tableData;
+    if (!Array.isArray(td)) return;
+    const updated = td.map((row, i) => (i === rowIndex ? { ...row, [colKey]: value } : row));
+    updateNodeData(id, { tableData: updated });
+  }, [data.tableData, id, updateNodeData]);
 
   return (
     <>
@@ -72,11 +82,17 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         }}
       />
       <div 
-        className={`w-full h-full flex flex-col group relative storyboard-node-wrapper`}
+        className={`w-full h-full flex flex-col group relative storyboard-node-wrapper ${isEditing ? 'nodrag' : ''}`}
         style={{ minWidth: 398, minHeight: 256 }}
         onDoubleClick={(e) => {
           e.stopPropagation();
-          setIsEditorOpen(true);
+          setIsEditing(true);
+        }}
+        onBlur={(e) => {
+          // Exit editing when focus leaves the entire node
+          if (!e.currentTarget.contains(e.relatedTarget as globalThis.Node | null)) {
+            setIsEditing(false);
+          }
         }}
       >
         <div className="mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
@@ -93,63 +109,52 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         </div>
 
         <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] shadow-sm hover:shadow-md transition-all`}>
-          <CardContent className="p-0 flex-1 flex flex-col bg-background/50">
-              {rowCount > 0 || colCount > 0 || valCount > 0 ? (
-                <div className="flex-1 flex flex-col w-full h-full p-4 relative overflow-hidden">
-                  {/* 已配置的简化表格骨架表示 */}
-                  <div className="w-full h-8 bg-primary/10 rounded-md mb-4 flex items-center px-3 border border-primary/20">
-                    <div className="h-3 w-16 bg-primary/30 rounded mr-4"></div>
-                    <div className="h-3 w-24 bg-primary/30 rounded mr-4"></div>
-                    <div className="h-3 w-20 bg-primary/30 rounded"></div>
-                  </div>
-                  <div className="flex-1 flex flex-col gap-2">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="w-full flex items-center gap-4 py-2 border-b border-border/30 last:border-0">
-                        <div className="h-2 w-12 bg-primary/10 rounded"></div>
-                        <div className="h-2 w-32 bg-primary/10 rounded"></div>
-                        <div className="h-2 w-full bg-primary/10 rounded"></div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* 数据透视结果提示蒙层 */}
-                  <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none">
-                    <div className="bg-background/95 px-6 py-4 rounded-xl shadow-md border border-primary/20 flex flex-col items-center gap-3">
-                      <Database className="w-8 h-8 text-primary/80" />
-                      <div className="text-sm flex flex-col items-center gap-1 text-center">
-                         <span className="font-semibold text-foreground">已配置数据透视</span>
-                         <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-1 rounded-full">
-                           {rowCount} 行 / {colCount} 列 / {valCount} 值
-                         </span>
-                         <span className="text-[10px] text-muted-foreground/60 mt-1">双击重新编辑</span>
-                      </div>
-                    </div>
-                  </div>
+          <CardContent className={`p-0 flex-1 flex flex-col bg-background/50 overflow-hidden ${isEditing ? 'nowheel' : ''}`}>
+              {hasData ? (
+                <div
+                  className="flex-1 flex flex-col w-full h-full overflow-auto"
+                  onPointerDown={(e) => {
+                    // In edit mode, block drag for scrollbar clicks
+                    const el = e.currentTarget;
+                    const rect = el.getBoundingClientRect();
+                    const onVScrollbar = el.scrollHeight > el.clientHeight && e.clientX >= rect.right - 14;
+                    const onHScrollbar = el.scrollWidth > el.clientWidth && e.clientY >= rect.bottom - 14;
+                    if (isEditing && (onVScrollbar || onHScrollbar)) e.stopPropagation();
+                  }}
+                >
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-muted/60 border-b border-border sticky top-0 z-[1]">
+                        {tableInfo.columns.map(col => (
+                          <th key={col.key} className="px-3 py-2 text-left font-medium text-muted-foreground max-w-[180px] bg-muted/60">
+                            {col.label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableInfo.rows.map((row: any, i: number) => (
+                        <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/20">
+                          {tableInfo.columns.map(col => (
+                            <td
+                              key={col.key}
+                              className={`px-3 py-1.5 max-w-[180px] text-foreground/80 ${isEditing ? 'cursor-text' : 'cursor-default select-none'}`}
+                              contentEditable={isEditing}
+                              suppressContentEditableWarning
+                              onBlur={(e) => handleCellBlur(i, col.key, e.currentTarget.textContent || '')}
+                            >
+                              {row[col.key] != null ? String(row[col.key]) : ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
-                <div className="flex-1 flex flex-col w-full h-full p-4 relative overflow-hidden">
-                  {/* 表格骨架屏样式 */}
-                  <div className="w-full h-8 bg-muted/50 rounded-md mb-4 flex items-center px-3 border border-border/40">
-                    <div className="h-3 w-16 bg-muted-foreground/20 rounded mr-4"></div>
-                    <div className="h-3 w-24 bg-muted-foreground/20 rounded mr-4"></div>
-                    <div className="h-3 w-20 bg-muted-foreground/20 rounded"></div>
-                  </div>
-                  <div className="flex-1 flex flex-col gap-2">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="w-full flex items-center gap-4 py-2 border-b border-border/30 last:border-0">
-                        <div className="h-2 w-12 bg-muted/40 rounded"></div>
-                        <div className="h-2 w-32 bg-muted/40 rounded"></div>
-                        <div className="h-2 w-full bg-muted/40 rounded"></div>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* 引导提示蒙层 */}
-                  <div className="absolute inset-0 bg-background/40 backdrop-blur-[1px] flex flex-col items-center justify-center pointer-events-none">
-                    <div className="px-4 py-3 flex flex-col items-center gap-2">
-                      <span className="text-sm font-medium text-foreground/80">双击进入多维表格</span>
-                    </div>
-                  </div>
+                <div className="flex-1 flex flex-col items-center justify-center gap-2">
+                  <span className="text-sm font-medium text-foreground/60">暂无数据</span>
+                  <span className="text-[10px] text-muted-foreground/50">等待 Agent 填入数据</span>
                 </div>
               )}
           </CardContent>
@@ -158,11 +163,6 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         {/* 工具条 */}
         <NodeToolbar
           actions={[
-            {
-              icon: <Maximize2 className="h-3.5 w-3.5" />,
-              onClick: handleEdit,
-              title: '全屏编辑',
-            },
             {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,
@@ -198,29 +198,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         </div>
       </div>
 
-      {isEditorOpen && (
-        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm p-6 flex" onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsEditorOpen(false);
-          }
-        }}>
-          <div className="w-full h-full bg-background border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-4 border-b bg-muted/30">
-               <div className="font-semibold flex items-center gap-2 text-lg">
-                 <Clapperboard className="w-6 h-6 text-amber-600" /> 多维表格编辑器
-               </div>
-               <Button variant="outline" onClick={() => setIsEditorOpen(false)}>
-                 完成并关闭
-               </Button>
-            </div>
-            <div className="flex-1 overflow-hidden relative">
-              <PivotEditor nodeId={id} />
-            </div>
-          </div>
-        </div>
-      )}
+
     </>
   );
 };

@@ -19,6 +19,9 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   const [editData, setEditData] = useState<ScriptNodeData>(data);
   const [charCount, setCharCount] = useState(0);
   const nodeRef = useRef<HTMLDivElement>(null);
+  // Keep a ref to the latest editData so callbacks always see fresh values
+  const editDataRef = useRef<ScriptNodeData>(data);
+  editDataRef.current = editData;
 
   // Sync external data changes to local state if not editing
   useEffect(() => {
@@ -181,11 +184,12 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
               initialContent={editData.content || undefined}
               isEditable={isEditing}
               onUpdate={(content, chars) => {
-                const newData = { ...editData, content };
+                const newData = { ...editDataRef.current, content };
                 setEditData(newData);
                 updateNodeData(id, newData);
                 setCharCount(chars);
               }}
+              onCharCountChange={setCharCount}
             />
           </div>
         </CardContent>

@@ -74,14 +74,21 @@ NODE_TYPE_INFO = {
         "example": {"name": "开场动画", "description": "城市夜景转场", "videoUrl": "/media/xxx.mp4", "fitMode": "cover"}
     },
     "storyboard": {
-        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。JSON格式，支持自定义字段。",
+        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。支持自定义表格数据。",
         "fields": {
             "shotNumber": "镜头号，字符串类型，如'1-1', '2-3'",
             "description": "镜头描述，字符串类型，描述画面内容",
             "duration": "时长，整数类型，单位为秒",
-            "pivotConfig": "多维表格配置，JSON格式，可自定义字段类型和显示方式"
+            "tableData": "表格数据行，数组类型，每个元素是一个对象代表一行数据。例如：[{\"scene\": \"城市夜景\", \"type\": \"全景\", \"duration\": 5}]",
+            "tableColumns": "表格列定义，数组类型，每个元素包含key(字段名)、label(显示名)、type(可选，text/number)。例如：[{\"key\": \"scene\", \"label\": \"场景\"}, {\"key\": \"type\", \"label\": \"类型\"}]"
         },
-        "example": {"shotNumber": "1-1", "description": "全景：城市夜景", "duration": 5, "pivotConfig": {"columns": [{"key": "camera", "label": "机位", "type": "text"}]}}
+        "example": {
+            "shotNumber": "1-1",
+            "description": "全景：城市夜景",
+            "duration": 5,
+            "tableColumns": [{"key": "scene", "label": "场景", "type": "text"}, {"key": "type", "label": "镜头类型", "type": "text"}, {"key": "duration", "label": "时长", "type": "number"}],
+            "tableData": [{"scene": "城市夜景", "type": "全景", "duration": 5}, {"scene": "主角特写", "type": "近景", "duration": 3}]
+        }
     }
 }
 
@@ -90,7 +97,7 @@ NODE_TYPE_SCHEMA = {
     "text":       {"title": str, "content": str, "tags": list},
     "image":      {"name": str, "description": str, "imageUrl": str, "fitMode": str},
     "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
-    "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any},
+    "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any, "tableData": Any, "tableColumns": Any},
 }
 
 _DEFAULT_NODE_WIDTH = 420

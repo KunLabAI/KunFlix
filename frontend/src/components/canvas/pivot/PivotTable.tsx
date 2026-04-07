@@ -53,7 +53,7 @@ export const PivotTable: React.FC<PivotTableProps> = ({ data, loading }) => {
               <line x1="9" y1="21" x2="9" y2="9"></line>
             </svg>
             <p>暂无数据</p>
-            <p className="text-xs opacity-60">请从左侧拖拽字段以配置多维表</p>
+            <p className="text-xs opacity-60">等待 Agent 填入数据</p>
           </div>
         </div>
       )}
