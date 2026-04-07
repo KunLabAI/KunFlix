@@ -116,7 +116,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   return (
     <>
       <NodeResizer 
-        color="#6d6d6dff" 
+        color="#6d6d6d" 
         isVisible={selected} 
         minWidth={300} 
         minHeight={200}
@@ -125,7 +125,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           width: '8px', 
           height: '8px', 
           borderRadius: '4px',
-          border: '1px solid #4d4d4dff',
+          border: '1px solid #6d6d6d',
           background: '#fff',
           opacity: selected ? 1 : 0,
           transition: 'opacity 0.2s'
@@ -137,39 +137,39 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >
-        {/* 标题移到卡片外部 */}
-        <div className="script-node__title mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
-          <div className="flex-1 min-w-0 nodrag flex items-center">
-          {isEditing ? (
-            <Input
-            value={editData.title}
-            onChange={(e) => {
-              const newData = { ...editData, title: e.target.value };
-              setEditData(newData);
-              updateNodeData(id, newData);
-            }}
-            className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-            placeholder="无标题文本卡"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter' || e.key === 'Escape') {
-                handleFinishEdit(e as unknown as React.MouseEvent);
-              }
-            }}
-            autoFocus
-          />
-        ) : (
-          <h3 
-            className="font-bold text-lg h-8 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
-            title={data.title} 
-            onPointerDown={(e) => e.stopPropagation()}
-            onDoubleClick={handleEdit}
-          >
-            {data.title || '无标题文本卡'}
-          </h3>
-        )}
+        {/* 标题悬浮在卡片上方，不占节点布局空间 */}
+        <div className="script-node__title absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
+          <div className="flex-1 min-w-0 flex items-center">
+            {isEditing ? (
+              <Input
+                value={editData.title}
+                onChange={(e) => {
+                  const newData = { ...editData, title: e.target.value };
+                  setEditData(newData);
+                  updateNodeData(id, newData);
+                }}
+                className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
+                placeholder="无标题文本卡"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    handleFinishEdit(e as unknown as React.MouseEvent);
+                  }
+                }}
+                autoFocus
+              />
+            ) : (
+              <h3 
+                className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
+                title={data.title} 
+                onPointerDown={(e) => e.stopPropagation()}
+                onDoubleClick={handleEdit}
+              >
+                {data.title || '无标题文本卡'}
+              </h3>
+            )}
           </div>
           {/* 字数统计 */}
           <div className="text-xs font-medium text-muted-foreground/60 flex-shrink-0 select-none">
@@ -177,7 +177,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           </div>
         </div>
 
-      <Card className={`flex-1 flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
+      <Card className={`w-full h-full flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
         <CardContent className="script-node__content p-0 flex-1 flex flex-col">
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor

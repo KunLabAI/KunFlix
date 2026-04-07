@@ -97,8 +97,8 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
   const handleToggleFitMode = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const currentFitMode = data.fitMode || 'cover';
-    updateNodeData(id, { fitMode: currentFitMode === 'cover' ? 'contain' : 'cover' });
+    const currentFitMode = data.fitMode || 'contain';
+    updateNodeData(id, { fitMode: currentFitMode === 'contain' ? 'cover' : 'contain' });
   };
 
   const handleUploadClick = (e?: React.MouseEvent) => {
@@ -228,7 +228,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   return (
     <>
       <NodeResizer 
-        color="#251d38ff" 
+        color="#6d6d6d" 
         isVisible={selected} 
         minWidth={256}
         minHeight={200}
@@ -237,7 +237,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           width: '8px', 
           height: '8px', 
           borderRadius: '4px',
-          border: '1px solid #251d38ff',
+          border: '1px solid #6d6d6d',
           background: '#fff',
           opacity: selected ? 1 : 0,
           transition: 'opacity 0.2s'
@@ -259,9 +259,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         ref={nodeRef}
         className={`video-node-wrapper w-full h-full flex flex-col group relative ${isUploading ? 'nodrag' : ''}`}
       >
-        {/* 标题移到卡片外部 */}
-        <div className="video-node__title mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
-          <div className="flex-1 min-w-0 nodrag flex items-center">
+        {/* 标题悬浮在卡片上方，不占节点布局空间 */}
+        <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
+          <div className="flex-1 min-w-0 flex items-center">
             {isEditingTitle ? (
               <Input
                 ref={inputRef}
@@ -270,7 +270,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   setEditTitle(e.target.value);
                   updateNodeData(id, { name: e.target.value });
                 }}
-                className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
+                className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
                 placeholder="未命名视频卡"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -279,7 +279,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
               />
             ) : (
               <h3 
-                className="font-bold text-lg h-8 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
+                className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
                 title={data.name} 
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleTitleDoubleClick}
@@ -290,9 +290,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           </div>
         </div>
 
-        <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] transition-shadow hover:shadow-lg`}>
+        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
           <CardContent 
-            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
+            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden" 
           >
             {!data.videoUrl && !isUploading && !uploadError && (
               <Button 
@@ -323,7 +323,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                 <video 
                   src={data.videoUrl} 
                   controls
-                  className={`w-full h-full rounded-sm nodrag ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`} 
+                  className={`w-full h-full rounded-sm nodrag ${data.fitMode === 'cover' ? 'object-cover' : 'object-contain'}`} 
                   onPointerDown={(e) => e.stopPropagation()} 
                   onLoadedMetadata={handleLoadedMetadata}
                 />
@@ -383,9 +383,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         <NodeToolbar
           actions={[
             {
-              icon: data.fitMode === 'contain' ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />,
+              icon: data.fitMode === 'cover' ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />,
               onClick: handleToggleFitMode,
-              title: data.fitMode === 'contain' ? '填充卡片 (裁剪)' : '适应卡片 (留白)',
+              title: data.fitMode === 'cover' ? '适应卡片 (留白)' : '填充卡片 (裁剪)',
               ariaLabel: '切换视频适配模式',
             },
             {

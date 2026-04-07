@@ -22,6 +22,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.name || '');
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewPosition, setPreviewPosition] = useState({ x: 0, y: 0 });
@@ -105,8 +106,8 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   const handleToggleFitMode = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const currentFitMode = data.fitMode || 'cover';
-    updateNodeData(id, { fitMode: currentFitMode === 'cover' ? 'contain' : 'cover' });
+    const currentFitMode = data.fitMode || 'contain';
+    updateNodeData(id, { fitMode: currentFitMode === 'contain' ? 'cover' : 'contain' });
   };
 
   const handleAIEdit = (e: React.MouseEvent) => {
@@ -219,6 +220,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
       // Calculate new dimensions while keeping a reasonable max size (e.g. 512px max width/height)
       const MAX_SIZE = 512;
       const aspectRatio = img.naturalWidth / img.naturalHeight;
@@ -323,7 +325,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   return (
     <>
       <NodeResizer 
-        color="#202020" 
+        color="#6d6d6d" 
         isVisible={selected} 
         minWidth={256} 
         minHeight={192}
@@ -332,7 +334,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           width: '8px', 
           height: '8px', 
           borderRadius: '4px',
-          border: '1px solid #202020',
+          border: '1px solid #6d6d6d',
           background: '#fff',
           opacity: selected ? 1 : 0,
           transition: 'opacity 0.2s'
@@ -354,9 +356,9 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         ref={nodeRef}
         className={`character-node-wrapper w-full h-full flex flex-col group relative ${isUploading ? 'nodrag' : ''}`}
       >
-        {/* 标题移到卡片外部 */}
-        <div className="character-node__title mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
-          <div className="flex-1 min-w-0 nodrag flex items-center">
+        {/* 标题悬浮在卡片上方，不占节点布局空间 */}
+        <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
+          <div className="flex-1 min-w-0 flex items-center">
             {isEditingTitle ? (
               <Input
                 ref={inputRef}
@@ -365,7 +367,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                   setEditTitle(e.target.value);
                   updateNodeData(id, { name: e.target.value });
                 }}
-                className="font-bold text-lg h-8 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
+                className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
                 placeholder="未命名图片卡"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -374,7 +376,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               />
             ) : (
               <h3 
-                className="font-bold text-lg h-8 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
+                className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none" 
                 title={data.name} 
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleTitleDoubleClick}
@@ -383,11 +385,17 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               </h3>
             )}
           </div>
+          {/* 分辨率信息 */}
+          {imageDimensions && (
+            <div className="text-xs font-medium text-muted-foreground/60 flex-shrink-0 select-none">
+              {imageDimensions.width}×{imageDimensions.height}
+            </div>
+          )}
         </div>
 
-        <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
+        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
           <CardContent 
-            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden" 
+            className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden" 
           >
             {!data.imageUrl && !isUploading && !uploadError && (
               <Button 
@@ -412,7 +420,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 <img 
                   src={data.imageUrl} 
                   alt={data.name} 
-                  className={`w-full h-full rounded-sm ${data.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
+                  className={`w-full h-full rounded-sm ${data.fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
                   onLoad={handleImageLoad}
                   onPointerDown={(e) => e.stopPropagation()}
                 />
@@ -480,9 +488,9 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               variant: 'primary',
             },
             {
-              icon: data.fitMode === 'contain' ? <Maximize className="h-3.5 w-3.5" /> : <Minimize className="h-3.5 w-3.5" />,
+              icon: data.fitMode === 'cover' ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />,
               onClick: handleToggleFitMode,
-              title: data.fitMode === 'contain' ? '填充卡片 (裁剪)' : '适应卡片 (留白)',
+              title: data.fitMode === 'cover' ? '适应卡片 (留白)' : '填充卡片 (裁剪)',
               ariaLabel: '切换图片适配模式',
             },
             {

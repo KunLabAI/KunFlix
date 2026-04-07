@@ -201,15 +201,13 @@
 // ── Node wrapper state-based layout ──
 .script-node-wrapper[data-editing="false"] {
   .script-node__title {
-    // 标题在非编辑模式下也显示
+    // 标题悬浮在卡片上方（绝对定位）
     display: flex;
-    padding: 0.5rem 0.75rem;
     background: transparent;
     transition: none;
-    flex-shrink: 0;
 
     h3 {
-      font-size: 1.125rem; /* text-lg */
+      font-size: 0.875rem; /* text-sm */
       font-weight: 700;    /* font-bold */
       color: var(--foreground);
       opacity: 0.9;

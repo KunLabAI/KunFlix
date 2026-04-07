@@ -66,7 +66,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
   return (
     <>
       <NodeResizer 
-        color="#251d38ff" 
+        color="#6d6d6d" 
         isVisible={selected} 
         minWidth={398} 
         minHeight={256}
@@ -75,7 +75,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           width: '8px', 
           height: '8px', 
           borderRadius: '4px',
-          border: '1px solid #251d38ff',
+          border: '1px solid #6d6d6d',
           background: '#fff',
           opacity: selected ? 1 : 0,
           transition: 'opacity 0.2s'
@@ -95,20 +95,21 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           }
         }}
       >
-        <div className="mb-1 px-1 flex items-center justify-between gap-2 flex-shrink-0 min-h-[32px]">
-          <div className="flex-1 min-w-0 nodrag flex items-center">
+        {/* 标题悬浮在卡片上方，不占节点布局空间 */}
+        <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
+          <div className="flex-1 min-w-0 flex items-center">
             <h3 
-              className="font-bold text-lg h-8 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none gap-2" 
+              className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none gap-2" 
               title="多维表格卡" 
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <Clapperboard className="w-5 h-5 text-amber-600" />
+              <Clapperboard className="w-4 h-4 text-amber-600" />
               多维表格卡
             </h3>
           </div>
         </div>
 
-        <Card className={`flex-1 flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] shadow-sm hover:shadow-md transition-all`}>
+        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] shadow-sm hover:shadow-md transition-all`}>
           <CardContent className={`p-0 flex-1 flex flex-col bg-background/50 overflow-hidden ${isEditing ? 'nowheel' : ''}`}>
               {hasData ? (
                 <div
