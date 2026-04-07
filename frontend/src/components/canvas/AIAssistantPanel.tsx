@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Sparkles, X, ImageIcon, Paperclip } from 'lucide-react';
+import { Sparkles, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -22,9 +22,8 @@ import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistan
 import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
 import { usePerformanceMonitor } from '@/components/ai-assistant';
-import { NodePreviewCard, NodePreviewList } from '@/components/ai-assistant/NodePreviewCard';
 import { WelcomeMessage } from '@/components/ai-assistant/WelcomeMessage';
-import type { NodeAttachment } from '@/store/useAIAssistantStore';
+import type { NodeAttachment, UploadedFile, PastedContent } from '@/store/useAIAssistantStore';
 
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
 const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment) => string> = {
@@ -77,12 +76,29 @@ export function AIAssistantPanel() {
 
   // 节点附件（从画布拖拽）- 支持多图
   const nodeAttachments = useAIAssistantStore((state) => state.nodeAttachments);
+  const addNodeAttachment = useAIAssistantStore((state) => state.addNodeAttachment);
   const removeNodeAttachment = useAIAssistantStore((state) => state.removeNodeAttachment);
   const clearNodeAttachments = useAIAssistantStore((state) => state.clearNodeAttachments);
   const isDragOverPanel = useAIAssistantStore((state) => state.isDragOverPanel);
 
+  // 画布节点列表（用于节点选择器）
+  const canvasNodes = useCanvasStore((state) => state.nodes);
+
   // 上下文使用统计
   const contextUsage = useAIAssistantStore((state) => state.contextUsage);
+
+  // 用户上传文件
+  const uploadedFiles = useAIAssistantStore((state) => state.uploadedFiles);
+  const addUploadedFile = useAIAssistantStore((state) => state.addUploadedFile);
+  const updateUploadedFile = useAIAssistantStore((state) => state.updateUploadedFile);
+  const removeUploadedFile = useAIAssistantStore((state) => state.removeUploadedFile);
+  const clearUploadedFiles = useAIAssistantStore((state) => state.clearUploadedFiles);
+
+  // 粘贴内容
+  const pastedContents = useAIAssistantStore((state) => state.pastedContents);
+  const addPastedContent = useAIAssistantStore((state) => state.addPastedContent);
+  const removePastedContent = useAIAssistantStore((state) => state.removePastedContent);
+  const clearPastedContents = useAIAssistantStore((state) => state.clearPastedContents);
 
   // 会话管理
   const {
@@ -191,7 +207,7 @@ export function AIAssistantPanel() {
 
   // 发送消息
   const handleSend = useCallback(
-    async (content: string) => {
+    async (content: string, files: UploadedFile[] = [], pasted: PastedContent[] = []) => {
       // 确保会话存在
       let currentSessionId = sessionId;
       let currentAgentId = agentId;
@@ -293,9 +309,11 @@ export function AIAssistantPanel() {
         setIsLoading(false);
         clearImageEditContext();
         clearNodeAttachments();
+        clearUploadedFiles();
+        clearPastedContents();
       }
     },
-    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, t]
+    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, clearUploadedFiles, clearPastedContents, t]
   );
 
   // 调整面板大小
@@ -444,21 +462,6 @@ export function AIAssistantPanel() {
 
             {/* 消息列表 - 使用虚拟滚动 */}
             <div className="flex-1 relative bg-muted/10 h-full min-h-0">
-              {/* 拖拽悬停覆盖层 */}
-              <AnimatePresence>
-                {isDragOverPanel && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute inset-0 z-30 bg-primary/10 backdrop-blur-[2px] flex flex-col items-center justify-center pointer-events-none"
-                  >
-                    <Paperclip className="h-8 w-8 text-primary mb-2" />
-                    <span className="text-sm font-medium text-primary">{t('ai.dropToAttach')}</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {/* 欢迎状态：仅有欢迎消息时，布局在底部 */}
               {messages.length === 1 && messages[0].isWelcome ? (
@@ -521,23 +524,29 @@ export function AIAssistantPanel() {
               </div>
             )}
 
-            {/* 节点附件预览 - 支持多图横向排列 */}
-            {nodeAttachments.length > 0 && (
-              <NodePreviewList 
-                attachments={nodeAttachments}
-                onRemove={removeNodeAttachment}
-                onClearAll={clearNodeAttachments}
-              />
-            )}
-
-            {/* 输入区域（包含Agent选择器和发送按钮） */}
+            {/* 输入区域（包含Agent选择器、附件预览和发送按钮） */}
             <MessageInput
               onSend={handleSend}
               isLoading={isLoading}
+              isDragOverPanel={isDragOverPanel}
               agentName={agentName}
               availableAgents={availableAgents}
               isLoadingAgents={isLoadingAgents}
               onSwitchAgent={switchAgent}
+              nodeAttachments={nodeAttachments}
+              onRemoveNodeAttachment={removeNodeAttachment}
+              onClearNodeAttachments={clearNodeAttachments}
+              canvasNodes={canvasNodes}
+              onAddNodeAttachment={addNodeAttachment}
+              uploadedFiles={uploadedFiles}
+              onAddUploadedFile={addUploadedFile}
+              onUpdateUploadedFile={updateUploadedFile}
+              onRemoveUploadedFile={removeUploadedFile}
+              onClearUploadedFiles={clearUploadedFiles}
+              pastedContents={pastedContents}
+              onAddPastedContent={addPastedContent}
+              onRemovePastedContent={removePastedContent}
+              onClearPastedContents={clearPastedContents}
               placeholder={nodeAttachments.length > 0
                 ? t('ai.attachPlaceholder', {
                     plural: nodeAttachments.length > 1 ? t('ai.plural_other') : t('ai.plural_one'),

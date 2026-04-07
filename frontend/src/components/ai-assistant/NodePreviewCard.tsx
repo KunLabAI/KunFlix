@@ -29,11 +29,12 @@ interface NodePreviewCardProps {
 }
 
 /**
- * 小型图片卡片组件 - 用于多图横向排列
+ * 媒体节点预览卡（图片/视频）- 100x100 统一卡片
  */
-function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
+function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
   const isUploading = !!attachment.meta?.uploading;
   const isVideo = attachment.nodeType === 'video';
+  const config = NODE_PREVIEW_CONFIG[attachment.nodeType] ?? DEFAULT_CONFIG;
 
   return (
     <motion.div
@@ -43,7 +44,7 @@ function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
       transition={{ duration: 0.15 }}
       className="relative group shrink-0"
     >
-      <div className="w-16 h-16 rounded-lg overflow-hidden bg-transparent border border-border/50">
+      <div className="size-[100px] rounded-lg overflow-hidden bg-muted border border-border shadow-sm">
         {isVideo ? (
           <div className="relative w-full h-full">
             <video
@@ -53,8 +54,8 @@ function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
               muted
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-              <div className="w-4 h-4 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
-                <div className="w-0 h-0 border-t-[3px] border-t-transparent border-l-[5px] border-l-white border-b-[3px] border-b-transparent ml-0.5" />
+              <div className="w-5 h-5 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+                <div className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[6px] border-l-white border-b-[4px] border-b-transparent ml-0.5" />
               </div>
             </div>
           </div>
@@ -65,9 +66,16 @@ function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
             className="w-full h-full object-cover"
           />
         )}
+        {/* 底部标签 */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5 flex items-center gap-1">
+          <span className={cn('text-[9px]', config.color)}>
+            {config.icon === ImageIcon ? '图片' : '视频'}
+          </span>
+          <p className="text-[10px] text-foreground truncate flex-1">{attachment.label}</p>
+        </div>
       </div>
 
-      {/* 关闭按钮 - 移出卡片边界避免截断 */}
+      {/* 关闭按钮 */}
       <Button
         variant="ghost"
         size="icon"
@@ -87,54 +95,58 @@ function ImageThumbnailCard({ attachment, onClear }: NodePreviewCardProps) {
 }
 
 /**
- * 文本/其他类型节点的预览卡片
+ * 文本/分镜等无缩略图节点预览卡 - 100x100 统一卡片
  */
-function TextPreviewCard({ attachment, onClear }: NodePreviewCardProps) {
+function InfoNodeCard({ attachment, onClear }: NodePreviewCardProps) {
   const config = NODE_PREVIEW_CONFIG[attachment.nodeType] ?? DEFAULT_CONFIG;
   const Icon = config.icon;
   const isUploading = !!attachment.meta?.uploading;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 8 }}
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      className="mx-3 mb-1 mt-1"
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.15 }}
+      className="relative group shrink-0"
     >
-      <div className="flex items-start gap-2.5 px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg">
-        {/* 左侧：图标 */}
-        <div className={cn('p-1.5 rounded-md shrink-0 mt-0.5', config.bg)}>
+      <div className="size-[100px] rounded-lg overflow-hidden bg-muted border border-border shadow-sm p-2.5 flex flex-col">
+        {/* 顶部：图标 */}
+        <div className={cn('p-1.5 rounded-md shrink-0 w-fit', config.bg)}>
           <Icon className={cn('w-3.5 h-3.5', config.color)} />
         </div>
 
-        {/* 中间：文本信息 */}
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-foreground truncate">
-              {attachment.label}
-            </span>
-            {isUploading && (
-              <Loader2 className="w-3 h-3 text-muted-foreground animate-spin shrink-0" />
-            )}
-          </div>
+        {/* 中间：摘要文本 */}
+        <div className="flex-1 min-w-0 overflow-hidden mt-1.5">
           {attachment.excerpt && (
-            <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
+            <p className="text-[7px] text-muted-foreground whitespace-pre-wrap break-words leading-tight line-clamp-3">
               {attachment.excerpt}
             </p>
           )}
         </div>
 
-        {/* 关闭按钮 */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 shrink-0 hover:bg-primary/10 mt-0.5"
-          onClick={onClear}
-        >
-          <X className="h-3 w-3 text-muted-foreground" />
-        </Button>
+        {/* 底部渐变 + 标签 */}
+        <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent pointer-events-none" />
+        <span className="absolute bottom-1.5 left-1.5 text-[9px] text-foreground bg-muted/90 border border-border/50 px-1.5 py-0.5 rounded truncate max-w-[85px]">
+          {attachment.label}
+        </span>
       </div>
+
+      {/* 关闭按钮 */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-background border border-border/50 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground z-10"
+        onClick={onClear}
+      >
+        <X className="h-3 w-3" />
+      </Button>
+
+      {isUploading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg">
+          <Loader2 className="w-4 h-4 text-primary animate-spin" />
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -149,47 +161,16 @@ interface NodePreviewListProps {
 }
 
 export function NodePreviewList({ attachments, onRemove, onClearAll }: NodePreviewListProps) {
-  // 分离图片/视频和其他类型
-  const mediaAttachments = attachments.filter(a => a.nodeType === 'image' || a.nodeType === 'video');
-  const otherAttachments = attachments.filter(a => a.nodeType !== 'image' && a.nodeType !== 'video');
-
   return (
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0, height: 0 }}
         animate={{ opacity: 1, height: 'auto' }}
         exit={{ opacity: 0, height: 0 }}
-        className="mx-3 mb-2"
+        className="flex gap-2 items-start"
       >
-        {/* 媒体文件横向排列 */}
-        {mediaAttachments.length > 0 && (
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1">
-              {mediaAttachments.map((attachment) => (
-                <ImageThumbnailCard
-                  key={attachment.nodeId}
-                  attachment={attachment}
-                  onClear={() => onRemove(attachment.nodeId)}
-                />
-              ))}
-            </div>
-            {/* 清除全部按钮 */}
-            {attachments.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground shrink-0 ml-auto"
-                onClick={onClearAll}
-              >
-                清除全部
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* 其他类型节点纵向排列 */}
-        {otherAttachments.map((attachment) => (
-          <TextPreviewCard
+        {attachments.map((attachment) => (
+          <NodePreviewCard
             key={attachment.nodeId}
             attachment={attachment}
             onClear={() => onRemove(attachment.nodeId)}
@@ -201,12 +182,12 @@ export function NodePreviewList({ attachments, onRemove, onClearAll }: NodePrevi
 }
 
 /**
- * 单个节点预览卡片（向后兼容）
+ * 统一节点预览卡片 - 根据类型自动选择渲染方式
  */
 export function NodePreviewCard({ attachment, onClear }: NodePreviewCardProps) {
   const isMedia = attachment.nodeType === 'image' || attachment.nodeType === 'video';
-  
-  return isMedia 
-    ? <ImageThumbnailCard attachment={attachment} onClear={onClear} />
-    : <TextPreviewCard attachment={attachment} onClear={onClear} />;
+
+  return isMedia
+    ? <MediaNodeCard attachment={attachment} onClear={onClear} />
+    : <InfoNodeCard attachment={attachment} onClear={onClear} />;
 }

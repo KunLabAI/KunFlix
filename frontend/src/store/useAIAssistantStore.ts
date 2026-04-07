@@ -95,6 +95,25 @@ export interface NodeAttachment {
   meta: Record<string, unknown>; // 额外元数据
 }
 
+// 用户上传的文件
+export interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: string;
+  uploadStatus: 'pending' | 'uploading' | 'complete' | 'error';
+  uploadProgress?: number;
+  textContent?: string;
+}
+
+// 粘贴的长文本
+export interface PastedContent {
+  id: string;
+  content: string;
+  timestamp: Date;
+  wordCount: number;
+}
+
 // 上下文使用统计
 export interface ContextUsage {
   usedTokens: number;
@@ -139,6 +158,12 @@ interface AIAssistantState {
   
   // Context usage stats
   contextUsage: ContextUsage | null;
+  
+  // User uploaded files
+  uploadedFiles: UploadedFile[];
+  
+  // Pasted long text contents
+  pastedContents: PastedContent[];
   
   // Virtual scroll settings
   scrollBehavior: ScrollBehavior;
@@ -194,6 +219,19 @@ interface AIAssistantState {
   // Context usage
   setContextUsage: (usage: ContextUsage | null) => void;
   
+  // Uploaded files
+  setUploadedFiles: (files: UploadedFile[]) => void;
+  addUploadedFile: (file: UploadedFile) => void;
+  updateUploadedFile: (id: string, updates: Partial<UploadedFile>) => void;
+  removeUploadedFile: (id: string) => void;
+  clearUploadedFiles: () => void;
+  
+  // Pasted contents
+  setPastedContents: (contents: PastedContent[]) => void;
+  addPastedContent: (content: PastedContent) => void;
+  removePastedContent: (id: string) => void;
+  clearPastedContents: () => void;
+  
   // Virtual scroll settings
   setScrollBehavior: (behavior: ScrollBehavior) => void;
   setOverscanCount: (count: number) => void;
@@ -225,6 +263,8 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       nodeAttachment: null,
       isDragOverPanel: false,
       contextUsage: null,
+      uploadedFiles: [],
+      pastedContents: [],
       scrollBehavior: 'smooth',
       overscanCount: 5,
 
@@ -352,6 +392,34 @@ export const useAIAssistantStore = create<AIAssistantState>()(
 
       // Context usage
       setContextUsage: (contextUsage: ContextUsage | null) => set({ contextUsage }),
+      
+      // Uploaded files
+      setUploadedFiles: (uploadedFiles: UploadedFile[]) => set({ uploadedFiles }),
+      addUploadedFile: (file: UploadedFile) => set((state) => ({
+        uploadedFiles: [...state.uploadedFiles, file]
+      })),
+      updateUploadedFile: (id: string, updates: Partial<UploadedFile>) => set((state) => ({
+        uploadedFiles: state.uploadedFiles.map(f => f.id === id ? { ...f, ...updates } : f)
+      })),
+      removeUploadedFile: (id: string) => set((state) => {
+        const file = state.uploadedFiles.find(f => f.id === id);
+        file?.preview && URL.revokeObjectURL(file.preview);
+        return { uploadedFiles: state.uploadedFiles.filter(f => f.id !== id) };
+      }),
+      clearUploadedFiles: () => set((state) => {
+        state.uploadedFiles.forEach(f => f.preview && URL.revokeObjectURL(f.preview));
+        return { uploadedFiles: [] };
+      }),
+      
+      // Pasted contents
+      setPastedContents: (pastedContents: PastedContent[]) => set({ pastedContents }),
+      addPastedContent: (content: PastedContent) => set((state) => ({
+        pastedContents: [...state.pastedContents, content]
+      })),
+      removePastedContent: (id: string) => set((state) => ({
+        pastedContents: state.pastedContents.filter(c => c.id !== id)
+      })),
+      clearPastedContents: () => set({ pastedContents: [] }),
       
       // Virtual scroll settings
       setScrollBehavior: (scrollBehavior: ScrollBehavior) => set({ scrollBehavior }),
