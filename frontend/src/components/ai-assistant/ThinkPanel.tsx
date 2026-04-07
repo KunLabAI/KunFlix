@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, ChevronDown, ChevronUp, Sparkles, CheckCircle2, Circle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckCircle2, Circle, XCircle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LoadingDots } from './LoadingDots';
 import type { AgentStep } from '@/store/useAIAssistantStore';
@@ -18,10 +18,10 @@ interface ThinkPanelProps {
 
 // 状态图标映射表
 const STATUS_ICON_MAP: Record<string, { Icon: typeof Circle; className: string }> = {
-  pending: { Icon: Circle, className: 'text-[var(--color-status-pending-icon)]' },
-  running: { Icon: Loader2, className: 'text-[var(--color-status-executing-icon)] animate-spin' },
-  completed: { Icon: CheckCircle2, className: 'text-[var(--color-status-success-icon)]' },
-  failed: { Icon: XCircle, className: 'text-[var(--color-status-error-icon)]' },
+  pending: { Icon: Circle, className: 'text-muted-foreground' },
+  running: { Icon: Loader2, className: 'text-foreground/70 animate-spin' },
+  completed: { Icon: CheckCircle2, className: 'text-foreground/50' },
+  failed: { Icon: XCircle, className: 'text-foreground/70' },
 };
 
 /**
@@ -124,27 +124,23 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
       {/* 面板头部 */}
       <div
         className={cn(
-          'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all',
+          'flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors border border-border/50',
           isThinking
-            ? 'bg-gradient-to-r from-[var(--color-gradient-thinking-start)] via-[var(--color-gradient-thinking-mid)] to-[var(--color-gradient-thinking-end)] border border-[var(--color-gradient-thinking-border)]'
+            ? 'bg-muted/40'
             : progress.isAllDone
-              ? 'bg-[var(--color-status-success-bg)] border border-[var(--color-status-success-border)]'
-              : 'bg-[var(--color-bg-panel)] hover:bg-[var(--color-bg-panel-hover)]'
+              ? 'bg-muted/30'
+              : 'bg-muted/20 hover:bg-muted/40'
         )}
         onClick={() => {
           const newExpanded = !isExpanded;
           setIsExpanded(newExpanded);
-          // 用户手动展开时标记，手动折叠时重置（恢复自动折叠行为）
           setUserExpandedManually(newExpanded);
         }}
       >
-        {/* 图标 */}
-        <div className="relative">
-          <Brain className={cn('h-4 w-4', isThinking ? 'text-[var(--color-icon-thinking)]' : 'text-[var(--color-text-primary)]')} />
-          {isThinking && (
-            <Sparkles className="h-2.5 w-2.5 text-[var(--color-icon-thinking-pulse)] absolute -top-1 -right-1 animate-pulse" />
-          )}
-        </div>
+        {/* 展开/折叠箭头 */}
+        {(isMultiAgent || hasSingleAgentContent) && (
+          isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        )}
 
         {/* 标题和状态 */}
         <div className="flex-1 min-w-0">
@@ -158,7 +154,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                     ? '多智能体协作' 
                     : '思考完成'}
             </span>
-            {isThinking && <LoadingDots size="sm" className="text-[var(--color-icon-thinking)]" />}
+            {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>
           {currentStep && (
             <p className="text-[10px] text-muted-foreground truncate">
@@ -179,9 +175,6 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
               {formatTime(elapsedTime)}
             </span>
           )}
-          {(isMultiAgent || hasSingleAgentContent) && (
-            isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
-          )}
         </div>
       </div>
 
@@ -198,7 +191,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
             <div className="space-y-2 pt-2 pl-2">
               {/* 单智能体模式：显示思考内容 */}
               {!isMultiAgent && (thinkingContent || children) && (
-                <div className="p-2 bg-[var(--color-bg-panel)] rounded text-xs text-muted-foreground">
+                <div className="p-2 bg-muted/30 rounded text-xs text-muted-foreground">
                   {thinkingContent && (
                     <p className="whitespace-pre-wrap">{thinkingContent}</p>
                   )}
@@ -211,12 +204,9 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                 <>
                   {/* 进度条 */}
                   {progress.total > 0 && (
-                    <div className="h-1 w-full bg-[var(--color-bg-panel-hover)] rounded-full overflow-hidden">
+                    <div className="h-1 w-full bg-muted/40 rounded-full overflow-hidden">
                       <motion.div
-                        className={cn(
-                          'h-full',
-                          progress.failed > 0 ? 'bg-[var(--color-status-error-icon)]' : 'bg-[var(--color-status-success-icon)]'
-                        )}
+                        className="h-full bg-foreground/30"
                         initial={{ width: 0 }}
                         animate={{ width: `${progress.percentage}%` }}
                         transition={{ duration: 0.3 }}
@@ -231,9 +221,9 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                     const isStepExpanded = expandedSteps.has(step.subtask_id);
 
                     return (
-                      <div key={step.subtask_id} className="border-l-2 border-[var(--color-border-light)] pl-3 py-1">
+                      <div key={step.subtask_id} className="border-l border-border/40 pl-3 py-1">
                         <div
-                          className="flex items-start gap-2 cursor-pointer hover:bg-[var(--color-bg-panel)] rounded p-1 -ml-1 transition-colors"
+                          className="flex items-start gap-2 cursor-pointer hover:bg-muted/40 rounded p-1 -ml-1 transition-colors"
                           onClick={(e) => { e.stopPropagation(); toggleStep(step.subtask_id); }}
                         >
                           <StatusIcon className={cn('h-4 w-4 mt-0.5', iconConfig.className)} />
@@ -260,10 +250,10 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="mt-2 p-2 bg-[var(--color-bg-panel)] rounded text-xs overflow-hidden"
+                              className="mt-2 p-2 bg-muted/30 rounded text-xs overflow-hidden"
                             >
                               {step.error ? (
-                                <p className="text-[var(--color-status-error-text)]">{step.error}</p>
+                                <p className="text-foreground/70">{step.error}</p>
                               ) : (
                                 <p className="text-muted-foreground whitespace-pre-wrap">{step.result}</p>
                               )}

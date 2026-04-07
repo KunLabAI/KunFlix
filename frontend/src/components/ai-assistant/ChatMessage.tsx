@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
 import { ToolCallIndicator } from './ToolCallIndicator';
 import { SkillCallIndicator } from './SkillCallIndicator';
+import { CallTimelinePanel } from './CallTimelinePanel';
 import { ThinkPanel } from './ThinkPanel';
 import { DraggableTextWrapper } from './DraggableTextWrapper';
 import { LazyImage } from './LazyImage';
@@ -439,14 +440,13 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                     <VideoTaskCard key={card.taskId} task={card} />
                   ))}
 
-                  {/* 技能调用指示器 */}
-                  {message.skill_calls && message.skill_calls.length > 0 && (
-                    <SkillCallIndicator skillCalls={message.skill_calls} />
-                  )}
-
-                  {/* 工具调用指示器 */}
-                  {message.tool_calls && message.tool_calls.length > 0 && (
-                    <ToolCallIndicator toolCalls={message.tool_calls} />
+                  {/* 技能/工具调用连续式面板 */}
+                  {((message.skill_calls && message.skill_calls.length > 0) ||
+                    (message.tool_calls && message.tool_calls.length > 0)) && (
+                    <CallTimelinePanel
+                      skillCalls={message.skill_calls}
+                      toolCalls={message.tool_calls}
+                    />
                   )}
 
                   {/* 多智能体思考面板 */}
