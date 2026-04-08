@@ -7,7 +7,7 @@ import logging
 
 from database import get_db
 from models import Agent, ChatSession, ChatMessage
-from schemas import ChatSessionCreate, ChatSessionResponse, ChatMessageCreate
+from schemas import ChatSessionCreate, ChatSessionUpdate, ChatSessionResponse, ChatMessageCreate
 from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.chat_utils import serialize_content, deserialize_content
 from services.chat_generation import generate_single_agent
@@ -79,6 +79,34 @@ async def get_session(
     session = await db.scalar(query)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    return session
+
+
+@router.patch("/{session_id}", response_model=ChatSessionResponse)
+async def update_session(
+    session_id: str,
+    update: ChatSessionUpdate,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    query = select(ChatSession).filter(ChatSession.id == session_id)
+    query = scoped_query(query, ChatSession, current_user)
+    session = await db.scalar(query)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # 如果更新 agent_id，验证 agent 存在
+    if update.agent_id:
+        agent = await db.scalar(select(Agent).filter(Agent.id == update.agent_id))
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        session.agent_id = update.agent_id
+
+    if update.title is not None:
+        session.title = update.title
+
+    await db.commit()
+    await db.refresh(session)
     return session
 
 

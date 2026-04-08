@@ -373,6 +373,11 @@ class ChatSessionCreate(ChatSessionBase):
     pass
 
 
+class ChatSessionUpdate(BaseModel):
+    agent_id: Optional[str] = None
+    title: Optional[str] = None
+
+
 class ChatSessionResponse(ChatSessionBase):
     id: str
     user_id: Optional[str] = None

@@ -107,8 +107,13 @@ export function AIAssistantPanel() {
     agentName,
     availableAgents,
     isLoadingAgents,
+    theaterChatList,
+    isLoadingChatList,
     loadAgents,
     createSessionForTheater,
+    createNewChat,
+    switchToSession,
+    deleteSession,
     switchAgent,
     clearSession,
   } = useSessionManager();
@@ -208,9 +213,10 @@ export function AIAssistantPanel() {
   // 发送消息
   const handleSend = useCallback(
     async (content: string, files: UploadedFile[] = [], pasted: PastedContent[] = []) => {
-      // 确保会话存在
-      let currentSessionId = sessionId;
-      let currentAgentId = agentId;
+      // 直接从 store 读取最新值，避免闭包捕获旧值导致重复创建会话
+      const latestState = useAIAssistantStore.getState();
+      let currentSessionId = latestState.sessionId;
+      let currentAgentId = latestState.agentId;
 
       const needsSession = !currentSessionId || !currentAgentId;
       if (needsSession) {
@@ -313,7 +319,7 @@ export function AIAssistantPanel() {
         clearPastedContents();
       }
     },
-    [sessionId, agentId, theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, clearUploadedFiles, clearPastedContents, t]
+    [theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, clearUploadedFiles, clearPastedContents, t]
   );
 
   // 调整面板大小
@@ -453,11 +459,16 @@ export function AIAssistantPanel() {
           >
             {/* 头部 */}
             <PanelHeader
-              onClearSession={clearSession}
               onClose={() => setIsOpen(false)}
               onDragStart={(e) => dragControls.start(e)}
               contextUsage={contextUsage}
               isLoading={isLoading}
+              chatList={theaterChatList}
+              currentSessionId={sessionId}
+              onCreateNewChat={createNewChat}
+              onSwitchSession={switchToSession}
+              onDeleteSession={deleteSession}
+              isLoadingChatList={isLoadingChatList}
             />
 
             {/* 消息列表 - 使用虚拟滚动 */}

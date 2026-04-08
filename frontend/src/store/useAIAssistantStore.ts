@@ -120,6 +120,15 @@ export interface ContextUsage {
   contextWindow: number;
 }
 
+// 对话列表项（用于多对话切换展示）
+export interface ChatSessionInfo {
+  id: string;
+  title: string;
+  agentId: string;
+  agentName: string;
+  updatedAt: string;
+}
+
 interface AIAssistantState {
   // Panel visibility
   isOpen: boolean;
@@ -164,6 +173,10 @@ interface AIAssistantState {
   
   // Pasted long text contents
   pastedContents: PastedContent[];
+  
+  // Multi-chat list for current theater
+  theaterChatList: ChatSessionInfo[];
+  isLoadingChatList: boolean;
   
   // Virtual scroll settings
   scrollBehavior: ScrollBehavior;
@@ -232,6 +245,12 @@ interface AIAssistantState {
   removePastedContent: (id: string) => void;
   clearPastedContents: () => void;
   
+  // Multi-chat list
+  setTheaterChatList: (list: ChatSessionInfo[]) => void;
+  addChatToList: (chat: ChatSessionInfo) => void;
+  removeChatFromList: (sessionId: string) => void;
+  setIsLoadingChatList: (loading: boolean) => void;
+  
   // Virtual scroll settings
   setScrollBehavior: (behavior: ScrollBehavior) => void;
   setOverscanCount: (count: number) => void;
@@ -265,6 +284,8 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       contextUsage: null,
       uploadedFiles: [],
       pastedContents: [],
+      theaterChatList: [],
+      isLoadingChatList: false,
       scrollBehavior: 'smooth',
       overscanCount: 5,
 
@@ -420,6 +441,16 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         pastedContents: state.pastedContents.filter(c => c.id !== id)
       })),
       clearPastedContents: () => set({ pastedContents: [] }),
+      
+      // Multi-chat list
+      setTheaterChatList: (theaterChatList: ChatSessionInfo[]) => set({ theaterChatList }),
+      addChatToList: (chat: ChatSessionInfo) => set((state) => ({
+        theaterChatList: [chat, ...state.theaterChatList.filter(c => c.id !== chat.id)]
+      })),
+      removeChatFromList: (sessionId: string) => set((state) => ({
+        theaterChatList: state.theaterChatList.filter(c => c.id !== sessionId)
+      })),
+      setIsLoadingChatList: (isLoadingChatList: boolean) => set({ isLoadingChatList }),
       
       // Virtual scroll settings
       setScrollBehavior: (scrollBehavior: ScrollBehavior) => set({ scrollBehavior }),

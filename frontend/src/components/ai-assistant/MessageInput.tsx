@@ -578,7 +578,72 @@ export function MessageInput({
 
           {/* 底部工具栏 */}
           <div className="flex items-center justify-between px-2 pb-2 pt-1">
-            {/* 左侧：添加节点 + Agent选择器 */}
+            {/* 左侧：Agent选择器 */}
+            <div className="flex items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-sm font-medium hover:bg-primary/10 flex items-center gap-2 max-w-[256px]"
+                    disabled={isLoadingAgents}
+                  >
+                    <span className="text-foreground truncate">{resolvedAgentName}</span>
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-[256px]">
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
+                    {t('ai.selectAgent')}
+                  </div>
+                  {availableAgents.map((agent) => {
+                    const isSelected = agent.name === agentName;
+                    return (
+                      <DropdownMenuItem
+                        key={agent.id}
+                        onClick={() => onSwitchAgent?.(agent)}
+                        className={cn(
+                          "text-xs cursor-pointer py-2",
+                          isSelected && "bg-primary/10"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 w-full">
+                          {/* 选中指示点 */}
+                          <div className={cn(
+                            "w-1.5 h-1.5 rounded-full shrink-0",
+                            isSelected ? "bg-primary" : "bg-transparent"
+                          )} />
+                          <div className={cn(
+                            "flex flex-col gap-0.5 min-w-0",
+                            !isSelected && "opacity-50"
+                          )}>
+                            <span className="font-medium truncate">{agent.name}</span>
+                            {agent.description && (
+                              <span className="text-[10px] text-muted-foreground line-clamp-1">
+                                {agent.description}
+                              </span>
+                            )}
+                            {agent.target_node_types && agent.target_node_types.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground/70">
+                                {t('ai.supports', { types: agent.target_node_types.join(', ') })}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  {availableAgents.length === 0 && (
+                    <div className="p-3 text-xs text-muted-foreground text-center">
+                      {t('ai.noAgents')}
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* 右侧：节点附件 + 发送按钮 */}
             <div className="flex items-center gap-1">
               {/* 节点选择器 */}
               <DropdownMenu>
@@ -594,7 +659,7 @@ export function MessageInput({
                     <Plus className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-64 max-h-72 overflow-y-auto">
+                <DropdownMenuContent align="end" className="w-64 max-h-72 overflow-y-auto">
                   <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
                     {t('ai.selectNode')}
                   </div>
@@ -633,73 +698,26 @@ export function MessageInput({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* Agent选择器（保持原样） */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-sm font-medium hover:bg-primary/10 flex items-center gap-2"
-                    disabled={isLoadingAgents}
-                  >
-                    <span className="text-foreground">{resolvedAgentName}</span>
-                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-56">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
-                    {t('ai.selectAgent')}
-                  </div>
-                  {availableAgents.map((agent) => (
-                    <DropdownMenuItem
-                      key={agent.id}
-                      onClick={() => onSwitchAgent?.(agent)}
-                      className="text-xs cursor-pointer py-2"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <span className="font-medium">{agent.name}</span>
-                        {agent.description && (
-                          <span className="text-[10px] text-muted-foreground line-clamp-1">
-                            {agent.description}
-                          </span>
-                        )}
-                        {agent.target_node_types && agent.target_node_types.length > 0 && (
-                          <span className="text-[10px] text-muted-foreground/70">
-                            {t('ai.supports', { types: agent.target_node_types.join(', ') })}
-                          </span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                  {availableAgents.length === 0 && (
-                    <div className="p-3 text-xs text-muted-foreground text-center">
-                      {t('ai.noAgents')}
-                    </div>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* 发送按钮 */}
+              <Button
+                type="submit"
+                size="icon"
+                disabled={!canSend || isDisabled}
+                className={cn(
+                  'h-8 w-8 rounded-lg transition-all duration-200',
+                  !canSend || isDisabled
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                    : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
+                )}
+                title={isLoading ? t('ai.sending') : t('ai.send')}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
             </div>
-
-            {/* 右侧：发送按钮 */}
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!canSend || isDisabled}
-              className={cn(
-                'h-8 w-8 rounded-lg transition-all duration-200',
-                !canSend || isDisabled
-                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                  : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
-              )}
-              title={isLoading ? t('ai.sending') : t('ai.send')}
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
           </div>
         </div>
       </form>

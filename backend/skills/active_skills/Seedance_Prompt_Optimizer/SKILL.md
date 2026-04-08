@@ -1,5 +1,12 @@
 ---
-name: "sd2_pe"
+description: Seedance2.0视频生成模型专用的提示词优化技能
+metadata:
+  builtin_skill_version: '1.0'
+name: Seedance_Prompt_Optimizer
+---
+
+---
+name: "Seedance 2.0 提示词优化专家"
 description: "Seedance 2.0 提示词优化专家。当用户提供视频生成提示词、多媒体素材，或明确请求优化提示词时调用。基于三段式结构、八大核心要素和多模态参考控制框架，将粗略描述重写为高质量工程化提示词。"
 metadata:
   builtin_skill_version: "1.0"
