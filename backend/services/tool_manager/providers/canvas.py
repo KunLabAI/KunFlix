@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 CANVAS_TOOL_NAMES_SET = frozenset({
     "list_canvas_nodes", "get_canvas_node", "create_canvas_node",
     "update_canvas_node", "delete_canvas_node",
+    "list_canvas_edges", "create_canvas_edge", "delete_canvas_edge",
 })
 
 # Legacy node type migration mapping (old -> new)
@@ -249,6 +250,74 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_canvas_edges",
+                "description": "列出画布上所有节点间的连线。返回连线的源节点、目标节点、连接点位置等信息。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_canvas_edge",
+                "description": (
+                    "在两个节点之间创建连线。用于建立节点间的关联关系，如剧本与分镜的关联、"
+                    "角色与场景的关联等。每个节点有左右两个连接点：left-source/right-source（输出）"
+                    "和 left-target/right-target（输入）。建议从左节点的右连接点连到右节点的左连接点。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_node_id": {
+                            "type": "string",
+                            "description": "源节点UUID（连线的起点）。",
+                        },
+                        "target_node_id": {
+                            "type": "string",
+                            "description": "目标节点UUID（连线的终点）。",
+                        },
+                        "source_handle": {
+                            "type": "string",
+                            "description": "源节点的连接点位置。",
+                            "enum": ["left-source", "right-source"],
+                        },
+                        "target_handle": {
+                            "type": "string",
+                            "description": "目标节点的连接点位置。",
+                            "enum": ["left-target", "right-target"],
+                        },
+                    },
+                    "required": ["source_node_id", "target_node_id", "source_handle", "target_handle"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_canvas_edge",
+                "description": "删除画布上两个节点之间的连线。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source_node_id": {
+                            "type": "string",
+                            "description": "源节点UUID。",
+                        },
+                        "target_node_id": {
+                            "type": "string",
+                            "description": "目标节点UUID。",
+                        },
+                    },
+                    "required": ["source_node_id", "target_node_id"],
+                },
+            },
+        },
     ]
 
 
@@ -297,6 +366,17 @@ def _node_full(node: TheaterNode) -> dict:
         "created_by_agent_id": node.created_by_agent_id,
         "created_at": node.created_at,
         "updated_at": node.updated_at,
+    }
+
+
+def _edge_summary(edge: TheaterEdge) -> dict:
+    return {
+        "id": edge.id,
+        "source_node_id": edge.source_node_id,
+        "target_node_id": edge.target_node_id,
+        "source_handle": edge.source_handle,
+        "target_handle": edge.target_handle,
+        "edge_type": edge.edge_type,
     }
 
 
@@ -482,6 +562,125 @@ async def _do_delete_node(node: TheaterNode, node_id: str, theater_id: str, db: 
 
 
 # ---------------------------------------------------------------------------
+# Edge execution functions
+# ---------------------------------------------------------------------------
+
+async def _exec_list_edges(
+    args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
+) -> str:
+    query = select(TheaterEdge).where(TheaterEdge.theater_id == theater_id)
+    result = await db.execute(query.order_by(TheaterEdge.created_at))
+    edges = result.scalars().all()
+
+    return _json_result({
+        "count": len(edges),
+        "edges": [_edge_summary(e) for e in edges],
+    })
+
+
+async def _exec_create_edge(
+    args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
+) -> str:
+    source_node_id = args.get("source_node_id", "")
+    target_node_id = args.get("target_node_id", "")
+    source_handle = args.get("source_handle", "")
+    target_handle = args.get("target_handle", "")
+
+    # 验证节点存在且类型允许
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+
+    source_query = select(TheaterNode).where(
+        TheaterNode.id == source_node_id,
+        TheaterNode.theater_id == theater_id,
+    )
+    target_query = select(TheaterNode).where(
+        TheaterNode.id == target_node_id,
+        TheaterNode.theater_id == theater_id,
+    )
+
+    source_result = await db.execute(source_query)
+    target_result = await db.execute(target_query)
+    source_node = source_result.scalar_one_or_none()
+    target_node = target_result.scalar_one_or_none()
+
+    if not source_node:
+        return _error_result(f"Source node not found: {source_node_id}")
+    if not target_node:
+        return _error_result(f"Target node not found: {target_node_id}")
+
+    if migrated_target_types:
+        if source_node.node_type not in migrated_target_types:
+            return _error_result(f"Cannot connect from node of type '{source_node.node_type}'")
+        if target_node.node_type not in migrated_target_types:
+            return _error_result(f"Cannot connect to node of type '{target_node.node_type}'")
+
+    # 检查是否已存在相同连线
+    existing_query = select(TheaterEdge).where(
+        TheaterEdge.theater_id == theater_id,
+        TheaterEdge.source_node_id == source_node_id,
+        TheaterEdge.target_node_id == target_node_id,
+    )
+    existing_result = await db.execute(existing_query)
+    if existing_result.scalar_one_or_none():
+        return _error_result("Edge already exists between these nodes")
+
+    # 创建连线
+    edge = TheaterEdge(
+        id=str(uuid.uuid4()),
+        theater_id=theater_id,
+        source_node_id=source_node_id,
+        target_node_id=target_node_id,
+        source_handle=source_handle or "right-source",
+        target_handle=target_handle or "left-target",
+        edge_type="custom",
+        animated=True,
+    )
+
+    db.add(edge)
+    await db.commit()
+    await db.refresh(edge)
+
+    logger.info(
+        "Created edge %s from %s to %s in theater %s",
+        edge.id, source_node_id, target_node_id, theater_id
+    )
+    return _json_result({
+        "success": True,
+        "edge": _edge_summary(edge),
+    })
+
+
+async def _exec_delete_edge(
+    args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
+) -> str:
+    source_node_id = args.get("source_node_id", "")
+    target_node_id = args.get("target_node_id", "")
+
+    query = select(TheaterEdge).where(
+        TheaterEdge.theater_id == theater_id,
+        TheaterEdge.source_node_id == source_node_id,
+        TheaterEdge.target_node_id == target_node_id,
+    )
+    result = await db.execute(query)
+    edge = result.scalar_one_or_none()
+
+    if not edge:
+        return _error_result("Edge not found")
+
+    await db.delete(edge)
+    await db.commit()
+
+    logger.info("Deleted edge from %s to %s", source_node_id, target_node_id)
+    return _json_result({
+        "success": True,
+        "deleted_edge": {
+            "source_node_id": source_node_id,
+            "target_node_id": target_node_id,
+        },
+    })
+
+
+# ---------------------------------------------------------------------------
 # Executor lookup map
 # ---------------------------------------------------------------------------
 
@@ -491,6 +690,9 @@ _EXECUTORS: dict[str, callable] = {
     "create_canvas_node": _exec_create_node,
     "update_canvas_node": _exec_update_node,
     "delete_canvas_node": _exec_delete_node,
+    "list_canvas_edges": _exec_list_edges,
+    "create_canvas_edge": _exec_create_edge,
+    "delete_canvas_edge": _exec_delete_edge,
 }
 
 
