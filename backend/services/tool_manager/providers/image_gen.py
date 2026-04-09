@@ -293,8 +293,12 @@ class ImageGenProvider:
         if not _check_agent_eligible(ctx.agent):
             return []
         
-        # 检查智能体级别的开关
-        agent_image_enabled = (ctx.agent.image_config or {}).get("image_generation_enabled", False)
+        # 当 image_tools skill 被显式加载时，跳过 agent 级别的开关检查
+        # （skill 加载本身就是授权）
+        skill_explicitly_loaded = "image_tools" in ctx.loaded_tool_skills
+
+        # 检查智能体级别的开关（仅在非 skill-gate 模式下检查）
+        agent_image_enabled = skill_explicitly_loaded or (ctx.agent.image_config or {}).get("image_generation_enabled", False)
         if not agent_image_enabled:
             return []
         

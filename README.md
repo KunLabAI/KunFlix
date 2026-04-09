@@ -196,8 +196,8 @@ python dev.py
 
 | 服务 | 地址 |
 |:---:|:---:|
-| 🎭 剧场客户端 | http://localhost:3000 |
-| 📊 管理后台 | http://localhost:3001 |
+| 🎭 剧场客户端 | http://localhost:3666 |
+| 📊 管理后台 | http://localhost:3888 |
 | 📖 API文档 | http://localhost:8000/docs |
 
 ## 💡 应用场景
