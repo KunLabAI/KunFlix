@@ -20,6 +20,7 @@ interface StreamingState {
   multiAgent: MultiAgentData | null;
   assistantMsg: Message | null;
   roundHasTools: boolean;
+  doneScheduled: boolean;
 }
 
 export function useSSEHandler() {
@@ -38,6 +39,7 @@ export function useSSEHandler() {
     multiAgent: null,
     assistantMsg: null,
     roundHasTools: false,
+    doneScheduled: false,
   });
 
   const resetStreamingState = useCallback(() => {
@@ -50,6 +52,7 @@ export function useSSEHandler() {
       multiAgent: null,
       assistantMsg: null,
       roundHasTools: false,
+      doneScheduled: false,
     };
   }, []);
 
@@ -362,13 +365,23 @@ export function useSSEHandler() {
         ]);
       },
 
-      // 完成
+      // 完成（延迟执行，打破 React 18 自动批处理：
+      //   当 text + done 事件在同一 reader.read() 中到达时，
+      //   同步处理会导致 setMessages 被批处理为一次渲染，
+      //   使 streaming→complete 状态转换在同一帧内完成，
+      //   TypewriterText 永远无法以 streaming 模式挂载，流式动画失效。
+      //   setTimeout(0) 将 done 推到下一个宏任务，确保 text 事件先渲染。）
       done: () => {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          return last?.status === 'streaming' ? [...prev.slice(0, -1), { ...last, status: 'complete' }] : prev;
-        });
-        resetStreamingState();
+        // 防止重复调度（SSE done + reader done 可能触发多次）
+        if (state.doneScheduled) return;
+        state.doneScheduled = true;
+        setTimeout(() => {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            return last?.status === 'streaming' ? [...prev.slice(0, -1), { ...last, status: 'complete' }] : prev;
+          });
+          resetStreamingState();
+        }, 0);
       },
 
       // 错误

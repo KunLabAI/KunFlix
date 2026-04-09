@@ -178,6 +178,7 @@
     "noAgents": "暂无可用智能体",
     "sending": "发送中...",
     "send": "发送",
+    "stopGenerating": "停止生成",
     "context": "上下文: {{percentage}}%",
     "contextStats": "上下文使用统计",
     "used": "已使用",

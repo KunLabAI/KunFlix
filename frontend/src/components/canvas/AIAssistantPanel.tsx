@@ -210,6 +210,21 @@ export function AIAssistantPanel() {
     429: 'ai.errorRateLimit',
   };
 
+  // 中断AI生成
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    resetStreamingState();
+    setIsLoading(false);
+    // 将最后一条流式消息标记为完成
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      return last?.status === 'streaming'
+        ? [...prev.slice(0, -1), { ...last, status: 'complete' }]
+        : prev;
+    });
+  }, [resetStreamingState, setMessages]);
+
   // 发送消息
   const handleSend = useCallback(
     async (content: string, files: UploadedFile[] = [], pasted: PastedContent[] = []) => {
@@ -538,6 +553,7 @@ export function AIAssistantPanel() {
             {/* 输入区域（包含Agent选择器、附件预览和发送按钮） */}
             <MessageInput
               onSend={handleSend}
+              onStop={handleStop}
               isLoading={isLoading}
               isDragOverPanel={isDragOverPanel}
               agentName={agentName}

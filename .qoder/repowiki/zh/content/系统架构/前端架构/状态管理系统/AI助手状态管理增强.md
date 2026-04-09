@@ -15,17 +15,25 @@
 - [api.ts](file://frontend/src/lib/api.ts)
 </cite>
 
+## 更新摘要
+**变更内容**
+- 新增 ChatSessionInfo 接口定义和会话列表管理功能
+- 扩展 useAIAssistantStore.ts 状态管理，新增 theaterChatList 和 isLoadingChatList 状态
+- 完善 useSessionManager.ts 钩子，实现会话列表的加载、切换、删除等操作
+- 增强 AIAssistantPanel.tsx 的会话管理界面集成
+
 ## 目录
 1. [项目概述](#项目概述)
 2. [架构概览](#架构概览)
 3. [核心组件分析](#核心组件分析)
 4. [状态管理机制](#状态管理机制)
 5. [会话管理流程](#会话管理流程)
-6. [SSE事件处理](#sse事件处理)
-7. [性能监控体系](#性能监控体系)
-8. [数据库模型设计](#数据库模型设计)
-9. [错误处理与优化](#错误处理与优化)
-10. [总结](#总结)
+6. [会话列表管理](#会话列表管理)
+7. [SSE事件处理](#sse事件处理)
+8. [性能监控体系](#性能监控体系)
+9. [数据库模型设计](#数据库模型设计)
+10. [错误处理与优化](#错误处理与优化)
+11. [总结](#总结)
 
 ## 项目概述
 
@@ -92,6 +100,8 @@ class AIAssistantState {
 +AgentInfo[] availableAgents
 +Record~string, TheaterSession~ theaterSessions
 +ContextUsage contextUsage
++ChatSessionInfo[] theaterChatList
++boolean isLoadingChatList
 +setIsOpen(isOpen : boolean)
 +switchTheater(theaterId : string)
 +setMessages(messages : Message[])
@@ -103,6 +113,13 @@ class TheaterSession {
 +string agentName
 +Message[] messages
 +ContextUsage contextUsage
+}
+class ChatSessionInfo {
++string id
++string title
++string agentId
++string agentName
++string updatedAt
 }
 class Message {
 +MessageRole role
@@ -117,6 +134,7 @@ class ContextUsage {
 +number contextWindow
 }
 AIAssistantState --> TheaterSession : "缓存多个剧场会话"
+AIAssistantState --> ChatSessionInfo : "管理剧场会话列表"
 AIAssistantState --> Message : "管理消息历史"
 AIAssistantState --> ContextUsage : "跟踪上下文使用"
 ```
@@ -287,6 +305,109 @@ Panel->>Panel : 显示欢迎消息
 **章节来源**
 - [useSessionManager.ts:36-123](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L36-L123)
 - [AIAssistantPanel.tsx:528-556](file://frontend/src/components/canvas/AIAssistantPanel.tsx#L528-L556)
+
+## 会话列表管理
+
+### ChatSessionInfo 接口定义
+
+系统新增了 `ChatSessionInfo` 接口，用于标准化会话列表项的数据结构。
+
+```mermaid
+classDiagram
+class ChatSessionInfo {
++string id
++string title
++string agentId
++string agentName
++string updatedAt
+}
+class ChatSessionResponse {
++string id
++string title
++string agent_id
++string updated_at
+}
+ChatSessionInfo --> ChatSessionResponse : "映射后端响应"
+```
+
+**图表来源**
+- [useAIAssistantStore.ts:124-130](file://frontend/src/store/useAIAssistantStore.ts#L124-L130)
+- [chats.py:48-68](file://backend/routers/chats.py#L48-L68)
+
+### 会话列表状态管理
+
+系统实现了完整的会话列表状态管理，包括状态跟踪和操作方法。
+
+```mermaid
+flowchart TD
+Start([会话列表操作]) --> LoadList[加载会话列表]
+LoadList --> SetList[setTheaterChatList]
+SetList --> AddItem[addChatToList]
+AddItem --> RemoveItem[removeChatFromList]
+RemoveItem --> SetLoading[setIsLoadingChatList]
+SetLoading --> End([操作完成])
+LoadList --> CheckCache{检查缓存}
+CheckCache --> |有缓存| UseCache[使用缓存列表]
+CheckCache --> |无缓存| FetchAPI[从API获取]
+UseCache --> SetList
+FetchAPI --> SetList
+```
+
+**图表来源**
+- [useAIAssistantStore.ts:445-453](file://frontend/src/store/useAIAssistantStore.ts#L445-L453)
+- [useSessionManager.ts:58-79](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L58-L79)
+
+### 会话列表加载流程
+
+系统实现了智能的会话列表加载机制，支持按剧场过滤和分页。
+
+```mermaid
+sequenceDiagram
+participant UI as 用户界面
+participant Manager as 会话管理器
+participant API as API客户端
+participant Backend as 后端服务
+UI->>Manager : loadTheaterSessions(targetTheaterId)
+Manager->>Manager : setIsLoadingChatList(true)
+Manager->>API : GET /chats/?theater_id=&limit=50
+API->>Backend : 查询会话列表
+Backend-->>API : 返回会话数组
+API-->>Manager : 会话数据
+Manager->>Manager : 转换为ChatSessionInfo[]
+Manager->>Manager : setTheaterChatList(list)
+Manager->>Manager : setIsLoadingChatList(false)
+Manager->>UI : 更新UI状态
+```
+
+**图表来源**
+- [useSessionManager.ts:58-79](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L58-L79)
+
+### 会话列表操作方法
+
+系统提供了完整的会话列表操作方法，支持增删改查等操作。
+
+```mermaid
+classDiagram
+class ChatListActions {
++setTheaterChatList(list : ChatSessionInfo[])
++addChatToList(chat : ChatSessionInfo)
++removeChatFromList(sessionId : string)
++setIsLoadingChatList(loading : boolean)
+}
+class ChatListState {
++ChatSessionInfo[] theaterChatList
++boolean isLoadingChatList
+}
+ChatListActions --> ChatListState : "更新状态"
+```
+
+**图表来源**
+- [useAIAssistantStore.ts:248-253](file://frontend/src/store/useAIAssistantStore.ts#L248-L253)
+
+**章节来源**
+- [useAIAssistantStore.ts:124-130](file://frontend/src/store/useAIAssistantStore.ts#L124-L130)
+- [useAIAssistantStore.ts:445-453](file://frontend/src/store/useAIAssistantStore.ts#L445-L453)
+- [useSessionManager.ts:58-79](file://frontend/src/components/ai-assistant/hooks/useSessionManager.ts#L58-L79)
 
 ## SSE事件处理
 
@@ -579,9 +700,10 @@ AI助手状态管理增强项目通过精心设计的架构和实现，成功实
 ### 主要成就
 
 1. **完整的状态管理体系**：实现了多剧场、多会话的状态管理，支持状态的持久化和恢复
-2. **实时通信能力**：基于SSE的高效实时通信，支持多智能体协作场景
-3. **性能监控体系**：全面的前端性能监控，确保用户体验的流畅性
-4. **错误处理机制**：完善的错误处理和恢复机制，提高系统的稳定性
+2. **会话列表管理功能**：新增ChatSessionInfo接口和完整的会话列表操作方法
+3. **实时通信能力**：基于SSE的高效实时通信，支持多智能体协作场景
+4. **性能监控体系**：全面的前端性能监控，确保用户体验的流畅性
+5. **错误处理机制**：完善的错误处理和恢复机制，提高系统的稳定性
 
 ### 技术亮点
 
@@ -589,6 +711,7 @@ AI助手状态管理增强项目通过精心设计的架构和实现，成功实
 - **SSE事件处理**：高效的实时通信机制，支持复杂的多智能体协作
 - **虚拟滚动技术**：优化大量消息的渲染性能
 - **多层持久化**：结合localStorage和数据库的持久化策略
+- **类型安全的接口设计**：ChatSessionInfo接口确保数据结构的一致性
 
 ### 未来发展方向
 

@@ -9,6 +9,8 @@ interface TypewriterTextProps {
   content: string;
   isStreaming: boolean;
   className?: string;
+  /** 动画播放完毕（内容全部显示 且 已脱离流式状态）时回调 */
+  onComplete?: () => void;
 }
 
 /* Markdown组件配置 */
@@ -42,7 +44,7 @@ const markdownComponents = {
   },
 };
 
-export function TypewriterText({ content, isStreaming, className }: TypewriterTextProps) {
+export function TypewriterText({ content, isStreaming, className, onComplete }: TypewriterTextProps) {
   const [displayedContent, setDisplayedContent] = useState('');
   
   // 所有可变状态放在一个 ref 中，动画循环只读 ref
@@ -53,6 +55,10 @@ export function TypewriterText({ content, isStreaming, className }: TypewriterTe
     rafId: 0,
     lastTime: 0,
   });
+
+  // 用 ref 持有 onComplete，避免闭包陈旧 & 不必要的 effect 重跑
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
   
   // 每次 render 时同步最新的 props 到 ref（不触发 effect）
   ref.current.content = content;
@@ -60,43 +66,71 @@ export function TypewriterText({ content, isStreaming, className }: TypewriterTe
   
   // 单独的 effect：只负责启动/停止动画循环，依赖 isStreaming
   useEffect(() => {
-    // 非流式：直接显示全部，停止动画
+    const s = ref.current;
+
+    // ── 非流式分支 ──
+    // streaming → complete 过渡期：如果还有未显示的内容，以加速模式追赶
     if (!isStreaming) {
-      ref.current.displayedLength = content.length;
-      setDisplayedContent(content);
-      return;
+      // 已全部显示：直接同步，通知完成
+      const caughtUp = s.displayedLength >= s.content.length;
+      if (caughtUp) {
+        s.displayedLength = s.content.length;
+        setDisplayedContent(s.content);
+        onCompleteRef.current?.();
+        return;
+      }
+
+      // 未追上：启动加速追赶循环
+      s.lastTime = performance.now();
+      const catchUp = () => {
+        const now = performance.now();
+        const elapsed = now - s.lastTime;
+        const targetLen = s.content.length;
+        const currentLen = s.displayedLength;
+
+        currentLen < targetLen && elapsed >= 16 && (() => {
+          s.lastTime = now;
+          const remaining = targetLen - currentLen;
+          const charsToAdd = remaining > 500 ? 12 : remaining > 200 ? 8 : remaining > 50 ? 4 : 2;
+          s.displayedLength = Math.min(currentLen + charsToAdd, targetLen);
+          setDisplayedContent(s.content.slice(0, s.displayedLength));
+        })();
+
+        s.displayedLength < s.content.length
+          ? (s.rafId = requestAnimationFrame(catchUp))
+          : onCompleteRef.current?.();
+      };
+      s.rafId = requestAnimationFrame(catchUp);
+      return () => { cancelAnimationFrame(s.rafId); };
     }
     
-    // 流式：启动一个持续运行的动画循环
-    ref.current.lastTime = performance.now();
+    // ── 流式分支：启动一个持续运行的动画循环 ──
+    s.lastTime = performance.now();
     
     const tick = () => {
-      const s = ref.current;
       const now = performance.now();
       const elapsed = now - s.lastTime;
       const targetLen = s.content.length;
       const currentLen = s.displayedLength;
       
       // 还有内容没显示
-      if (currentLen < targetLen && elapsed >= 18) {
+      currentLen < targetLen && elapsed >= 18 && (() => {
         s.lastTime = now;
         const remaining = targetLen - currentLen;
         const charsToAdd = remaining > 200 ? 5 : remaining > 100 ? 3 : remaining > 30 ? 2 : 1;
         s.displayedLength = Math.min(currentLen + charsToAdd, targetLen);
         setDisplayedContent(s.content.slice(0, s.displayedLength));
-      }
+      })();
       
       // 只要还在流式状态就继续循环（即使暂时追上了也不停）
-      if (s.isStreaming) {
-        s.rafId = requestAnimationFrame(tick);
-      }
+      s.isStreaming && (s.rafId = requestAnimationFrame(tick));
     };
     
-    ref.current.rafId = requestAnimationFrame(tick);
+    s.rafId = requestAnimationFrame(tick);
     
     // cleanup 只在 isStreaming 变化或组件卸载时执行
     return () => {
-      cancelAnimationFrame(ref.current.rafId);
+      cancelAnimationFrame(s.rafId);
     };
   }, [isStreaming]); // 只依赖 isStreaming，不依赖 content
   
@@ -119,7 +153,7 @@ export function TypewriterText({ content, isStreaming, className }: TypewriterTe
     <div className={cn('relative', className)}>
       <div className={proseClasses}>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-          {isStreaming ? displayedContent : content}
+          {displayedContent}
         </ReactMarkdown>
       </div>
     </div>

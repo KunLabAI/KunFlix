@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion } from 'framer-motion';
@@ -280,6 +280,18 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   
+  // 动画锁：首次进入 streaming 时开启，TypewriterText 追赶完成后关闭
+  // 防止 streaming→complete 过渡期 TypewriterText 被过早卸载
+  const [isAnimating, setIsAnimating] = useState(isStreaming);
+
+  useEffect(() => {
+    isStreaming && !isAnimating && setIsAnimating(true);
+  }, [isStreaming, isAnimating]);
+
+  const handleTypewriterComplete = useCallback(() => {
+    setIsAnimating(false);
+  }, []);
+  
   // 检测多智能体是否正在思考（有 running 状态的步骤）
   const isMultiAgentThinking = message.multi_agent?.steps.some(s => s.status === 'running') ?? false;
   
@@ -384,11 +396,12 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
 
                   {/* 正式回复内容：思考完成后或无思考内容时显示 */}
                   {cleanContent && (isThinkingComplete || !thinkingContent) && (
-                    isStreaming ? (
-                      // 流式输出：直接渲染内容，无打字机动画
+                    (isStreaming || isAnimating) ? (
+                      // 流式输出 / 追赶动画：使用 TypewriterText 逐字渲染
                       <TypewriterText
                         content={cleanContent}
                         isStreaming={isStreaming}
+                        onComplete={handleTypewriterComplete}
                       />
                     ) : needsChunking ? (
                       // 长内容分块渲染（非流式）

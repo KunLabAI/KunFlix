@@ -20,6 +20,7 @@ import {
   Film,
   Clapperboard,
   Paperclip,
+  Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -258,6 +259,7 @@ const DEFAULT_NODE_ICON = { icon: FileText, color: 'text-muted-foreground', labe
 // ─── Props ───────────────────────────────────────────────────────────────────
 interface MessageInputProps {
   onSend: (content: string, files: UploadedFile[], pastedContents: PastedContent[]) => void;
+  onStop?: () => void;
   isLoading: boolean;
   isDragOverPanel?: boolean;
   disabled?: boolean;
@@ -294,6 +296,7 @@ interface MessageInputProps {
 // ─── Main Component ──────────────────────────────────────────────────────────
 export function MessageInput({
   onSend,
+  onStop,
   isLoading,
   isDragOverPanel = false,
   disabled = false,
@@ -464,13 +467,13 @@ export function MessageInput({
   }, [inputValue, uploadedFiles, pastedContents, nodeAttachments, onSend, onClearNodeAttachments, onClearUploadedFiles, onClearPastedContents, t]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter发送，Shift+Enter换行
-    e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), handleSubmit(e));
-  }, [handleSubmit]);
+    // Enter发送，Shift+Enter换行；AI生成中禁止发送
+    e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), !isLoading && handleSubmit(e));
+  }, [handleSubmit, isLoading]);
 
   // ── Derived state ──
   const hasContent = inputValue.trim() || uploadedFiles.length > 0 || pastedContents.length > 0 || nodeAttachments.length > 0;
-  const canSend = hasContent && !disabled && !uploadedFiles.some(f => f.uploadStatus === 'uploading');
+  const canSend = hasContent && !disabled && !isLoading && !uploadedFiles.some(f => f.uploadStatus === 'uploading');
   const isDisabled = disabled;
   const totalAttachments = nodeAttachments.length + uploadedFiles.length + pastedContents.length;
   const hasAttachments = totalAttachments > 0;
@@ -698,25 +701,33 @@ export function MessageInput({
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {/* 发送按钮 */}
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!canSend || isDisabled}
-                className={cn(
-                  'h-8 w-8 rounded-lg transition-all duration-200',
-                  !canSend || isDisabled
-                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                    : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
-                )}
-                title={isLoading ? t('ai.sending') : t('ai.send')}
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+              {/* 发送 / 停止生成 按钮 */}
+              {isLoading ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={onStop}
+                  className="h-8 w-8 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm hover:shadow-md transition-all duration-200"
+                  title={t('ai.stopGenerating')}
+                >
+                  <Square className="h-3.5 w-3.5 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!canSend || isDisabled}
+                  className={cn(
+                    'h-8 w-8 rounded-lg transition-all duration-200',
+                    !canSend || isDisabled
+                      ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                      : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
+                  )}
+                  title={t('ai.send')}
+                >
                   <Send className="h-4 w-4" />
-                )}
-              </Button>
+                </Button>
+              )}
             </div>
           </div>
         </div>

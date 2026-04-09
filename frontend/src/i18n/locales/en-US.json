@@ -178,6 +178,7 @@
     "noAgents": "No agents available",
     "sending": "Sending...",
     "send": "Send",
+    "stopGenerating": "Stop generating",
     "context": "Context: {{percentage}}%",
     "contextStats": "Context Usage Stats",
     "used": "Used",
