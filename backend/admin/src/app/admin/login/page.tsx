@@ -135,9 +135,6 @@ export default function LoginPage() {
             <Shield className="h-10 w-10 text-primary" />
           </div>
           <CardTitle>管理员登录</CardTitle>
-          <CardDescription>
-            请输入管理员邮箱和密码
-          </CardDescription>
         </CardHeader>
         <CardContent>
           {loginError && (
@@ -244,7 +241,7 @@ export default function LoginPage() {
           </Form>
 
           <div className="mt-4 text-center text-xs text-muted-foreground">
-            Infinite Theater 管理后台
+            KunFlix 管理后台
           </div>
         </CardContent>
       </Card>

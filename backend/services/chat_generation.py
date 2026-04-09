@@ -19,7 +19,7 @@ from services.chat_tool_dispatch import append_tool_round, append_tool_round_wit
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
-from services.skill_tools import build_skill_prompt, build_load_skill_tool_def
+from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
@@ -132,27 +132,47 @@ async def generate_single_agent(
     ctx = ToolContext(theater_id=theater_id, agent=agent, db=db,
                       session_id=session_id, user_id=entity_id, is_admin=is_admin)
     agent_skills = agent.tools or []
+
+    # 从聊天历史恢复已加载的技能（渐进式披露：跨轮次持久化）
+    # assistant 消息中的 skill_calls 字段记录了之前加载过的技能
     loaded_skills: set[str] = set()
+    for msg in history[skip_count:]:
+        deserialized = (msg.role == "assistant") and deserialize_content(msg.content)
+        (isinstance(deserialized, dict) and deserialized.get("skill_calls")) and loaded_skills.update(
+            sc.get("skill_name", "") for sc in deserialized["skill_calls"]
+            if sc.get("status") == "loaded" and sc.get("skill_name")
+        )
+    # 同步到 ToolContext，使 is_skill_gated() 对已加载技能返回 False
+    ctx.loaded_tool_skills.update(s for s in loaded_skills if s in TOOL_SKILL_GATE_MAP)
+    loaded_skills and logger.info(f"Restored skills from history: {loaded_skills}")
+
     tool_defs = await tool_manager.build_tool_defs(ctx)
 
     # 技能系统（与工具同级，独立编排）
-    remaining_skills = list(agent_skills)
+    remaining_skills = [s for s in agent_skills if s not in loaded_skills]
     remaining_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(remaining_skills)])
 
-    # 注入轻量技能索引到 system prompt
-    skill_prompt = build_skill_prompt(agent_skills, ctx.active_skills_dir) if agent_skills else ""
-    (skill_prompt and messages and messages[0].get("role") == "system"
-     and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + skill_prompt))
-
-    # Pre-call: 仅截断工具结果（压缩延迟到 LLM 响应后执行，确保 AI 看到完整上下文）
-    from services.context_compaction import truncate_tool_results, load_compaction_config_from_agent
-    _compact_cfg = load_compaction_config_from_agent(agent)
-    truncate_tool_results(
-        messages,
-        recent_n=_compact_cfg.tool_recent_n,
-        old_threshold=_compact_cfg.tool_old_threshold,
-        recent_threshold=_compact_cfg.tool_recent_threshold,
+    # 注入技能信息到 system prompt
+    # 已恢复的技能：注入完整内容（补偿工具调用轮次未持久化导致的上下文丢失）
+    # 未加载的技能：仅注入轻量索引（名称 + 描述）
+    _skill_prompt_parts: list[str] = []
+    # 已恢复技能：完整内容
+    for s in loaded_skills:
+        _skill_content = load_skill_content(s, ctx.active_skills_dir)
+        _skill_content and _skill_prompt_parts.append(_skill_content)
+    # 未加载技能：轻量索引
+    remaining_skills and _skill_prompt_parts.append(
+        build_skill_prompt(remaining_skills, ctx.active_skills_dir)
     )
+    _skill_prompt_combined = "\n\n".join(filter(None, _skill_prompt_parts))
+    (_skill_prompt_combined and messages and messages[0].get("role") == "system"
+     and messages[0].__setitem__("content", messages[0]["content"] + "\n\n" + _skill_prompt_combined))
+
+    # 注意：禁用工具结果预截断，以保持渐进式披露架构的完整性
+    # load_skill 的结果需要完整保留，否则 AI 会反复重新加载 skill
+    # 如果上下文过长，由后续的 compact_context 机制处理
+    from services.context_compaction import load_compaction_config_from_agent
+    _compact_cfg = load_compaction_config_from_agent(agent)
     _messages_snapshot = list(messages)  # 快照：用于后续延迟压缩（工具调用循环会修改 messages）
 
     # 计算输入字符数（兼容多模态消息）

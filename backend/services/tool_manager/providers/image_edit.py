@@ -121,9 +121,11 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
         "function": {
             "name": IMAGE_EDIT_TOOL_NAME,
             "description": (
-                "Edit an existing image using AI. Provide the image URL and a prompt "
-                "describing the desired changes. The tool returns the edited image URL "
-                "in markdown format. Use this for modifying, stylizing, or enhancing images."
+                "Generate or edit an image using a reference image as the visual basis (image-to-image). "
+                "Use this whenever a reference image exists and the output should visually relate to it: "
+                "reference-based generation, character consistency across scenes, style transfer, or image modification. "
+                "Provide the image URL and a prompt describing the desired output. "
+                "Returns the result image URL in markdown format."
             ),
             "parameters": {
                 "type": "object",
@@ -131,7 +133,7 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
                     "image_url": {
                         "type": "string",
                         "description": (
-                            "URL or path of the image to edit. "
+                            "URL or path of the reference/source image. "
                             "Use the image file path (e.g. /api/media/filename.jpg) "
                             "or a public URL. Do NOT pass inline base64 data."
                         ),
@@ -139,9 +141,10 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
                     "prompt": {
                         "type": "string",
                         "description": (
-                            "Description of how to edit the image. "
-                            "Be specific about the changes you want: style transfer, "
-                            "color adjustments, adding/removing elements, etc."
+                            "Description of the desired output image. "
+                            "For reference-based generation, describe the full target scene "
+                            "while noting which elements to preserve from the reference. "
+                            "For editing, describe the specific changes."
                         ),
                     },
                     "aspect_ratio": {
@@ -214,17 +217,9 @@ async def _edit_via_xai(
         "Content-Type": "application/json",
     }
     
-    # 处理 image_url：区分公开 URL 和 base64 data URL
-    image_payload = {}
-    if image_url.startswith("data:image"):
-        # 解析 base64 data URL
-        header, data = image_url.split(",", 1)
-        mime_match = header.split(";")[0].split(":")[1]
-        # xAI API 使用 base64 编码的图像数据
-        image_payload = {"data": data, "type": "image_data"}
-    else:
-        # 公开 URL
-        image_payload = {"url": image_url, "type": "image_url"}
+    # xAI API 的 image 字段始终使用 {"url": ..., "type": "image_url"} 格式
+    # url 既支持公开 URL，也支持 data:image/...;base64,... 格式
+    image_payload = {"url": image_url, "type": "image_url"}
     
     payload = {
         "model": model,
@@ -236,10 +231,15 @@ async def _edit_via_xai(
     
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
-        resp.status_code >= 400 and logger.error(
-            f"xAI image edit error {resp.status_code}: {resp.text[:500]}"
-        )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            logger.error(f"xAI image edit error {resp.status_code}: {resp.text[:500]}")
+            # Extract human-readable error from xAI response for better agent feedback
+            try:
+                err_body = resp.json()
+                err_msg = err_body.get("error", resp.text[:200])
+            except Exception:
+                err_msg = resp.text[:200]
+            raise RuntimeError(f"xAI image edit {resp.status_code}: {err_msg}")
         data = resp.json()
     
     logger.info(f"xAI edit response: {data}")
@@ -542,8 +542,11 @@ class ImageEditProvider:
         if not _check_agent_eligible(ctx.agent):
             return []
         
-        # 检查智能体级别的开关
-        agent_image_enabled = (ctx.agent.image_config or {}).get("image_generation_enabled", False)
+        # 当 image_tools skill 被显式加载时，跳过 agent 级别的开关检查
+        skill_explicitly_loaded = "image_tools" in ctx.loaded_tool_skills
+
+        # 检查智能体级别的开关（仅在非 skill-gate 模式下检查）
+        agent_image_enabled = skill_explicitly_loaded or (ctx.agent.image_config or {}).get("image_generation_enabled", False)
         if not agent_image_enabled:
             return []
         

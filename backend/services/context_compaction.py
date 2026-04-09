@@ -110,124 +110,31 @@ def estimate_messages_tokens(messages: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Tool result truncation with differentiated retention strategies
+# Tool result truncation
 # ---------------------------------------------------------------------------
-
-# 工具类型到截断阈值的映射（保持渐进式披露架构）
-# - load_skill: 保留完整内容，支持渐进式能力发现
-# - generate_image: 仅保留图片URL，移除详细参数
-# - web_search: 保留关键结果，移除原始HTML
-# - list_canvas_nodes: 按需查询，可大幅截断
-_TOOL_TRUNCATION_CONFIG: dict[str, dict] = {
-    "load_skill": {"old": 3000, "recent": 8000},  # 保留完整skill内容，支持渐进式披露
-    "generate_image": {"old": 200, "recent": 500, "extract_url": True},  # 仅保留URL
-    "edit_image": {"old": 200, "recent": 500, "extract_url": True},
-    "generate_video": {"old": 200, "recent": 500, "extract_url": True},
-    "edit_video": {"old": 200, "recent": 500, "extract_url": True},
-    "generate_music": {"old": 200, "recent": 500, "extract_url": True},
-    "web_search": {"old": 300, "recent": 1500},  # 保留摘要，截断详情
-    "list_canvas_nodes": {"old": 100, "recent": 800},  # 按需查询，可大幅截断
-    "get_canvas_node": {"old": 200, "recent": 1000},
-    "default": {"old": 500, "recent": 5000},  # 默认策略
-}
-
-
-def _extract_tool_name_from_messages(messages: list[dict], tool_idx: int) -> str:
-    """通过 tool_call_id 关联找到对应的工具名称.
-
-    OpenAI格式: tool消息有 tool_call_id，需向前找到 assistant message 中的 tool_calls
-    Anthropic格式: tool_result 在 user message 的 content blocks 中，需向前找 tool_use
-    """
-    tool_msg = messages[tool_idx]
-
-    # OpenAI格式: role="tool", tool_call_id="..."
-    tc_id = tool_msg.get("tool_call_id")
-    if tc_id:
-        # 向前查找包含该 tool_call_id 的 assistant message
-        for i in range(tool_idx - 1, -1, -1):
-            msg = messages[i]
-            if msg.get("role") == "assistant":
-                for tc in msg.get("tool_calls", []):
-                    if tc.get("id") == tc_id:
-                        return tc.get("function", {}).get("name", "")
-        return ""
-
-    # Anthropic格式: 在 user message 的 content blocks 中
-    content = tool_msg.get("content", [])
-    if isinstance(content, list):
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "tool_result":
-                tool_use_id = block.get("tool_use_id")
-                # 向前查找对应的 tool_use
-                for i in range(tool_idx - 1, -1, -1):
-                    msg = messages[i]
-                    if msg.get("role") == "assistant":
-                        for b in msg.get("content", []):
-                            if isinstance(b, dict) and b.get("type") == "tool_use":
-                                if b.get("id") == tool_use_id:
-                                    return b.get("name", "")
-    return ""
-
-
-def _extract_urls_from_content(content: str, tool_name: str) -> str:
-    """从工具结果中提取URL，用于图像/视频/音频生成工具."""
-    import re
-
-    # 匹配常见URL格式
-    url_pattern = r'https?://[^\s<>"\']+[^\s<>"\'.,;!?]'
-    urls = re.findall(url_pattern, content)
-
-    if urls:
-        # 返回找到的URL，最多保留3个
-        return "\n".join(urls[:3])
-
-    # 如果没找到URL，返回截断的内容
-    return content[:200] + "\n...[truncated]" if len(content) > 200 else content
-
-
 def truncate_tool_results(
     messages: list[dict],
     recent_n: int = 5,
     old_threshold: int = 500,
     recent_threshold: int = 5000,
 ) -> None:
-    """In-place truncation of tool-role message content with differentiated strategies.
+    """In-place truncation of tool-role message content to save tokens.
 
-    保持渐进式披露架构:
-    - load_skill: 保留完整内容，支持智能体渐进式发现能力
-    - 生成类工具: 仅保留结果URL
-    - 查询类工具: 按需截断，保留关键信息
+    注意：为了保持渐进式披露架构，此函数目前对所有工具使用统一的截断策略。
+    load_skill 的结果需要保留完整内容，以便AI在后续轮次中参考skill信息。
+    如果上下文过长，应依赖上下文压缩机制（compact_context）来处理。
     """
     tool_indices = [i for i, m in enumerate(messages) if m.get("role") == "tool"]
     total = len(tool_indices)
     recent_start = max(0, total - recent_n)
 
     for rank, idx in enumerate(tool_indices):
-        tool_msg = messages[idx]
-        content = tool_msg.get("content", "")
+        content = messages[idx].get("content", "")
         text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-
-        # 识别工具名称
-        tool_name = _extract_tool_name_from_messages(messages, idx)
-
-        # 获取该工具的截断配置
-        config = _TOOL_TRUNCATION_CONFIG.get(tool_name, _TOOL_TRUNCATION_CONFIG["default"])
-
-        # 确定阈值（最近N个使用recent阈值，其他使用old阈值）
-        is_recent = rank >= recent_start
-        threshold = config["recent"] if is_recent else config["old"]
-
-        # 特殊处理：生成类工具提取URL
-        if config.get("extract_url") and not is_recent:
-            # 旧消息仅保留URL
-            new_content = _extract_urls_from_content(text, tool_name)
-            if new_content != text:
-                tool_msg["content"] = new_content
-                continue
-
-        # 标准截断
-        if len(text) > threshold:
-            tool_msg["content"] = text[:threshold] + "\n...[truncated]"
+        threshold = recent_threshold if rank >= recent_start else old_threshold
+        (len(text) > threshold) and messages[idx].__setitem__(
+            "content", text[:threshold] + "\n...[truncated]"
+        )
 
 
 # ---------------------------------------------------------------------------

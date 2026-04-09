@@ -29,7 +29,7 @@ The background must be white.
 ```
 
 #### 3. 图片中的文字准确无误
-Gemini 在呈现文本方面表现出色。清楚说明文字、字体样式（描述性）和整体设计。使用 Gemini 3 Pro 图片预览版制作专业资源。
+在呈现文本方面表现出色。清楚说明文字、字体样式（描述性）和整体设计。
 
 模板
 ```
@@ -63,7 +63,7 @@ A minimalist composition featuring a single [subject] positioned in the
 ``` 
 
 #### 6. 连续艺术（漫画分格 / 故事板）
-以角色一致性和场景描述为基础，为视觉故事讲述创建分格。为了确保文本准确性和叙事能力，这些提示最适合搭配 Gemini 3 Pro 和 Gemini 3.1 Flash Image 预览版使用。
+以角色一致性和场景描述为基础，为视觉故事讲述创建分格。
 
 模板
 
@@ -161,7 +161,3 @@ photo. Keep the [specific features] from the sketch but add [new details/materia
 - 图片生成不支持音频或视频输入。
 
 - 模型不一定会生成用户明确要求的确切数量的图片输出。
-
-- gemini-2.5-flash-image 最多可接受 3 张图片作为输入，而 gemini-3-pro-image-preview 支持 5 张高保真图片，总共最多可接受 14 张图片。gemini-3.1-flash-image-preview 支持在单一工作流中保持多达 4 个角色的相似度，并保持多达 10 个物体的细节保真度。
-
-- 在为图片生成文本时，如果先生成文本，再要求生成包含该文本的图片，Gemini 的效果会最佳。

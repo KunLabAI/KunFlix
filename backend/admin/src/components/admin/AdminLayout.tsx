@@ -118,7 +118,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className={cn("flex h-14 items-center border-b px-3 lg:h-[60px]", collapsed ? "justify-center" : "justify-between")}>
           {!collapsed && (
             <div className="flex items-center gap-2 font-semibold truncate">
-              <span className="text-lg ml-2">Infinite Theater</span>
+              <span className="text-lg ml-2">KunFlix</span>
             </div>
           )}
           
