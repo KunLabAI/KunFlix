@@ -59,7 +59,14 @@ export type VideoNodeData = {
   fitMode?: 'cover' | 'contain';
 };
 
-export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>;
+export type AudioNodeData = {
+  name: string;
+  description: string;
+  audioUrl?: string | null;
+  uploading?: boolean;
+};
+
+export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>;
 
 interface HistoryState {
   nodes: CanvasNode[];
@@ -92,7 +99,7 @@ interface CanvasState {
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
   reset: () => void;
-  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => void;
+  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => void;
   updateNodeDimensions: (id: string, width: number, height: number) => void;
   setViewport: (viewport: Viewport) => void;
   
@@ -311,7 +318,7 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData>) => {
+      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => {
         set({
           nodes: get().nodes.map((node) =>
             node.id === id ? { ...node, data: { ...node.data, ...data } } : node

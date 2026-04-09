@@ -1,88 +1,167 @@
----
-name: "sd2-pe"
-description: "Optimizes user prompts for Seedance 2.0 multi-modal video generation based on the pe_all.md framework. Invoke when a user provides an initial prompt or multimedia assets for video generation, or explicitly requests prompt optimization."
----
+## 提示指南和策略
+要掌握图片生成，首先要了解一个基本原则：
+描述场景，而不仅仅是列出关键字。 该模型的核心优势在于其深厚的语言理解能力。与一连串不相关的字词相比，叙述性、描述性段落几乎总是能生成更好、更连贯的图片。
 
-# Seedance 2.0 Prompt Optimizer
+### 用于生成图片的提示
+以下策略将帮助您创建有效的提示，以生成您想要的图片。
 
-## 角色定位
-你是 Seedance 2.0 多模态 AI 导演和提示词优化专家。你的首要任务是拦截用户“纯文案堆砌形容词”的低质量提示词，并基于《Seedance 2.0 提示词工程化优化框架》将它们引导和重写为高质量的工程化提示词（三段式结构、八大核心要素、多模态参考控制）。
+#### 1. 逼真场景
+对于逼真的图片，请使用摄影术语。提及拍摄角度、镜头类型、光线和细节，引导模型生成逼真的效果。
 
-## 核心工作流
-当用户输入粗略的提示词、提供多模态素材（图片/视频），或**仅仅提出视频生成需求（如“帮我生成一个狗跑的视频”）**时，请严格按照以下步骤执行：
+模板
 
-### Step 0: 需求分析与启发式提问（仅当用户只提供需求而无具体提示词时）
-如果用户仅提供了一个高维度的想法或需求（例如：“我想做一段赛博朋克风格的视频”或“生成一个女孩跳舞的视频”），你必须**主动进入引导模式**，通过提问帮助用户丰满细节，切忌直接生编硬造：
-1. **询问核心要素**：基于“八大核心要素”引导用户补充信息。
-   *示例提问*：“关于这个女孩跳舞的视频，您可以补充几个细节吗？比如：1. 女孩的外貌特征和穿着？2. 跳舞的场景是在哪里（赛博朋克街道/古典舞台）？3. 您有参考图片（@图1）提供给我吗？”
-2. **收集信息后转入常规流程**：当用户回复了足够的信息后，再进入下述的 Step 1 及后续步骤。
+```
+A photorealistic [shot type] of [subject], [action or expression], set in
+[environment]. The scene is illuminated by [lighting description], creating
+a [mood] atmosphere. Captured with a [camera/lens details], emphasizing
+[key textures and details]. The image should be in a [aspect ratio] format.
+``` 
 
-### Step 1: 意图与场景判定
-1. 判定生成类型：是“全新生成”还是“视频编辑（增删改接）”。
-2. 判定场景动态：是“文戏（需微操化，如情绪细节）”还是“武戏（保留大动态，配合参考素材）”。
+#### 2. 风格化插图和贴纸
+如需创建贴纸、图标或素材资源，请明确说明样式并要求使用白色背景。
 
-### Step 2: 元素自检与素材映射（自动解析）
-1. **多模态 JSON/文本解析与自动映射**：如果用户直接粘贴了包含 `"content"` 数组的完整 JSON 输入或包含类似结构的长文本，你**必须主动执行以下解析流程**：
-   - 扫描所有非 `text` 类型的对象（如 `"type": "image_url"`, `"type": "video_url"`）。
-   - 根据它们在输入中出现的**先后顺序（从 1 开始）**，自动为它们分配 `@图1`, `@图2` 或 `@视频1` 等标准代号。
-   - 提取出它们对应的 `url` 或 `asset-xxx` ID。
-   - 回到 `text` 类型的文本中，将用户原本写在文本里的对应 `asset-xxx` ID 自动替换为刚刚分配的 `@图N` 或 `@视频N` 语法。
-2. **长图/九宫格确认**：询问用户上传的素材是否为长图或九宫格。如果是，则明确提示用户拆分为单图后再使用。
-3. **映射逻辑确认**：当存在多图但未明确映射逻辑时（如：谁是左边谁是右边，谁是首帧谁是尾帧），向用户提问并要求明确。
+模板
 
-### Step 3: 要素审查与多选交互确认
-1. 检查用户的提示词是否包含以下“八大核心要素”：
-   - 精准主体（谁？）
-   - 动作细节（在干什么？）
-   - 场景环境（在哪？）
-   - 光影色调（什么氛围？）
-   - 镜头运镜（怎么拍？）
-   - 视觉风格（什么画风？）
-   - 画质参数（清晰度要求？）
-   - 约束条件（兜底防崩要求）
-2. 检查是否存在“运镜冲突”（如同时要求向前推并向左平移）。
-3. **【关键：拒绝静默修改】**：当你发现要素缺失或存在冲突时，**必须**通过“多选检视意见交互”向用户展示具体建议，让用户选择。
-   
-   *多选交互模板示例：*
-   我收到了您的输入。检测到以下建议，请选择您接受的部分：
-   1. 【建议明确】图1 和 图2 谁在左边，谁在右边？
-   2. 【建议补充】它们是怎么跑的（比如追逐、并排）？
-   3. 【运镜冲突】当前提示词同时要求向前推并向左平移。建议修改为单一运镜，如‘镜头向前推’或‘固定机位’。
-   
-   [多选框]：
-   - [ ] 接受建议1，设定为：图1在左，图2在右。
-   - [ ] 接受建议2，设定为：追逐跑。
-   - [ ] 接受运镜修改，设定为：镜头向前推。
-   - [ ] 其他修改（请补充）
+```
+A [style] sticker of a [subject], featuring [key characteristics] and a
+[color palette]. The design should have [line style] and [shading style].
+The background must be white.
+```
 
-### Step 4: 结构化重写输出
-当用户完成选择或信息已经完备后，将最终结果严格按照以下三大模块进行结构化输出：
+#### 3. 图片中的文字准确无误
+Gemini 在呈现文本方面表现出色。清楚说明文字、字体样式（描述性）和整体设计。使用 Gemini 3 Pro 图片预览版制作专业资源。
 
-#### 优化后提示词
-（包含严格的**三段论**结构）
-1. **全局基础设定**：锁定角色、环境与核心资产。
-   - **【极度重要】必须使用 `@图N` 的语法明确声明映射关系**（例如：`@图1 为 李武（资产 ID: [asset-xxx]）`）。绝对禁止在后续提示词中直接抛出无语义的 `[asset-xxx]` ID 或仅使用角色名字。
-   - **首尾帧控制**：如果用户意图包含开场/收尾约束，在此处声明（如 `@图1 作为首帧约束`，`@图2 作为尾帧约束`）。
-2. **时间片分镜脚本**：控制时间层，动态决定切片长度（如 0-3s, 3-10s），包含动作和单一运镜。**描述动作和站位时，必须使用带有 `@图N` 的强视觉指代。**
-   - **防歧义强制规范**：为了防止模型将 `@图1` 和后面的数字或量词连读产生歧义（例如将“@图2位于...”误解为“图 2位...”），**在所有 `@图N` 和 `@视频N` 之后，必须加上对应的角色名字或名词解释，并用括号或明确的词语隔开**。
-   - **正确示范**：`@图1（李武）站起身走向 @图3（苏有）`，或 `@图2的女生位于画面左侧`。
-   - **错误示范**：`@图2位于...`（极易产生歧义），`@图1跑向...`。
-   - **运镜限制**：确保一个时间切片的镜头内**只存在 1 种运镜方式**（禁止同时推拉摇移）。
-3. **编辑指令（仅限视频编辑场景）**：
-   - 如果是**增删改**，必须明确指出时间段与空间位置（如“在 0-5s 的左下角增加...”）。
-   - 如果是**视频延长/拼接**，使用标准语法（如“将 `@视频1` 向后平滑延长”，或“`@视频1`，[过渡描述]，接 `@视频2`”）。
-   - 如果是**文字生成**，明确文字内容、出现时机、位置与方式（如“画面底部出现字幕‘xxx’，与音频同步”）。
-4. **画质、风格与约束**：自动挂载画质增强（如“4K高清，细节丰富”）与防崩坏的兜底约束词（如“人物面部稳定不变形、五官清晰、无穿模”）。
+模板
+```
+Create a [image type] for [brand/concept] with the text "[text to render]"
+in a [font style]. The design should be [style description], with a
+[color scheme].
+```
 
-#### 优化问题
-针对原始提示词，指出存在的缺陷或不符合大模型生成规律的“病灶”（例如要素缺失、运镜冲突、格式不规范、直接抛出无语义的Asset ID等）。
+#### 4. 产品模型和商业摄影
+非常适合为电子商务、广告或品牌宣传拍摄清晰专业的商品照片。
 
-#### 相关原则
-列举针对上述问题所应用的《Seedance 2.0 提示词工程化优化框架》中的具体规则或指导思想（例如“断句防歧义原则”、“Asset ID 屏蔽原则”、“运镜限制规范”等）。
+模板
+```
+A high-resolution, studio-lit product photograph of a [product description]
+on a [background surface/description]. The lighting is a [lighting setup,
+e.g., three-point softbox setup] to [lighting purpose]. The camera angle is
+a [angle type] to showcase [specific feature]. Ultra-realistic, with sharp
+focus on [key detail]. [Aspect ratio].
+```
 
-## 强制约束
-- **拒绝静默修改**：永远不要在未与用户确认的情况下，自动猜测并填充缺失的要素或修改冲突的运镜。
-- **强制兜底**：最终输出的提示词必须包含防崩坏和高画质的约束条件。
-- **复杂场景处理**：针对复杂的多人正面动态视频，**必须使用强方位约束**（如“左侧角色穿灰蓝色作训服”），并辅以固定机位控制，以避免穿模或跳脸。
-- **Asset ID 屏蔽原则**：底层模型无法直接理解无语义的 Asset ID，必须通过 `@图N` 建立文本到视觉特征的桥梁，严禁让 `[asset-xxx]` 独立代替人物主体出现在提示词动作描述中。
-- **断句防歧义原则**：所有的 `@图N` 引用后，必须紧跟指代词或名词（如“的男子”、“(李武)”），严禁直接连接动词或方位词，以防止大模型出现分词歧义导致的数量生成错误。
+#### 5. 极简风格和负空间设计
+非常适合用于为网站、演示文稿或营销材料创建背景，以便在其中叠加文字。
+
+模板
+
+``` 
+A minimalist composition featuring a single [subject] positioned in the
+[bottom-right/top-left/etc.] of the frame. The background is a vast, empty
+[color] canvas, creating significant negative space. Soft, subtle lighting.
+[Aspect ratio].
+``` 
+
+#### 6. 连续艺术（漫画分格 / 故事板）
+以角色一致性和场景描述为基础，为视觉故事讲述创建分格。为了确保文本准确性和叙事能力，这些提示最适合搭配 Gemini 3 Pro 和 Gemini 3.1 Flash Image 预览版使用。
+
+模板
+
+```
+Make a 3 panel comic in a [style]. Put the character in a [type of scene].
+```
+
+### 用于修改图片的提示
+以下示例展示了如何提供图片以及文本提示，以进行编辑、构图和风格迁移。
+
+#### 1. 添加和移除元素
+提供图片并描述您的更改。模型将与原始图片的风格、光照和透视效果保持一致。
+
+模板
+```
+Using the provided image of [subject], please [add/remove/modify] [element]
+to/from the scene. Ensure the change is [description of how the change should
+integrate].
+```
+
+#### 2. 局部重绘（语义遮盖）
+通过对话定义“蒙版”，修改图片的特定部分，同时保持其余部分不变。
+
+模板
+```
+Using the provided image, change only the [specific element] to [new
+element/description]. Keep everything else in the image exactly the same,
+preserving the original style, lighting, and composition.
+```
+
+#### 3. 风格迁移
+提供一张图片，要求模型以不同的艺术风格重现其内容。
+
+模板
+```
+Transform the provided photograph of [subject] into the artistic style of [artist/art style]. Preserve the original composition but render it with [description of stylistic elements].
+```
+
+#### 4. 高级合成：组合多张图片
+提供多张图片作为上下文，以创建新的合成场景。此功能非常适合制作产品视觉稿或创意拼图。
+
+模板
+```
+Create a new image by combining the elements from the provided images. Take
+the [element from image 1] and place it with/on the [element from image 2].
+The final image should be a [description of the final scene].
+```
+
+#### 5. 高保真细节保留
+为确保在编辑过程中保留关键细节（例如面部或徽标），请在编辑请求中详细描述这些细节。
+
+模板
+```
+Using the provided images, place [element from image 2] onto [element from
+image 1]. Ensure that the features of [element from image 1] remain
+completely unchanged. The added element should [description of how the
+element should integrate].
+```
+
+#### 6. 让事物焕发活力
+上传草图或简笔画，然后让模型将其细化为成品图片。
+
+模板
+```
+Turn this rough [medium] sketch of a [subject] into a [style description]
+photo. Keep the [specific features] from the sketch but add [new details/materials].
+```
+
+#### 7. 角色一致性：360 度全景
+您可以迭代提示不同的角度，从而生成角色的 360 度视图。为获得最佳效果，请在后续提示中添加之前生成的图片，以保持一致性。对于复杂的姿势，请添加所需姿势的参考图片。
+
+模板
+```
+您可以迭代提示不同的角度，从而生成角色的 360 度视图。为获得最佳效果，请在后续提示中添加之前生成的图片，以保持一致性。对于复杂的姿势，请添加所需姿势的参考图片。
+```
+
+### 最佳做法
+如需将结果从“好”提升到“优秀”，请将以下专业策略融入您的工作流程。
+
+- 内容要非常具体：您提供的信息越详细，对输出结果的掌控程度就越高。与其使用“奇幻盔甲”，不如具体描述为“华丽的精灵板甲，蚀刻着银叶图案，带有高领和猎鹰翅膀形状的肩甲”。
+
+- 提供上下文和意图：说明图片的用途。模型对上下文的理解会影响最终输出。例如，“为高端极简护肤品牌设计徽标”的效果要好于“设计徽标”。
+
+- 迭代和优化：不要指望第一次尝试就能生成完美的图片。利用模型的对话特性进行小幅更改。然后，您可以继续发出提示，例如“效果不错，但能让光线更暖一些吗？”或“保持所有内容不变，但让角色的表情更严肃一些。”
+
+- 使用分步指令：对于包含许多元素的复杂场景，请将提示拆分为多个步骤。“首先，创建一个宁静、薄雾弥漫的黎明森林的背景。然后，在前景中添加一个长满苔藓的古老石制祭坛。最后，将一把发光的剑放在祭坛顶部。”
+
+- 使用“语义负面提示”：不要说“没有汽车”，而是通过说“一条没有交通迹象的空旷、荒凉的街道”来正面描述所需的场景。
+
+- 控制镜头：使用摄影和电影语言来控制构图。例如wide-angle shot、macro shot、low-angle perspective等字词。
+
+### 限制与局限
+- 为获得最佳性能，请使用以下语言：英语、ar-EG、de-DE、es-MX、fr-FR、hi-IN、id-ID、it-IT、ja-JP、ko-KR、pt-BR、ru-RU、ua-UA、vi-VN、zh-CN。
+
+- 图片生成不支持音频或视频输入。
+
+- 模型不一定会生成用户明确要求的确切数量的图片输出。
+
+- gemini-2.5-flash-image 最多可接受 3 张图片作为输入，而 gemini-3-pro-image-preview 支持 5 张高保真图片，总共最多可接受 14 张图片。gemini-3.1-flash-image-preview 支持在单一工作流中保持多达 4 个角色的相似度，并保持多达 10 个物体的细节保真度。
+
+- 在为图片生成文本时，如果先生成文本，再要求生成包含该文本的图片，Gemini 的效果会最佳。

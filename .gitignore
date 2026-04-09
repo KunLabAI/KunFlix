@@ -90,6 +90,9 @@ backend/media/*.jpeg
 backend/media/*.jpg
 backend/media/*.png
 backend/media/*.MP4
+backend/media/*.mp3
+backend/media/*.wav
+backend/media/*.ogg
 
 frontend/public/*.png
 frontend/public/*.jpg

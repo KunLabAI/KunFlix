@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Layers, Plus, ScrollText, Image as ImageIcon, Video, 
-  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2
+  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResourceStore } from '@/store/useResourceStore';
@@ -39,6 +39,16 @@ const NODE_TYPES = [
     dimensions: { width: 512, height: 384 }
   },
   { 
+    type: 'audio', 
+    nameKey: 'sidebar.audioCard', 
+    descKey: 'sidebar.audioDesc',
+    icon: Headphones, 
+    color: 'text-amber-500', 
+    bg: 'bg-amber-500/10',
+    data: { name: '新音频卡', description: '' },
+    dimensions: { width: 360, height: 200 }
+  },
+  { 
     type: 'storyboard', 
     nameKey: 'sidebar.storyboardCard', 
     descKey: 'sidebar.storyboardDesc',
@@ -54,27 +64,27 @@ const NODE_TYPES = [
 const DRAG_DATA_BUILDERS: Record<string, (asset: { url: string; name: string }) => { nodeType: string; data: Record<string, unknown> }> = {
   image: (a) => ({ nodeType: 'image', data: { name: a.name, imageUrl: a.url } }),
   video: (a) => ({ nodeType: 'video', data: { name: a.name, videoUrl: a.url } }),
-  audio: (a) => ({ nodeType: 'text', data: { title: a.name, content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: a.url }] }] } } }),
+  audio: (a) => ({ nodeType: 'audio', data: { name: a.name, audioUrl: a.url } }),
 };
 
 // 资产标签tab配置
 const ASSET_TABS = [
   { key: 'images' as const, labelKey: 'sidebar.images', icon: ImagePlus, activeColor: 'text-node-green' },
   { key: 'videos' as const, labelKey: 'sidebar.videos', icon: Film, activeColor: 'text-node-yellow' },
-  { key: 'music' as const, labelKey: 'sidebar.music', icon: Music, activeColor: 'text-node-blue' },
+  { key: 'audio' as const, labelKey: 'sidebar.audio', icon: Headphones, activeColor: 'text-amber-500' },
 ];
 
 // 空状态配置
 const EMPTY_STATE_CONFIG: Record<string, { icon: React.ElementType; labelKey: string }> = {
   images: { icon: ImagePlus, labelKey: 'sidebar.noImages' },
   videos: { icon: Film, labelKey: 'sidebar.noVideos' },
-  music: { icon: Music, labelKey: 'sidebar.noMusic' },
+  audio: { icon: Headphones, labelKey: 'sidebar.noAudio' },
 };
 
 export const Sidebar = () => {
   const { t } = useTranslation();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
-  const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'music'>('images');
+  const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'audio'>('images');
   let timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // 从 Resource Store 获取账号级别资源
@@ -292,8 +302,8 @@ export const Sidebar = () => {
                 </div>
               )}
 
-              {/* Music Tab */}
-              {!isLoading && activeAssetTab === 'music' && (
+              {/* Audio Tab */}
+              {!isLoading && activeAssetTab === 'audio' && (
                 <div className="flex flex-col gap-2">
                   {ASSET_AUDIO.length > 0 ? ASSET_AUDIO.map((asset) => (
                     <div 

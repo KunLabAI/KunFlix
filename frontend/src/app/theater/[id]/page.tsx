@@ -20,7 +20,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
 
-import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData } from '@/store/useCanvasStore';
+import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, AudioNodeData } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
 import { ZoomControls } from '@/components/canvas/ZoomControls';
@@ -28,13 +28,14 @@ import ScriptNode from '@/components/canvas/ScriptNode';
 import CharacterNode from '@/components/canvas/CharacterNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
 import VideoNode from '@/components/canvas/VideoNode';
+import AudioNode from '@/components/canvas/AudioNode';
 import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
 import { CanvasHints } from '@/components/canvas/CanvasCursor';
 import { CanvasHelpButton } from '@/components/canvas/CanvasHelp';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film, Music } from 'lucide-react';
+import { Save, Undo, Redo, ArrowLeft, ScrollText, User, Clapperboard, Loader2, Check, LayoutGrid, FileText, Image, Film, Music, Headphones } from 'lucide-react';
 import { useAutoLayout } from './hooks/useAutoLayout';
 import { useCanvasSnapping } from './hooks/useCanvasSnapping';
 import { useNodeDragToAI } from './hooks/useNodeDragToAI';
@@ -44,6 +45,7 @@ const nodeTypes = {
   image: CharacterNode,
   storyboard: StoryboardNode,
   video: VideoNode,
+  audio: AudioNode,
 } as unknown as NodeTypes;
 
 const edgeTypes = {
@@ -194,6 +196,7 @@ function InfiniteCanvas() {
     image: { name: '新图片卡', description: '', imageUrl: '', fitMode: 'cover' },
     storyboard: { shotNumber: '001', description: '', duration: 5 },
     video: { name: '新视频卡', description: '', videoUrl: '', fitMode: 'cover' },
+    audio: { name: '新音频卡', description: '', audioUrl: '' },
   };
 
   // Default dimensions by node type (consistent with sidebar drag)
@@ -201,6 +204,7 @@ function InfiniteCanvas() {
     text: { width: 400, height: 300 },
     image: { width: 512, height: 384 },
     video: { width: 512, height: 384 },
+    audio: { width: 360, height: 200 },
     storyboard: { width: 398, height: 256 },
   };
 
@@ -504,37 +508,36 @@ function InfiniteCanvas() {
           return;
         }
 
+        // 先创建占位音频节点（显示上传中状态）
+        const audioObjectUrl = URL.createObjectURL(file);
+        const audioNode: CanvasNode = {
+          id: `audio-${uuidv4()}`,
+          type: 'audio',
+          position,
+          width: 360,
+          height: 200,
+          data: {
+            name: fileName,
+            description: '',
+            audioUrl: audioObjectUrl,
+            uploading: true,
+          } as AudioNodeData,
+        };
+        addNode(audioNode);
+
         try {
           const response = await uploadFile(file);
           response.error && (() => { throw new Error(response.error); })();
-
-          // 音频上传后创建文本节点（与侧边栏行为一致）
-          const newNode: CanvasNode = {
-            id: `text-${uuidv4()}`,
-            type: 'text',
-            position,
-            width: 400,
-            height: 200,
-            data: {
-              title: fileName,
-              content: {
-                type: 'doc',
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: response.url || '' }],
-                  },
-                ],
-              },
-              tags: ['audio'],
-            } as ScriptNodeData,
-          };
-          addNode(newNode);
+          const { updateNodeData } = useCanvasStore.getState();
+          URL.revokeObjectURL(audioObjectUrl);
+          updateNodeData(audioNode.id, { audioUrl: response.url, uploading: false } as Partial<AudioNodeData>);
           // 同步新资源到 resourceStore
           response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
         } catch (error: any) {
           console.error('Audio upload error:', error);
-          alert(t('canvas.audioUploadFailed', { message: error.message || t('canvas.retryHint') }));
+          const { updateNodeData } = useCanvasStore.getState();
+          updateNodeData(audioNode.id, { uploading: false } as Partial<AudioNodeData>);
+          alert(t('canvas.uploadFailed', { message: error.message || t('canvas.retryHint') }));
         }
         break;
       }
@@ -815,6 +818,7 @@ function InfiniteCanvas() {
                   script: '#6366F1',
                   character: '#10B981',
                   video: '#A855F7',
+                  audio: '#F59E0B',
                   storyboard: '#F59E0B',
                 };
                 return colors[n.type || ''] || '#F59E0B';
@@ -902,6 +906,10 @@ function InfiniteCanvas() {
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('video')}>
               <Film className="w-4 h-4 mr-2 text-purple-500" />
               {t('canvas.videoCard')}
+            </Button>
+            <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('audio')}>
+              <Headphones className="w-4 h-4 mr-2 text-amber-500" />
+              {t('canvas.audioCard')}
             </Button>
             <Button variant="ghost" className="justify-start px-2 py-1.5 h-auto text-sm" onClick={() => handleAddNodeFromMenu('storyboard')}>
               <Clapperboard className="w-4 h-4 mr-2 text-amber-500" />
