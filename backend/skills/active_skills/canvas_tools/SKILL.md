@@ -1,19 +1,26 @@
 ---
 name: canvas_tools
-description: "Canvas node CRUD operations. Provides tools to list, get, create, update, and delete theater canvas nodes."
+description: "Canvas node and edge CRUD operations. Provides tools to manage theater canvas nodes and connections between them."
 metadata:
-  builtin_skill_version: "1.0"
+  builtin_skill_version: "1.1"
 ---
 # Canvas Tools
 
-Use this skill when the user asks to view, create, update, or delete content on the theater canvas (nodes).
+Use this skill when the user asks to view, create, update, or delete content on the theater canvas (nodes and edges).
 
 Loading this skill activates the following tools:
+
+## Node Management
 - `list_canvas_nodes` — List all nodes on the canvas
 - `get_canvas_node` — Get full details of a specific node
 - `create_canvas_node` — Create a new node
 - `update_canvas_node` — Update an existing node
 - `delete_canvas_node` — Delete a node
+
+## Edge (Connection) Management
+- `list_canvas_edges` — List all connections between nodes
+- `create_canvas_edge` — Create a connection between two nodes
+- `delete_canvas_edge` — Remove a connection between nodes
 
 ## Node Types
 
@@ -130,9 +137,51 @@ Delete a node from the canvas.
 Parameters:
 - `node_id` (string, required) — ID of the node to delete
 
+## Tool: list_canvas_edges
+
+List all connections (edges) between nodes on the canvas.
+
+Returns a list of edges with source node ID, target node ID, and connection point positions.
+
+## Tool: create_canvas_edge
+
+Create a connection (edge) between two nodes to establish their relationship.
+
+Parameters:
+- `source_node_id` (string, required) — UUID of the source node (where the connection starts)
+- `target_node_id` (string, required) — UUID of the target node (where the connection ends)
+- `source_handle` (string, required) — Connection point on the source node: `"left-source"` or `"right-source"`
+- `target_handle` (string, required) — Connection point on the target node: `"left-target"` or `"right-target"`
+
+Connection points guide:
+- Each node has 4 connection points: left-source, left-target, right-source, right-target
+- Source handles (left-source, right-source): Use for the starting node of the connection
+- Target handles (left-target, right-target): Use for the ending node of the connection
+- Recommended pattern: Connect from a node's `right-source` to another node's `left-target` for left-to-right flow
+
+Example — connect a script node to a storyboard node:
+```
+create_canvas_edge(
+  source_node_id="script-node-uuid",
+  target_node_id="storyboard-node-uuid",
+  source_handle="right-source",
+  target_handle="left-target"
+)
+```
+
+## Tool: delete_canvas_edge
+
+Remove a connection between two nodes.
+
+Parameters:
+- `source_node_id` (string, required) — UUID of the source node
+- `target_node_id` (string, required) — UUID of the target node
+
 ## Tips
 
 - Always use `list_canvas_nodes` first to see what exists before creating or modifying.
 - When creating nodes, omit position to let the system auto-place them.
 - Only include fields you want to change in `update_canvas_node`.
 - Node types are restricted by agent configuration — you can only create/access allowed types.
+- Use `create_canvas_edge` to establish visual and logical relationships between nodes (e.g., script → storyboard → video).
+- Check existing edges with `list_canvas_edges` before creating new connections to avoid duplicates.

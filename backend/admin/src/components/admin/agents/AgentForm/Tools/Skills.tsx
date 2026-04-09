@@ -9,7 +9,7 @@ interface SkillOption {
 }
 
 const Skills: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
-  const { control } = useFormContext();
+  const { control, getValues, setValue } = useFormContext();
   const [skills, setSkills] = useState<SkillOption[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,11 +19,20 @@ const Skills: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
       .then((res) => {
         const active = (res.data as Array<{ name: string; description: string; status: string }>)
           .filter((s) => s.status === 'active');
-        setSkills(active.map(({ name, description }) => ({ name, description })));
+        const activeSkills = active.map(({ name, description }) => ({ name, description }));
+        setSkills(activeSkills);
+
+        // 清理已不存在的skill：如果表单中的tools包含已删除的skill，自动过滤掉
+        const currentTools: string[] = getValues('tools') || [];
+        const validSkillNames = new Set(activeSkills.map(s => s.name));
+        const validTools = currentTools.filter(t => validSkillNames.has(t));
+        if (validTools.length !== currentTools.length) {
+          setValue('tools', validTools, { shouldDirty: true });
+        }
       })
       .catch(() => setSkills([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [getValues, setValue]);
 
   return (
     <div>
