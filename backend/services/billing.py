@@ -34,6 +34,12 @@ QUALITY_BILLING_FIELD = {
     "720p": "video_output_720p",
 }
 
+# 音乐计费维度映射表：dim_name -> scale
+# scale=1 表示按次计费（每次音乐生成），费率从 provider.model_costs[model] 字典中按 dim_name 读取
+MUSIC_BILLING_DIMENSIONS = {
+    "audio_generation": 1,  # 每次音乐生成
+}
+
 class InsufficientCreditsError(Exception):
     """用户积分不足异常"""
     pass
@@ -377,6 +383,38 @@ def calculate_video_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
     }
 
     for dim_name, scale in VIDEO_BILLING_DIMENSIONS.items():
+        quantity = quantities[dim_name]
+        rate = rate_map.get(dim_name, 0) or 0
+        cost = quantity / scale * rate
+        total += cost
+        metadata[f"{dim_name}_quantity"] = quantity
+        metadata[f"{dim_name}_rate"] = rate
+
+    return total, metadata
+
+
+def calculate_music_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
+    """
+    音乐任务积分计费（映射表驱动，按次计费）。
+
+    Args:
+        task:     MusicTask 对象
+        rate_map: provider.model_costs[model] 字典，dim_name -> rate
+
+    Returns:
+        (total_cost, metadata_dict)
+    """
+    quantities = {
+        "audio_generation": 1,  # 每次生成计 1 次
+    }
+
+    total = 0.0
+    metadata = {
+        "model": getattr(task, 'model', ''),
+        "output_format": getattr(task, 'output_format', ''),
+    }
+
+    for dim_name, scale in MUSIC_BILLING_DIMENSIONS.items():
         quantity = quantities[dim_name]
         rate = rate_map.get(dim_name, 0) or 0
         cost = quantity / scale * rate

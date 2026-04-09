@@ -39,6 +39,7 @@ export function useCanvasDragDrop(snapToGrid: boolean) {
         image: { width: 512, height: 384 },
         character: { width: 512, height: 384 },
         video: { width: 512, height: 384 },
+        audio: { width: 360, height: 200 },
         storyboard: { width: 398, height: 256 },
       };
 

@@ -3,7 +3,7 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music, ChevronDown } from 'lucide-react';
 import { useCanvasStore, AudioNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
@@ -19,6 +19,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.name || '');
+  const [showLyrics, setShowLyrics] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +288,23 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                   onPointerDown={(e) => e.stopPropagation()}
                   preload="metadata"
                 />
+                {data.lyrics && (
+                  <div className="w-full nodrag">
+                    <button
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      onClick={() => setShowLyrics(!showLyrics)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <ChevronDown className={`h-3 w-3 transition-transform ${showLyrics ? 'rotate-180' : ''}`} />
+                      {showLyrics ? '收起歌词' : '查看歌词'}
+                    </button>
+                    {showLyrics && (
+                      <div className="mt-1.5 p-2 rounded bg-muted/50 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto custom-scrollbar">
+                        {data.lyrics}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

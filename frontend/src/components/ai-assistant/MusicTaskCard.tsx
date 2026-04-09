@@ -1,37 +1,34 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Film, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
+import { Music, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
-import { handleVideoDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
+import { handleAudioDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface VideoTaskInfo {
+interface MusicTaskInfo {
   taskId: string;
-  videoMode?: string;
   model?: string;
-  // Pre-filled when parsed from __VIDEO_DONE__
-  videoUrl?: string;
-  quality?: string;
-  duration?: number;
+  // Pre-filled when parsed from __MUSIC_DONE__
+  audioUrl?: string;
   creditCost?: number;
+  lyrics?: string;
 }
 
-interface VideoTaskStatus {
+interface MusicTaskStatus {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  video_url?: string;
-  quality?: string;
-  duration?: number;
+  audio_url?: string;
   credit_cost?: number;
   error_message?: string;
-  video_mode?: string;
   model?: string;
+  lyrics?: string;
+  output_format?: string;
 }
 
 // Terminal states that stop polling
@@ -40,39 +37,32 @@ const POLL_INTERVAL = 5000;
 
 // Status display config (dispatch map)
 const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: typeof Loader2 }> = {
-  pending:    { label: '等待生成...',  color: 'text-[var(--color-status-pending-text)]',  Icon: Clock },
-  processing: { label: '正在生成...',  color: 'text-[var(--color-status-processing-text)]',   Icon: Loader2 },
-  completed:  { label: '生成完成',     color: 'text-[var(--color-status-success-text)]',  Icon: CheckCircle2 },
-  failed:     { label: '生成失败',     color: 'text-[var(--color-status-error-text)]',    Icon: XCircle },
-};
-
-// Video mode labels
-const MODE_LABELS: Record<string, string> = {
-  text_to_video: '文生视频',
-  image_to_video: '图生视频',
-  edit: '视频编辑',
+  pending:    { label: '等待生成...',  color: 'text-[var(--color-status-pending-text)]',     Icon: Clock },
+  processing: { label: '正在生成...',  color: 'text-[var(--color-status-processing-text)]',  Icon: Loader2 },
+  completed:  { label: '生成完成',     color: 'text-[var(--color-status-success-text)]',     Icon: CheckCircle2 },
+  failed:     { label: '生成失败',     color: 'text-[var(--color-status-error-text)]',       Icon: XCircle },
 };
 
 // ---------------------------------------------------------------------------
-// DraggableVideoPreview - Sub-component with drag support
+// DraggableAudioPreview - Sub-component with drag support
 // ---------------------------------------------------------------------------
 
-interface DraggableVideoPreviewProps {
-  videoUrl: string;
-  quality: string;
-  duration: number;
+interface DraggableAudioPreviewProps {
+  audioUrl: string;
   creditCost: number;
-  modeLabel: string;
+  lyrics: string;
+  showLyrics: boolean;
+  onToggleLyrics: () => void;
 }
 
-function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLabel }: DraggableVideoPreviewProps) {
+function DraggableAudioPreview({ audioUrl, creditCost, lyrics, showLyrics, onToggleLyrics }: DraggableAudioPreviewProps) {
   const dragPreviewRef = useRef<HTMLElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const onDragStart = useCallback((e: React.DragEvent) => {
     setIsDragging(true);
-    dragPreviewRef.current = handleVideoDragStart(e, videoUrl, modeLabel || '视频');
-  }, [videoUrl, modeLabel]);
+    dragPreviewRef.current = handleAudioDragStart(e, audioUrl, '音频', lyrics);
+  }, [audioUrl, lyrics]);
 
   const onDragEnd = useCallback(() => {
     setIsDragging(false);
@@ -91,22 +81,26 @@ function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLa
           isDragging && 'opacity-50'
         )}
       >
-        <video
-          src={videoUrl}
+        <audio
+          src={audioUrl}
           controls
           preload="metadata"
-          className="w-full rounded-lg bg-[var(--color-bg-primary)]"
-          style={{ maxHeight: '360px' }}
-          // Prevent video controls from interfering with drag
+          className="w-full rounded-lg"
           onMouseDown={(e) => e.stopPropagation()}
         />
       </div>
       <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
-        {quality && <span>画质: {quality}</span>}
-        {duration > 0 && <span>时长: {duration}s</span>}
         {creditCost > 0 && <span>消耗: {creditCost} 积分</span>}
+        {lyrics && (
+          <button
+            className="text-primary hover:underline cursor-pointer"
+            onClick={onToggleLyrics}
+          >
+            {showLyrics ? '收起歌词' : '查看歌词'}
+          </button>
+        )}
         <a
-          href={videoUrl}
+          href={audioUrl}
           download
           className="ml-auto flex items-center gap-1 text-primary hover:underline"
         >
@@ -114,6 +108,12 @@ function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLa
           下载
         </a>
       </div>
+      {/* Lyrics panel */}
+      {showLyrics && lyrics && (
+        <div className="mt-2 p-2 rounded-lg bg-[var(--color-bg-panel)] text-xs text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
+          {lyrics}
+        </div>
+      )}
     </div>
   );
 }
@@ -122,48 +122,43 @@ function DraggableVideoPreview({ videoUrl, quality, duration, creditCost, modeLa
 // Component
 // ---------------------------------------------------------------------------
 
-interface VideoTaskCardProps {
-  task: VideoTaskInfo;
+interface MusicTaskCardProps {
+  task: MusicTaskInfo;
   className?: string;
 }
 
-export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
-  // If __VIDEO_DONE__ already provides videoUrl, skip polling entirely
-  const isDone = !!task.videoUrl;
+export function MusicTaskCard({ task, className }: MusicTaskCardProps) {
+  const isDone = !!task.audioUrl;
 
   const [status, setStatus] = useState<string>(isDone ? 'completed' : 'pending');
-  const [videoUrl, setVideoUrl] = useState<string>(task.videoUrl || '');
-  const [quality, setQuality] = useState<string>(task.quality || '');
-  const [duration, setDuration] = useState<number>(task.duration || 0);
+  const [audioUrl, setAudioUrl] = useState<string>(task.audioUrl || '');
   const [creditCost, setCreditCost] = useState<number>(task.creditCost || 0);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [videoMode, setVideoMode] = useState<string>(task.videoMode || '');
   const [model, setModel] = useState<string>(task.model || '');
+  const [lyrics, setLyrics] = useState<string>(task.lyrics || '');
+  const [showLyrics, setShowLyrics] = useState(false);
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
   const pollStatus = useCallback(async () => {
     try {
-      const res = await api.get<VideoTaskStatus>(`/videos/${task.taskId}/status`);
+      const res = await api.get<MusicTaskStatus>(`/music/${task.taskId}/status`);
       const data = res.data;
       mountedRef.current && applyStatus(data);
     } catch {
-      // Network error: keep polling, don't crash
+      // Network error: keep polling
     }
   }, [task.taskId]);
 
-  const applyStatus = (data: VideoTaskStatus) => {
+  const applyStatus = (data: MusicTaskStatus) => {
     setStatus(data.status);
-    data.video_url && setVideoUrl(data.video_url);
-    data.quality && setQuality(data.quality);
-    data.duration && setDuration(data.duration);
+    data.audio_url && setAudioUrl(data.audio_url);
     data.credit_cost && setCreditCost(data.credit_cost);
     data.error_message && setErrorMsg(data.error_message);
-    data.video_mode && setVideoMode(data.video_mode);
     data.model && setModel(data.model);
+    data.lyrics && setLyrics(data.lyrics);
 
-    // Stop polling on terminal state
     TERMINAL_STATES.has(data.status) && stopPolling();
   };
 
@@ -172,15 +167,11 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
     pollingRef.current = null;
   };
 
-  // Start polling on mount (only if not already done)
   useEffect(() => {
     mountedRef.current = true;
 
-    // Skip polling for completed tasks
     !isDone && (() => {
-      // Initial poll
       pollStatus();
-      // Interval poll
       pollingRef.current = setInterval(pollStatus, POLL_INTERVAL);
     })();
 
@@ -193,7 +184,6 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
   const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
   const StatusIcon = statusCfg.Icon;
   const isActive = !TERMINAL_STATES.has(status);
-  const modeLabel = MODE_LABELS[videoMode] || videoMode;
 
   return (
     <div
@@ -209,20 +199,14 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
-        <Film className={cn('h-4 w-4', statusCfg.color)} />
+        <Music className={cn('h-4 w-4', statusCfg.color)} />
         <span className={cn('text-xs font-medium', statusCfg.color)}>
           {statusCfg.label}
         </span>
         {isActive && (
           <StatusIcon className={cn('h-3.5 w-3.5 animate-spin', statusCfg.color)} />
         )}
-        {/* Meta badges */}
         <div className="flex items-center gap-1.5 ml-auto">
-          {modeLabel && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]">
-              {modeLabel}
-            </span>
-          )}
           {model && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]">
               {model}
@@ -240,7 +224,7 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
                 animate={{ rotate: 360 }}
                 transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
               >
-                <Film className="h-8 w-8 text-[var(--color-status-processing-icon)]" />
+                <Music className="h-8 w-8 text-[var(--color-status-processing-icon)]" />
               </motion.div>
               <div className="flex items-center gap-1">
                 {[0, 1, 2].map((i) => (
@@ -253,21 +237,21 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
                 ))}
               </div>
               <span className="text-xs text-muted-foreground">
-                视频生成中，通常需要 1-5 分钟...
+                音乐生成中，通常需要 30-120 秒...
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Video player for completed tasks - with drag support */}
-      {status === 'completed' && videoUrl && (
-        <DraggableVideoPreview
-          videoUrl={videoUrl}
-          quality={quality}
-          duration={duration}
+      {/* Audio player for completed tasks - with drag support */}
+      {status === 'completed' && audioUrl && (
+        <DraggableAudioPreview
+          audioUrl={audioUrl}
           creditCost={creditCost}
-          modeLabel={modeLabel}
+          lyrics={lyrics}
+          showLyrics={showLyrics}
+          onToggleLyrics={() => setShowLyrics(!showLyrics)}
         />
       )}
 
@@ -276,7 +260,7 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
         <div className="px-3 pb-3">
           <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-status-error-bg)] text-[var(--color-status-error-text)] text-xs">
             <XCircle className="h-4 w-4 shrink-0 text-[var(--color-status-error-icon)]" />
-            <span>{errorMsg || '视频生成失败，请重试'}</span>
+            <span>{errorMsg || '音乐生成失败，请重试'}</span>
           </div>
         </div>
       )}

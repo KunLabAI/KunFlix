@@ -32,6 +32,15 @@ const NODE_CONFIGS: Record<string, {
       imageUrl: imageUrl || '',
     }),
   },
+  audio: {
+    dimensions: { width: 360, height: 200 },
+    buildData: ({ name, audioUrl, description, lyrics }: Record<string, unknown>) => ({
+      name: name || '新音频卡',
+      description: description || '',
+      audioUrl: audioUrl || '',
+      lyrics: lyrics || '',
+    }),
+  },
 };
 
 /**
@@ -94,6 +103,28 @@ export function handleVideoDragStart(
   });
 
   const preview = createDragPreview(name || '拖拽视频到画布', '🎬');
+  event.dataTransfer.setDragImage(preview, 0, 0);
+
+  return preview;
+}
+
+/**
+ * 音频卡片拖拽开始处理器
+ */
+export function handleAudioDragStart(
+  event: React.DragEvent,
+  audioUrl: string,
+  name?: string,
+  lyrics?: string
+): HTMLElement | null {
+  setDragData(event, 'audio', {
+    name: name || '音频卡',
+    audioUrl,
+    description: '',
+    lyrics: lyrics || '',
+  });
+
+  const preview = createDragPreview(name || '拖拽音频到画布', '🎵');
   event.dataTransfer.setDragImage(preview, 0, 0);
 
   return preview;

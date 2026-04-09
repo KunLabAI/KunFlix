@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
 import type { MultiAgentData } from '@/components/canvas/MultiAgentSteps';
@@ -15,6 +15,7 @@ interface StreamingState {
   skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
   toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed' }[];
   videoTasks: VideoTaskData[];
+  musicTasks: MusicTaskData[];
   steps: AgentStep[];
   stepMap: Map<string, AgentStep>;
   multiAgent: MultiAgentData | null;
@@ -34,6 +35,7 @@ export function useSSEHandler() {
     skillCalls: [],
     toolCalls: [],
     videoTasks: [],
+    musicTasks: [],
     steps: [],
     stepMap: new Map(),
     multiAgent: null,
@@ -47,6 +49,7 @@ export function useSSEHandler() {
       skillCalls: [],
       toolCalls: [],
       videoTasks: [],
+      musicTasks: [],
       steps: [],
       stepMap: new Map(),
       multiAgent: null,
@@ -80,7 +83,7 @@ export function useSSEHandler() {
       text: () => {
         const chunk = (data as { chunk?: string })?.chunk || '';
         const isNewRound = state.roundHasTools;
-        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.videoTasks = [], state.roundHasTools = false);
+        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.videoTasks = [], state.musicTasks = [], state.roundHasTools = false);
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -181,6 +184,22 @@ export function useSSEHandler() {
           return (last?.role === 'ai' && last?.status === 'streaming')
             ? [...prev.slice(0, -1), { ...last, video_tasks: [...state.videoTasks] }]
             : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, video_tasks: [...state.videoTasks] }];
+        });
+      },
+
+      // 音乐任务创建（generate_music 工具执行后由后端发送）
+      music_task_created: () => {
+        const d = data as { task_id?: string; model?: string };
+        const task: MusicTaskData = {
+          task_id: d.task_id || '',
+          model: d.model || '',
+        };
+        state.musicTasks.push(task);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, music_tasks: [...state.musicTasks] }]
+            : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, music_tasks: [...state.musicTasks] }];
         });
       },
 

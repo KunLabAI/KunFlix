@@ -940,3 +940,27 @@ class ToolConfigResponse(ToolConfigBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+# ---------------------------------------------------------------------------
+# Music Task (音乐生成任务)
+# ---------------------------------------------------------------------------
+
+class MusicTaskResponse(BaseModel):
+    """音乐生成任务响应"""
+    id: str
+    status: str
+    prompt: str
+    lyrics: Optional[str] = None
+    model: str
+    output_format: str = "mp3"
+    audio_url: Optional[str] = None
+    credit_cost: float = 0.0
+    error_message: Optional[str] = None
+    provider_id: Optional[str] = None
+    user_id: str
+    input_image_count: int = 0
+    created_at: Any
+    completed_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+

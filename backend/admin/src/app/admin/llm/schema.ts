@@ -10,6 +10,7 @@ export const PRESET_COST_DIMENSIONS: Record<string, { label: string; unit: strin
   video_input_second: { label: '视频输入时长', unit: 'USD/秒' },
   video_output_480p:  { label: '视频输出480p', unit: 'USD/秒' },
   video_output_720p:  { label: '视频输出720p', unit: 'USD/秒' },
+  audio_generation:   { label: '音频生成',     unit: 'USD/次' },
 };
 
 export const MODEL_TYPE_TAGS = [

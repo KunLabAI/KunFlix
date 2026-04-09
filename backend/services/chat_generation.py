@@ -328,6 +328,11 @@ async def generate_single_agent(
                 yield sse("video_task_created", vt)
             ctx.video_tasks.clear()
 
+            # 发送音乐任务创建事件（通知前端启动轮询UI）
+            for mt in ctx.music_tasks:
+                yield sse("music_task_created", mt)
+            ctx.music_tasks.clear()
+
     except Exception as e:
         generation_failed = True
         logger.error(f"LLM generation failed: {e}")

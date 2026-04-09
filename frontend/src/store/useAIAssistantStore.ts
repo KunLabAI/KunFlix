@@ -47,15 +47,22 @@ export interface VideoTaskData {
   model: string;
 }
 
+// 音乐任务数据
+export interface MusicTaskData {
+  task_id: string;
+  model: string;
+}
+
 export interface Message {
   role: MessageRole;
   content: string;
   status?: MessageStatus;
-  // 扩展字段用于技能/工具/多智能体/视频任务展示
+  // 扩展字段用于技能/工具/多智能体/视频任务/音乐任务展示
   skill_calls?: SkillCall[];
   tool_calls?: ToolCall[];
   multi_agent?: MultiAgentData;
   video_tasks?: VideoTaskData[];
+  music_tasks?: MusicTaskData[];
   // 欢迎消息标记
   isWelcome?: boolean;
   // 上下文压缩摘要

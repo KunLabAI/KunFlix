@@ -444,6 +444,32 @@ class VideoTask(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class MusicTask(Base):
+    """异步音乐生成任务追踪（Lyria 3）"""
+    __tablename__ = "music_tasks"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True, index=True)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id"), nullable=True)
+    model = Column(String(100), nullable=False)
+    user_id = Column(String(36), nullable=False, index=True)
+
+    prompt = Column(Text, nullable=False)
+    lyrics = Column(Text, nullable=True)                     # 生成的歌词/结构文本
+    output_format = Column(String(10), default="mp3")        # mp3 / wav
+    input_image_count = Column(Integer, default=0)           # 输入参考图片数量
+
+    status = Column(String(20), default="pending", index=True)  # pending/processing/completed/failed
+    result_audio_url = Column(String(500), nullable=True)    # /api/media/{uuid}.mp3
+    error_message = Column(Text, nullable=True)
+
+    # 计费
+    credit_cost = Column(Float, default=0.0)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 class AdminDebugSession(Base):
     """管理员调试会话 - 与普通用户会话完全隔离"""
     __tablename__ = "admin_debug_sessions"

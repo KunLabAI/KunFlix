@@ -64,6 +64,7 @@ export type AudioNodeData = {
   description: string;
   audioUrl?: string | null;
   uploading?: boolean;
+  lyrics?: string;
 };
 
 export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>;

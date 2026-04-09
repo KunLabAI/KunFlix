@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 TOOL_SKILL_GATE_MAP: dict[str, frozenset[str]] = {
     "image_tools": frozenset({"generate_image", "edit_image"}),
     "video_tools": frozenset({"generate_video", "edit_video"}),
+    "music_tools": frozenset({"generate_music"}),
     "canvas_tools": frozenset({
         "list_canvas_nodes", "get_canvas_node",
         "create_canvas_node", "update_canvas_node", "delete_canvas_node",
@@ -54,11 +55,17 @@ class ToolContext:
     _video_provider_resolved: bool = field(default=False, repr=False)
     _global_video_config: dict | None = field(default=None, repr=False)
 
+    # --- music generation caches ---
+    _music_provider_type: str | None = field(default=None, repr=False)
+    _music_provider_resolved: bool = field(default=False, repr=False)
+    _global_music_config: dict | None = field(default=None, repr=False)
+
     # --- skill-gated tool tracking ---
     loaded_tool_skills: set = field(default_factory=set, repr=False)
 
     # --- transient event collectors ---
     video_tasks: list = field(default_factory=list, repr=False)
+    music_tasks: list = field(default_factory=list, repr=False)
 
     # ------------------------------------------------------------------
     # Skill-gate helpers
@@ -143,3 +150,37 @@ class ToolContext:
         # 使用标准化的提取函数
         self._video_provider_type = extract_video_provider_type(prov.provider_type) if prov else None
         return self._video_provider_type
+
+    # ------------------------------------------------------------------
+    # Music generation config helpers
+    # ------------------------------------------------------------------
+
+    async def get_global_music_config(self) -> dict:
+        """获取全局音乐生成配置（从 ToolConfig 表，带缓存）。"""
+        if self._global_music_config is not None:
+            return self._global_music_config
+        from models import ToolConfig
+        result = await self.db.execute(
+            select(ToolConfig).where(ToolConfig.tool_name == "generate_music")
+        )
+        tool_config = result.scalar_one_or_none()
+        self._global_music_config = (tool_config.config if tool_config else {}) or {}
+        return self._global_music_config
+
+    async def resolve_music_provider_type(self) -> str | None:
+        """Resolve the music provider's provider_type from DB (cached after first call)."""
+        return self._music_provider_type if self._music_provider_resolved else await self._do_resolve_music_provider()
+
+    async def _do_resolve_music_provider(self) -> str | None:
+        from models import LLMProvider
+        from services.music_providers import extract_music_provider_type
+
+        self._music_provider_resolved = True
+        global_config = await self.get_global_music_config()
+        provider_id = global_config.get("music_provider_id")
+        result = provider_id and await self.db.execute(
+            select(LLMProvider).filter(LLMProvider.id == provider_id)
+        )
+        prov = result.scalar_one_or_none() if result else None
+        self._music_provider_type = extract_music_provider_type(prov.provider_type) if prov else None
+        return self._music_provider_type

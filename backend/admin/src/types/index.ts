@@ -296,6 +296,7 @@ export interface AgentToolUsage {
   canvas_node_types: string[];
   image_gen_enabled: boolean;
   video_gen_enabled: boolean;
+  music_gen_enabled: boolean;
 }
 
 export interface ToolStats {
@@ -400,4 +401,41 @@ export interface VideoGenToolConfigData {
 export interface VideoGenToolConfig extends ToolConfig {
   tool_name: 'generate_video';
   config: VideoGenToolConfigData;
+}
+
+// ---------------------------------------------------------------------------
+// 音乐生成工具配置
+// ---------------------------------------------------------------------------
+export interface MusicGenToolConfigData {
+  music_generation_enabled: boolean;
+  music_provider_id?: string | null;
+  music_model?: string | null;
+  music_config?: {
+    output_format?: string;
+  } | null;
+}
+
+export interface MusicGenToolConfig extends ToolConfig {
+  tool_name: 'generate_music';
+  config: MusicGenToolConfigData;
+}
+
+// ---------------------------------------------------------------------------
+// Music Task types
+// ---------------------------------------------------------------------------
+export interface MusicTaskResponse {
+  id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  prompt: string;
+  lyrics?: string | null;
+  model: string;
+  output_format: string;
+  audio_url?: string | null;
+  credit_cost: number;
+  error_message?: string | null;
+  provider_id?: string | null;
+  user_id: string;
+  input_image_count: number;
+  created_at: string;
+  completed_at?: string | null;
 }

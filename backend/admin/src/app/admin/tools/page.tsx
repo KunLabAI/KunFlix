@@ -11,9 +11,10 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Activity, AlertTriangle, Clock, FileText, Settings2 } from 'lucide-react';
 import { useToolRegistry, useAgentToolUsage, useToolStats, useImageCapabilities, useVideoCapabilities, useToolConfig, useUpdateToolConfig } from '@/hooks/useToolRegistry';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
-import { ImageGenToolConfigData, VideoGenToolConfigData } from '@/types';
+import { ImageGenToolConfigData, VideoGenToolConfigData, MusicGenToolConfigData } from '@/types';
 import ImageGenConfigDialog from '@/components/admin/tools/ImageGenConfigDialog';
 import VideoGenConfigDialog from '@/components/admin/tools/VideoGenConfigDialog';
+import MusicGenConfigDialog from '@/components/admin/tools/MusicGenConfigDialog';
 
 // generate_image 工具可配置参数定义（映射 UnifiedImageGenConfig）
 const IMAGE_GEN_CONFIG_PARAMS = [
@@ -36,6 +37,14 @@ const VIDEO_GEN_CONFIG_PARAMS = [
   { name: 'aspect_ratio', type: '枚举', description: '宽高比 (16:9, 9:16, 1:1 等)' },
 ];
 
+// generate_music 工具可配置参数定义
+const MUSIC_GEN_CONFIG_PARAMS = [
+  { name: 'music_generation_enabled', type: '布尔', description: '音乐生成启用状态开关' },
+  { name: 'music_provider_id', type: '字符串', description: '音乐生成供应商 ID (Gemini)' },
+  { name: 'music_model', type: '字符串', description: '音乐模型 (lyria-3-clip-preview / lyria-3-pro-preview)' },
+  { name: 'output_format', type: '枚举', description: '输出格式 (mp3, wav)' },
+];
+
 export default function ToolsPage() {
   const { registry, isLoading: regLoading } = useToolRegistry();
   const { agentUsage, isLoading: usageLoading } = useAgentToolUsage();
@@ -45,11 +54,13 @@ export default function ToolsPage() {
   const { capabilities: videoCapabilities } = useVideoCapabilities();
   const { config: imageToolConfig, mutate: refreshImageToolConfig } = useToolConfig('generate_image');
   const { config: videoToolConfig, mutate: refreshVideoToolConfig } = useToolConfig('generate_video');
+  const { config: musicToolConfig, mutate: refreshMusicToolConfig } = useToolConfig('generate_music');
   const { updateConfig } = useUpdateToolConfig();
 
   // Dialog 状态
   const [imageConfigDialogOpen, setImageConfigDialogOpen] = useState(false);
   const [videoConfigDialogOpen, setVideoConfigDialogOpen] = useState(false);
+  const [musicConfigDialogOpen, setMusicConfigDialogOpen] = useState(false);
 
   const isLoading = regLoading || usageLoading || statsLoading;
 
@@ -61,6 +72,7 @@ export default function ToolsPage() {
   // 获取全局配置数据
   const imageGenConfig: ImageGenToolConfigData | undefined = imageToolConfig?.config as ImageGenToolConfigData;
   const videoGenConfig: VideoGenToolConfigData | undefined = videoToolConfig?.config as VideoGenToolConfigData;
+  const musicGenConfig: MusicGenToolConfigData | undefined = musicToolConfig?.config as MusicGenToolConfigData;
 
   const handleSaveImageConfig = async (config: ImageGenToolConfigData) => {
     await updateConfig('generate_image', { config });
@@ -68,6 +80,10 @@ export default function ToolsPage() {
 
   const handleSaveVideoConfig = async (config: VideoGenToolConfigData) => {
     await updateConfig('generate_video', { config });
+  };
+
+  const handleSaveMusicConfig = async (config: MusicGenToolConfigData) => {
+    await updateConfig('generate_music', { config });
   };
 
   return (
@@ -289,6 +305,49 @@ export default function ToolsPage() {
                       </div>
                     </div>
                   )}
+                  {/* generate_music 工具配置 */}
+                  {provider.tools.some(t => t.name === 'generate_music') && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Settings2 className="h-4 w-4 text-pink-500" />
+                          <h5 className="text-sm font-medium text-pink-600 dark:text-pink-400">工具配置</h5>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setMusicConfigDialogOpen(true)}
+                        >
+                          <Settings2 className="mr-1 h-3.5 w-3.5" />
+                          配置
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant={musicGenConfig?.music_generation_enabled ? 'default' : 'secondary'}>
+                          {musicGenConfig?.music_generation_enabled ? '已启用' : '未启用'}
+                        </Badge>
+                        {musicGenConfig?.music_generation_enabled && (
+                          <span className="text-sm text-muted-foreground">
+                            {providerNameMap.get(musicGenConfig.music_provider_id || '') || '未选择供应商'} · {musicGenConfig.music_model || '未选择模型'}
+                          </span>
+                        )}
+                      </div>
+                      {musicGenConfig?.music_generation_enabled && musicGenConfig.music_config && (
+                        <div className="text-xs text-muted-foreground">
+                          输出格式: {musicGenConfig.music_config.output_format || '默认'}
+                        </div>
+                      )}
+                      <div className="mt-2 space-y-1.5">
+                        {MUSIC_GEN_CONFIG_PARAMS.map((param) => (
+                          <div key={param.name} className="flex items-center gap-2 text-xs">
+                            <code className="bg-muted px-1.5 py-0.5 rounded font-mono shrink-0">{param.name}</code>
+                            <Badge variant="outline" className="text-[10px] shrink-0">{param.type}</Badge>
+                            <span className="text-muted-foreground">{param.description}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -347,6 +406,7 @@ export default function ToolsPage() {
                   <TableHead>画布</TableHead>
                   <TableHead>图像生成</TableHead>
                   <TableHead>视频生成</TableHead>
+                  <TableHead>音乐生成</TableHead>
                   <TableHead>Skills</TableHead>
                 </TableRow>
               </TableHeader>
@@ -371,6 +431,11 @@ export default function ToolsPage() {
                     <TableCell>
                       <Badge variant={agent.video_gen_enabled ? 'default' : 'secondary'}>
                         {agent.video_gen_enabled ? '已启用' : '未启用'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={agent.music_gen_enabled ? 'default' : 'secondary'}>
+                        {agent.music_gen_enabled ? '已启用' : '未启用'}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -412,6 +477,16 @@ export default function ToolsPage() {
         videoCapabilities={videoCapabilities}
         initialConfig={videoGenConfig}
         onSaveConfig={handleSaveVideoConfig}
+      />
+
+      {/* 音乐生成配置 Dialog */}
+      <MusicGenConfigDialog
+        open={musicConfigDialogOpen}
+        onOpenChange={setMusicConfigDialogOpen}
+        onSaved={() => refreshMusicToolConfig()}
+        providers={activeProviders || []}
+        initialConfig={musicGenConfig}
+        onSaveConfig={handleSaveMusicConfig}
       />
     </div>
   );

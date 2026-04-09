@@ -15,6 +15,7 @@ import { LazyImage } from './LazyImage';
 import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
+import { MusicTaskCard } from './MusicTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
 import { CompactionNotice } from './CompactionNotice';
 import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } from '@/store/useAIAssistantStore';
@@ -27,6 +28,15 @@ import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } fro
 const VIDEO_TASK_RE = /<!-- __VIDEO_TASK__\|([^|]+)\|([^|]+)\|([^|]*) -->/g;
 // __VIDEO_DONE__{task_id}|{url}|{quality}|{duration}|{cost}
 const VIDEO_DONE_RE = /^__VIDEO_DONE__([^|]+)\|([^|]+)\|([^|]*)\|([^|]*)\|([^|]*)$/;
+
+// ---------------------------------------------------------------------------
+// Music marker parsing
+// ---------------------------------------------------------------------------
+
+// <!-- __MUSIC_TASK__|{task_id}|{model} -->
+const MUSIC_TASK_RE = /<!-- __MUSIC_TASK__\|([^|]+)\|([^|]*) -->/g;
+// __MUSIC_DONE__{task_id}|{url}|{cost}
+const MUSIC_DONE_RE = /^__MUSIC_DONE__([^|]+)\|([^|]+)\|([^|]*)$/;
 
 // ---------------------------------------------------------------------------
 // Attachment parsing
@@ -124,6 +134,38 @@ function parseVideoMarkers(content: string): { cleanContent: string; videoCards:
   }).trim();
 
   return { cleanContent, videoCards };
+}
+
+interface MusicCardInfo {
+  taskId: string;
+  model?: string;
+  audioUrl?: string;
+  creditCost?: number;
+  lyrics?: string;
+}
+
+function parseMusicMarkers(content: string): { cleanContent: string; musicCards: MusicCardInfo[] } {
+  // __MUSIC_DONE__: entire message is a completion marker
+  const doneMatch = MUSIC_DONE_RE.exec(content);
+  if (doneMatch) {
+    return {
+      cleanContent: '',
+      musicCards: [{
+        taskId: doneMatch[1],
+        audioUrl: doneMatch[2],
+        creditCost: parseFloat(doneMatch[3]) || 0,
+      }],
+    };
+  }
+
+  // __MUSIC_TASK__: extract in-content task markers
+  const musicCards: MusicCardInfo[] = [];
+  const cleanContent = content.replace(MUSIC_TASK_RE, (_m, taskId, model) => {
+    musicCards.push({ taskId, model });
+    return '';
+  }).trim();
+
+  return { cleanContent, musicCards };
 }
 
 // Markdown组件配置：使用懒加载优化性能
@@ -305,11 +347,19 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
   const isSingleAgentThinking = !message.multi_agent && !!thinkingContent && !isThinkingComplete;
   
   // 解析视频标记（仅对 AI 非流式消息解析，流式消息保持原样）
-  const { cleanContent, videoCards } = useMemo(
+  const { cleanContent: videoCleanContent, videoCards } = useMemo(
     () => (!isUser && !isStreaming && responseContent)
       ? parseVideoMarkers(responseContent)
       : { cleanContent: responseContent, videoCards: [] as VideoCardInfo[] },
     [responseContent, isUser, isStreaming],
+  );
+
+  // 解析音乐标记（在视频标记清理后的内容上继续解析）
+  const { cleanContent, musicCards } = useMemo(
+    () => (!isUser && !isStreaming && videoCleanContent)
+      ? parseMusicMarkers(videoCleanContent)
+      : { cleanContent: videoCleanContent, musicCards: [] as MusicCardInfo[] },
+    [videoCleanContent, isUser, isStreaming],
   );
 
   // 解析用户消息附件
@@ -330,8 +380,18 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
     return [...videoCards, ...sseCards.filter((c) => !seen.has(c.taskId))];
   }, [videoCards, message.video_tasks]);
 
-  // 纯视频完成消息（__VIDEO_DONE__）无需渲染文本
-  const isVideoOnlyMessage = allVideoCards.length > 0 && !cleanContent;
+  // 合并两种来源的音乐任务：内容解析 + SSE 事件
+  const allMusicCards = useMemo(() => {
+    const sseCards: MusicCardInfo[] = (message.music_tasks || []).map((mt) => ({
+      taskId: mt.task_id,
+      model: mt.model,
+    }));
+    const seen = new Set(musicCards.map((c) => c.taskId));
+    return [...musicCards, ...sseCards.filter((c) => !seen.has(c.taskId))];
+  }, [musicCards, message.music_tasks]);
+
+  // 纯媒体完成消息（__VIDEO_DONE__ / __MUSIC_DONE__）无需渲染文本
+  const isMediaOnlyMessage = (allVideoCards.length > 0 || allMusicCards.length > 0) && !cleanContent;
 
   // 检测消息是否需要分块
   const { needsChunking } = useMessageChunking(cleanContent, 10000);
@@ -358,7 +418,7 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
           isUser
             ? 'bg-[var(--color-text-primary)] text-[var(--color-bg-primary)] rounded-tr-sm'
             : 'text-[var(--color-text-primary)] rounded-tl-sm',
-          isVideoOnlyMessage && '!px-0 !py-0 !bg-transparent !border-transparent !shadow-none',
+          isMediaOnlyMessage && '!px-0 !py-0 !bg-transparent !border-transparent !shadow-none',
         )}
       >
         {/* 用户消息 */}
@@ -451,6 +511,11 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                   {/* 视频任务卡片 */}
                   {allVideoCards.map((card) => (
                     <VideoTaskCard key={card.taskId} task={card} />
+                  ))}
+
+                  {/* 音乐任务卡片 */}
+                  {allMusicCards.map((card) => (
+                    <MusicTaskCard key={card.taskId} task={card} />
                   ))}
 
                   {/* 技能/工具调用连续式面板 */}

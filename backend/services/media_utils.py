@@ -16,6 +16,15 @@ MIME_TO_EXT = {
     "image/gif": "gif",
 }
 
+# 音频 MIME -> 扩展名映射
+AUDIO_MIME_TO_EXT = {
+    "audio/mp3": "mp3",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+}
+
 
 def save_inline_image(mime_type: str, data: bytes) -> str:
     """保存 inline_data 图片，返回 /api/media/{uuid}.{ext} 路径"""
@@ -76,3 +85,14 @@ async def save_image_from_url(image_url: str) -> str:
     mime = _CONTENT_TYPE_TO_MIME.get(content_type, "image/png")
 
     return save_inline_image(mime, data)
+
+
+def save_audio_data(audio_bytes: bytes, mime_type: str) -> str:
+    """保存音频数据，返回 /api/media/{uuid}.{ext} 路径"""
+    MEDIA_DIR.mkdir(exist_ok=True)
+    ext = AUDIO_MIME_TO_EXT.get(mime_type, "mp3")
+    filename = f"{uuid.uuid4()}.{ext}"
+    filepath = MEDIA_DIR / filename
+    filepath.write_bytes(audio_bytes)
+    logger.info("Saved audio: %s (%d bytes, %s)", filename, len(audio_bytes), mime_type)
+    return f"/api/media/{filename}"
