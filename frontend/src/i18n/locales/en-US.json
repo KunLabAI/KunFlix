@@ -1,7 +1,7 @@
 {
   "nav": {
     "home": "Home",
-    "resources": "Resources",
+    "resources": "Assets",
     "community": "Community"
   },
   "userMenu": {
@@ -13,8 +13,8 @@
     "label": "User menu"
   },
   "search": {
-    "placeholder": "Search resources...",
-    "homePlaceholder": "Search theaters, resources...",
+    "placeholder": "Search assets...",
+    "homePlaceholder": "Search theaters, assets...",
     "mobilePlaceholder": "Search...",
     "label": "Search"
   },
@@ -28,13 +28,13 @@
     "en": "English"
   },
   "resources": {
-    "title": "My Resources",
+    "title": "My Assets",
     "uploadFile": "Upload",
     "dropToUpload": "Drop files to upload",
     "supportedFormats": "Supports JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV",
-    "emptyTitle": "No resources yet",
-    "emptyDescription": "Drag files to the area above, or click the upload button to add your first resource",
-    "noMatchTitle": "No matching resources",
+    "emptyTitle": "No assets yet",
+    "emptyDescription": "Drag files to the area above, or click the upload button to add your first asset",
+    "noMatchTitle": "No matching assets",
     "noMatchDescription": "Try different keywords or clear the filters",
     "sizeExceeded": "{{files}}, skipped",
     "exceedLabel": "{{name}} (exceeds {{limit}} limit)"
@@ -158,8 +158,8 @@
     "audio": "Audio",
     "noImages": "No image assets",
     "noVideos": "No video assets",
-    "noAudio": "No audio resources",
-    "manageResources": "Manage Resources"
+    "noAudio": "No audio assets",
+    "manageResources": "Manage Assets"
   },
   "ai": {
     "title": "AI Assistant",

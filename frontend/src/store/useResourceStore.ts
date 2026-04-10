@@ -16,7 +16,7 @@ export interface UploadQueueItem {
 }
 
 interface ResourceState {
-  // 资源数据
+  // 资产数据
   assets: AssetItem[];
   total: number;
   page: number;
@@ -29,7 +29,7 @@ interface ResourceState {
   uploadQueue: UploadQueueItem[];
 
   // Actions
-  fetchAssets: () => Promise<void>;
+  fetchAssets: (options?: { pageSize?: number; typeFilter?: FileTypeFilter }) => Promise<void>;
   loadMore: () => Promise<void>;
   setTypeFilter: (type: FileTypeFilter) => void;
   addUpload: (file: File) => void;
@@ -37,7 +37,7 @@ interface ResourceState {
   renameAsset: (id: string, name: string) => Promise<void>;
   replaceAssetFile: (id: string, file: File) => Promise<void>;
   deleteAsset: (id: string) => Promise<void>;
-  /** 从外部上传（如画布）同步新资源到 store */
+  /** 从外部上传（如画布）同步新资产到 store */
   syncAssetFromUpload: (asset: AssetItem | Record<string, unknown>) => void;
   reset: () => void;
 }
@@ -58,11 +58,12 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
   hasMore: false,
   uploadQueue: [],
 
-  async fetchAssets() {
-    const { pageSize, typeFilter } = get();
+  async fetchAssets(options) {
+    const size = options?.pageSize ?? get().pageSize;
+    const filter = options?.typeFilter ?? get().typeFilter;
     set({ isLoading: true, page: 1 });
     try {
-      const res = await resourceApi.listAssets(1, pageSize, typeFilter);
+      const res = await resourceApi.listAssets(1, size, filter);
       set({
         assets: res.items,
         total: res.total,
@@ -115,7 +116,7 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
       })
       .then((res) => {
         set((s) => ({
-          // 上传成功：将新资源添加到列表头部，移除上传队列项
+          // 上传成功：将新资产添加到列表头部，移除上传队列项
           assets: [res.asset, ...s.assets],
           total: s.total + 1,
           uploadQueue: s.uploadQueue.filter((q) => q.id !== id),

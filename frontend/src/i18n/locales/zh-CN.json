@@ -1,7 +1,7 @@
 {
   "nav": {
     "home": "首页",
-    "resources": "资源库",
+    "resources": "资产库",
     "community": "社区"
   },
   "userMenu": {
@@ -13,8 +13,8 @@
     "label": "用户菜单"
   },
   "search": {
-    "placeholder": "搜索资源...",
-    "homePlaceholder": "搜索剧场、资源...",
+    "placeholder": "搜索资产...",
+    "homePlaceholder": "搜索剧场、资产...",
     "mobilePlaceholder": "搜索...",
     "label": "搜索"
   },
@@ -28,13 +28,13 @@
     "en": "English"
   },
   "resources": {
-    "title": "我的资源库",
+    "title": "我的资产库",
     "uploadFile": "上传文件",
     "dropToUpload": "释放以上传文件",
     "supportedFormats": "支持 JPG, PNG, WebP, GIF, MP4, WebM, MOV, MP3, WAV",
-    "emptyTitle": "资源库为空",
-    "emptyDescription": "拖拽文件到上方区域，或点击上传按钮添加您的第一个资源",
-    "noMatchTitle": "未找到匹配的资源",
+    "emptyTitle": "资产库为空",
+    "emptyDescription": "拖拽文件到上方区域，或点击上传按钮添加您的第一个资产",
+    "noMatchTitle": "未找到匹配的资产",
     "noMatchDescription": "尝试使用其他关键词搜索，或清除筛选条件",
     "sizeExceeded": "{{files}}，已跳过",
     "exceedLabel": "{{name}}（超出{{limit}}限制）"
@@ -158,8 +158,8 @@
     "audio": "音频",
     "noImages": "暂无图片资产",
     "noVideos": "暂无视频资产",
-    "noAudio": "暂无音频资源",
-    "manageResources": "管理资源"
+    "noAudio": "暂无音频资产",
+    "manageResources": "管理资产"
   },
   "ai": {
     "title": "AI 助手",

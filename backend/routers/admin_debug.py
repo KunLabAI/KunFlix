@@ -12,6 +12,7 @@ from sqlalchemy import delete
 from typing import List, Optional, Any
 import logging
 import json
+import asyncio
 
 from database import get_db, AsyncSessionLocal
 from models import (
@@ -38,6 +39,9 @@ from services.chat_tool_dispatch import append_tool_round
 from sqlalchemy import select as sql_select
 
 logger = logging.getLogger(__name__)
+
+# Harness constants (import from chat_generation to keep in sync)
+from services.chat_generation import MAX_LLM_RETRIES, RETRY_BACKOFF_SECONDS
 
 
 router = APIRouter(
@@ -417,20 +421,41 @@ async def _generate_single_agent_debug(
             # 通过适配器解析有效的图像配置（使用全局 ToolConfig）
             global_cfg = (global_image_config.config if global_image_config else {})
             _eff_gemini, _eff_xai = resolve_global_image_configs(global_cfg, agent, provider.provider_type)
-            async for chunk, result in stream_completion(
-                provider_type=provider.provider_type,
-                api_key=provider.api_key,
-                base_url=provider.base_url,
-                model=agent.model,
-                messages=messages,
-                temperature=agent.temperature,
-                context_window=agent.context_window,
-                thinking_mode=agent.thinking_mode,
-                gemini_config=_eff_gemini,
-                tools=current_tools,
-                xai_image_config=_eff_xai,
-            ):
-                yield sse("text", {"chunk": chunk})
+
+            # Harness: LLM 调用重试 + 熔断
+            _llm_success = False
+            for _retry in range(MAX_LLM_RETRIES):
+                try:
+                    async for chunk, result in stream_completion(
+                        provider_type=provider.provider_type,
+                        api_key=provider.api_key,
+                        base_url=provider.base_url,
+                        model=agent.model,
+                        messages=messages,
+                        temperature=agent.temperature,
+                        context_window=agent.context_window,
+                        thinking_mode=agent.thinking_mode,
+                        gemini_config=_eff_gemini,
+                        tools=current_tools,
+                        xai_image_config=_eff_xai,
+                    ):
+                        yield sse("text", {"chunk": chunk})
+                    _llm_success = True
+                    break
+                except Exception as llm_err:
+                    _attempt = _retry + 1
+                    logger.warning(f"[Debug] LLM attempt {_attempt}/{MAX_LLM_RETRIES} failed: {llm_err}")
+                    (_attempt < MAX_LLM_RETRIES) and (
+                        yield sse("llm_retry", {"attempt": _attempt, "max_retries": MAX_LLM_RETRIES, "error": str(llm_err)})
+                    )
+                    (_attempt < MAX_LLM_RETRIES) and await asyncio.sleep(
+                        RETRY_BACKOFF_SECONDS[min(_retry, len(RETRY_BACKOFF_SECONDS) - 1)]
+                    )
+
+            # 熔断：LLM 调用全部失败
+            if not _llm_success:
+                yield sse("llm_circuit_breaker", {"retries": MAX_LLM_RETRIES, "round": _round + 1})
+                raise Exception(f"LLM circuit breaker: all {MAX_LLM_RETRIES} attempts failed")
 
             # 无 tool_calls → 直接结束
             if not (result and result.tool_calls):

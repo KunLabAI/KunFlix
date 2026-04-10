@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type HarnessEvent } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
 import type { MultiAgentData } from '@/components/canvas/MultiAgentSteps';
@@ -22,6 +22,7 @@ interface StreamingState {
   assistantMsg: Message | null;
   roundHasTools: boolean;
   doneScheduled: boolean;
+  harnessEvents: HarnessEvent[];
 }
 
 export function useSSEHandler() {
@@ -42,6 +43,7 @@ export function useSSEHandler() {
     assistantMsg: null,
     roundHasTools: false,
     doneScheduled: false,
+    harnessEvents: [],
   });
 
   const resetStreamingState = useCallback(() => {
@@ -56,6 +58,7 @@ export function useSSEHandler() {
       assistantMsg: null,
       roundHasTools: false,
       doneScheduled: false,
+      harnessEvents: [],
     };
   }, []);
 
@@ -276,15 +279,77 @@ export function useSSEHandler() {
 
       // 多智能体：子任务失败
       subtask_failed: () => {
-        const d = data as { subtask_id?: string; error?: string };
+        const d = data as { subtask_id?: string; error?: string; circuit_breaker?: boolean; retries?: number };
         const step = state.stepMap.get(d.subtask_id || '');
-        step && ((step.status = 'failed'), (step.error = d.error));
+        if (step) {
+          step.status = 'failed';
+          step.error = d.error;
+          step.circuitBreaker = d.circuit_breaker;
+          step.retryCount = d.retries;
+        }
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'ai') {
             return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
           }
           return prev;
+        });
+      },
+
+      // Harness: 多智能体子任务重试
+      subtask_retry: () => {
+        const d = data as { subtask_id?: string; attempt?: number; max_retries?: number };
+        const step = state.stepMap.get(d.subtask_id || '');
+        if (step) {
+          step.status = 'retrying';
+          step.retryCount = d.attempt;
+          step.maxRetries = d.max_retries;
+        }
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === 'ai') {
+            return [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }];
+          }
+          return prev;
+        });
+      },
+
+      // Harness: 单智能体 LLM 调用重试
+      llm_retry: () => {
+        const d = data as { attempt?: number; max_retries?: number; error?: string };
+        const evt: HarnessEvent = { type: 'llm_retry', attempt: d.attempt, maxRetries: d.max_retries, error: d.error };
+        state.harnessEvents.push(evt);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, harness_events: [...state.harnessEvents] }]
+            : prev;
+        });
+      },
+
+      // Harness: LLM 熔断
+      llm_circuit_breaker: () => {
+        const d = data as { retries?: number; round?: number };
+        const evt: HarnessEvent = { type: 'llm_circuit_breaker', maxRetries: d.retries, round: d.round };
+        state.harnessEvents.push(evt);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, harness_events: [...state.harnessEvents] }]
+            : prev;
+        });
+      },
+
+      // Harness: 工具连续失败熔断
+      tool_circuit_breaker: () => {
+        const d = data as { consecutive_failures?: number; max_allowed?: number };
+        const evt: HarnessEvent = { type: 'tool_circuit_breaker', attempt: d.consecutive_failures, maxRetries: d.max_allowed };
+        state.harnessEvents.push(evt);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, harness_events: [...state.harnessEvents] }]
+            : prev;
         });
       },
 
