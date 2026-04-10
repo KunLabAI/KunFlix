@@ -69,22 +69,15 @@ def _build_image_gen_tool_def(provider_type: str = "") -> dict:
         "function": {
             "name": IMAGE_GEN_TOOL_NAME,
             "description": (
-                "Generate images from a text prompt using an AI image generation model. "
-                "Use this tool when the user asks you to create, draw, generate, or design "
-                "an image, illustration, portrait, scene, or any visual content. "
-                "The tool returns image URLs in markdown format that you should include "
-                "in your response."
+                "Generate images from scratch using a text prompt (text-to-image). "
+                "Returns image URLs in markdown format."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "prompt": {
                         "type": "string",
-                        "description": (
-                            "Detailed description of the image to generate. "
-                            "Be specific about subject, style, composition, lighting, and mood. "
-                            "Write the prompt in English for best results."
-                        ),
+                        "description": "Detailed English description of the image to generate.",
                     },
                     "aspect_ratio": {
                         "type": "string",
