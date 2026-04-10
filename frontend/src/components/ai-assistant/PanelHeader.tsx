@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, Plus, MessageSquare, Loader2, History } from 'lucide-react';
+import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, Plus, Loader2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ContextUsage, ChatSessionInfo } from '@/store/useAIAssistantStore';
