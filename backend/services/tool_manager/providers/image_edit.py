@@ -121,10 +121,7 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
         "function": {
             "name": IMAGE_EDIT_TOOL_NAME,
             "description": (
-                "Generate or edit an image using a reference image as the visual basis (image-to-image). "
-                "Use this whenever a reference image exists and the output should visually relate to it: "
-                "reference-based generation, character consistency across scenes, style transfer, or image modification. "
-                "Provide the image URL and a prompt describing the desired output. "
+                "Generate or edit an image using a reference image (image-to-image). "
                 "Returns the result image URL in markdown format."
             ),
             "parameters": {
@@ -132,20 +129,11 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
                 "properties": {
                     "image_url": {
                         "type": "string",
-                        "description": (
-                            "URL or path of the reference/source image. "
-                            "Use the image file path (e.g. /api/media/filename.jpg) "
-                            "or a public URL. Do NOT pass inline base64 data."
-                        ),
+                        "description": "URL or path of the reference/source image (e.g. /api/media/filename.jpg). Do NOT pass base64.",
                     },
                     "prompt": {
                         "type": "string",
-                        "description": (
-                            "Description of the desired output image. "
-                            "For reference-based generation, describe the full target scene "
-                            "while noting which elements to preserve from the reference. "
-                            "For editing, describe the specific changes."
-                        ),
+                        "description": "Description of the desired output image or changes to apply.",
                     },
                     "aspect_ratio": {
                         "type": "string",
