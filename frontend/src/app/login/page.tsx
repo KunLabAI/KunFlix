@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
-  Mail, Lock, User, ArrowRight, Sparkles, Film, Palette, Zap,
+  Mail, Lock, User, ArrowRight,
   Eye, EyeOff, Loader2
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -12,12 +12,148 @@ import api from "@/lib/api";
 import { App } from "antd";
 import { cn } from "@/lib/utils";
 
-// 特性展示配置
-const FEATURES = [
-  { icon: Film, label: "AI 视频生成", desc: "一键生成高质量视频" },
-  { icon: Palette, label: "智能画布", desc: "可视化创作工作流" },
-  { icon: Zap, label: "多模态创作", desc: "图文音视频一站式" },
+// 影视作品卡片数据 - 4列不同的图片集
+const FILM_COLUMNS = [
+  [
+    { title: "Breaking Bad", img: "https://images.unsplash.com/photo-1504639725590-34d0984388bd?w=280&h=380&fit=crop" },
+    { title: "Stranger Things", img: "https://images.unsplash.com/photo-1509281373149-e957c6296406?w=280&h=380&fit=crop" },
+    { title: "The Crown", img: "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=280&h=380&fit=crop" },
+    { title: "Dark", img: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=280&h=380&fit=crop" },
+    { title: "Westworld", img: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=280&h=380&fit=crop" },
+    { title: "Dune", img: "https://images.unsplash.com/photo-1509023464722-18d996393ca8?w=280&h=380&fit=crop" },
+    { title: "Interstellar", img: "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=280&h=380&fit=crop" },
+    { title: "Blade Runner", img: "https://images.unsplash.com/photo-1543722530-d2c3201371e7?w=280&h=380&fit=crop" },
+  ],
+  [
+    { title: "Game of Thrones", img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=280&h=380&fit=crop" },
+    { title: "The Witcher", img: "https://images.unsplash.com/photo-1500964757637-c85e8a162699?w=280&h=380&fit=crop" },
+    { title: "Vikings", img: "https://images.unsplash.com/photo-1500252185289-40ca85eb23a7?w=280&h=380&fit=crop" },
+    { title: "Peaky Blinders", img: "https://images.unsplash.com/photo-1494972308805-463bc619d34e?w=280&h=380&fit=crop" },
+    { title: "The Mandalorian", img: "https://images.unsplash.com/photo-1534996858221-380b92700493?w=280&h=380&fit=crop" },
+    { title: "Arrival", img: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=280&h=380&fit=crop" },
+    { title: "Avatar", img: "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=280&h=380&fit=crop" },
+    { title: "The Matrix", img: "https://images.unsplash.com/photo-1464802686167-b939a6910659?w=280&h=380&fit=crop" },
+  ],
+  [
+    { title: "Black Mirror", img: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=280&h=380&fit=crop" },
+    { title: "Chernobyl", img: "https://images.unsplash.com/photo-1504192010706-dd7f569ee2be?w=280&h=380&fit=crop" },
+    { title: "The Expanse", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=280&h=380&fit=crop" },
+    { title: "Altered Carbon", img: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=280&h=380&fit=crop" },
+    { title: "Foundation", img: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=280&h=380&fit=crop" },
+    { title: "Cosmos", img: "https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=280&h=380&fit=crop" },
+    { title: "Gravity", img: "https://images.unsplash.com/photo-1465101162946-4377e57745c3?w=280&h=380&fit=crop" },
+    { title: "Moon", img: "https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=280&h=380&fit=crop" },
+  ],
+  [
+    { title: "True Detective", img: "https://images.unsplash.com/photo-1509023464722-18d996393ca8?w=280&h=380&fit=crop" },
+    { title: "Severance", img: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=280&h=380&fit=crop" },
+    { title: "Mindhunter", img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=280&h=380&fit=crop" },
+    { title: "The Last of Us", img: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=280&h=380&fit=crop" },
+    { title: "Succession", img: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=280&h=380&fit=crop" },
+    { title: "Nebula", img: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=280&h=380&fit=crop" },
+    { title: "Eclipse", img: "https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=280&h=380&fit=crop" },
+    { title: "Mars", img: "https://images.unsplash.com/photo-1614728263952-84ea256f9679?w=280&h=380&fit=crop" },
+  ],
+  [
+    { title: "Ozark", img: "https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?w=280&h=380&fit=crop" },
+    { title: "Mr. Robot", img: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=280&h=380&fit=crop" },
+    { title: "Fargo", img: "https://images.unsplash.com/photo-1491002052546-bf38f186af56?w=280&h=380&fit=crop" },
+    { title: "Better Call Saul", img: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=280&h=380&fit=crop" },
+    { title: "The Boys", img: "https://images.unsplash.com/photo-1535016120720-40c646be5580?w=280&h=380&fit=crop" },
+    { title: "Solaris", img: "https://images.unsplash.com/photo-1454789548928-9efd52dc4031?w=280&h=380&fit=crop" },
+    { title: "Horizon", img: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=280&h=380&fit=crop" },
+    { title: "Aurora", img: "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=280&h=380&fit=crop" },
+  ],
+  [
+    { title: "House of Cards", img: "https://images.unsplash.com/photo-1501466044931-62695aada8e9?w=280&h=380&fit=crop" },
+    { title: "Narcos", img: "https://images.unsplash.com/photo-1518173946687-a1e0e2e3e14c?w=280&h=380&fit=crop" },
+    { title: "Sherlock", img: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=280&h=380&fit=crop" },
+    { title: "The Haunting", img: "https://images.unsplash.com/photo-1510070112808-e47d3005c0c9?w=280&h=380&fit=crop" },
+    { title: "Euphoria", img: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=280&h=380&fit=crop" },
+    { title: "Void", img: "https://images.unsplash.com/photo-1475274047050-1d0c55b7b10f?w=280&h=380&fit=crop" },
+    { title: "Signal", img: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=280&h=380&fit=crop" },
+    { title: "Spectrum", img: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=280&h=380&fit=crop" },
+  ],
 ];
+
+// 每行的动画配置：时长和方向（交错排列）
+const ROW_CONFIGS = [
+  { duration: 240, reverse: false },
+  { duration: 240, reverse: true },
+  { duration: 220, reverse: false },
+  { duration: 232, reverse: true },
+  { duration: 240, reverse: false },
+  { duration: 240, reverse: true },
+];
+
+// 胶片齿孔组件
+function FilmPerforations({ side }: { side: 'top' | 'bottom' }) {
+  return (
+    <div className={cn(
+      "absolute left-0 right-0 flex justify-around px-4 z-10",
+      side === 'top' ? 'top-[3px]' : 'bottom-[3px]',
+    )}>
+      {Array.from({ length: 8 }, (_, i) => (
+        <div
+          key={i}
+          className="w-[10px] h-[6px] rounded-[1px] bg-black/50 border border-white/5"
+        />
+      ))}
+    </div>
+  );
+}
+
+function FilmCard({ title, img }: { title: string; img: string }) {
+  return (
+    <div className="relative w-[260px] h-[180px] shrink-0">
+      {/* 胶片带外框 */}
+      <div className="absolute inset-0 bg-zinc-900/90 border border-white/5" />
+
+      {/* 上下齿孔 */}
+      <FilmPerforations side="top" />
+      <FilmPerforations side="bottom" />
+
+      {/* 图片区域（上下留出胶片边框） */}
+      <div className="absolute top-[12px] bottom-[12px] left-[6px] right-[6px] overflow-hidden">
+        <img
+          src={img}
+          alt={title}
+          className="absolute inset-0 w-full h-full object-cover"
+          loading="lazy"
+        />
+        {/* 胶片划痕/晃电噪点覆层 */}
+        <div className="absolute inset-0 opacity-[0.04] mix-blend-overlay"
+          style={{
+            backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.1) 2px, transparent 4px)`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function FilmStripRow({ cards, duration, reverse }: {
+  cards: { title: string; img: string }[];
+  duration: number;
+  reverse: boolean;
+}) {
+  const repeatedCards = [...cards, ...cards, ...cards, ...cards, ...cards];
+  return (
+    <div className="relative w-full h-[180px] shrink-0 overflow-hidden">
+      <div
+        className="flex flex-row gap-0 w-max"
+        style={{
+          animation: `film-scroll-x ${duration}s linear infinite`,
+          animationDirection: reverse ? 'reverse' : 'normal',
+        }}
+      >
+        {repeatedCards.map((card, i) => (
+          <FilmCard key={`${card.title}-${i}`} {...card} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // 表单字段配置
 const FORM_FIELDS = {
@@ -135,89 +271,42 @@ export default function LoginPage() {
   const currentFields = FORM_FIELDS[mode];
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        {/* Animated Gradient Background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-node-purple/20 via-background to-node-blue/20 animate-gradient" />
-        
-        {/* Grid Pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.03]"
+    <div className="relative h-screen w-screen overflow-hidden bg-background">
+      {/* ===== Layer 1: Full-screen Film Strip Background ===== */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        {/* Film strip rows with 45° diagonal scrolling */}
+        <div
+          className="absolute flex flex-col justify-center gap-16"
           style={{
-            backgroundImage: `linear-gradient(var(--foreground) 1px, transparent 1px), linear-gradient(90deg, var(--foreground) 1px, transparent 1px)`,
-            backgroundSize: '50px 50px'
+            transform: 'rotate(-45deg)',
+            transformOrigin: 'center center',
+            width: '200vw',
+            height: '200vh',
+            top: '-50vh',
+            left: '-50vw',
           }}
-        />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-center px-16 w-full">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            {/* Logo */}
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center shadow-lg shadow-node-purple/20">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold text-foreground">KunFlix</span>
-            </div>
-
-            {/* Title */}
-            <h1 className="text-4xl font-bold text-foreground mb-4 leading-tight">
-              KunFlix
-            </h1>
-            <p className="text-lg text-muted-foreground mb-12 max-w-md">
-              AI 驱动的多模态创作平台，让创意无限延伸
-            </p>
-
-            {/* Features */}
-            <div className="space-y-4">
-              {FEATURES.map((feature, index) => (
-                <motion.div
-                  key={feature.label}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 + index * 0.1 }}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-secondary/50 backdrop-blur-sm border border-border/50"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <feature.icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">{feature.label}</p>
-                    <p className="text-sm text-muted-foreground">{feature.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
+        >
+          {FILM_COLUMNS.map((cards, rowIdx) => (
+            <FilmStripRow
+              key={rowIdx}
+              cards={cards}
+              duration={ROW_CONFIGS[rowIdx].duration}
+              reverse={ROW_CONFIGS[rowIdx].reverse}
+            />
+          ))}
         </div>
-
-        {/* Decorative Elements */}
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background to-transparent" />
       </div>
 
-      {/* Right Side - Form */}
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+      {/* ===== Layer 2: Floating Form ===== */}
+      <div className="relative z-30 flex items-center justify-center h-full p-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
           className="w-full max-w-md"
         >
-          {/* Mobile Logo */}
-          <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold text-foreground">KunFlix</span>
-          </div>
-
           {/* Form Card */}
-          <div className="bg-card/50 backdrop-blur-xl border border-border/50 rounded-2xl p-6 sm:p-8 shadow-xl">
+          <div className="bg-card/80 backdrop-blur-2xl border border-border/50 rounded-2xl p-6 sm:p-8 shadow-2xl">
             {/* Header */}
             <div className="text-center mb-8">
               <h2 className="text-2xl font-bold text-foreground mb-2">
@@ -230,7 +319,7 @@ export default function LoginPage() {
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              <AnimatePresence mode="wait">
+              <AnimatePresence>
                 {currentFields.map((field, index) => (
                   <motion.div
                     key={`${mode}-${field.name}`}
@@ -319,12 +408,12 @@ export default function LoginPage() {
                 </button>
               </p>
             </div>
-          </div>
 
-          {/* Footer */}
-          <p className="text-center text-xs text-muted-foreground mt-6">
-            登录即表示您同意我们的服务条款和隐私政策
-          </p>
+            {/* Footer */}
+            <p className="text-center text-xs text-muted-foreground/70 mt-4">
+              登录即表示您同意我们的服务条款和隐私政策
+            </p>
+          </div>
         </motion.div>
       </div>
     </div>

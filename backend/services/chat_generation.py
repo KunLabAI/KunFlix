@@ -4,6 +4,7 @@ Single-agent chat generation: LLM streaming loop with tool rounds, billing, and 
 import json
 import logging
 from typing import Any
+import asyncio
 
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +26,13 @@ from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Harness: Single-agent LLM retry & circuit breaker constants
+# =============================================================================
+MAX_LLM_RETRIES = 3                 # 单次 stream_completion 调用最大重试次数
+MAX_CONSECUTIVE_TOOL_FAILURES = 5   # 连续工具调用失败上限（触发工具循环熔断）
+RETRY_BACKOFF_SECONDS = (0.5, 1.0, 2.0)  # 重试退避时间
 
 
 async def generate_single_agent(
@@ -214,6 +222,7 @@ async def generate_single_agent(
     generation_failed = False
     _SSE_START = {True: "skill_call", False: "tool_call"}
     _SSE_END = {True: "skill_loaded", False: "tool_result"}
+    _consecutive_tool_failures = 0   # Harness: 连续工具失败计数器
     try:
         for _round in range(MAX_TOOL_ROUNDS + 1):
             is_last_round = _round == MAX_TOOL_ROUNDS
@@ -221,20 +230,42 @@ async def generate_single_agent(
             result = None
             # 通过适配器解析有效的图像配置（使用全局 ToolConfig）
             _eff_gemini, _eff_xai = resolve_global_image_configs(global_image_cfg, agent, provider.provider_type)
-            async for chunk, result in stream_completion(
-                provider_type=provider.provider_type,
-                api_key=provider.api_key,
-                base_url=provider.base_url,
-                model=agent.model,
-                messages=messages,
-                temperature=agent.temperature,
-                context_window=agent.context_window,
-                thinking_mode=agent.thinking_mode,
-                gemini_config=_eff_gemini,
-                tools=current_tools,
-                xai_image_config=_eff_xai,
-            ):
-                yield sse("text", {"chunk": chunk})
+
+            # Harness: LLM 调用重试 + 熔断
+            _llm_success = False
+            for _retry in range(MAX_LLM_RETRIES):
+                try:
+                    async for chunk, result in stream_completion(
+                        provider_type=provider.provider_type,
+                        api_key=provider.api_key,
+                        base_url=provider.base_url,
+                        model=agent.model,
+                        messages=messages,
+                        temperature=agent.temperature,
+                        context_window=agent.context_window,
+                        thinking_mode=agent.thinking_mode,
+                        gemini_config=_eff_gemini,
+                        tools=current_tools,
+                        xai_image_config=_eff_xai,
+                    ):
+                        yield sse("text", {"chunk": chunk})
+                    _llm_success = True
+                    break
+                except Exception as llm_err:
+                    _attempt = _retry + 1
+                    logger.warning(f"LLM call attempt {_attempt}/{MAX_LLM_RETRIES} failed: {llm_err}")
+                    # 未达上限，发送重试事件并退避
+                    (_attempt < MAX_LLM_RETRIES) and (
+                        yield sse("llm_retry", {"attempt": _attempt, "max_retries": MAX_LLM_RETRIES, "error": str(llm_err)})
+                    )
+                    (_attempt < MAX_LLM_RETRIES) and await asyncio.sleep(
+                        RETRY_BACKOFF_SECONDS[min(_retry, len(RETRY_BACKOFF_SECONDS) - 1)]
+                    )
+
+            # 熔断：LLM 调用全部失败
+            if not _llm_success:
+                yield sse("llm_circuit_breaker", {"retries": MAX_LLM_RETRIES, "round": _round + 1})
+                raise Exception(f"LLM circuit breaker: all {MAX_LLM_RETRIES} attempts failed in round {_round + 1}")
 
             # 无 tool_calls → 直接结束
             if not (result and result.tool_calls):
@@ -342,6 +373,20 @@ async def generate_single_agent(
             # 发送错误调用的完成事件
             for tc, _ in tool_calls_with_error:
                 yield sse("tool_result", {"tool_name": tc.name, "success": False, "error": "JSON parse failed"})
+
+            # Harness: 连续工具失败熔断
+            _all_failed = (len(tool_calls_valid) == 0) and (len(tool_calls_with_error) > 0)
+            _consecutive_tool_failures = (_consecutive_tool_failures + 1) * _all_failed
+            (_consecutive_tool_failures >= MAX_CONSECUTIVE_TOOL_FAILURES) and (
+                yield sse("tool_circuit_breaker", {
+                    "consecutive_failures": _consecutive_tool_failures,
+                    "max_allowed": MAX_CONSECUTIVE_TOOL_FAILURES,
+                })
+            )
+            # 达到上限，终止工具循环
+            (_consecutive_tool_failures >= MAX_CONSECUTIVE_TOOL_FAILURES) and (_ for _ in ()).throw(
+                Exception(f"Tool circuit breaker: {_consecutive_tool_failures} consecutive failures")
+            )
 
             # 发送视频任务创建事件（通知前端启动轮询UI）
             for vt in ctx.video_tasks:

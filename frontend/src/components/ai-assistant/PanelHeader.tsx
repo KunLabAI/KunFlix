@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, Plus, MessageSquare, Loader2 } from 'lucide-react';
+import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, Plus, MessageSquare, Loader2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ContextUsage, ChatSessionInfo } from '@/store/useAIAssistantStore';
@@ -157,7 +157,7 @@ function ChatHistoryDropdown({
         onPointerDown={(e) => e.stopPropagation()}
         title={t('ai.chatHistory')}
       >
-        <MessageSquare className="h-4 w-4" />
+        <History className="h-4 w-4" />
         {chatList.length > 1 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-primary text-[9px] text-primary-foreground flex items-center justify-center font-medium leading-none px-0.5">
             {chatList.length}
@@ -335,21 +335,6 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
         )}>
           {percentage.toFixed(0)}%
         </span>
-        {/* 消耗动画效果 */}
-        {isLoading && (
-          <motion.div
-            className="absolute inset-0 rounded-lg bg-primary/10"
-            animate={{
-              scale: [1, 1.1, 1],
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          />
-        )}
       </Button>
 
       {/* Hover展开的详细信息面板 */}

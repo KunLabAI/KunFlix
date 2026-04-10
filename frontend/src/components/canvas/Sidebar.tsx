@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
-  Layers, Plus, ScrollText, Image as ImageIcon, Video, 
+  VectorSquare, Plus, ScrollText, Image as ImageIcon, Video, 
   Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -60,7 +60,7 @@ const NODE_TYPES = [
   },
 ];
 
-// 拖拽数据映射表：资源类型 -> 画布节点类型 + 数据结构
+// 拖拽数据映射表：资产类型 -> 画布节点类型 + 数据结构
 const DRAG_DATA_BUILDERS: Record<string, (asset: { url: string; name: string }) => { nodeType: string; data: Record<string, unknown> }> = {
   image: (a) => ({ nodeType: 'image', data: { name: a.name, imageUrl: a.url } }),
   video: (a) => ({ nodeType: 'video', data: { name: a.name, videoUrl: a.url } }),
@@ -87,15 +87,15 @@ export const Sidebar = () => {
   const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'audio'>('images');
   let timeoutRef = useRef<NodeJS.Timeout | null>(null);
   
-  // 从 Resource Store 获取账号级别资源
+  // 从 Resource Store 获取账号级别资产
   const { assets, isLoading, fetchAssets } = useResourceStore();
 
-  // 面板打开时懒加载资源
+  // 面板打开时加载资产（大 pageSize + 强制全类型，确保侧边栏显示完整）
   useEffect(() => {
-    activeMenu === 'assets' && assets.length === 0 && fetchAssets();
+    activeMenu === 'assets' && fetchAssets({ pageSize: 100, typeFilter: 'all' });
   }, [activeMenu]);
 
-  // 按类型分组资源
+  // 按类型分组资产
   const ASSET_IMAGES = useMemo(() => assets.filter(a => a.file_type === 'image'), [assets]);
   const ASSET_VIDEOS = useMemo(() => assets.filter(a => a.file_type === 'video'), [assets]);
   const ASSET_AUDIO = useMemo(() => assets.filter(a => a.file_type === 'audio'), [assets]);
@@ -146,7 +146,7 @@ export const Sidebar = () => {
   return (
     <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50">
       <div 
-        className="flex flex-col gap-2 p-1.5 rounded-xl bg-background/70 backdrop-blur-xl border border-border/50 shadow-none"
+        className="flex flex-col gap-2 p-1.5 rounded-xl bg-background border border-border/50 shadow-none"
         onMouseLeave={handleMouseLeave}
       >
         {/* Node Library Button */}
@@ -158,12 +158,12 @@ export const Sidebar = () => {
             "w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors duration-200 shadow-none",
             activeMenu === 'nodes' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}>
-            <Layers className="w-4 h-4" />
+            <VectorSquare className="w-4 h-4" />
           </button>
           
           {/* Node Library Panel */}
           <div className={cn(
-            "absolute left-full top-0 ml-4 w-60 bg-background/70 backdrop-blur-xl border border-border/50 rounded-xl p-2 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
+            "absolute left-full top-0 ml-4 w-60 bg-background border border-border/50 rounded-xl p-2 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
             activeMenu === 'nodes' 
               ? "opacity-100 translate-x-0 pointer-events-auto" 
               : "opacity-0 -translate-x-2 pointer-events-none"
@@ -205,7 +205,7 @@ export const Sidebar = () => {
           
           {/* Asset Library Panel */}
           <div className={cn(
-            "absolute left-full top-0 ml-4 w-72 bg-background/70 backdrop-blur-xl border border-border/50 rounded-xl p-3 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none flex flex-col gap-3",
+            "absolute left-full top-0 ml-4 w-72 bg-background border border-border/50 rounded-xl p-3 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none flex flex-col gap-3",
             activeMenu === 'assets' 
               ? "opacity-100 translate-x-0 pointer-events-auto" 
               : "opacity-0 -translate-x-2 pointer-events-none"
@@ -252,6 +252,7 @@ export const Sidebar = () => {
                         src={asset.url} 
                         alt={asset.original_name || asset.filename} 
                         loading="lazy"
+                        draggable={false}
                         className="w-full h-full object-contain p-1"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-black/50 backdrop-blur-sm p-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
@@ -331,7 +332,7 @@ export const Sidebar = () => {
 
             </div>
 
-            {/* 管理资源链接 */}
+            {/* 管理资产链接 */}
             <a
               href="/resources"
               target="_blank"

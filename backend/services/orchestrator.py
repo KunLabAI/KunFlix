@@ -23,6 +23,57 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Harness: Constants & Output Validation
+# =============================================================================
+
+MAX_SUBTASK_RETRIES = 3          # 熔断上限：单子任务最多重试次数
+MIN_VALID_OUTPUT_LENGTH = 2      # 输出最小有效长度（排除空白/无意义响应）
+
+
+class OutputValidationError(Exception):
+    """Agent 输出未通过结构化校验"""
+    pass
+
+
+class CircuitBreakerError(Exception):
+    """子任务重试达到熔断上限"""
+    def __init__(self, subtask_id: str, retries: int):
+        self.subtask_id = subtask_id
+        self.retries = retries
+        super().__init__(f"Circuit breaker triggered: subtask {subtask_id} failed after {retries} retries")
+
+
+# 输出校验规则注册表 —— 映射表驱动，便于扩展
+# 每条规则: (校验函数, 失败描述模板)
+_OUTPUT_VALIDATORS = [
+    (
+        lambda content: len(content.strip()) >= MIN_VALID_OUTPUT_LENGTH,
+        "Output too short or empty (length={length}, min={min})",
+    ),
+    (
+        lambda content: not content.strip().startswith('{"error"'),
+        "Output appears to be an error object",
+    ),
+]
+
+
+def validate_output(content: str) -> tuple[bool, str]:
+    """
+    对 Agent 输出执行结构化校验。
+    Returns: (is_valid, error_message)
+    """
+    for validator_fn, desc_template in _OUTPUT_VALIDATORS:
+        passed = validator_fn(content)
+        if not passed:
+            msg = desc_template.format(
+                length=len(content.strip()),
+                min=MIN_VALID_OUTPUT_LENGTH,
+            )
+            return False, msg
+    return True, ""
+
+
+# =============================================================================
 # Data Classes
 # =============================================================================
 
@@ -108,65 +159,81 @@ class CollaborationStrategy(ABC):
         return subtask
 
     async def execute_subtask(self, subtask: SubTask, input_content: str) -> ExecutionResult:
-        """Execute a single subtask (non-streaming) and update its record"""
-        subtask.status = "running"
-        await self.db.flush()
-
+        """
+        Execute a single subtask (non-streaming) with output validation and circuit breaker.
+        Retries up to MAX_SUBTASK_RETRIES on failure or invalid output.
+        """
         messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
+        last_error = None
 
-        try:
-            result = await self.executor.execute(
-                agent_id=subtask.agent_id,
-                messages=messages,
-                context={"subtask_id": subtask.id}
-            )
-
-            subtask.status = "completed"
-            subtask.output_data = {"content": result.content}
-            subtask.input_tokens = result.input_tokens
-            subtask.output_tokens = result.output_tokens
-            subtask.completed_at = sa_func.now()
-
-            agent = self.members.get(subtask.agent_id)
-            subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
-
+        while subtask.retry_count < MAX_SUBTASK_RETRIES:
+            subtask.status = "running"
             await self.db.flush()
-            return result
 
-        except Exception as e:
-            subtask.status = "failed"
-            subtask.error_message = str(e)
-            subtask.retry_count += 1
-            await self.db.flush()
-            raise
+            try:
+                result = await self.executor.execute(
+                    agent_id=subtask.agent_id,
+                    messages=messages,
+                    context={"subtask_id": subtask.id, "attempt": subtask.retry_count + 1}
+                )
+
+                # Harness: output validation
+                is_valid, validation_msg = validate_output(result.content)
+                is_valid or (_ for _ in ()).throw(OutputValidationError(validation_msg))
+
+                subtask.status = "completed"
+                subtask.output_data = {"content": result.content}
+                subtask.input_tokens = result.input_tokens
+                subtask.output_tokens = result.output_tokens
+                subtask.completed_at = sa_func.now()
+
+                agent = self.members.get(subtask.agent_id)
+                subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
+
+                await self.db.flush()
+                return result
+
+            except Exception as e:
+                subtask.retry_count += 1
+                last_error = e
+                logger.warning(
+                    f"Subtask {subtask.id} attempt {subtask.retry_count}/{MAX_SUBTASK_RETRIES} failed: {e}"
+                )
+                await self.db.flush()
+
+        # Circuit breaker: exhausted retries
+        subtask.status = "failed"
+        subtask.error_message = f"Circuit breaker: {last_error}"
+        await self.db.flush()
+        raise CircuitBreakerError(subtask.id, subtask.retry_count)
 
     async def execute_subtask_streaming(
         self, subtask: SubTask, input_content: str
     ) -> AsyncGenerator[OrchestrationEvent, None]:
         """
-        Execute a subtask with streaming, yielding chunk events in real-time.
-        After streaming completes, yields a subtask_completed event.
-        Stores ExecutionResult on subtask._streaming_result for caller access.
+        Execute a subtask with streaming + output validation + circuit breaker.
+        First attempt streams in real-time; retries fall back to non-streaming
+        to avoid duplicate chunk events.
         """
-        subtask.status = "running"
-        await self.db.flush()
-
         agent = self.members.get(subtask.agent_id)
         agent_name = agent.name if agent else self.leader.name
+        messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
+
+        # --- First attempt: streaming ---
+        subtask.status = "running"
+        await self.db.flush()
 
         yield OrchestrationEvent("subtask_started", {
             "subtask_id": subtask.id,
             "agent_name": agent_name,
         })
 
-        messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
-
         try:
             last_result: Optional[StreamResult] = None
             async for chunk, result in self.executor.execute_streaming(
                 agent_id=subtask.agent_id,
                 messages=messages,
-                context={"subtask_id": subtask.id}
+                context={"subtask_id": subtask.id, "attempt": 1}
             ):
                 last_result = result
                 yield OrchestrationEvent("subtask_chunk", {
@@ -175,9 +242,12 @@ class CollaborationStrategy(ABC):
                 })
 
             full_content = last_result.full_response if last_result else ""
-            input_tokens = last_result.input_tokens if last_result else 0
-            output_tokens = last_result.output_tokens if last_result else 0
 
+            # Harness: validate streaming output
+            is_valid, validation_msg = validate_output(full_content)
+            is_valid or (_ for _ in ()).throw(OutputValidationError(validation_msg))
+
+            # Success — record results
             subtask.status = "completed"
             subtask.output_data = {
                 "content": full_content,
@@ -185,17 +255,16 @@ class CollaborationStrategy(ABC):
                 "image_output_tokens": last_result.image_output_tokens,
                 "search_count": last_result.search_query_count,
             }
-            subtask.input_tokens = input_tokens
-            subtask.output_tokens = output_tokens
+            subtask.input_tokens = last_result.input_tokens if last_result else 0
+            subtask.output_tokens = last_result.output_tokens if last_result else 0
             subtask.completed_at = sa_func.now()
-
             subtask.credit_cost, _ = calculate_credit_cost(last_result, agent or self.leader)
             await self.db.flush()
 
             subtask._streaming_result = ExecutionResult(
                 content=full_content,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
+                input_tokens=subtask.input_tokens,
+                output_tokens=subtask.output_tokens,
                 input_chars=len(input_content),
                 output_chars=len(full_content),
                 metadata={"agent_id": subtask.agent_id, "agent_name": agent_name}
@@ -206,22 +275,92 @@ class CollaborationStrategy(ABC):
                 "agent_name": agent_name,
                 "description": subtask.description,
                 "status": "completed",
-                "tokens": {"input": input_tokens, "output": output_tokens},
+                "tokens": {"input": subtask.input_tokens, "output": subtask.output_tokens},
                 "result": full_content,
             })
+            return
 
         except Exception as e:
-            subtask.status = "failed"
-            subtask.error_message = str(e)
             subtask.retry_count += 1
+            logger.warning(
+                f"Subtask {subtask.id} streaming attempt 1/{MAX_SUBTASK_RETRIES} failed: {e}"
+            )
             await self.db.flush()
 
-            subtask._streaming_result = ExecutionResult(content="", metadata={"error": str(e)})
+        # --- Retry attempts: non-streaming fallback to avoid duplicate chunks ---
+        while subtask.retry_count < MAX_SUBTASK_RETRIES:
+            subtask.status = "running"
+            await self.db.flush()
 
-            yield OrchestrationEvent("subtask_failed", {
+            yield OrchestrationEvent("subtask_retry", {
                 "subtask_id": subtask.id,
-                "error": str(e),
+                "attempt": subtask.retry_count + 1,
+                "max_retries": MAX_SUBTASK_RETRIES,
             })
+
+            try:
+                result = await self.executor.execute(
+                    agent_id=subtask.agent_id,
+                    messages=messages,
+                    context={"subtask_id": subtask.id, "attempt": subtask.retry_count + 1}
+                )
+
+                is_valid, validation_msg = validate_output(result.content)
+                is_valid or (_ for _ in ()).throw(OutputValidationError(validation_msg))
+
+                subtask.status = "completed"
+                subtask.output_data = {"content": result.content}
+                subtask.input_tokens = result.input_tokens
+                subtask.output_tokens = result.output_tokens
+                subtask.completed_at = sa_func.now()
+                subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
+                await self.db.flush()
+
+                subtask._streaming_result = ExecutionResult(
+                    content=result.content,
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    input_chars=len(input_content),
+                    output_chars=len(result.content),
+                    metadata={"agent_id": subtask.agent_id, "agent_name": agent_name}
+                )
+
+                # Send full result as single chunk for frontend compatibility
+                yield OrchestrationEvent("subtask_chunk", {
+                    "subtask_id": subtask.id,
+                    "chunk": result.content,
+                })
+                yield OrchestrationEvent("subtask_completed", {
+                    "subtask_id": subtask.id,
+                    "agent_name": agent_name,
+                    "description": subtask.description,
+                    "status": "completed",
+                    "tokens": {"input": result.input_tokens, "output": result.output_tokens},
+                    "result": result.content,
+                    "retried": True,
+                })
+                return
+
+            except Exception as e:
+                subtask.retry_count += 1
+                logger.warning(
+                    f"Subtask {subtask.id} attempt {subtask.retry_count}/{MAX_SUBTASK_RETRIES} failed: {e}"
+                )
+                await self.db.flush()
+
+        # Circuit breaker: all retries exhausted
+        subtask.status = "failed"
+        subtask.error_message = f"Circuit breaker: max retries ({MAX_SUBTASK_RETRIES}) exhausted"
+        await self.db.flush()
+
+        subtask._streaming_result = ExecutionResult(content="", metadata={"error": subtask.error_message})
+
+        yield OrchestrationEvent("subtask_failed", {
+            "subtask_id": subtask.id,
+            "error": subtask.error_message,
+            "circuit_breaker": True,
+            "retries": subtask.retry_count,
+        })
 
 
 # =============================================================================
@@ -308,7 +447,10 @@ class UnifiedStrategy(CollaborationStrategy):
         ready_tasks: List[tuple],
         completed_outputs: Dict[str, str]
     ) -> AsyncGenerator[OrchestrationEvent, None]:
-        """Execute multiple ready tasks in parallel (non-streaming)"""
+        """
+        Execute multiple ready tasks in parallel (non-streaming).
+        Each execute_subtask() internally handles retries + circuit breaker.
+        """
         # Emit started events
         for subtask, _ in ready_tasks:
             agent = self.members.get(subtask.agent_id)
@@ -318,7 +460,7 @@ class UnifiedStrategy(CollaborationStrategy):
                 "agent_name": agent_name,
             })
 
-        # Parallel execution
+        # Parallel execution (retries happen inside execute_subtask)
         results = await asyncio.gather(*[
             self.execute_subtask(subtask, task_input)
             for subtask, task_input in ready_tasks
@@ -329,10 +471,14 @@ class UnifiedStrategy(CollaborationStrategy):
             agent_name = agent.name if agent else self.leader.name
 
             is_error = isinstance(result, BaseException)
+            is_circuit_break = isinstance(result, CircuitBreakerError)
+
             _event_builders = {
                 True: lambda: OrchestrationEvent("subtask_failed", {
                     "subtask_id": subtask.id,
                     "error": str(result),
+                    "circuit_breaker": is_circuit_break,
+                    "retries": subtask.retry_count,
                 }),
                 False: lambda: OrchestrationEvent("subtask_completed", {
                     "subtask_id": subtask.id,
@@ -341,6 +487,7 @@ class UnifiedStrategy(CollaborationStrategy):
                     "status": "completed",
                     "tokens": {"input": result.input_tokens, "output": result.output_tokens},
                     "result": result.content,
+                    "retried": subtask.retry_count > 0,
                 }),
             }
             yield _event_builders[is_error]()
@@ -351,18 +498,16 @@ class UnifiedStrategy(CollaborationStrategy):
         ready_tasks: List[tuple],
         completed_outputs: Dict[str, str]
     ) -> AsyncGenerator[OrchestrationEvent, None]:
-        """Execute a single task with streaming"""
+        """
+        Execute a single task with streaming.
+        Retries and circuit breaker are handled inside execute_subtask_streaming.
+        """
         for subtask, task_input in ready_tasks:
-            try:
-                async for event in self.execute_subtask_streaming(subtask, task_input):
-                    yield event
-                result = getattr(subtask, "_streaming_result", None)
-                completed_outputs[subtask.id] = result.content if result else ""
-            except Exception as e:
-                yield OrchestrationEvent("subtask_failed", {
-                    "subtask_id": subtask.id,
-                    "error": str(e)
-                })
+            async for event in self.execute_subtask_streaming(subtask, task_input):
+                yield event
+            result = getattr(subtask, "_streaming_result", None)
+            # Only populate completed_outputs when subtask actually succeeded
+            (result and result.content) and completed_outputs.__setitem__(subtask.id, result.content)
 
 
 # =============================================================================

@@ -18,7 +18,7 @@ import { VideoTaskCard } from './VideoTaskCard';
 import { MusicTaskCard } from './MusicTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
 import { CompactionNotice } from './CompactionNotice';
-import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment } from '@/store/useAIAssistantStore';
+import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment, HarnessEvent } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
 // Video marker parsing
@@ -229,6 +229,58 @@ interface ChatMessageProps {
   isLoading?: boolean;
   isLast?: boolean;
   className?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Harness 事件映射表 + 展示组件
+// ---------------------------------------------------------------------------
+
+const HARNESS_EVENT_CONFIG: Record<HarnessEvent['type'], {
+  label: string;
+  color: string;
+  bgColor: string;
+  icon: string;
+}> = {
+  llm_retry:             { label: 'LLM 重试中',         color: 'text-amber-600 dark:text-amber-400',  bgColor: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800', icon: '⟳' },
+  llm_circuit_breaker:   { label: 'LLM 调用熔断',       color: 'text-red-600 dark:text-red-400',      bgColor: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800',       icon: '⚡' },
+  tool_circuit_breaker:  { label: '工具调用熔断',        color: 'text-red-600 dark:text-red-400',      bgColor: 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800',       icon: '⚡' },
+  subtask_retry:         { label: '子任务重试中',        color: 'text-blue-600 dark:text-blue-400',    bgColor: 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800',   icon: '↻' },
+};
+
+function HarnessEventBanner({ events }: { events: HarnessEvent[] }) {
+  const latestByType = useMemo(() => {
+    const map = new Map<string, HarnessEvent>();
+    events.forEach(e => map.set(e.type, e));
+    return Array.from(map.values());
+  }, [events]);
+
+  return (
+    <div className="space-y-1 my-1.5">
+      {latestByType.map((evt) => {
+        const cfg = HARNESS_EVENT_CONFIG[evt.type];
+        const detail = evt.attempt && evt.maxRetries
+          ? `(${evt.attempt}/${evt.maxRetries})`
+          : '';
+        return (
+          <div
+            key={evt.type}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-medium',
+              cfg.bgColor, cfg.color,
+            )}
+          >
+            <span>{cfg.icon}</span>
+            <span>{cfg.label} {detail}</span>
+            {evt.error && (
+              <span className="ml-1 opacity-70 font-normal truncate max-w-[200px]" title={evt.error}>
+                — {evt.error}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // 浮动跳跃的三点加载动画（用于初始加载）
@@ -517,6 +569,11 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                   {allMusicCards.map((card) => (
                     <MusicTaskCard key={card.taskId} task={card} />
                   ))}
+
+                  {/* Harness 事件横幅（LLM重试、熔断等） */}
+                  {message.harness_events && message.harness_events.length > 0 && (
+                    <HarnessEventBanner events={message.harness_events} />
+                  )}
 
                   {/* 技能/工具调用连续式面板 */}
                   {((message.skill_calls && message.skill_calls.length > 0) ||

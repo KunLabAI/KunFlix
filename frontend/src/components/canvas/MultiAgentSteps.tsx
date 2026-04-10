@@ -1,17 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Bot, CheckCircle2, Circle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Bot, CheckCircle2, Circle, XCircle, Loader2, RefreshCw, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface AgentStep {
   subtask_id: string;
   agent_name: string;
   description: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'retrying';
   result?: string;
   error?: string;
   tokens?: { input: number; output: number };
+  // Harness: 重试/熔断信息
+  retryCount?: number;
+  maxRetries?: number;
+  circuitBreaker?: boolean;
 }
 
 export interface MultiAgentData {
@@ -37,18 +41,15 @@ export default function MultiAgentSteps({ steps, finalResult, totalTokens, credi
     });
   };
 
-  const getStatusIcon = (status: AgentStep['status']) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      case 'running':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
-      default:
-        return <Circle className="h-4 w-4 text-muted-foreground" />;
-    }
+  const STATUS_ICON_MAP: Record<AgentStep['status'], React.ReactNode> = {
+    completed: <CheckCircle2 className="h-4 w-4 text-green-500" />,
+    failed:    <XCircle className="h-4 w-4 text-red-500" />,
+    running:   <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />,
+    retrying:  <RefreshCw className="h-4 w-4 text-amber-500 animate-spin" />,
+    pending:   <Circle className="h-4 w-4 text-muted-foreground" />,
   };
+
+  const getStatusIcon = (status: AgentStep['status']) => STATUS_ICON_MAP[status] ?? STATUS_ICON_MAP.pending;
 
   const completedCount = steps.filter(s => s.status === 'completed').length;
   const isAllCompleted = completedCount === steps.length && steps.length > 0;
@@ -81,6 +82,18 @@ export default function MultiAgentSteps({ steps, finalResult, totalTokens, credi
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium">{step.agent_name}</span>
                     <span className="text-xs text-muted-foreground">步骤 {index + 1}</span>
+                    {/* Harness: 重试计数标签 */}
+                    {step.retryCount != null && step.retryCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-medium">
+                        重试 {step.retryCount}/{step.maxRetries ?? '?'}
+                      </span>
+                    )}
+                    {/* Harness: 熔断标记 */}
+                    {step.circuitBreaker && (
+                      <span className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-medium">
+                        <Zap className="h-3 w-3" /> 熔断
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate">{step.description}</p>
                 </div>

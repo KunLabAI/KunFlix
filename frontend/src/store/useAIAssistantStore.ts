@@ -23,10 +23,14 @@ export interface AgentStep {
   subtask_id: string;
   agent_name: string;
   description: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'retrying';
   result?: string;
   error?: string;
   tokens?: { input: number; output: number };
+  // Harness: 重试/熔断信息
+  retryCount?: number;
+  maxRetries?: number;
+  circuitBreaker?: boolean;
 }
 
 // 多智能体数据
@@ -67,6 +71,17 @@ export interface Message {
   isWelcome?: boolean;
   // 上下文压缩摘要
   compaction_summary?: string;
+  // Harness: LLM 重试/熔断事件
+  harness_events?: HarnessEvent[];
+}
+
+// Harness 事件（LLM 重试、熔断等）
+export interface HarnessEvent {
+  type: 'llm_retry' | 'llm_circuit_breaker' | 'tool_circuit_breaker' | 'subtask_retry';
+  attempt?: number;
+  maxRetries?: number;
+  error?: string;
+  round?: number;
 }
 
 export interface AgentInfo {

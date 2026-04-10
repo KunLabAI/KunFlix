@@ -6,7 +6,6 @@ import {
   Send,
   Loader2,
   ChevronDown,
-  Plus,
   X,
   FileText,
   ImageIcon,
@@ -21,6 +20,7 @@ import {
   Clapperboard,
   Paperclip,
   Square,
+  Toolbox
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -659,7 +659,7 @@ export function MessageInput({
                     disabled={isDisabled || availableNodes.length === 0}
                     title={t('ai.addNode')}
                   >
-                    <Plus className="h-4 w-4" />
+                    <Paperclip className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64 max-h-72 overflow-y-auto">

@@ -604,54 +604,60 @@ function InfiniteCanvas() {
       setIsDraggingFile(false);
       setDragFileType(null);
 
-      // Handle external file drop
-      const files = event.dataTransfer.files;
-      if (files.length > 0) {
-        const position = screenToFlowPosition({
-          x: event.clientX,
-          y: event.clientY,
-        });
-        
-        // 按类型分组并限制批量数量（映射表模式）
-        const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20 };
-        const TYPE_NAMES: Record<string, string> = {
-          video: t('canvas.fileNames.video'),
-          image: t('canvas.fileNames.image'),
-          audio: t('canvas.fileNames.audio'),
-          text: t('canvas.fileNames.text'),
-        };
-        const grouped: Record<string, File[]> = {};
-        Array.from(files).forEach((file) => {
-          const fType = getFileType(file) ?? 'unknown';
-          (grouped[fType] = grouped[fType] || []).push(file);
-        });
+      // 优先检查内部拖拽（从侧边栏/资产库），避免浏览器原生 img 拖拽导致 files 干扰
+      const type = event.dataTransfer.getData('application/reactflow');
+      if (type) {
+        // 内部拖拽路径，直接创建节点，不走文件上传
+      } else {
+        // Handle external file drop
+        const files = event.dataTransfer.files;
+        if (files.length > 0) {
+          const position = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          
+          // 按类型分组并限制批量数量（映射表模式）
+          const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20 };
+          const TYPE_NAMES: Record<string, string> = {
+            video: t('canvas.fileNames.video'),
+            image: t('canvas.fileNames.image'),
+            audio: t('canvas.fileNames.audio'),
+            text: t('canvas.fileNames.text'),
+          };
+          const grouped: Record<string, File[]> = {};
+          Array.from(files).forEach((file) => {
+            const fType = getFileType(file) ?? 'unknown';
+            (grouped[fType] = grouped[fType] || []).push(file);
+          });
 
-        const allowed: File[] = [];
-        const rejected: string[] = [];
-        Object.entries(grouped).forEach(([type, list]) => {
-          const limit = BATCH_LIMITS[type] ?? 20;
-          allowed.push(...list.slice(0, limit));
-          list.length > limit && rejected.push(
-            t('canvas.batchLimit', { type: TYPE_NAMES[type] ?? t('canvas.fileNames.default'), limit, skipped: list.length - limit })
-          );
-        });
-        rejected.length > 0 && alert(rejected.join('\n'));
+          const allowed: File[] = [];
+          const rejected: string[] = [];
+          Object.entries(grouped).forEach(([fType, list]) => {
+            const limit = BATCH_LIMITS[fType] ?? 20;
+            allowed.push(...list.slice(0, limit));
+            list.length > limit && rejected.push(
+              t('canvas.batchLimit', { type: TYPE_NAMES[fType] ?? t('canvas.fileNames.default'), limit, skipped: list.length - limit })
+            );
+          });
+          rejected.length > 0 && alert(rejected.join('\n'));
 
-        // 串行上传避免并发写入 SQLite 冲突
-        (async () => {
-          for (let i = 0; i < allowed.length; i++) {
-            const filePosition = {
-              x: position.x + i * 50,
-              y: position.y + i * 50,
-            };
-            await createNodeFromFile(allowed[i], filePosition);
-          }
-        })();
+          // 串行上传避免并发写入 SQLite 冲突
+          (async () => {
+            for (let i = 0; i < allowed.length; i++) {
+              const filePosition = {
+                x: position.x + i * 50,
+                y: position.y + i * 50,
+              };
+              await createNodeFromFile(allowed[i], filePosition);
+            }
+          })();
+          return;
+        }
         return;
       }
 
-      // Handle internal node drag (existing logic)
-      const type = event.dataTransfer.getData('application/reactflow');
+      // Handle internal node drag (from sidebar/asset library)
       const dataStr = event.dataTransfer.getData('application/reactflow-data');
       const dimensionsStr = event.dataTransfer.getData('application/reactflow-dimensions');
       
