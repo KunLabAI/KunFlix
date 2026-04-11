@@ -1,0 +1,27 @@
+{
+  "login": {
+    "title": "Admin Login",
+    "email": "Email",
+    "emailPlaceholder": "admin@example.com",
+    "emailRequired": "Please enter a valid email address",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "passwordRequired": "Please enter your password",
+    "rememberEmail": "Remember email",
+    "submit": "Sign In",
+    "submitting": "Signing in...",
+    "loginSuccess": "Login successful",
+    "welcomeBack": "Welcome back, {{name}}",
+    "loginFailed": "Login failed, please try again later",
+    "wrongCredentials": "Incorrect email or password",
+    "accountDisabled": "Account has been disabled, please contact the administrator",
+    "invalidParams": "Invalid request parameters, please check your input",
+    "serverError": "Server error, please try again later",
+    "networkError": "Network connection failed, please check your network",
+    "inputError": "Invalid input, please check",
+    "closeAlert": "Close alert",
+    "orContinueWith": "Or continue with",
+    "continueWithGoogle": "Continue with Google",
+    "continueWithGitHub": "Continue with GitHub"
+  }
+}
