@@ -24,7 +24,7 @@ export interface VirtualMessageListRef {
 const DEFAULT_ITEM_HEIGHT = 60;
 const OVERSCAN_DEFAULT = 5;
 // 判定"接近底部"的像素阈值
-const NEAR_BOTTOM_THRESHOLD = 20;
+const NEAR_BOTTOM_THRESHOLD = 30;
 // 流式滚动的轮询间隔（ms）
 const STREAM_SCROLL_INTERVAL = 120;
 
@@ -66,6 +66,7 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
     const scrollState = useRef({
       isAtBottom: true,
       userScrolledUp: false,
+      isProgrammaticScroll: false,
     });
 
     // 存储回调 ref，避免 effect 依赖变化
@@ -100,7 +101,10 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
 
     // 获取列表内部滚动元素
     const getListElement = useCallback((): HTMLElement | null => {
-      return containerRef.current?.querySelector('[role="grid"]') as HTMLElement | null;
+      // react-window 导出的 List 会暴露 outerRef
+      // 但是在类型定义里缺失了，我们通过它的 API `outerRef` 也可以。
+      // 最简单的方式：通过 listRef 的 element 属性
+      return containerRef.current?.firstElementChild as HTMLElement | null;
     }, []);
 
     // 检查当前是否在底部
@@ -124,11 +128,17 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
     // 滚动到指定行
     const scrollToRow = useCallback((index: number, behavior: ScrollBehavior = 'smooth') => {
       if (listRef.current && index >= 0 && index < messages.length) {
+        scrollState.current.isProgrammaticScroll = true;
         listRef.current.scrollToRow({
           index,
           align: 'start',
           behavior: behavior === 'smooth' ? 'smooth' : 'auto',
         });
+        
+        // 重置标志位
+        setTimeout(() => {
+          scrollState.current.isProgrammaticScroll = false;
+        }, 100);
       }
     }, [messages.length]);
 
@@ -136,11 +146,17 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
     const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
       if (messages.length > 0 && listRef.current) {
         scrollState.current.userScrolledUp = false;
+        scrollState.current.isProgrammaticScroll = true;
         listRef.current.scrollToRow({
           index: messages.length - 1,
           align: 'end',
           behavior: behavior === 'smooth' ? 'smooth' : 'auto',
         });
+
+        // 重置标志位
+        setTimeout(() => {
+          scrollState.current.isProgrammaticScroll = false;
+        }, 100);
       }
     }, [messages.length]);
 
@@ -166,41 +182,72 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
         const listElement = getListElement();
         if (!listElement) return;
 
+        let lastScrollTop = listElement.scrollTop;
+
         // 鼠标滚轮向上 → 用户主动上滑，标记脱离底部
         const handleWheel = (e: WheelEvent) => {
-          e.deltaY < 0 && (scrollState.current.userScrolledUp = true);
+          if (e.deltaY < 0) {
+            scrollState.current.userScrolledUp = true;
+            scrollState.current.isProgrammaticScroll = false; // 用户介入，打断程序滚动状态
+          }
         };
 
         // 触摸滑动检测
         let touchStartY = 0;
+        let isTouching = false;
         const handleTouchStart = (e: TouchEvent) => {
           touchStartY = e.touches[0]?.clientY ?? 0;
+          isTouching = true;
         };
         const handleTouchMove = (e: TouchEvent) => {
+          if (!isTouching) return;
           const currentY = e.touches[0]?.clientY ?? 0;
           // 手指下滑 = 内容上滚 = 用户看历史
-          (currentY - touchStartY > 10) && (scrollState.current.userScrolledUp = true);
+          if (currentY - touchStartY > 10) {
+            scrollState.current.userScrolledUp = true;
+            scrollState.current.isProgrammaticScroll = false; // 用户介入，打断程序滚动状态
+          }
+        };
+        const handleTouchEnd = () => {
+          isTouching = false;
         };
 
-        // scroll 事件：仅用于更新 isAtBottom UI 状态（回到底部按钮显示等）
-        // 不在此处重置 userScrolledUp，避免 react-window 内部布局调整
-        // 触发的程序化 scroll 事件被误判为"用户主动滚回底部"
-        // userScrolledUp 只能通过：1) 点击回到底部按钮 2) 发送新消息 来重置
+        // scroll 事件：检测用户滚动方向和底部状态
         const handleScroll = () => {
+          const el = getListElement();
+          if (!el) return;
+
+          const currentScrollTop = el.scrollTop;
+          const isScrollingUp = currentScrollTop < lastScrollTop;
+          lastScrollTop = currentScrollTop;
+
           const nearBottom = checkIsNearBottom();
           scrollState.current.isAtBottom = nearBottom;
           notifyAtBottom(nearBottom);
+
+          // 程序主动触发的滚动，不修改用户上滑状态
+          if (scrollState.current.isProgrammaticScroll) return;
+
+          // 如果用户滚动到了底部，恢复自动滚动
+          if (nearBottom) {
+            scrollState.current.userScrolledUp = false;
+          } else if (isScrollingUp) {
+            // 如果是向上滚动且脱离了底部，标记为用户主动上滑
+            scrollState.current.userScrolledUp = true;
+          }
         };
 
         listElement.addEventListener('wheel', handleWheel, { passive: true });
         listElement.addEventListener('touchstart', handleTouchStart, { passive: true });
         listElement.addEventListener('touchmove', handleTouchMove, { passive: true });
+        listElement.addEventListener('touchend', handleTouchEnd, { passive: true });
         listElement.addEventListener('scroll', handleScroll, { passive: true });
 
         cleanupFns = [
           () => listElement.removeEventListener('wheel', handleWheel),
           () => listElement.removeEventListener('touchstart', handleTouchStart),
           () => listElement.removeEventListener('touchmove', handleTouchMove),
+          () => listElement.removeEventListener('touchend', handleTouchEnd),
           () => listElement.removeEventListener('scroll', handleScroll),
         ];
       };
@@ -267,11 +314,17 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
         
         // 流式期间始终尝试滚动到底部
         if (messages.length > 0 && listRef.current) {
+          scrollState.current.isProgrammaticScroll = true;
           listRef.current.scrollToRow({
             index: messages.length - 1,
             align: 'end',
             behavior: 'auto',
           });
+
+          // 重置标志位
+          setTimeout(() => {
+            scrollState.current.isProgrammaticScroll = false;
+          }, 100);
         }
       }, STREAM_SCROLL_INTERVAL);
 
