@@ -2,16 +2,28 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow, NodeResizer } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Clapperboard, Trash2, Copy } from 'lucide-react';
+import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X } from 'lucide-react';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+
+/** Ensure media URL has /api/media/ prefix */
+const normalizeMediaUrl = (url: string | null | undefined): string | null => {
+  const u = url?.toString().trim();
+  return !u ? null
+    : (u.startsWith('http') || u.startsWith('/api/media/') || u.startsWith('data:') || u.startsWith('blob:'))
+      ? u : `/api/media/${u}`;
+};
+
+type ColType = 'text' | 'number' | 'image' | 'video' | 'audio';
+const MEDIA_TYPES = new Set<ColType>(['image', 'video', 'audio']);
 
 const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeData>>) => {
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
   const [isEditing, setIsEditing] = useState(false);
+  const [previewMedia, setPreviewMedia] = useState<{ type: ColType; url: string } | null>(null);
   const { getNode } = useReactFlow();
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -40,16 +52,16 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
     }
   };
 
-  // Extract table data
+  // Extract table data (preserve column type for media rendering)
   const tableInfo = useMemo(() => {
     const td = data.tableData;
     const tc = data.tableColumns;
     const hasTableData = Array.isArray(td) && td.length > 0;
     const hasTableCols = Array.isArray(tc) && tc.length > 0;
-    const columns: { key: string; label: string }[] = hasTableCols
-      ? tc.map((c: any) => ({ key: c.key, label: c.label || c.key }))
+    const columns: { key: string; label: string; type: ColType }[] = hasTableCols
+      ? tc.map((c: any) => ({ key: c.key, label: c.label || c.key, type: (c.type as ColType) || 'text' }))
       : hasTableData
-        ? Object.keys(td[0]).filter(k => k !== 'key').map(k => ({ key: k, label: k }))
+        ? Object.keys(td[0]).filter(k => k !== 'key').map(k => ({ key: k, label: k, type: 'text' as ColType }))
         : [];
     return { columns, rows: hasTableData ? td : [], total: hasTableData ? td.length : 0 };
   }, [data.tableData, data.tableColumns]);
@@ -127,8 +139,13 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                     <thead>
                       <tr className="bg-muted/60 border-b border-border sticky top-0 z-[1]">
                         {tableInfo.columns.map(col => (
-                          <th key={col.key} className="px-3 py-2 text-left font-medium text-muted-foreground max-w-[180px] bg-muted/60">
-                            {col.label}
+                          <th key={col.key} className={`px-3 py-2 text-left font-medium text-muted-foreground bg-muted/60 ${MEDIA_TYPES.has(col.type) ? 'w-[120px] min-w-[120px]' : 'max-w-[180px]'}`}>
+                            <span className="flex items-center gap-1">
+                              {col.type === 'image' && <Image className="w-3 h-3 shrink-0" />}
+                              {col.type === 'video' && <Film className="w-3 h-3 shrink-0" />}
+                              {col.type === 'audio' && <Music className="w-3 h-3 shrink-0" />}
+                              <span className="truncate">{col.label}</span>
+                            </span>
                           </th>
                         ))}
                       </tr>
@@ -136,17 +153,79 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                     <tbody>
                       {tableInfo.rows.map((row: any, i: number) => (
                         <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/20">
-                          {tableInfo.columns.map(col => (
-                            <td
-                              key={col.key}
-                              className={`px-3 py-1.5 max-w-[180px] text-foreground/80 ${isEditing ? 'cursor-text' : 'cursor-default select-none'}`}
-                              contentEditable={isEditing}
-                              suppressContentEditableWarning
-                              onBlur={(e) => handleCellBlur(i, col.key, e.currentTarget.textContent || '')}
-                            >
-                              {row[col.key] != null ? String(row[col.key]) : ''}
-                            </td>
-                          ))}
+                          {tableInfo.columns.map(col => {
+                            const isMedia = MEDIA_TYPES.has(col.type);
+                            const rawValue = row[col.key];
+                            const mediaUrl = isMedia ? normalizeMediaUrl(rawValue as string) : null;
+
+                            // --- Media cell: image ---
+                            return col.type === 'image' ? (
+                              <td key={col.key} className="px-2 py-1.5 w-[120px] min-w-[120px]">
+                                {mediaUrl ? (
+                                  <button
+                                    className="block w-32 h-32 rounded-md overflow-hidden border border-border/40 bg-muted/30 cursor-pointer hover:ring-2 hover:ring-primary/40 hover:shadow-md transition-all"
+                                    onClick={() => setPreviewMedia({ type: 'image', url: mediaUrl })}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                  >
+                                    <img src={mediaUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
+                                  </button>
+                                ) : (
+                                  <div className="w-32 h-16 rounded-md border border-dashed border-border/40 bg-muted/20 flex items-center justify-center">
+                                    <Image className="w-5 h-5 text-muted-foreground/30" />
+                                  </div>
+                                )}
+                              </td>
+                            ) : col.type === 'video' ? (
+                              <td key={col.key} className="px-2 py-1.5 w-[120px] min-w-[120px]">
+                                {mediaUrl ? (
+                                  <button
+                                    className="relative block w-32 h-32 rounded-md overflow-hidden border border-border/40 bg-black cursor-pointer hover:ring-2 hover:ring-primary/40 hover:shadow-md transition-all group/vid"
+                                    onClick={() => setPreviewMedia({ type: 'video', url: mediaUrl })}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                  >
+                                    <video src={mediaUrl} className="w-full h-full object-cover" muted preload="metadata" />
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/vid:bg-black/15 transition-colors">
+                                      <Play className="w-5 h-5 text-white/90 fill-white/90" />
+                                    </div>
+                                  </button>
+                                ) : (
+                                  <div className="w-32 h-32 rounded-md border border-dashed border-border/40 bg-muted/20 flex items-center justify-center">
+                                    <Film className="w-5 h-5 text-muted-foreground/30" />
+                                  </div>
+                                )}
+                              </td>
+                            ) : col.type === 'audio' ? (
+                              <td key={col.key} className="px-2 py-1.5 w-[120px] min-w-[120px]">
+                                {mediaUrl ? (
+                                  <button
+                                    className="flex items-center gap-2 w-32 h-32 rounded-md border border-border/40 bg-amber-500/5 cursor-pointer hover:ring-2 hover:ring-primary/40 hover:shadow-md transition-all px-2"
+                                    onClick={() => setPreviewMedia({ type: 'audio', url: mediaUrl })}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                                      <Play className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground leading-tight truncate">播放</span>
+                                  </button>
+                                ) : (
+                                  <div className="w-24 h-16 rounded-md border border-dashed border-border/40 bg-muted/20 flex items-center justify-center">
+                                    <Music className="w-5 h-5 text-muted-foreground/30" />
+                                  </div>
+                                )}
+                              </td>
+                            ) : (
+                              /* --- Text / Number cell --- */
+                              <td
+                                key={col.key}
+                                className={`px-3 py-1.5 max-w-[180px] text-foreground/80 ${isEditing ? 'cursor-text' : 'cursor-default select-none'}`}
+                                contentEditable={isEditing}
+                                suppressContentEditableWarning
+                                onBlur={(e) => handleCellBlur(i, col.key, e.currentTarget.textContent || '')}
+                              >
+                                {rawValue != null ? String(rawValue) : ''}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
@@ -160,6 +239,44 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
               )}
           </CardContent>
         </Card>
+
+        {/* 媒体全屏预览弹窗 */}
+        {previewMedia && (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm nodrag"
+            onClick={() => setPreviewMedia(null)}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer z-10"
+              onClick={() => setPreviewMedia(null)}
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="max-w-[85vw] max-h-[85vh] flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              {previewMedia.type === 'image' && (
+                <img src={previewMedia.url} alt="" className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" />
+              )}
+              {previewMedia.type === 'video' && (
+                <video src={previewMedia.url} controls autoPlay className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+              )}
+              {previewMedia.type === 'audio' && (
+                <div className="flex flex-col items-center gap-6 p-10 rounded-2xl bg-card/95 shadow-2xl border border-border/30">
+                  <div className="w-20 h-20 rounded-full bg-amber-500/15 flex items-center justify-center">
+                    <Music className="w-10 h-10 text-amber-500" />
+                  </div>
+                  <audio
+                    src={previewMedia.url}
+                    controls
+                    autoPlay
+                    className="w-80 nodrag"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 工具条 */}
         <NodeToolbar

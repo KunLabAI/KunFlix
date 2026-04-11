@@ -48,7 +48,7 @@ export type StoryboardNodeData = {
   pivotConfig?: any; // From PivotConfig in types.ts
   pivotData?: any; // Cached or computed data
   tableData?: Record<string, unknown>[]; // Raw table rows provided by Agent
-  tableColumns?: { key: string; label: string; type?: string }[]; // Column definitions from Agent
+  tableColumns?: { key: string; label: string; type?: 'text' | 'number' | 'image' | 'video' | 'audio' }[]; // Column definitions from Agent
 };
 
 export type VideoNodeData = {
@@ -67,7 +67,12 @@ export type AudioNodeData = {
   lyrics?: string;
 };
 
-export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>;
+export type GhostNodeData = {
+  targetNodeType: string;  // The node type being created (text/image/video/audio/storyboard)
+  label?: string;
+};
+
+export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | GhostNodeData>;
 
 interface HistoryState {
   nodes: CanvasNode[];
@@ -122,6 +127,10 @@ interface CanvasState {
   snapToGuides: boolean;
   setSnapToGrid: (snap: boolean) => void;
   setSnapToGuides: (snap: boolean) => void;
+
+  // Ghost nodes (AI creating animation)
+  addGhostNode: (nodeType: string, positionX?: number, positionY?: number) => void;
+  removeGhostNodes: () => void;
 }
 
 const MAX_HISTORY = 50;
@@ -477,8 +486,10 @@ export const useCanvasStore = create<CanvasState>()(
           }
 
           if (nodesChanged || edgesChanged) {
+            // Remove ghost nodes when real nodes arrive from backend
+            const finalNodes = nodesChanged ? mergedNodes.filter((n) => n.type !== 'ghost') : undefined;
             set({
-              ...(nodesChanged ? { nodes: mergedNodes } : {}),
+              ...(nodesChanged ? { nodes: finalNodes! } : {}),
               ...(edgesChanged ? { edges: mergedEdges } : {}),
               // We intentionally do NOT overwrite viewport to preserve user zoom/scroll
             });
@@ -500,7 +511,7 @@ export const useCanvasStore = create<CanvasState>()(
           await theaterApi.updateTheater(theaterId, { title: theaterTitle });
 
           const detail = await theaterApi.saveCanvas(theaterId, {
-            nodes: nodes.map(nodeToApi),
+            nodes: nodes.filter((n) => n.type !== 'ghost').map(nodeToApi),
             edges: edges.map(edgeToApi),
             canvas_viewport: viewport as Record<string, number>,
           });
@@ -521,6 +532,50 @@ export const useCanvasStore = create<CanvasState>()(
 
       markDirty: () => {
         set({ isDirty: true });
+      },
+
+      // Ghost node default dimensions by target type
+      addGhostNode: (nodeType: string, positionX?: number, positionY?: number) => {
+        const GHOST_DIMENSIONS: Record<string, { width: number; height: number }> = {
+          text: { width: 400, height: 300 },
+          image: { width: 512, height: 384 },
+          video: { width: 512, height: 384 },
+          audio: { width: 360, height: 200 },
+          storyboard: { width: 398, height: 256 },
+        };
+        const dims = GHOST_DIMENSIONS[nodeType] || { width: 420, height: 300 };
+
+        // Estimate position: replicate backend _calculate_auto_position logic
+        // when agent doesn't provide explicit coordinates
+        let finalX = positionX;
+        let finalY = positionY;
+        const needsAutoPosition = finalX == null || finalY == null;
+        const { nodes } = get();
+        const realNodes = nodes.filter((n) => n.type !== 'ghost');
+        const AUTO_X_OFFSET = 460;
+        const maxX = realNodes.reduce((max, n) => Math.max(max, n.position.x), -Infinity);
+        const autoX = realNodes.length > 0 ? maxX + AUTO_X_OFFSET : 100;
+        finalX = finalX ?? autoX;
+        finalY = finalY ?? (needsAutoPosition ? 100 : 100);
+
+        const ghostId = `ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const ghostNode: CanvasNode = {
+          id: ghostId,
+          type: 'ghost',
+          position: { x: finalX, y: finalY },
+          width: dims.width,
+          height: dims.height,
+          selectable: false,
+          draggable: false,
+          data: { targetNodeType: nodeType } as GhostNodeData,
+        };
+        set({ nodes: [...nodes, ghostNode] });
+      },
+
+      removeGhostNodes: () => {
+        const { nodes } = get();
+        const filtered = nodes.filter((n) => n.type !== 'ghost');
+        (filtered.length !== nodes.length) && set({ nodes: filtered });
       },
     }),
     {

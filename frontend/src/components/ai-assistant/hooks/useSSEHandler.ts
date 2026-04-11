@@ -150,6 +150,15 @@ export function useSSEHandler() {
         const args = (data as { arguments?: Record<string, unknown> })?.arguments;
         state.toolCalls.push({ tool_name: toolName, arguments: args, status: 'executing' });
         state.roundHasTools = true;
+
+        // Ghost node: show skeleton placeholder when agent creates a canvas node
+        const canvasStore = useCanvasStore.getState();
+        (toolName === 'create_canvas_node' && args) && canvasStore.addGhostNode(
+          (args.node_type as string) || 'text',
+          args.position_x as number | undefined,
+          args.position_y as number | undefined,
+        );
+
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'ai' && last?.status === 'streaming') {
