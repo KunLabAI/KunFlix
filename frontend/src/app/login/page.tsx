@@ -12,88 +12,52 @@ import api from "@/lib/api";
 import { App } from "antd";
 import { cn } from "@/lib/utils";
 
-// 影视作品卡片数据 - 4列不同的图片集
-const FILM_COLUMNS = [
-  [
-    { title: "Breaking Bad", img: "https://images.unsplash.com/photo-1504639725590-34d0984388bd?w=280&h=380&fit=crop" },
-    { title: "Stranger Things", img: "https://images.unsplash.com/photo-1509281373149-e957c6296406?w=280&h=380&fit=crop" },
-    { title: "The Crown", img: "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=280&h=380&fit=crop" },
-    { title: "Dark", img: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?w=280&h=380&fit=crop" },
-    { title: "Westworld", img: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=280&h=380&fit=crop" },
-    { title: "Dune", img: "https://images.unsplash.com/photo-1509023464722-18d996393ca8?w=280&h=380&fit=crop" },
-    { title: "Interstellar", img: "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=280&h=380&fit=crop" },
-    { title: "Blade Runner", img: "https://images.unsplash.com/photo-1543722530-d2c3201371e7?w=280&h=380&fit=crop" },
-  ],
-  [
-    { title: "Game of Thrones", img: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=280&h=380&fit=crop" },
-    { title: "The Witcher", img: "https://images.unsplash.com/photo-1500964757637-c85e8a162699?w=280&h=380&fit=crop" },
-    { title: "Vikings", img: "https://images.unsplash.com/photo-1500252185289-40ca85eb23a7?w=280&h=380&fit=crop" },
-    { title: "Peaky Blinders", img: "https://images.unsplash.com/photo-1494972308805-463bc619d34e?w=280&h=380&fit=crop" },
-    { title: "The Mandalorian", img: "https://images.unsplash.com/photo-1534996858221-380b92700493?w=280&h=380&fit=crop" },
-    { title: "Arrival", img: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=280&h=380&fit=crop" },
-    { title: "Avatar", img: "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=280&h=380&fit=crop" },
-    { title: "The Matrix", img: "https://images.unsplash.com/photo-1464802686167-b939a6910659?w=280&h=380&fit=crop" },
-  ],
-  [
-    { title: "Black Mirror", img: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=280&h=380&fit=crop" },
-    { title: "Chernobyl", img: "https://images.unsplash.com/photo-1504192010706-dd7f569ee2be?w=280&h=380&fit=crop" },
-    { title: "The Expanse", img: "https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=280&h=380&fit=crop" },
-    { title: "Altered Carbon", img: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=280&h=380&fit=crop" },
-    { title: "Foundation", img: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=280&h=380&fit=crop" },
-    { title: "Cosmos", img: "https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?w=280&h=380&fit=crop" },
-    { title: "Gravity", img: "https://images.unsplash.com/photo-1465101162946-4377e57745c3?w=280&h=380&fit=crop" },
-    { title: "Moon", img: "https://images.unsplash.com/photo-1522030299830-16b8d3d049fe?w=280&h=380&fit=crop" },
-  ],
-  [
-    { title: "True Detective", img: "https://images.unsplash.com/photo-1509023464722-18d996393ca8?w=280&h=380&fit=crop" },
-    { title: "Severance", img: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=280&h=380&fit=crop" },
-    { title: "Mindhunter", img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=280&h=380&fit=crop" },
-    { title: "The Last of Us", img: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=280&h=380&fit=crop" },
-    { title: "Succession", img: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=280&h=380&fit=crop" },
-    { title: "Nebula", img: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=280&h=380&fit=crop" },
-    { title: "Eclipse", img: "https://images.unsplash.com/photo-1502134249126-9f3755a50d78?w=280&h=380&fit=crop" },
-    { title: "Mars", img: "https://images.unsplash.com/photo-1614728263952-84ea256f9679?w=280&h=380&fit=crop" },
-  ],
-  [
-    { title: "Ozark", img: "https://images.unsplash.com/photo-1473580044384-7ba9967e16a0?w=280&h=380&fit=crop" },
-    { title: "Mr. Robot", img: "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=280&h=380&fit=crop" },
-    { title: "Fargo", img: "https://images.unsplash.com/photo-1491002052546-bf38f186af56?w=280&h=380&fit=crop" },
-    { title: "Better Call Saul", img: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=280&h=380&fit=crop" },
-    { title: "The Boys", img: "https://images.unsplash.com/photo-1535016120720-40c646be5580?w=280&h=380&fit=crop" },
-    { title: "Solaris", img: "https://images.unsplash.com/photo-1454789548928-9efd52dc4031?w=280&h=380&fit=crop" },
-    { title: "Horizon", img: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=280&h=380&fit=crop" },
-    { title: "Aurora", img: "https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=280&h=380&fit=crop" },
-  ],
-  [
-    { title: "House of Cards", img: "https://images.unsplash.com/photo-1501466044931-62695aada8e9?w=280&h=380&fit=crop" },
-    { title: "Narcos", img: "https://images.unsplash.com/photo-1518173946687-a1e0e2e3e14c?w=280&h=380&fit=crop" },
-    { title: "Sherlock", img: "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=280&h=380&fit=crop" },
-    { title: "The Haunting", img: "https://images.unsplash.com/photo-1510070112808-e47d3005c0c9?w=280&h=380&fit=crop" },
-    { title: "Euphoria", img: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=280&h=380&fit=crop" },
-    { title: "Void", img: "https://images.unsplash.com/photo-1475274047050-1d0c55b7b10f?w=280&h=380&fit=crop" },
-    { title: "Signal", img: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=280&h=380&fit=crop" },
-    { title: "Spectrum", img: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=280&h=380&fit=crop" },
-  ],
+// 本地素材图片
+const EFFECT_IMAGES = [
+  "/effect/023576f6-ce4d-4e16-ae0f-22ce69ac363e.png",
+  "/effect/0d563961-5ad4-4d26-8d21-7b0152302e46.jpg",
+  "/effect/1619b2eb-11a6-4302-9b0a-c4ee79283af6.jpg",
+  "/effect/18c5dedb-6fe7-4708-b864-afab675ca140.png",
+  "/effect/2d25e12c-adff-476d-8eaa-6a0cc73371f3.jpg",
+  "/effect/30a18532-606d-4f5f-841a-9a071a3d465e.png",
+  "/effect/5d13bdc6-329f-4475-92a6-bbc8703f4034.png",
+  "/effect/697b54f4-0941-43d6-8577-06442d49cd4d.png",
+  "/effect/79a6397c-83cc-419e-b42e-431d0db6b773.png",
+  "/effect/7a628fe3-6633-4f87-9c50-a91b14402c8e.png",
+  "/effect/a422bcd0-20ed-4496-b909-2e5b081e61e7.jpg",
+  "/effect/c70ea786-873a-484e-a4e3-597f00985821.jpg",
+  "/effect/c86b0964-cb67-4402-b227-5b53305c2bc2.png",
+  "/effect/ee13c0e5-e668-492b-9334-dcf861cb7dab.jpg",
+  "/effect/f3d7d5f9-0f21-460a-9e3b-c1465495ae90.jpg",
+  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd2.png",
+  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd9.png",
 ];
 
-// 每行的动画配置：时长和方向（交错排列）
-const ROW_CONFIGS = [
-  { duration: 240, reverse: false },
-  { duration: 240, reverse: true },
-  { duration: 220, reverse: false },
-  { duration: 232, reverse: true },
-  { duration: 240, reverse: false },
-  { duration: 240, reverse: true },
+// 手动分配3行，每行8张，确保行间无重复、视觉均匀
+const FILM_COLUMNS = [
+  [0, 5, 10, 3, 14, 7, 12, 1],
+  [4, 11, 8, 16, 2, 13, 6, 9],
+  [15, 3, 9, 6, 11, 0, 14, 8],
+].map(row => row.map((idx, col) => ({
+  title: `Scene ${col + 1}`,
+  img: EFFECT_IMAGES[idx % EFFECT_IMAGES.length],
+})));
+
+// 3行配置：尺寸（small/large）+ 动画时长 + 方向
+const ROW_CONFIGS: { size: "small" | "large"; duration: number; reverse: boolean }[] = [
+  { size: "small", duration: 200, reverse: false },
+  { size: "large", duration: 240, reverse: true },
+  { size: "small", duration: 200, reverse: false },
 ];
 
 // 胶片齿孔组件
-function FilmPerforations({ side }: { side: 'top' | 'bottom' }) {
+function FilmPerforations({ side, count = 8 }: { side: 'top' | 'bottom'; count?: number }) {
   return (
     <div className={cn(
       "absolute left-0 right-0 flex justify-around px-4 z-10",
       side === 'top' ? 'top-[3px]' : 'bottom-[3px]',
     )}>
-      {Array.from({ length: 8 }, (_, i) => (
+      {Array.from({ length: count }, (_, i) => (
         <div
           key={i}
           className="w-[10px] h-[6px] rounded-[1px] bg-black/50 border border-white/5"
@@ -103,15 +67,21 @@ function FilmPerforations({ side }: { side: 'top' | 'bottom' }) {
   );
 }
 
-function FilmCard({ title, img }: { title: string; img: string }) {
+const CARD_SIZES = {
+  small: { width: 220, height: 150, perforations: 6 },
+  large: { width: 520, height: 320, perforations: 12 },
+} as const;
+
+function FilmCard({ title, img, size = "small" }: { title: string; img: string; size?: "small" | "large" }) {
+  const { width, height, perforations } = CARD_SIZES[size];
   return (
-    <div className="relative w-[260px] h-[180px] shrink-0">
+    <div className="relative shrink-0" style={{ width, height }}>
       {/* 胶片带外框 */}
       <div className="absolute inset-0 bg-zinc-900/90 border border-white/5" />
 
       {/* 上下齿孔 */}
-      <FilmPerforations side="top" />
-      <FilmPerforations side="bottom" />
+      <FilmPerforations side="top" count={perforations} />
+      <FilmPerforations side="bottom" count={perforations} />
 
       {/* 图片区域（上下留出胶片边框） */}
       <div className="absolute top-[12px] bottom-[12px] left-[6px] right-[6px] overflow-hidden">
@@ -132,14 +102,16 @@ function FilmCard({ title, img }: { title: string; img: string }) {
   );
 }
 
-function FilmStripRow({ cards, duration, reverse }: {
+function FilmStripRow({ cards, duration, reverse, size = "small" }: {
   cards: { title: string; img: string }[];
   duration: number;
   reverse: boolean;
+  size?: "small" | "large";
 }) {
   const repeatedCards = [...cards, ...cards, ...cards, ...cards, ...cards];
+  const rowHeight = CARD_SIZES[size].height;
   return (
-    <div className="relative w-full h-[180px] shrink-0 overflow-hidden">
+    <div className="relative w-full shrink-0 overflow-hidden" style={{ height: rowHeight }}>
       <div
         className="flex flex-row gap-0 w-max"
         style={{
@@ -148,7 +120,7 @@ function FilmStripRow({ cards, duration, reverse }: {
         }}
       >
         {repeatedCards.map((card, i) => (
-          <FilmCard key={`${card.title}-${i}`} {...card} />
+          <FilmCard key={`${card.title}-${i}`} {...card} size={size} />
         ))}
       </div>
     </div>
@@ -276,7 +248,7 @@ export default function LoginPage() {
       <div className="absolute inset-0 z-0 overflow-hidden">
         {/* Film strip rows with 45° diagonal scrolling */}
         <div
-          className="absolute flex flex-col justify-center gap-16"
+          className="absolute flex flex-col justify-center gap-20"
           style={{
             transform: 'rotate(-45deg)',
             transformOrigin: 'center center',
@@ -292,10 +264,14 @@ export default function LoginPage() {
               cards={cards}
               duration={ROW_CONFIGS[rowIdx].duration}
               reverse={ROW_CONFIGS[rowIdx].reverse}
+              size={ROW_CONFIGS[rowIdx].size}
             />
           ))}
         </div>
       </div>
+
+      {/* ===== Layer 1.5: Frosted Glass Overlay ===== */}
+      <div className="absolute inset-0 z-10 bg-background/50 backdrop-blur-[1px]" />
 
       {/* ===== Layer 2: Floating Form ===== */}
       <div className="relative z-30 flex items-center justify-center h-full p-4">
@@ -309,65 +285,78 @@ export default function LoginPage() {
           <div className="bg-card/80 backdrop-blur-2xl border border-border/50 rounded-2xl p-6 sm:p-8 shadow-2xl">
             {/* Header */}
             <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-foreground mb-2">
-                {mode === "login" ? "欢迎回来" : "创建账号"}
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                {mode === "login" ? "登录以继续您的创作之旅" : "开始您的无限创作之旅"}
-              </p>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={mode}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  <h2 className="text-2xl font-bold text-foreground mb-2">
+                    {mode === "login" ? "欢迎回来" : "创建账号"}
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    {mode === "login" ? "登录以继续您的创作之旅" : "开始您的无限创作之旅"}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
             </div>
 
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
-              <AnimatePresence>
-                {currentFields.map((field, index) => (
-                  <motion.div
-                    key={`${mode}-${field.name}`}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      {field.label}
-                    </label>
-                    <div className="relative">
-                      <field.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                      <input
-                        type={field.type === "password" && showPassword[field.name] ? "text" : field.type}
-                        value={formData[field.name] || ""}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
-                        placeholder={field.placeholder}
-                        className={cn(
-                          "w-full h-11 pl-10 pr-10 rounded-lg",
-                          "bg-secondary/50 border border-border",
-                          "text-foreground placeholder:text-muted-foreground",
-                          "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                          "transition-all duration-200",
-                          errors[field.name] && "border-destructive focus:border-destructive focus:ring-destructive/20"
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={mode}
+                  initial={{ opacity: 0, x: mode === "register" ? 24 : -24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: mode === "register" ? -24 : 24 }}
+                  transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                  className="space-y-5"
+                >
+                  {currentFields.map((field) => (
+                    <div key={field.name}>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        {field.label}
+                      </label>
+                      <div className="relative">
+                        <field.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                        <input
+                          type={field.type === "password" && showPassword[field.name] ? "text" : field.type}
+                          value={formData[field.name] || ""}
+                          onChange={(e) => handleInputChange(field.name, e.target.value)}
+                          placeholder={field.placeholder}
+                          className={cn(
+                            "w-full h-11 pl-10 pr-10 rounded-lg",
+                            "bg-secondary/50 border border-border",
+                            "text-foreground placeholder:text-muted-foreground",
+                            "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                            "transition-all duration-200",
+                            errors[field.name] && "border-destructive focus:border-destructive focus:ring-destructive/20"
+                          )}
+                        />
+                        {field.type === "password" && (
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(field.name)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {showPassword[field.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
                         )}
-                      />
-                      {field.type === "password" && (
-                        <button
-                          type="button"
-                          onClick={() => togglePasswordVisibility(field.name)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      </div>
+                      {errors[field.name] && (
+                        <motion.p
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs text-destructive mt-1.5"
                         >
-                          {showPassword[field.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                          {errors[field.name]}
+                        </motion.p>
                       )}
                     </div>
-                    {errors[field.name] && (
-                      <motion.p
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-xs text-destructive mt-1.5"
-                      >
-                        {errors[field.name]}
-                      </motion.p>
-                    )}
-                  </motion.div>
-                ))}
+                  ))}
+                </motion.div>
               </AnimatePresence>
 
               {/* Submit Button */}
