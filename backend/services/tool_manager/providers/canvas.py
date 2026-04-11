@@ -74,21 +74,31 @@ NODE_TYPE_INFO = {
         },
         "example": {"name": "开场动画", "description": "城市夜景转场", "videoUrl": "/media/xxx.mp4", "fitMode": "cover"}
     },
+    "audio": {
+        "description": "音频节点：用于背景音乐、音效、配音等音频内容。支持MP3/WAV/OGG格式。",
+        "fields": {
+            "name": "音频名称，字符串类型",
+            "description": "音频描述，字符串类型，包含风格、用途等信息",
+            "audioUrl": "音频URL地址，字符串类型，支持mp3/wav/ogg格式",
+            "lyrics": "歌词文本，字符串类型，可选"
+        },
+        "example": {"name": "背景音乐", "description": "城市夜景氛围音乐", "audioUrl": "/media/xxx.mp3"}
+    },
     "storyboard": {
-        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。支持自定义表格数据。",
+        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。支持自定义表格数据，支持在单元格内引用图片、视频、音频。",
         "fields": {
             "shotNumber": "镜头号，字符串类型，如'1-1', '2-3'",
             "description": "镜头描述，字符串类型，描述画面内容",
             "duration": "时长，整数类型，单位为秒",
-            "tableData": "表格数据行，数组类型，每个元素是一个对象代表一行数据。例如：[{\"scene\": \"城市夜景\", \"type\": \"全景\", \"duration\": 5}]",
-            "tableColumns": "表格列定义，数组类型，每个元素包含key(字段名)、label(显示名)、type(可选，text/number)。例如：[{\"key\": \"scene\", \"label\": \"场景\"}, {\"key\": \"type\", \"label\": \"类型\"}]"
+            "tableData": "表格数据行，数组类型，每个元素是一个对象代表一行数据。媒体列的值应为媒体URL路径（如'/api/media/xxx.jpg'）。例如：[{\"scene\": \"城市夜景\", \"type\": \"全景\", \"duration\": 5, \"ref_image\": \"/api/media/abc.jpg\"}]",
+            "tableColumns": "表格列定义，数组类型，每个元素包含key(字段名)、label(显示名)、type(列类型)。type支持: text(文本)、number(数字)、image(图片缩略图)、video(视频缩略图)、audio(音频播放器)。媒体类型列的值应为/api/media/路径或完整URL。例如：[{\"key\": \"scene\", \"label\": \"场景\", \"type\": \"text\"}, {\"key\": \"ref_image\", \"label\": \"参考图\", \"type\": \"image\"}]"
         },
         "example": {
             "shotNumber": "1-1",
             "description": "全景：城市夜景",
             "duration": 5,
-            "tableColumns": [{"key": "scene", "label": "场景", "type": "text"}, {"key": "type", "label": "镜头类型", "type": "text"}, {"key": "duration", "label": "时长", "type": "number"}],
-            "tableData": [{"scene": "城市夜景", "type": "全景", "duration": 5}, {"scene": "主角特写", "type": "近景", "duration": 3}]
+            "tableColumns": [{"key": "scene", "label": "场景", "type": "text"}, {"key": "type", "label": "镜头类型", "type": "text"}, {"key": "duration", "label": "时长", "type": "number"}, {"key": "ref_image", "label": "参考图", "type": "image"}],
+            "tableData": [{"scene": "城市夜景", "type": "全景", "duration": 5, "ref_image": "/api/media/example1.jpg"}, {"scene": "主角特写", "type": "近景", "duration": 3, "ref_image": "/api/media/example2.jpg"}]
         }
     }
 }
@@ -98,6 +108,7 @@ NODE_TYPE_SCHEMA = {
     "text":       {"title": str, "content": str, "tags": list},
     "image":      {"name": str, "description": str, "imageUrl": str, "fitMode": str},
     "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
+    "audio":      {"name": str, "description": str, "audioUrl": str, "lyrics": str},
     "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any, "tableData": Any, "tableColumns": Any},
 }
 
@@ -134,23 +145,19 @@ def _build_node_type_description() -> str:
 def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
     migrated_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
     type_enum = migrated_types or list(NODE_TYPE_SCHEMA.keys())
-    node_type_desc = _build_node_type_description()
 
     return [
         {
             "type": "function",
             "function": {
                 "name": "list_canvas_nodes",
-                "description": (
-                    "列出画布上的所有节点。可以按节点类型筛选。"
-                    "返回节点摘要，包含id、类型、位置和关键数据字段。"
-                ),
+                "description": "列出画布上的所有节点，返回节点摘要列表。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_type": {
                             "type": "string",
-                            "description": "按节点类型筛选，留空则列出所有可访问的节点。",
+                            "description": "按节点类型筛选，留空则列出全部。",
                             "enum": type_enum,
                         },
                     },
@@ -162,13 +169,13 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "get_canvas_node",
-                "description": "获取指定节点的完整详情。返回节点的所有数据字段。",
+                "description": "获取指定节点的完整详情。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "要获取的节点UUID。",
+                            "description": "节点UUID。",
                         },
                     },
                     "required": ["node_id"],
@@ -179,30 +186,26 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "create_canvas_node",
-                "description": (
-                    "在画布上创建新节点。指定节点类型和数据。"
-                    "位置可选，如未提供则自动放置在现有节点右侧。\n\n"
-                    f"{node_type_desc}"
-                ),
+                "description": "在画布上创建新节点。字段结构参见 Skill 文档中的节点类型说明。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_type": {
                             "type": "string",
-                            "description": "要创建的节点类型。",
+                            "description": "节点类型。",
                             "enum": type_enum,
                         },
                         "data": {
                             "type": "object",
-                            "description": "节点数据，根据节点类型提供相应字段。参考上方节点类型说明。",
+                            "description": "节点数据，按节点类型提供对应字段。",
                         },
                         "position_x": {
                             "type": "number",
-                            "description": "画布X坐标，可选。",
+                            "description": "X坐标，可选，省略则自动放置。",
                         },
                         "position_y": {
                             "type": "number",
-                            "description": "画布Y坐标，可选。",
+                            "description": "Y坐标，可选。",
                         },
                     },
                     "required": ["node_type", "data"],
@@ -213,20 +216,17 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "update_canvas_node",
-                "description": (
-                    "更新现有节点的数据。只需提供要修改的字段，会与现有数据合并。\n\n"
-                    f"{node_type_desc}"
-                ),
+                "description": "更新节点数据，只需提供要修改的字段（增量合并）。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "要更新的节点UUID。",
+                            "description": "节点UUID。",
                         },
                         "data": {
                             "type": "object",
-                            "description": "要更新的字段，会与现有数据合并。参考上方节点类型说明。",
+                            "description": "要更新的字段。",
                         },
                     },
                     "required": ["node_id", "data"],
@@ -237,13 +237,13 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "delete_canvas_node",
-                "description": "从画布上删除节点。同时会删除与该节点相连的所有连线。",
+                "description": "删除节点及其所有关联连线。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "node_id": {
                             "type": "string",
-                            "description": "要删除的节点UUID。",
+                            "description": "节点UUID。",
                         },
                     },
                     "required": ["node_id"],
@@ -254,7 +254,7 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "list_canvas_edges",
-                "description": "列出画布上所有节点间的连线。返回连线的源节点、目标节点、连接点位置等信息。",
+                "description": "列出画布上所有连线。",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -266,34 +266,30 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "create_canvas_edge",
-                "description": (
-                    "在两个节点之间创建连线。用于建立节点间的关联关系，如剧本与分镜的关联、"
-                    "角色与场景的关联等。每个节点有左右两个连接点：left-source/right-source（输出）"
-                    "和 left-target/right-target（输入）。建议从左节点的右连接点连到右节点的左连接点。"
-                ),
+                "description": "在两个节点之间创建连线。标准方向：source_handle='right-source', target_handle='left-target'。",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "source_node_id": {
                             "type": "string",
-                            "description": "源节点UUID（连线的起点）。",
+                            "description": "源节点UUID。",
                         },
                         "target_node_id": {
                             "type": "string",
-                            "description": "目标节点UUID（连线的终点）。",
+                            "description": "目标节点UUID。",
                         },
                         "source_handle": {
                             "type": "string",
-                            "description": "源节点的连接点位置。",
+                            "description": "源节点连接点。默认 'right-source'。",
                             "enum": ["left-source", "right-source"],
                         },
                         "target_handle": {
                             "type": "string",
-                            "description": "目标节点的连接点位置。",
+                            "description": "目标节点连接点。默认 'left-target'。",
                             "enum": ["left-target", "right-target"],
                         },
                     },
-                    "required": ["source_node_id", "target_node_id", "source_handle", "target_handle"],
+                    "required": ["source_node_id", "target_node_id"],
                 },
             },
         },
@@ -301,7 +297,7 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "delete_canvas_edge",
-                "description": "删除画布上两个节点之间的连线。",
+                "description": "删除两个节点之间的连线。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -339,6 +335,7 @@ def _node_summary(node: TheaterNode) -> dict:
         "text": ["title", "tags"],
         "image": ["name"],
         "video": ["name"],
+        "audio": ["name"],
         "storyboard": ["shotNumber", "description"],
     }
     key_fields = key_fields_map.get(node.node_type, [])

@@ -55,7 +55,26 @@ const config: Config = {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
-  		}
+  		},
+  		keyframes: {
+  			'ghost-shimmer': {
+  				'0%': { backgroundPosition: '200% 0' },
+  				'100%': { backgroundPosition: '-200% 0' },
+  			},
+  			'ghost-pulse': {
+  				'0%, 100%': { boxShadow: 'inset 0 0 0 1px hsl(var(--primary) / 0.1)' },
+  				'50%': { boxShadow: 'inset 0 0 0 2px hsl(var(--primary) / 0.3)' },
+  			},
+  			'ghost-dot': {
+  				'0%, 80%, 100%': { opacity: '0.3', transform: 'scale(0.8)' },
+  				'40%': { opacity: '1', transform: 'scale(1.2)' },
+  			},
+  		},
+  		animation: {
+  			'ghost-shimmer': 'ghost-shimmer 2s ease-in-out infinite',
+  			'ghost-pulse': 'ghost-pulse 2s ease-in-out infinite',
+  			'ghost-dot': 'ghost-dot 1s ease-in-out infinite',
+  		},
   	}
   },
   plugins: [require("tailwindcss-animate")],

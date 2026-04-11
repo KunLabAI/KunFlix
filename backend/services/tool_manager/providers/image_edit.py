@@ -388,14 +388,14 @@ async def _maybe_create_edit_node(
         )
         db.add(new_node)
 
-        # 创建连线：源节点 → 新节点（左侧输出 → 右侧输入）
+        # 创建连线：源节点右侧输出 → 新节点左侧输入
         edge = TheaterEdge(
             id=generate_uuid(),
             theater_id=theater_id,
             source_node_id=source.id,
             target_node_id=new_node.id,
-            source_handle="left-source",
-            target_handle="right-target",
+            source_handle="right-source",
+            target_handle="left-target",
             edge_type="custom",
             animated=True,
             style={},
