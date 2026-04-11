@@ -79,10 +79,16 @@ export default function PromptTemplatesPage() {
       toast({ title: '模板删除成功' });
       mutate();
     } catch (err: any) {
+      const detail = err.response?.data?.detail;
+      const message = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((e: any) => e.msg).join('; ')
+          : '未知错误';
       toast({
         variant: 'destructive',
         title: '删除失败',
-        description: err.response?.data?.detail || '未知错误',
+        description: message,
       });
     }
   };

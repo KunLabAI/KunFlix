@@ -39,9 +39,12 @@ async def generate_multi_agent(
     logger.info(f"Task: {content}")
     logger.info(f"{'='*60}\n")
 
-    # Task analysis: classify simple vs complex
+    # Fetch conversation history for task analysis context
+    history_messages = await _fetch_history_messages(db, session_id)
+
+    # Task analysis: classify simple vs complex (with history for context)
     orchestrator = DynamicOrchestrator(db)
-    analysis = await orchestrator.analyze_task(agent.id, content)
+    analysis = await orchestrator.analyze_task(agent.id, content, history_messages=history_messages)
     logger.info(f"[Multi-Agent] Task analysis: is_simple={analysis.is_simple}")
 
     # Route: simple -> single-agent (full tool/canvas/skill support)
@@ -53,11 +56,34 @@ async def generate_multi_agent(
         ),
         False: lambda: _execute_complex_multi_agent(
             orchestrator, db, agent, content, entity_id, session_id,
-            is_admin, theater_id, analysis, edit_image_url, target_node_id
+            is_admin, theater_id, analysis, edit_image_url, target_node_id,
+            history_messages=history_messages,
         ),
     }
     async for chunk in _generators[analysis.is_simple]():
         yield chunk
+
+
+async def _fetch_history_messages(db: AsyncSession, session_id: str) -> list[dict]:
+    """Fetch conversation history for the session (excluding the last user message)."""
+    history_result = await db.execute(
+        select(ChatMessage)
+        .filter(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    history = history_result.scalars().all()
+
+    messages = []
+    for msg in history[:-1]:
+        role = msg.role if msg.role in ("user", "assistant") else "user"
+        deserialized = deserialize_content(msg.content)
+        content_val = (
+            deserialized.get("text") or ""
+            if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized
+            else deserialized
+        )
+        messages.append({"role": role, "content": content_val})
+    return messages
 
 
 async def save_multi_agent_message(session_id: str, final_result: str, tokens_used: int = 0):
@@ -94,27 +120,10 @@ async def _execute_complex_multi_agent(
     analysis,
     edit_image_url: str | None = None,
     target_node_id: str | None = None,
+    history_messages: list[dict] | None = None,
 ):
     """Execute complex task multi-agent collaboration."""
-    # 获取历史消息（不包含刚发送的用户消息，因为已经commit了）
-    history_result = await db.execute(
-        select(ChatMessage)
-        .filter(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.asc())
-    )
-    history = history_result.scalars().all()
-
-    # 构建历史消息列表（排除最后一条，即刚发送的用户消息）
-    history_messages = []
-    for msg in history[:-1]:
-        role = msg.role if msg.role in ["user", "assistant"] else "user"
-        deserialized = deserialize_content(msg.content)
-        content_val = (
-            deserialized.get("text") or ""
-            if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized
-            else deserialized
-        )
-        history_messages.append({"role": role, "content": content_val})
+    history_messages = history_messages or []
 
     # 图片编辑上下文注入：将画布节点的图片注入到历史消息的最后一条用户消息
     edit_image_data_url = None
@@ -151,9 +160,10 @@ async def _execute_complex_multi_agent(
         enable_review=agent.enable_auto_review or False,
         history_messages=history_messages,
         pre_analysis=analysis,
+        is_admin=is_admin,
     ):
         # 记录事件（过滤高频chunk和text事件）
-        event.event_type not in ("subtask_chunk", "text") and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
+        event.event_type not in ("subtask_chunk", "subtask_tool_call", "subtask_tool_result", "text") and logger.info(f"[Orchestration] {event.event_type}: {event.data}")
 
         # 捕获最终结果和计费信息
         (event.event_type == "task_completed") and (

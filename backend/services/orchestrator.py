@@ -18,6 +18,8 @@ from models import Agent, TaskExecution, SubTask, User, CreditTransaction
 from services.agent_executor import AgentExecutor, ExecutionResult
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
 from services.llm_stream import StreamResult
+from services.tool_manager import ToolManager
+from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +124,11 @@ class CollaborationStrategy(ABC):
         task_execution: TaskExecution,
         leader: Agent,
         members: Dict[str, Agent],
-        history_messages: Optional[List[Dict[str, str]]] = None
+        history_messages: Optional[List[Dict[str, str]]] = None,
+        theater_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        is_admin: bool = False,
     ):
         self.db = db
         self.executor = executor
@@ -130,6 +136,10 @@ class CollaborationStrategy(ABC):
         self.leader = leader
         self.members = members  # agent_id -> Agent
         self.history_messages = history_messages or []
+        self.theater_id = theater_id
+        self.session_id = session_id
+        self.user_id = user_id
+        self.is_admin = is_admin
 
     @abstractmethod
     async def execute(
@@ -211,15 +221,26 @@ class CollaborationStrategy(ABC):
         self, subtask: SubTask, input_content: str
     ) -> AsyncGenerator[OrchestrationEvent, None]:
         """
-        Execute a subtask with streaming + output validation + circuit breaker.
+        Execute a subtask with streaming + tool support + output validation + circuit breaker.
         First attempt streams in real-time; retries fall back to non-streaming
         to avoid duplicate chunk events.
         """
-        agent = self.members.get(subtask.agent_id)
-        agent_name = agent.name if agent else self.leader.name
+        agent = self.members.get(subtask.agent_id) or self.leader
+        agent_name = agent.name
         messages = list(self.history_messages) + [{"role": "user", "content": input_content}]
 
-        # --- First attempt: streaming ---
+        # Build tool definitions for the sub-agent
+        # Pre-populate loaded_tool_skills to bypass skill-gate (no load_skill flow in multi-agent)
+        tool_manager = ToolManager()
+        ctx = ToolContext(
+            theater_id=self.theater_id, agent=agent, db=self.db,
+            session_id=self.session_id, user_id=self.user_id, is_admin=self.is_admin,
+            loaded_tool_skills=set(agent.tools or []),
+        )
+        tool_defs = await tool_manager.build_tool_defs(ctx)
+        max_rounds = max(10, min(200, agent.max_tool_rounds or 100))
+
+        # --- First attempt: streaming with tools ---
         subtask.status = "running"
         await self.db.flush()
 
@@ -230,16 +251,33 @@ class CollaborationStrategy(ABC):
 
         try:
             last_result: Optional[StreamResult] = None
-            async for chunk, result in self.executor.execute_streaming(
+            async for event_type, event_data, result in self.executor.execute_streaming_with_tools(
                 agent_id=subtask.agent_id,
                 messages=messages,
-                context={"subtask_id": subtask.id, "attempt": 1}
+                tool_manager=tool_manager,
+                tool_context=ctx,
+                tools=tool_defs,
+                max_tool_rounds=max_rounds,
             ):
-                last_result = result
-                yield OrchestrationEvent("subtask_chunk", {
-                    "subtask_id": subtask.id,
-                    "chunk": chunk,
-                })
+                # Route events to OrchestrationEvents
+                _event_map = {
+                    "chunk": lambda: OrchestrationEvent("subtask_chunk", {
+                        "subtask_id": subtask.id,
+                        "chunk": event_data,
+                    }),
+                    "tool_call": lambda: OrchestrationEvent("subtask_tool_call", {
+                        "subtask_id": subtask.id,
+                        **event_data,
+                    }),
+                    "tool_result": lambda: OrchestrationEvent("subtask_tool_result", {
+                        "subtask_id": subtask.id,
+                        **event_data,
+                    }),
+                }
+                if event_type == "chunk":
+                    last_result = result
+                handler = _event_map.get(event_type)
+                handler and (yield handler())
 
             full_content = last_result.full_response if last_result else ""
 
@@ -518,10 +556,11 @@ TASK_ANALYSIS_INSTRUCTION = """你是一个智能任务协调者。请分析用�
 
 ## 你的团队成员
 {member_agents_list}
-
+{history_context}
 ## 判断标准
 - **简单任务**：问候、闲聊、事实性问答、单一领域的简单问题、不需要多个专业角色协作的任务
 - **复杂任务**：需要多个步骤、多个专业角色协作、跨领域分析、内容创作（如写故事+设计角色+绘制分镜）等
+- **重要**：当用户的需求明确属于某个团队成员的专长领域（如图像生成、视觉设计等），应该分派给该成员执行，视为复杂任务
 
 ## 输出格式
 请以 JSON 格式输出分析结果：
@@ -574,10 +613,11 @@ class DynamicOrchestrator:
         self,
         leader_agent_id: str,
         task_description: str,
+        history_messages: Optional[List[Dict[str, str]]] = None,
     ) -> TaskAnalysis:
         """Analyze a task without executing it. Returns classification for routing."""
         leader, members = await self._load_leader_and_members(leader_agent_id)
-        return await self._analyze_task(leader, members, task_description)
+        return await self._analyze_task(leader, members, task_description, history_messages)
 
     async def execute(
         self,
@@ -590,11 +630,18 @@ class DynamicOrchestrator:
         enable_review: bool = True,
         history_messages: Optional[List[Dict[str, str]]] = None,
         pre_analysis: Optional[TaskAnalysis] = None,
+        is_admin: bool = False,
     ) -> AsyncGenerator[OrchestrationEvent, None]:
         """
         Execute a multi-agent task.
         Yields OrchestrationEvent for streaming progress.
         """
+        # Store context for tool injection in subtasks
+        self._theater_id = theater_id
+        self._session_id = session_id
+        self._user_id = user_id
+        self._is_admin = is_admin
+
         # 1. Load leader and members
         leader, members = await self._load_leader_and_members(leader_agent_id)
 
@@ -717,7 +764,11 @@ class DynamicOrchestrator:
             task_execution=task_execution,
             leader=leader,
             members=members,
-            history_messages=history_messages or []
+            history_messages=history_messages or [],
+            theater_id=self._theater_id,
+            session_id=self._session_id,
+            user_id=self._user_id,
+            is_admin=self._is_admin,
         )
 
         async for event in strategy.execute(analysis, task_description):
@@ -760,9 +811,46 @@ class DynamicOrchestrator:
         task_execution: TaskExecution,
         analysis: TaskAnalysis
     ) -> AsyncGenerator[OrchestrationEvent, None]:
-        """Execute leader review"""
+        """Execute leader review with streaming output"""
         yield OrchestrationEvent("review_start", {"reviewer": leader.name})
-        review_result = await self._leader_review(leader, task_execution, analysis)
+
+        # Build review prompt (inlined from _leader_review for streaming)
+        result = await self.db.execute(
+            select(SubTask)
+            .filter(SubTask.task_execution_id == task_execution.id)
+            .order_by(SubTask.order_index)
+        )
+        subtasks = result.scalars().all()
+
+        outputs_text = "\n\n".join([
+            f"### {i+1}. {st.description}\n{(st.output_data or {}).get('content', 'No output')}"
+            for i, st in enumerate(subtasks)
+        ])
+
+        review_prompt = f"""Review the following task outputs and provide a final integrated summary.
+
+Original task: {task_execution.task_description}
+
+Review criteria: {analysis.review_criteria}
+
+Subtask outputs:
+{outputs_text}
+
+Provide a cohesive final result that integrates all outputs:"""
+
+        # Stream review via execute_streaming (real-time chunks to frontend)
+        review_result = ""
+        async for chunk, _sr in self.executor.execute_streaming(
+            agent_id=leader.id,
+            messages=[{"role": "user", "content": review_prompt}],
+            system_prompt_override="You are reviewing and integrating outputs from multiple agents. Provide a cohesive final result.",
+        ):
+            review_result += chunk
+            yield OrchestrationEvent("subtask_chunk", {
+                "subtask_id": "__review__",
+                "chunk": chunk,
+            })
+
         yield OrchestrationEvent("review_completed", {
             "approved": True,
             "summary_preview": review_result[:300] if review_result else ""
@@ -807,7 +895,8 @@ class DynamicOrchestrator:
         self,
         leader: Agent,
         members: Dict[str, Agent],
-        task_description: str
+        task_description: str,
+        history_messages: Optional[List[Dict[str, str]]] = None,
     ) -> TaskAnalysis:
         """Single LLM call: classify simple/complex + optional decomposition"""
         member_list = "\n".join([
@@ -815,10 +904,19 @@ class DynamicOrchestrator:
             for agent in members.values()
         ])
 
+        # Build conversation history summary for context
+        history_context = ""
+        raw_history = history_messages or []
+        raw_history and (history_context := "\n## 对话历史\n以下是之前的对话记录，请结合上下文判断当前用户需求：\n" + "\n".join(
+            f"{'用户' if m.get('role') == 'user' else '助手'}: {str(m.get('content', ''))[:500]}"
+            for m in raw_history[-10:]  # Last 10 messages for context, truncated
+        ) + "\n")
+
         user_content = TASK_ANALYSIS_INSTRUCTION.format(
             member_agents_list=member_list or "暂无配置成员智能体。",
             max_subtasks=leader.max_subtasks or 10,
-            user_request=task_description
+            user_request=task_description,
+            history_context=history_context,
         )
 
         result = await self.executor.execute(

@@ -16,6 +16,7 @@ export interface ToolCall {
   tool_name: string;
   arguments?: Record<string, unknown>;
   status: 'executing' | 'completed';
+  result?: string;
 }
 
 // 智能体步骤（多智能体协作）
@@ -30,6 +31,8 @@ export interface AgentStep {
   // Harness: 重试/熔断信息
   retryCount?: number;
   maxRetries?: number;
+  // 子任务工具调用记录
+  tool_calls?: ToolCall[];
   circuitBreaker?: boolean;
 }
 
@@ -496,6 +499,23 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         scrollBehavior: state.scrollBehavior,
         overscanCount: state.overscanCount,
       }),
+      // 页面刷新后清理残留的 streaming 状态：
+      // 刷新后不存在活跃 SSE 连接，streaming 消息永远无法收到 done 事件
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+
+        const sanitize = (msgs: Message[]) =>
+          msgs.map(m => m.status === 'streaming' ? { ...m, status: 'complete' as const } : m);
+
+        state.messages = sanitize(state.messages);
+
+        // 同步清理 theaterSessions 缓存中的残留状态
+        const sessions = state.theaterSessions;
+        for (const key in sessions) {
+          const s = sessions[key];
+          s.messages && (sessions[key] = { ...s, messages: sanitize(s.messages) });
+        }
+      },
     }
   )
 );

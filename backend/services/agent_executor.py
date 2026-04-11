@@ -1,10 +1,11 @@
 """
 AgentExecutor - Unified wrapper for DialogAgent execution with token tracking
 """
-from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
+from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator, TYPE_CHECKING
 from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+import json
 import logging
 
 from models import Agent, LLMProvider
@@ -13,6 +14,10 @@ from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel, OllamaChatModel
 import agentscope
 from services.llm_stream import stream_completion, StreamResult
+
+if TYPE_CHECKING:
+    from services.tool_manager import ToolManager
+    from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +32,25 @@ def _normalize_content(content) -> str:
         ),
     }
     return type_handlers.get(type(content), str)(content)
+
+
+def _extract_tool_results(new_messages: list, is_anthropic: bool) -> dict:
+    """Extract tool results from messages appended by append_tool_round_with_errors.
+    Returns {tool_call_id: result_content} mapping.
+    """
+    results = {}
+    for msg in new_messages:
+        # OpenAI format: {"role": "tool", "tool_call_id": ..., "content": ...}
+        (not is_anthropic and msg.get("role") == "tool") and results.__setitem__(
+            msg.get("tool_call_id", ""), msg.get("content", "")
+        )
+        # Anthropic format: {"role": "user", "content": [{"type": "tool_result", ...}]}
+        is_anthropic and msg.get("role") == "user" and isinstance(msg.get("content"), list) and [
+            results.__setitem__(block.get("tool_use_id", ""), block.get("content", ""))
+            for block in msg["content"]
+            if isinstance(block, dict) and block.get("type") == "tool_result"
+        ]
+    return results
 
 
 @dataclass
@@ -57,6 +81,7 @@ DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com",
     "minimax": "https://api.minimax.io/anthropic",
     "xai": "https://api.x.ai/v1",
+    "ark": "https://ark.cn-beijing.volces.com/api/v3",
 }
 
 
@@ -128,7 +153,9 @@ class AgentExecutor:
         self,
         agent_id: str,
         messages: List[Dict[str, str]],
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        system_prompt_override: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Tuple[str, StreamResult], None]:
         """
         Execute an agent with streaming output, bypassing DialogAgent.reply().
@@ -140,10 +167,10 @@ class AgentExecutor:
         agent_config = await self._load_agent(agent_id)
         provider = await self._load_provider(agent_config.provider_id)
 
-        # Build full message list with system prompt
+        # Build full message list with system prompt (override takes precedence)
+        effective_prompt = system_prompt_override if system_prompt_override is not None else agent_config.system_prompt
         full_messages: List[Dict[str, str]] = []
-        if agent_config.system_prompt:
-            full_messages.append({"role": "system", "content": agent_config.system_prompt})
+        effective_prompt and full_messages.append({"role": "system", "content": effective_prompt})
         full_messages.extend(messages)
 
         logger.info(f"Streaming agent '{agent_config.name}' (ID: {agent_id})")
@@ -158,8 +185,109 @@ class AgentExecutor:
             context_window=agent_config.context_window,
             thinking_mode=agent_config.thinking_mode or False,
             gemini_config=agent_config.gemini_config,
+            tools=tools,
         ):
             yield chunk, result
+
+    async def execute_streaming_with_tools(
+        self,
+        agent_id: str,
+        messages: List[Dict[str, str]],
+        tool_manager: "ToolManager",
+        tool_context: "ToolContext",
+        tools: Optional[List[Dict[str, Any]]] = None,
+        max_tool_rounds: int = 100,
+        system_prompt_override: Optional[str] = None,
+    ) -> AsyncGenerator[Tuple[str, Any], None]:
+        """
+        Execute an agent with streaming + tool-call loop.
+        Simplified version of chat_generation's tool loop for multi-agent subtasks.
+
+        Yields:
+            ("chunk", chunk_text, StreamResult)   — text chunk
+            ("tool_call", {tool_name, arguments}, None)  — tool call started
+            ("tool_result", {tool_name, success}, None)   — tool call finished
+        """
+        from services.chat_tool_dispatch import append_tool_round_with_errors
+
+        agent_config = await self._load_agent(agent_id)
+        provider = await self._load_provider(agent_config.provider_id)
+        is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
+
+        # Build full message list with system prompt
+        effective_prompt = system_prompt_override if system_prompt_override is not None else agent_config.system_prompt
+        full_messages: List[Dict[str, str]] = []
+        effective_prompt and full_messages.append({"role": "system", "content": effective_prompt})
+        full_messages.extend(messages)
+
+        tool_names = [d.get("function", {}).get("name", "?") for d in (tools or [])]
+        logger.info(f"Streaming+Tools agent '{agent_config.name}' (ID: {agent_id}), tools={tool_names}")
+
+        current_tools = tools
+        last_result: Optional[StreamResult] = None
+
+        for _round in range(max_tool_rounds + 1):
+            is_last_round = _round == max_tool_rounds
+            round_tools = None if is_last_round else current_tools
+            last_result = None
+
+            async for chunk, result in stream_completion(
+                provider_type=provider.provider_type,
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                model=agent_config.model,
+                messages=full_messages,
+                temperature=agent_config.temperature,
+                context_window=agent_config.context_window,
+                thinking_mode=agent_config.thinking_mode or False,
+                gemini_config=agent_config.gemini_config,
+                tools=round_tools,
+            ):
+                last_result = result
+                yield ("chunk", chunk, result)
+
+            # No tool_calls -> done
+            has_tool_calls = last_result and last_result.tool_calls
+            if not has_tool_calls:
+                break
+
+            # Parse tool calls: split valid / error
+            tool_calls_valid = []
+            tool_calls_with_error = []
+            for tc in last_result.tool_calls:
+                try:
+                    args = json.loads(tc.arguments)
+                    tool_calls_valid.append((tc, args))
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse tool arguments for {tc.name}: {e}")
+                    tool_calls_with_error.append((tc, f"Error: Invalid JSON in tool arguments: {e}"))
+
+            # Yield tool_call events
+            for tc, args in tool_calls_valid:
+                yield ("tool_call", {"tool_name": tc.name, "arguments": args}, None)
+            for tc, _ in tool_calls_with_error:
+                yield ("tool_call", {"tool_name": tc.name, "arguments": {"error": "JSON parse failed"}}, None)
+
+            # Execute tools and append results to messages
+            total = len(tool_calls_valid) + len(tool_calls_with_error)
+            logger.info(f"[Subtask Tool Round {_round + 1}] {total} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
+            msg_count_before = len(full_messages)
+            await append_tool_round_with_errors(
+                full_messages, last_result, tool_manager, tool_context,
+                is_anthropic, tool_calls_valid, tool_calls_with_error,
+            )
+
+            # Extract tool results from appended messages
+            tool_results = _extract_tool_results(full_messages[msg_count_before:], is_anthropic)
+
+            # Yield tool_result events with result data
+            for tc, args in tool_calls_valid:
+                yield ("tool_result", {"tool_name": tc.name, "success": True, "result": tool_results.get(tc.id, "")}, None)
+            for tc, _ in tool_calls_with_error:
+                yield ("tool_result", {"tool_name": tc.name, "success": False}, None)
+
+            # Rebuild tool defs after round
+            current_tools = tool_manager.rebuild_after_round(tool_context) or tools
 
     async def execute_with_system_prompt(
         self,
