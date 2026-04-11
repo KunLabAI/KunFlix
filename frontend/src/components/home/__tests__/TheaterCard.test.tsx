@@ -18,7 +18,6 @@ describe('TheaterCard', () => {
         title="Test Theater"
         status="published"
         nodeCount={5}
-        createdAt="2023-10-10T12:00:00Z"
         updatedAt="2023-10-10T12:05:00Z"
       />
     );
@@ -32,7 +31,7 @@ describe('TheaterCard', () => {
         title="Test Theater"
         status="draft"
         nodeCount={0}
-        createdAt="2023-10-10T12:00:00Z"
+        updatedAt="2023-10-10T12:00:00Z"
         onDelete={() => {}}
       />
     );
