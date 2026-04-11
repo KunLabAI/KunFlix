@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, CheckCircle2, Circle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, CheckCircle2, Circle, XCircle, Loader2, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LoadingDots } from './LoadingDots';
+import { LazyImage } from './LazyImage';
 import type { AgentStep } from '@/store/useAIAssistantStore';
 
 interface ThinkPanelProps {
@@ -114,9 +115,12 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
   // 有步骤、正在思考、有思考内容或有子元素时渲染
   const shouldRender = steps.length > 0 || isThinking || !!thinkingContent || !!children;
   
+  // 已完成状态直接渲染，跳过入场动画（防止虚拟滚动重挂载时重播）
+  const skipEntryAnimation = !isThinking && (isMultiAgent ? progress.isAllDone : true);
+
   return shouldRender ? (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
+      initial={skipEntryAnimation ? false : { opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
       className={cn('overflow-hidden', className)}
@@ -146,13 +150,11 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">
-              {isThinking 
-                ? (agentName ? `${agentName} Think...` : 'AI Thinking...')
-                : progress.isAllDone 
-                  ? 'Think Complete' 
-                  : isMultiAgent 
-                    ? '多智能体协作' 
-                    : 'Think complete'}
+              {isMultiAgent
+                ? (isThinking ? '多智能体协作中...' : progress.isAllDone ? '多智能体协作完成' : '多智能体协作')
+                : (isThinking
+                  ? (agentName ? `${agentName} Think...` : 'AI Thinking...')
+                  : 'Think complete')}
             </span>
             {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>
@@ -207,7 +209,7 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                     <div className="h-1 w-full bg-muted/40 rounded-full overflow-hidden">
                       <motion.div
                         className="h-full bg-foreground/30"
-                        initial={{ width: 0 }}
+                        initial={skipEntryAnimation ? false : { width: 0 }}
                         animate={{ width: `${progress.percentage}%` }}
                         transition={{ duration: 0.3 }}
                       />
@@ -235,8 +237,17 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
                             <p className="text-[10px] text-muted-foreground truncate">
                               {step.description}
                             </p>
+                            {/* 工具调用指示器 */}
+                            {step.tool_calls && step.tool_calls.length > 0 && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Wrench className="h-3 w-3 text-muted-foreground/60" />
+                                <span className="text-[10px] text-muted-foreground/60">
+                                  {step.tool_calls.filter(t => t.status === 'completed').length}/{step.tool_calls.length} 工具调用
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          {(step.result || step.error) && (
+                          {(step.result || step.error || step.tool_calls?.length) && (
                             isStepExpanded
                               ? <ChevronUp className="h-3 w-3 text-muted-foreground" />
                               : <ChevronDown className="h-3 w-3 text-muted-foreground" />
@@ -245,13 +256,41 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
 
                         {/* 步骤详情 */}
                         <AnimatePresence>
-                          {isStepExpanded && (step.result || step.error) && (
+                          {isStepExpanded && (step.result || step.error || step.tool_calls?.length) && (
                             <motion.div
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: 'auto' }}
                               exit={{ opacity: 0, height: 0 }}
                               className="mt-2 p-2 bg-muted/30 rounded text-xs overflow-hidden"
                             >
+                              {/* 工具调用列表 */}
+                              {step.tool_calls && step.tool_calls.length > 0 && (
+                                <div className="space-y-1.5 mb-2">
+                                  {step.tool_calls.map((tc, i) => (
+                                    <div key={`${tc.tool_name}-${i}`}>
+                                      <div className="flex items-center gap-1.5 text-[10px]">
+                                        {tc.status === 'executing'
+                                          ? <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
+                                          : <CheckCircle2 className="h-3 w-3 text-emerald-500/70" />
+                                        }
+                                        <span className="text-muted-foreground font-mono">{tc.tool_name}</span>
+                                      </div>
+                                      {/* 工具结果中的图片 */}
+                                      {tc.result && tc.result.match(/!\[.*?\]\((\/api\/media\/[^)]+)\)/g)?.map((match, j) => {
+                                        const src = match.match(/\((\/api\/media\/[^)]+)\)/)?.[1];
+                                        return src ? (
+                                          <LazyImage
+                                            key={`${tc.tool_name}-img-${j}`}
+                                            src={src}
+                                            alt={tc.tool_name}
+                                            className="mt-1.5 rounded max-w-full max-h-48 object-contain"
+                                          />
+                                        ) : null;
+                                      })}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               {step.error ? (
                                 <p className="text-foreground/70">{step.error}</p>
                               ) : (

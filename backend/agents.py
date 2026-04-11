@@ -250,6 +250,7 @@ class NarrativeEngine:
                 "deepseek": "https://api.deepseek.com",
                 "minimax": "https://api.minimax.io/anthropic",
                 "xai": "https://api.x.ai/v1",
+                "ark": "https://ark.cn-beijing.volces.com/api/v3",
             }
             
             # 确定实际使用的 base_url

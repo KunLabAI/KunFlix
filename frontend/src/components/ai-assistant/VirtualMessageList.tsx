@@ -21,10 +21,10 @@ export interface VirtualMessageListRef {
 }
 
 // 默认消息高度估计值
-const DEFAULT_ITEM_HEIGHT = 100;
+const DEFAULT_ITEM_HEIGHT = 60;
 const OVERSCAN_DEFAULT = 5;
 // 判定"接近底部"的像素阈值
-const NEAR_BOTTOM_THRESHOLD = 80;
+const NEAR_BOTTOM_THRESHOLD = 20;
 // 流式滚动的轮询间隔（ms）
 const STREAM_SCROLL_INTERVAL = 120;
 
@@ -66,8 +66,6 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
     const scrollState = useRef({
       isAtBottom: true,
       userScrolledUp: false,
-      // 用户最后一次手动滚动的时间戳，用于防止程序化滚动事件覆盖用户意图
-      lastUserScrollTime: 0,
     });
 
     // 存储回调 ref，避免 effect 依赖变化
@@ -168,12 +166,9 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
         const listElement = getListElement();
         if (!listElement) return;
 
-        // 鼠标滚轮向上 → 用户主动上滑
+        // 鼠标滚轮向上 → 用户主动上滑，标记脱离底部
         const handleWheel = (e: WheelEvent) => {
-          if (e.deltaY < 0) {
-            scrollState.current.userScrolledUp = true;
-            scrollState.current.lastUserScrollTime = Date.now();
-          }
+          e.deltaY < 0 && (scrollState.current.userScrolledUp = true);
         };
 
         // 触摸滑动检测
@@ -184,24 +179,16 @@ export const VirtualMessageList = forwardRef<VirtualMessageListRef, VirtualMessa
         const handleTouchMove = (e: TouchEvent) => {
           const currentY = e.touches[0]?.clientY ?? 0;
           // 手指下滑 = 内容上滚 = 用户看历史
-          if (currentY > touchStartY + 10) {
-            scrollState.current.userScrolledUp = true;
-            scrollState.current.lastUserScrollTime = Date.now();
-          }
+          (currentY - touchStartY > 10) && (scrollState.current.userScrolledUp = true);
         };
 
-        // scroll 事件：仅检测滚回底部以恢复自动滚动
+        // scroll 事件：仅用于更新 isAtBottom UI 状态（回到底部按钮显示等）
+        // 不在此处重置 userScrolledUp，避免 react-window 内部布局调整
+        // 触发的程序化 scroll 事件被误判为"用户主动滚回底部"
+        // userScrolledUp 只能通过：1) 点击回到底部按钮 2) 发送新消息 来重置
         const handleScroll = () => {
-          const s = scrollState.current;
           const nearBottom = checkIsNearBottom();
-          s.isAtBottom = nearBottom;
-
-          // 用户滚回底部 → 恢复自动滚动
-          // 200ms 窗口排除程序化滚动产生的 scroll 事件
-          if (nearBottom && s.userScrolledUp && Date.now() - s.lastUserScrollTime > 200) {
-            s.userScrolledUp = false;
-          }
-
+          scrollState.current.isAtBottom = nearBottom;
           notifyAtBottom(nearBottom);
         };
 

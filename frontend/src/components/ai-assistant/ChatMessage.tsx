@@ -491,11 +491,20 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
               {/* 非欢迎消息：正常渲染 AI 回复内容 */}
               {!message.isWelcome && (
                 <>
-                  {/* 单智能体思考面板：有思考内容时显示 */}
+                  {/* 单智能体思考面板：有思考内容时显示（独立于多智能体面板） */}
                   {thinkingContent && (
                     <ThinkPanel 
                       isThinking={isSingleAgentThinking}
                       thinkingContent={thinkingContent}
+                    />
+                  )}
+
+                  {/* 多智能体协作步骤面板：显示在思考面板之后、回复内容之前 */}
+                  {message.multi_agent && (
+                    <ThinkPanel
+                      steps={message.multi_agent.steps}
+                      isThinking={isMultiAgentThinking}
+                      className="mb-2"
                     />
                   )}
                   
@@ -581,15 +590,6 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                     <CallTimelinePanel
                       skillCalls={message.skill_calls}
                       toolCalls={message.tool_calls}
-                    />
-                  )}
-
-                  {/* 多智能体思考面板 */}
-                  {message.multi_agent && (
-                    <ThinkPanel
-                      steps={message.multi_agent.steps}
-                      isThinking={isMultiAgentThinking}
-                      className="mb-2"
                     />
                   )}
                 </>

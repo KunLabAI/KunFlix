@@ -45,13 +45,15 @@ const markdownComponents = {
 };
 
 export function TypewriterText({ content, isStreaming, className, onComplete }: TypewriterTextProps) {
-  const [displayedContent, setDisplayedContent] = useState('');
+  // 始终以当前 content 初始化，避免虚拟滚动重挂载时从空字符串重播动画
+  // 流式状态下：新增部分由动画循环逐步展示，已有部分立即可见
+  const [displayedContent, setDisplayedContent] = useState(content);
   
   // 所有可变状态放在一个 ref 中，动画循环只读 ref
   const ref = useRef({
-    content: '',
-    displayedLength: 0,
-    isStreaming: false,
+    content,
+    displayedLength: content.length,
+    isStreaming,
     rafId: 0,
     lastTime: 0,
   });

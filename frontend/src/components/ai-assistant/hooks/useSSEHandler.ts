@@ -286,6 +286,86 @@ export function useSSEHandler() {
         });
       },
 
+      // 多智能体：子任务流式 chunk（实时展示子智能体输出进度）
+      subtask_chunk: () => {
+        const d = data as { subtask_id?: string; chunk?: string };
+        const step = state.stepMap.get(d.subtask_id || '');
+        step && (step.result = (step.result || '') + (d.chunk || ''));
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // 多智能体：子任务工具调用开始
+      subtask_tool_call: () => {
+        const d = data as { subtask_id?: string; tool_name?: string; arguments?: Record<string, unknown> };
+        const step = state.stepMap.get(d.subtask_id || '');
+        step && (step.tool_calls = [...(step.tool_calls || []), {
+          tool_name: d.tool_name || '', arguments: d.arguments, status: 'executing' as const,
+        }]);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // 多智能体：子任务工具调用完成
+      subtask_tool_result: () => {
+        const d = data as { subtask_id?: string; tool_name?: string; success?: boolean; result?: string };
+        const step = state.stepMap.get(d.subtask_id || '');
+        const tool = step?.tool_calls?.find((t) => t.tool_name === d.tool_name && t.status === 'executing');
+        tool && (tool.status = 'completed', tool.result = d.result);
+
+        // 画布工具完成时触发前端刷新
+        const canvasToolNames = ['create_canvas_node', 'update_canvas_node', 'delete_canvas_node', 'batch_create_nodes', 'edit_image'];
+        const _cStore = useCanvasStore.getState();
+        (canvasToolNames.includes(d.tool_name || '') && d.success && _cStore.theaterId) && _cStore.syncTheater(_cStore.theaterId);
+
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // 多智能体：Leader 审查开始（在所有子任务完成后，Leader 整合结果）
+      review_start: () => {
+        const d = data as { reviewer?: string };
+        // 添加一个虚拟步骤表示审查阶段
+        const reviewStep: AgentStep = {
+          subtask_id: '__review__',
+          agent_name: d.reviewer || 'Leader',
+          description: '正在审查整合所有子任务结果...',
+          status: 'running',
+        };
+        state.stepMap.set('__review__', reviewStep);
+        state.steps.push(reviewStep);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // 多智能体：Leader 审查完成
+      review_completed: () => {
+        const step = state.stepMap.get('__review__');
+        step && (step.status = 'completed', step.description = '审查整合完成');
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
       // 多智能体：子任务失败
       subtask_failed: () => {
         const d = data as { subtask_id?: string; error?: string; circuit_breaker?: boolean; retries?: number };
