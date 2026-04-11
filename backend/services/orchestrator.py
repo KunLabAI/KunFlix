@@ -274,7 +274,8 @@ class CollaborationStrategy(ABC):
                         **event_data,
                     }),
                 }
-                (event_type == "chunk") and (last_result := result)
+                if event_type == "chunk":
+                    last_result = result
                 handler = _event_map.get(event_type)
                 handler and (yield handler())
 
