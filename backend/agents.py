@@ -293,95 +293,12 @@ class NarrativeEngine:
             print(f"AgentScope init error: {e}")
             return
 
-        # Re-create agents with new config
-        self._create_agents()
         self.initialized = True
-
-    def _create_agents(self):
-        self.director = DialogAgent(
-            name="Director",
-            sys_prompt="You are the Director of an interactive story. Your goal is to guide the narrative, ensuring consistency and engagement. You decide the flow and verify plot points.",
-            model=self.current_model
-        )
-        
-        self.narrator = DialogAgent(
-            name="Narrator",
-            sys_prompt="You are the Narrator. You generate immersive, descriptive text based on the Director's outline. Focus on sensory details and character emotions.",
-            model=self.current_model
-        )
-        
-        self.npc_manager = DialogAgent(
-            name="NPC_Manager",
-            sys_prompt="You manage the NPCs. You track their relationships with the player and determine their reactions based on affinity, trust, and hidden traits.",
-            model=self.current_model
-        )
 
     async def reload_config(self, db_session):
         """Method to trigger a reload of configuration from the API"""
         await self.load_config_from_db(db_session)
 
-    async def generate_chapter(self, player_context: dict, previous_summary: str):
-        if not self.initialized:
-            # Try to lazy load from DB if not initialized
-            await self.load_config_from_db()
-            
-            if not self.initialized:
-                 return {
-                    "outline": "Error: AI Engine not initialized (Missing Active Provider)",
-                    "content": "The story cannot proceed without the AI engine. Please configure an LLM Provider in the admin panel.",
-                    "npc_updates": "{}",
-                    "usage": {"input_tokens": 0, "output_tokens": 0, "input_chars": 0, "output_chars": 0}
-                }
-
-        # 1. Director outlines the chapter
-        outline_msg = self.director(Msg(
-            name="System", 
-            content=f"Create an outline for the next chapter based on: {previous_summary}. Player context: {player_context}"
-        ))
-        if asyncio.iscoroutine(outline_msg):
-            outline_msg = await outline_msg
-        
-        # 2. Narrator fleshes it out
-        story_msg = self.narrator(outline_msg)
-        if asyncio.iscoroutine(story_msg):
-            story_msg = await story_msg
-        
-        # 3. NPC Manager updates state (simulated for now)
-        npc_update = self.npc_manager(Msg(
-            name="System",
-            content=f"Analyze the story: {story_msg.content}. Update NPC relationships."
-        ))
-        if asyncio.iscoroutine(npc_update):
-            npc_update = await npc_update
-        
-        # 汇总所有agent的token统计
-        all_msgs = [outline_msg, story_msg, npc_update]
-        total_input_tokens = sum(m.metadata.get("input_tokens", 0) for m in all_msgs)
-        total_output_tokens = sum(m.metadata.get("output_tokens", 0) for m in all_msgs)
-        total_input_chars = sum(m.metadata.get("input_chars", 0) for m in all_msgs)
-        total_output_chars = sum(m.metadata.get("output_chars", 0) for m in all_msgs)
-        
-        # 日志输出
-        logger.info(f"\n{'='*60}")
-        logger.info(f"NarrativeEngine Chapter Generation Complete")
-        logger.info(f"Director tokens: {outline_msg.metadata.get('input_tokens', 0)} in / {outline_msg.metadata.get('output_tokens', 0)} out")
-        logger.info(f"Narrator tokens: {story_msg.metadata.get('input_tokens', 0)} in / {story_msg.metadata.get('output_tokens', 0)} out")
-        logger.info(f"NPC Manager tokens: {npc_update.metadata.get('input_tokens', 0)} in / {npc_update.metadata.get('output_tokens', 0)} out")
-        logger.info(f"Total: {total_input_tokens} in / {total_output_tokens} out = {total_input_tokens + total_output_tokens} tokens")
-        logger.info(f"Chars: {total_input_chars} in / {total_output_chars} out = {total_input_chars + total_output_chars} chars")
-        logger.info(f"{'='*60}\n")
-        
-        return {
-            "outline": outline_msg.content,
-            "content": story_msg.content,
-            "npc_updates": npc_update.content,
-            "usage": {
-                "input_tokens": total_input_tokens,
-                "output_tokens": total_output_tokens,
-                "input_chars": total_input_chars,
-                "output_chars": total_output_chars,
-            }
-        }
 
 narrative_engine = NarrativeEngine()
 # Note: Initial loading happens when needed or triggered by startup event
