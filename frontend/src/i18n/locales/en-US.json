@@ -201,6 +201,8 @@
     "clearChat": "Clear conversation",
     "newChat": "New Chat",
     "chatHistory": "Chat History",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit Fullscreen",
     "noChats": "No conversations",
     "deleteChat": "Delete conversation",
     "currentChat": "Current chat",

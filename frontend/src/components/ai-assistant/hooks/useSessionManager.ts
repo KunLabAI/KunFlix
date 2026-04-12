@@ -135,8 +135,10 @@ export function useSessionManager() {
 
         // 没有现有会话，创建新会话
         const agents = await loadAgents();
-        const canvasAgent = agents.find((a: { target_node_types?: string[] }) => a.target_node_types?.length);
-        const selectedAgent = canvasAgent || agents[0];
+        // 优先使用上次选择的 agent，其次是有 target_node_types 的 agent，最后是第一个
+        const lastSelectedAgent = agents.find((a: AgentInfo) => a.id === agentId);
+        const canvasAgent = agents.find((a: AgentInfo) => a.target_node_types?.length);
+        const selectedAgent = lastSelectedAgent || canvasAgent || agents[0];
 
         if (!selectedAgent) {
           console.warn('No agents available');
@@ -171,7 +173,7 @@ export function useSessionManager() {
         return null;
       }
     },
-    [loadAgents, loadTheaterSessions, loadSessionData, setSessionId, setAgentId, setAgentName, setMessages, addChatToList]
+    [loadAgents, loadTheaterSessions, loadSessionData, agentId, setSessionId, setAgentId, setAgentName, setMessages, addChatToList]
   );
 
   // 创建全新对话
@@ -180,8 +182,10 @@ export function useSessionManager() {
 
     try {
       const agents = availableAgents.length > 0 ? availableAgents : await loadAgents();
-      const canvasAgent = agents.find((a: { target_node_types?: string[] }) => a.target_node_types?.length);
-      const selectedAgent = canvasAgent || agents[0];
+      // 优先使用上次选择的 agent，其次是有 target_node_types 的 agent，最后是第一个
+      const lastSelectedAgent = agents.find((a: AgentInfo) => a.id === agentId);
+      const canvasAgent = agents.find((a: AgentInfo) => a.target_node_types?.length);
+      const selectedAgent = lastSelectedAgent || canvasAgent || agents[0];
 
       if (!selectedAgent) {
         console.warn('No agents available');
@@ -215,7 +219,7 @@ export function useSessionManager() {
       console.error('Failed to create new chat:', err);
       return null;
     }
-  }, [theaterId, availableAgents, loadAgents, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage, addChatToList]);
+  }, [theaterId, availableAgents, agentId, loadAgents, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage, addChatToList]);
 
   // 切换到指定会话
   const switchToSession = useCallback(async (targetSessionId: string) => {

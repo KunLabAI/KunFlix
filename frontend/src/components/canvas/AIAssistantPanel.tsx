@@ -128,6 +128,7 @@ export function AIAssistantPanel() {
   const [showReloginDialog, setShowReloginDialog] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
@@ -155,24 +156,6 @@ export function AIAssistantPanel() {
   // 虚拟滚动配置
   const scrollBehavior = useAIAssistantStore((state) => state.scrollBehavior);
   const overscanCount = useAIAssistantStore((state) => state.overscanCount);
-
-  // ESC 最小化面板（避免与节点编辑冲突）
-  useEffect(() => {
-    const handleEscapeKey = (e: KeyboardEvent) => {
-      // 检查是否有活动的输入元素或可编辑元素
-      const activeElement = document.activeElement;
-      const isInputActive = activeElement?.tagName === 'INPUT' || 
-                           activeElement?.tagName === 'TEXTAREA' ||
-                           activeElement?.getAttribute('contenteditable') === 'true';
-      
-      // 只在面板打开且无输入焦点时响应 ESC
-      const shouldMinimize = isOpen && e.key === 'Escape' && !isInputActive;
-      shouldMinimize && setIsOpen(false);
-    };
-
-    window.addEventListener('keydown', handleEscapeKey);
-    return () => window.removeEventListener('keydown', handleEscapeKey);
-  }, [isOpen, setIsOpen]);
 
   // 性能监控
   usePerformanceMonitor({
@@ -341,6 +324,8 @@ export function AIAssistantPanel() {
   const handleResizeStart = (e: React.PointerEvent, direction: 'left' | 'right' | 'top' | 'bottom' | 'corner-nw' | 'corner-ne' | 'corner-sw' | 'corner-se') => {
     e.preventDefault();
     e.stopPropagation();
+    setIsResizing(true);
+    setIsSnapping(false);
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -348,6 +333,22 @@ export function AIAssistantPanel() {
     const startHeight = panelSize.height;
     const startPosX = panelPosition.x;
     const startPosY = panelPosition.y;
+    const padding = 20;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const isLeftSide = direction === 'left' || direction === 'corner-nw' || direction === 'corner-sw';
+    const isRightSide = direction === 'right' || direction === 'corner-ne' || direction === 'corner-se';
+    const isTopSide = direction === 'top' || direction === 'corner-nw' || direction === 'corner-ne';
+    const isBottomSide = direction === 'bottom' || direction === 'corner-sw' || direction === 'corner-se';
+
+    // 预计算各方向的最大尺寸（基于视口边界）
+    // 面板坐标系：right-0 top-0 + transform(x, y)
+    // 右边界 = vw + x，左边界 = vw + x - width，上边界 = y，下边界 = y + height
+    const maxWidthLeft = vw + startPosX - padding;           // 左侧拖拽：右边界固定，左边界不超过左侧 padding
+    const maxWidthRight = startWidth - startPosX - padding;  // 右侧拖拽：左边界固定，右边界不超过右侧 padding
+    const maxHeightTop = startPosY + startHeight - padding;  // 顶部拖拽：底边界固定，上边界不超过顶部 padding
+    const maxHeightBottom = vh - startPosY - padding;        // 底部拖拽：顶边界固定，下边界不超过底部 padding
 
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -358,28 +359,33 @@ export function AIAssistantPanel() {
       let newPosX = startPosX;
       let newPosY = startPosY;
 
-      // 处理宽度调整（左侧：保持右边界不变；右侧：保持左边界不变）
-      const isLeftSide = direction === 'left' || direction === 'corner-nw' || direction === 'corner-sw';
-      const isRightSide = direction === 'right' || direction === 'corner-ne' || direction === 'corner-se';
-      
-      isLeftSide && (newWidth = Math.max(300, startWidth - deltaX), newPosX = startPosX + (startWidth - newWidth));
-      isRightSide && (newWidth = Math.max(300, startWidth + deltaX), newPosX = startPosX + (newWidth - startWidth));
+      // 左侧拖拽：保持右边界不变，位置（x）不变
+      isLeftSide && (
+        newWidth = Math.min(maxWidthLeft, Math.max(300, startWidth - deltaX)),
+        newPosX = startPosX
+      );
+      // 右侧拖拽：保持左边界不变，位置随宽度变化
+      isRightSide && (
+        newWidth = Math.min(maxWidthRight, Math.max(300, startWidth + deltaX)),
+        newPosX = startPosX + (newWidth - startWidth)
+      );
 
-      // 处理高度调整（顶部：高度增加时位置上移）
-      const isTopSide = direction === 'top' || direction === 'corner-nw' || direction === 'corner-ne';
-      const isBottomSide = direction === 'bottom' || direction === 'corner-sw' || direction === 'corner-se';
-      
-      isTopSide && (newHeight = Math.max(400, startHeight - deltaY), newPosY = startPosY + (startHeight - newHeight));
-      isBottomSide && (newHeight = Math.max(400, startHeight + deltaY));
-
-      // 约束位置到可视区域
-      const constrained = constrainToViewport(newPosX, newPosY, newWidth, newHeight);
+      // 顶部拖拽：保持底边界不变，位置上移
+      isTopSide && (
+        newHeight = Math.min(maxHeightTop, Math.max(400, startHeight - deltaY)),
+        newPosY = startPosY + (startHeight - newHeight)
+      );
+      // 底部拖拽：保持顶边界不变，位置不变
+      isBottomSide && (
+        newHeight = Math.min(maxHeightBottom, Math.max(400, startHeight + deltaY))
+      );
 
       setPanelSize({ width: newWidth, height: newHeight });
-      setPanelPosition(constrained);
+      setPanelPosition({ x: newPosX, y: newPosY });
     };
 
     const onPointerUp = () => {
+      setIsResizing(false);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
     };
@@ -417,10 +423,10 @@ export function AIAssistantPanel() {
           // AI面板
           <motion.div
             key="ai-panel"
-            drag
+            drag={!isResizing}
             dragListener={false}
             dragControls={dragControls}
-            dragConstraints={constraintsRef}
+            dragConstraints={isResizing ? false : constraintsRef}
             dragMomentum={false}
             dragElastic={0}
             onDragStart={() => {
@@ -463,12 +469,12 @@ export function AIAssistantPanel() {
             transition={{
               opacity: { duration: 0.15 },
               scale: { duration: 0.2, ease: 'easeOut' },
-              width: { duration: 0.25, ease: 'easeOut' },
-              height: { duration: 0.25, ease: 'easeOut' },
-              x: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
-              y: { duration: isSnapping ? 0.3 : 0, ease: [0.32, 0.72, 0, 1] },
+              width: { duration: isResizing ? 0 : 0.25, ease: 'easeOut' },
+              height: { duration: isResizing ? 0 : 0.25, ease: 'easeOut' },
+              x: { duration: isResizing ? 0 : (isSnapping ? 0.3 : 0), ease: [0.32, 0.72, 0, 1] },
+              y: { duration: isResizing ? 0 : (isSnapping ? 0.3 : 0), ease: [0.32, 0.72, 0, 1] },
             }}
-            className={`pointer-events-auto bg-background border shadow-2xl overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default ${isDragOverPanel ? 'ring-2 ring-primary' : ''}`}
+            className={`pointer-events-auto bg-background border shadow-lg overflow-hidden flex flex-col absolute right-0 top-0 origin-top-right z-50 cursor-default ${isDragOverPanel ? 'ring-2 ring-primary' : ''}`}
             style={{ touchAction: 'none', borderRadius: 12 }}
             data-ai-panel-dropzone
           >
