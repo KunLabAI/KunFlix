@@ -17,6 +17,7 @@ from services.chat_utils import (
     inject_attachment_images,
 )
 from services.chat_tool_dispatch import append_tool_round, append_tool_round_with_errors
+from services.agent_executor import _extract_tool_results
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
@@ -307,6 +308,9 @@ async def generate_single_agent(
             logger.info(f"[Tool Round {_round + 1}] {total_tool_calls} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
             await append_tool_round_with_errors(messages, result, tool_manager, ctx, is_anthropic, tool_calls_valid, tool_calls_with_error)
 
+            # 提取工具执行结果（用于 SSE 事件携带 result，供前端显示错误状态）
+            _tool_results_map = _extract_tool_results(messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:], is_anthropic)
+
             # 输出工具轮次后新增的消息（assistant tool_calls + tool results）
             _new_msgs = messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:]
             for nm in _new_msgs:
@@ -358,10 +362,11 @@ async def generate_single_agent(
             for tc, args in tool_calls_valid:
                 is_skill = tc.name == "load_skill"
                 is_canvas = tc.name in CANVAS_TOOL_NAMES
+                tool_result_str = _tool_results_map.get(tc.id, "")
                 event_data = (
                     {"skill_name": args.get("skill_name", "")}
                     if is_skill else
-                    {"tool_name": tc.name, "success": True}
+                    {"tool_name": tc.name, "success": True, "result": tool_result_str}
                 )
                 yield sse(_SSE_END[is_skill], event_data)
                 

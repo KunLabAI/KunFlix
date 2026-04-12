@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, CheckCircle2, Circle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LoadingDots } from './LoadingDots';
 
@@ -13,14 +13,6 @@ interface SingleAgentThinkPanelProps {
   className?: string;
   children?: React.ReactNode;
 }
-
-// 状态图标映射表
-const STATUS_ICON_MAP: Record<string, { Icon: typeof Circle; className: string }> = {
-  pending: { Icon: Circle, className: 'text-muted-foreground' },
-  running: { Icon: Loader2, className: 'text-foreground/70 animate-spin' },
-  completed: { Icon: CheckCircle2, className: 'text-foreground/50' },
-  failed: { Icon: XCircle, className: 'text-foreground/70' },
-};
 
 /**
  * SingleAgentThinkPanel - 单智能体思考面板
