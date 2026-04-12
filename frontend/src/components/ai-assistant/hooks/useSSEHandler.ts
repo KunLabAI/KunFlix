@@ -13,7 +13,7 @@ interface SSEEvent {
 
 interface StreamingState {
   skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
-  toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed' }[];
+  toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed'; result?: string }[];
   videoTasks: VideoTaskData[];
   musicTasks: MusicTaskData[];
   steps: AgentStep[];
@@ -170,9 +170,9 @@ export function useSSEHandler() {
 
       // 工具执行完成
       tool_result: () => {
-        const toolName = (data as { tool_name?: string })?.tool_name || '';
-        const tool = state.toolCalls.find((t) => t.tool_name === toolName && t.status === 'executing');
-        tool && (tool.status = 'completed');
+        const d = data as { tool_name?: string; success?: boolean; result?: string };
+        const tool = state.toolCalls.find((t) => t.tool_name === (d.tool_name || '') && t.status === 'executing');
+        tool && (tool.status = 'completed', tool.result = d.result);
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'ai' && last?.status === 'streaming') {

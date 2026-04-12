@@ -44,8 +44,17 @@ _EDIT_PARAM_EXTRACTORS: dict[str, callable] = {
 # Image URL Helpers
 # ---------------------------------------------------------------------------
 
-def _resolve_image_url(image_url: str) -> str:
+# 多图压缩最大尺寸（避免 base64 超过 xAI 请求体限制）
+# 编辑请求的图片压缩尺寸（避免 base64 payload 过大导致服务器断连）
+_SINGLE_IMAGE_MAX_DIM = 2048  # 单图：较高质量
+_MULTI_IMAGE_MAX_DIM = 1024   # 多图：控制总 payload
+
+
+def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
     """Resolve image URL to a format suitable for API.
+    
+    When max_dimension > 0, local files are downscaled before encoding
+    to keep the payload small (used for multi-image editing).
     
     Handles:
     1. data:image/...;base64,... → 直接返回
@@ -66,7 +75,7 @@ def _resolve_image_url(image_url: str) -> str:
     if match:
         filename = match.group(1)
         local_path = MEDIA_DIR / filename
-        return _local_file_to_data_url(local_path)
+        return _local_file_to_data_url(local_path, max_dimension)
     
     # 纯文件名或 UUID（无路径前缀）→ 尝试在 media 目录查找
     # 支持格式：xxx.jpg, xxx.png, xxx (无扩展名)
@@ -74,30 +83,53 @@ def _resolve_image_url(image_url: str) -> str:
         # 先尝试直接查找
         direct_path = MEDIA_DIR / image_url
         if direct_path.exists():
-            return _local_file_to_data_url(direct_path)
+            return _local_file_to_data_url(direct_path, max_dimension)
         
         # 如果没有扩展名，尝试匹配常见图片扩展名
         if "." not in image_url:
             for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
                 candidate_path = MEDIA_DIR / (image_url + ext)
                 if candidate_path.exists():
-                    return _local_file_to_data_url(candidate_path)
+                    return _local_file_to_data_url(candidate_path, max_dimension)
     
     # 无法识别的格式，原样返回
     return image_url
 
 
-def _local_file_to_data_url(path: Path) -> str:
-    """Convert local image file to base64 data URL."""
+def _local_file_to_data_url(path: Path, max_dimension: int = 0) -> str:
+    """Convert local image file to base64 data URL.
+    
+    When max_dimension > 0, downscale the image so its longest side
+    does not exceed max_dimension (preserving aspect ratio). This keeps
+    multi-image payloads within xAI's request-body limits.
+    """
     import base64
+    import io
     import mimetypes
+    from PIL import Image as PILImage
     
     if not path.exists():
         raise FileNotFoundError(f"Image file not found: {path}")
     
     mime, _ = mimetypes.guess_type(str(path))
     mime = mime or "image/png"
-    data = path.read_bytes()
+    
+    data: bytes
+    # 无需压缩
+    if max_dimension <= 0:
+        data = path.read_bytes()
+    else:
+        # 压缩到 max_dimension 以内，使用 JPEG 减小体积
+        img = PILImage.open(path)
+        img.thumbnail((max_dimension, max_dimension), PILImage.LANCZOS)
+        buf = io.BytesIO()
+        # 统一输出 JPEG 以获得更小的 base64 体积
+        rgb = img.convert("RGB") if img.mode in ("RGBA", "P", "LA") else img
+        rgb.save(buf, format="JPEG", quality=85)
+        data = buf.getvalue()
+        mime = "image/jpeg"
+        logger.info("Downscaled %s to %dx%d (%d bytes)", path.name, img.width, img.height, len(data))
+    
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"
 
@@ -111,6 +143,7 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
 
     The aspect_ratio and quality enums are tailored to the configured
     provider's supported values when *provider_type* is given.
+    Supports both single-image (image_url) and multi-image (image_urls) editing.
     """
     caps = IMAGE_PROVIDER_CAPABILITIES.get(provider_type, {})
     aspect_ratios = caps.get("aspect_ratios", _FALLBACK_ASPECT_RATIOS)
@@ -121,7 +154,7 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
         "function": {
             "name": IMAGE_EDIT_TOOL_NAME,
             "description": (
-                "Generate or edit an image using a reference image (image-to-image). "
+                "Edit or generate an image using reference images (image-to-image). "
                 "Returns the result image URL in markdown format."
             ),
             "parameters": {
@@ -129,27 +162,31 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
                 "properties": {
                     "image_url": {
                         "type": "string",
-                        "description": "URL or path of the reference/source image (e.g. /api/media/filename.jpg). Do NOT pass base64.",
+                        "description": "Single reference image URL or path (e.g. /api/media/filename.jpg).",
+                    },
+                    "image_urls": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 5,
+                        "description": "Multiple reference image URLs/paths (up to 5).",
                     },
                     "prompt": {
                         "type": "string",
-                        "description": "Description of the desired output image or changes to apply.",
+                        "description": "Description of the desired output or changes.",
                     },
                     "aspect_ratio": {
                         "type": "string",
                         "enum": aspect_ratios,
-                        "description": "Output image aspect ratio. Default follows input image.",
+                        "description": "Output aspect ratio.",
                     },
                     "quality": {
                         "type": "string",
                         "enum": qualities,
-                        "description": (
-                            "Output image quality/resolution. "
-                            "Higher quality produces larger images. Default uses global config."
-                        ),
+                        "description": "Output quality/resolution.",
                     },
                 },
-                "required": ["image_url", "prompt"],
+                "required": ["prompt"],
             },
         },
     }
@@ -185,12 +222,17 @@ async def _edit_via_xai(
     api_key: str,
     base_url: str | None,
     model: str,
-    image_url: str,
+    image_urls: list[str],
     prompt: str,
     aspect_ratio: str | None,
     resolution: str | None = None,
 ) -> str:
-    """Edit image via xAI API."""
+    """Edit image via xAI API.
+    
+    Supports single or multiple reference images (up to 5).
+    - Single image: image field = {"url": ..., "type": "image_url"}
+    - Multiple images: image field = [{"url": ..., "type": "image_url"}, ...]
+    """
     import httpx
     import base64
     from services.media_utils import save_image_from_url
@@ -205,16 +247,23 @@ async def _edit_via_xai(
         "Content-Type": "application/json",
     }
     
-    # xAI API 的 image 字段始终使用 {"url": ..., "type": "image_url"} 格式
-    # url 既支持公开 URL，也支持 data:image/...;base64,... 格式
-    image_payload = {"url": image_url, "type": "image_url"}
+    # xAI API 字段格式（参考 Vercel AI SDK @ai-sdk/xai 实现）：
+    # 单图："image": {"url": ..., "type": "image_url"}
+    # 多图："images": [{"url": ..., "type": "image_url"}, ...]（注意字段名是复数 images）
+    is_multi = len(image_urls) > 1
     
-    payload = {
+    payload: dict = {
         "model": model,
         "prompt": prompt,
-        "image": image_payload,
     }
-    aspect_ratio and aspect_ratio != "auto" and payload.update(aspect_ratio=aspect_ratio)
+    # 单图用 image（单数），多图用 images（复数），二者互斥
+    payload["images" if is_multi else "image"] = (
+        [{"url": u, "type": "image_url"} for u in image_urls]
+        if is_multi
+        else {"url": image_urls[0], "type": "image_url"}
+    )
+    # 注意：xAI 单图编辑不支持 aspect_ratio（输出跟随输入），多图编辑支持 aspect_ratio
+    is_multi and aspect_ratio and aspect_ratio != "auto" and payload.update(aspect_ratio=aspect_ratio)
     resolution and payload.update(resolution=resolution)
     
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -243,20 +292,41 @@ async def _edit_via_xai(
     return result_url
 
 
+def _resolve_single_image_part_gemini(image_url: str):
+    """Resolve a single image URL to a Gemini Part (sync helper for inline data)."""
+    import base64
+    from google.genai import types
+
+    # base64 data URL
+    if image_url.startswith("data:image"):
+        header, data = image_url.split(",", 1)
+        mime_match = header.split(";")[0].split(":")[1]
+        mime_type = mime_match or "image/jpeg"
+        data = data.strip()
+        padding = len(data) % 4
+        padding and (data := data + "=" * (4 - padding))
+        img_bytes = base64.b64decode(data)
+        return types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
+
+    # 公开 URL → 需要异步下载，返回 None 标记为需下载
+    return None
+
+
 async def _edit_via_gemini(
     api_key: str,
     base_url: str | None,
     model: str,
-    image_url: str,
+    image_urls: list[str],
     prompt: str,
     aspect_ratio: str | None,
     image_size: str | None = None,
 ) -> str:
     """Edit image via Gemini API.
     
-    Supports:
+    Supports single or multiple reference images.
+    Each image can be:
     - data:image/...;base64,... (inline base64)
-    - https://... (public URL via Part.from_uri)
+    - https://... (public URL, downloaded first)
     """
     import base64
     from google import genai
@@ -264,31 +334,22 @@ async def _edit_via_gemini(
     
     client = genai.Client(api_key=api_key)
     
-    # 构建 image_part
-    image_part: types.Part
-    
-    # 处理 base64 data URL
-    if image_url.startswith("data:image"):
-        # 解析 data:image/jpeg;base64,xxxxx 格式
-        header, data = image_url.split(",", 1)
-        mime_match = header.split(";")[0].split(":")[1]
-        mime_type = mime_match or "image/jpeg"
-        # 清理 base64 数据：移除换行符、空格，修正 padding
-        data = data.strip()
-        padding = len(data) % 4
-        padding and (data := data + "=" * (4 - padding))
-        img_bytes = base64.b64decode(data)
-        image_part = types.Part.from_bytes(data=img_bytes, mime_type=mime_type)
-    elif image_url.startswith("http://") or image_url.startswith("https://"):
-        # 公开 URL → 先下载再用 inline bytes（Gemini 服务器无法抓取大部分 CDN URL）
-        import httpx
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http:
-            dl_resp = await http.get(image_url)
-            dl_resp.raise_for_status()
-        mime_type = dl_resp.headers.get("content-type", "image/jpeg").split(";")[0]
-        image_part = types.Part.from_bytes(data=dl_resp.content, mime_type=mime_type)
-    else:
-        raise ValueError(f"Unsupported image URL format: {image_url[:50]}...")
+    # 构建所有 image_parts
+    image_parts: list[types.Part] = []
+    for url in image_urls:
+        part = _resolve_single_image_part_gemini(url)
+        if part:
+            image_parts.append(part)
+        elif url.startswith("http://") or url.startswith("https://"):
+            # 公开 URL → 先下载再用 inline bytes（Gemini 服务器无法抓取大部分 CDN URL）
+            import httpx
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http:
+                dl_resp = await http.get(url)
+                dl_resp.raise_for_status()
+            mime_type = dl_resp.headers.get("content-type", "image/jpeg").split(";")[0]
+            image_parts.append(types.Part.from_bytes(data=dl_resp.content, mime_type=mime_type))
+        else:
+            raise ValueError(f"Unsupported image URL format: {url[:50]}...")
     
     # 构建配置（与 batch_image_gen.py 对齐：camelCase 参数名 + 值映射）
     from services.batch_image_gen import IMAGE_SIZE_MAP
@@ -303,9 +364,10 @@ async def _edit_via_gemini(
         image_config=types.ImageConfig(**img_cfg_params) if img_cfg_params else types.ImageConfig(),
     )
     
+    # contents: [image_part_1, image_part_2, ..., prompt_text]
     response = client.models.generate_content(
         model=model or "gemini-2.0-flash-exp-image-generation",
-        contents=[image_part, prompt],
+        contents=[*image_parts, prompt],
         config=config,
     )
     
@@ -421,20 +483,32 @@ async def _maybe_create_edit_node(
 
 
 async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
-    """Execute edit_image tool."""
+    """Execute edit_image tool.
+    
+    Supports both single-image (image_url) and multi-image (image_urls) editing.
+    The two params are mutually exclusive; image_urls takes precedence.
+    """
     agent = ctx.agent
     db = ctx.db
 
-    image_url = args.get("image_url", "")
     prompt = args.get("prompt", "")
     aspect_ratio = args.get("aspect_ratio")
     quality = args.get("quality")
     
-    # 处理不同格式的 image_url
-    # 1. data:image/...;base64,... → 直接使用
-    # 2. http(s)://... → 直接使用
-    # 3. /api/media/xxx.jpg → 转换为 base64 data URL
-    resolved_url = _resolve_image_url(image_url)
+    # 统一收集参考图：image_urls 优先，兼容旧的 image_url 单值参数
+    raw_urls: list[str] = args.get("image_urls") or []
+    single_url = args.get("image_url", "")
+    single_url and not raw_urls and (raw_urls := [single_url])
+    
+    if not raw_urls:
+        return json.dumps({"error": "No reference image provided. Pass image_url or image_urls."})
+    
+    # 解析所有 URL（/api/media/xxx → base64 data URL 等）
+    # 压缩图片避免 base64 payload 过大导致 xAI 服务器断连
+    compress_dim = _MULTI_IMAGE_MAX_DIM if len(raw_urls) > 1 else _SINGLE_IMAGE_MAX_DIM
+    resolved_urls = [_resolve_image_url(u, max_dimension=compress_dim) for u in raw_urls]
+    # 用于画布节点关联的原始首图 URL
+    primary_image_url = raw_urls[0]
     
     # 从全局配置读取供应商信息
     cfg = await _get_global_image_config(db)
@@ -485,7 +559,7 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
             api_key=provider.api_key,
             base_url=provider.base_url,
             model=model,
-            image_url=resolved_url,
+            image_urls=resolved_urls,
             prompt=prompt,
             aspect_ratio=final_aspect,
             **extra,
@@ -497,7 +571,7 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
             return json.dumps({"error": "Image editing returned no result. The request may have been filtered."})
             
         # 画布上下文存在时，自动创建新节点并连线到源节点（保留原始节点不变）
-        canvas_result = ctx.theater_id and await _maybe_create_edit_node(edited_url, image_url, ctx)
+        canvas_result = ctx.theater_id and await _maybe_create_edit_node(edited_url, primary_image_url, ctx)
         return canvas_result or f"Edited image:\n\n![edited image]({edited_url})"
     
     except Exception as e:
