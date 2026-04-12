@@ -175,9 +175,10 @@ interface AIAssistantState {
   // Theater sessions cache: theaterId -> TheaterSession
   theaterSessions: Record<string, TheaterSession>;
   
-  // Panel size and position
+  // Panel size, position, and fullscreen
   panelSize: { width: number; height: number };
   panelPosition: { x: number; y: number };
+  isFullscreen: boolean;
   
   // Image edit context (from canvas node AI edit)
   imageEditContext: ImageEditContext | null;
@@ -237,6 +238,10 @@ interface AIAssistantState {
   
   setPanelPosition: (position: { x: number; y: number }) => void;
   resetPanelPosition: () => void;
+  
+  // Fullscreen
+  setIsFullscreen: (isFullscreen: boolean) => void;
+  toggleFullscreen: () => void;
   
   // Image edit context
   setImageEditContext: (ctx: ImageEditContext | null) => void;
@@ -302,6 +307,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       theaterSessions: {},
       panelSize: { ...DEFAULT_PANEL_SIZE },
       panelPosition: { ...DEFAULT_PANEL_POSITION },
+      isFullscreen: false,
       imageEditContext: null,
       nodeAttachments: [],
       nodeAttachment: null,
@@ -408,6 +414,10 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       // Panel position
       setPanelPosition: (panelPosition: { x: number; y: number }) => set({ panelPosition }),
       resetPanelPosition: () => set({ panelPosition: { ...DEFAULT_PANEL_POSITION } }),
+
+      // Fullscreen
+      setIsFullscreen: (isFullscreen: boolean) => set({ isFullscreen }),
+      toggleFullscreen: () => set((state) => ({ isFullscreen: !state.isFullscreen })),
 
       // Image edit context (互斥：清除 nodeAttachment)
       setImageEditContext: (imageEditContext: ImageEditContext | null) => set({ imageEditContext, nodeAttachment: null }),

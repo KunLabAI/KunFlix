@@ -201,6 +201,8 @@
     "clearChat": "清空对话",
     "newChat": "新对话",
     "chatHistory": "历史对话",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏",
     "noChats": "暂无对话",
     "deleteChat": "删除对话",
     "currentChat": "当前对话",

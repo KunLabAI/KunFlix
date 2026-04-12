@@ -41,6 +41,8 @@ import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const PASTE_THRESHOLD = 200; // characters
+const UNDO_HISTORY_LIMIT = 50; // 撤销历史最大条数
+const UNDO_DEBOUNCE_MS = 300; // 防抖保存间隔(ms)
 
 // ─── File helpers ────────────────────────────────────────────────────────────
 const FILE_ICON_MAP: [RegExp, React.ReactNode][] = [
@@ -120,6 +122,7 @@ const ImageFileCard: React.FC<{ file: UploadedFile; onRemove: (id: string) => vo
       <p className="text-[10px] text-foreground truncate">{file.file.name}</p>
     </div>
     <Button
+      type="button"
       size="icon"
       variant="ghost"
       className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
@@ -148,6 +151,7 @@ const GenericFileCard: React.FC<{ file: UploadedFile; onRemove: (id: string) => 
       {getFileTypeLabel(file.type)}
     </span>
     <Button
+      type="button"
       size="icon"
       variant="ghost"
       className="absolute top-0.5 right-0.5 h-5 w-5 rounded-full bg-background/80 border border-border/50 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground"
@@ -171,6 +175,7 @@ const TextualFileCard: React.FC<{ file: UploadedFile; onRemove: (id: string) => 
     <div className="absolute top-0.5 right-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
       {file.textContent && (
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="h-5 w-5 rounded-full bg-background/80 border border-border/50 hover:bg-accent"
@@ -181,6 +186,7 @@ const TextualFileCard: React.FC<{ file: UploadedFile; onRemove: (id: string) => 
         </Button>
       )}
       <Button
+        type="button"
         size="icon"
         variant="ghost"
         className="h-5 w-5 rounded-full bg-background/80 border border-border/50 hover:bg-destructive hover:text-destructive-foreground"
@@ -213,6 +219,7 @@ const PastedContentCard: React.FC<{ content: PastedContent; onRemove: (id: strin
       </span>
       <div className="absolute top-0.5 right-0.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="h-5 w-5 rounded-full bg-background/80 border border-border/50 hover:bg-accent"
@@ -222,6 +229,7 @@ const PastedContentCard: React.FC<{ content: PastedContent; onRemove: (id: strin
           <Copy className="h-2.5 w-2.5" />
         </Button>
         <Button
+          type="button"
           size="icon"
           variant="ghost"
           className="h-5 w-5 rounded-full bg-background/80 border border-border/50 hover:bg-destructive hover:text-destructive-foreground"
@@ -331,9 +339,63 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── 撤销历史栈 ──
+  const [undoHistory, setUndoHistory] = useState<string[]>(['']);
+  const [undoIndex, setUndoIndex] = useState(0);
+  const undoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isUndoRedoRef = useRef(false); // 标记是否为撤销/重做操作
+
+  // 带撤销功能的值更新函数
+  const updateInputValue = useCallback((value: string, skipHistory = false) => {
+    setInputValue(value);
+    // 撤销/重做操作或显式跳过时，不保存历史
+    skipHistory || isUndoRedoRef.current || (() => {
+      // 清除之前的防抖定时器
+      undoTimerRef.current && clearTimeout(undoTimerRef.current);
+      // 防抖保存到历史栈
+      undoTimerRef.current = setTimeout(() => {
+        setUndoHistory(prev => {
+          // 截取当前位置之后的历史，添加新值
+          const newHistory = [...prev.slice(0, undoIndex + 1), value].slice(-UNDO_HISTORY_LIMIT);
+          return newHistory;
+        });
+        setUndoIndex(prev => Math.min(prev + 1, UNDO_HISTORY_LIMIT - 1));
+      }, UNDO_DEBOUNCE_MS);
+    })();
+    // 重置标记
+    isUndoRedoRef.current = false;
+  }, [undoIndex]);
+
+  // 撤销操作
+  const handleUndo = useCallback(() => {
+    undoIndex > 0 && (() => {
+      isUndoRedoRef.current = true;
+      const newIndex = undoIndex - 1;
+      setUndoIndex(newIndex);
+      setInputValue(undoHistory[newIndex] || '');
+    })();
+  }, [undoIndex, undoHistory]);
+
+  // 重做操作
+  const handleRedo = useCallback(() => {
+    undoIndex < undoHistory.length - 1 && (() => {
+      isUndoRedoRef.current = true;
+      const newIndex = undoIndex + 1;
+      setUndoIndex(newIndex);
+      setInputValue(undoHistory[newIndex] || '');
+    })();
+  }, [undoIndex, undoHistory]);
+
   // 过滤已附加的节点，生成可选节点列表
   const attachedNodeIds = useMemo(() => new Set(nodeAttachments.map(a => a.nodeId)), [nodeAttachments]);
   const availableNodes = useMemo(() => canvasNodes.filter(n => !attachedNodeIds.has(n.id)), [canvasNodes, attachedNodeIds]);
+
+  // 清理撤销历史定时器
+  useEffect(() => {
+    return () => {
+      undoTimerRef.current && clearTimeout(undoTimerRef.current);
+    };
+  }, []);
 
   // 发送后重新聚焦
   useEffect(() => {
@@ -416,7 +478,7 @@ export function MessageInput({
     const isLongText = textData && textData.length > PASTE_THRESHOLD && pastedContents.length < 5;
     isLongText && (() => {
       e.preventDefault();
-      setInputValue(prev => prev + textData.slice(0, PASTE_THRESHOLD) + '...');
+      updateInputValue(inputValue + textData.slice(0, PASTE_THRESHOLD) + '...');
       onAddPastedContent?.({
         id: crypto.randomUUID(),
         content: textData,
@@ -424,7 +486,7 @@ export function MessageInput({
         wordCount: textData.split(/\s+/).filter(Boolean).length,
       });
     })();
-  }, [handleFileSelect, uploadedFiles.length, maxFiles, pastedContents.length, onAddPastedContent]);
+  }, [handleFileSelect, uploadedFiles.length, maxFiles, pastedContents.length, onAddPastedContent, inputValue, updateInputValue]);
 
   // ── Drag handlers ──
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -457,19 +519,26 @@ export function MessageInput({
     if (hasUploading) return;
 
     onSend(content, uploadedFiles, pastedContents);
-    setInputValue('');
+    updateInputValue('', true); // 清空输入框，跳过历史记录
     // 立即清除所有附件预览
     onClearNodeAttachments?.();
     onClearUploadedFiles?.();
     onClearPastedContents?.();
     textareaRef.current && (textareaRef.current.style.height = 'auto');
     textareaRef.current?.focus();
-  }, [inputValue, uploadedFiles, pastedContents, nodeAttachments, onSend, onClearNodeAttachments, onClearUploadedFiles, onClearPastedContents, t]);
+  }, [inputValue, uploadedFiles, pastedContents, nodeAttachments, onSend, onClearNodeAttachments, onClearUploadedFiles, onClearPastedContents, t, updateInputValue]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做
+    const isUndo = (e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey;
+    const isRedo = (e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey;
+    isUndo && (e.preventDefault(), handleUndo());
+    isRedo && (e.preventDefault(), handleRedo());
+    (isUndo || isRedo) && e.stopPropagation();
+
     // Enter发送，Shift+Enter换行；AI生成中禁止发送
     e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && (e.preventDefault(), !isLoading && handleSubmit(e));
-  }, [handleSubmit, isLoading]);
+  }, [handleSubmit, isLoading, handleUndo, handleRedo]);
 
   // ── Derived state ──
   const hasContent = inputValue.trim() || uploadedFiles.length > 0 || pastedContents.length > 0 || nodeAttachments.length > 0;
@@ -569,7 +638,7 @@ export function MessageInput({
           <textarea
             ref={textareaRef}
             value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
+            onChange={(e) => updateInputValue(e.target.value)}
             onPaste={handlePaste}
             onKeyDown={handleKeyDown}
             placeholder={resolvedPlaceholder}
@@ -596,7 +665,7 @@ export function MessageInput({
                     <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[256px]">
+                <DropdownMenuContent align="start" className="w-[256px] max-h-72 overflow-y-auto">
                   <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
                     {t('ai.selectAgent')}
                   </div>

@@ -77,6 +77,7 @@ function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
 
       {/* 关闭按钮 */}
       <Button
+        type="button"
         variant="ghost"
         size="icon"
         className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-background border border-border/50 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground z-10"
@@ -134,6 +135,7 @@ function InfoNodeCard({ attachment, onClear }: NodePreviewCardProps) {
 
       {/* 关闭按钮 */}
       <Button
+        type="button"
         variant="ghost"
         size="icon"
         className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-background border border-border/50 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground z-10"

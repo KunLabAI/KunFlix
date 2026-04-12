@@ -344,7 +344,7 @@ function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] 
           return (
             <div 
               key={a.nodeId} 
-              className="relative w-16 h-16 rounded-md overflow-hidden bg-[var(--color-bg-primary)]/20 border border-[var(--color-bg-primary)]/30 flex-shrink-0"
+              className="relative w-24 h-24 rounded-md overflow-hidden flex-shrink-0"
               title={a.label}
             >
               {a.nodeType === 'video' ? (

@@ -1,7 +1,6 @@
 // 基础组件
 export { LoadingDots } from './LoadingDots';
 export { TypewriterText } from './TypewriterText';
-export { ThinkingIndicator } from './ThinkingIndicator';
 
 // 状态指示器
 export { ToolCallIndicator } from './ToolCallIndicator';
@@ -30,6 +29,11 @@ export { PanelHeader } from './PanelHeader';
 export { MessageInput } from './MessageInput';
 export { ContextUsageBar } from './ContextUsageBar';
 export { NodePreviewCard } from './NodePreviewCard';
+
+// 思考面板组件
+export { ThinkPanel } from './ThinkPanel';
+export { SingleAgentThinkPanel } from './SingleAgentThinkPanel';
+export { MultiAgentPanel } from './MultiAgentPanel';
 
 // Hooks
 export { useSSEHandler } from './hooks/useSSEHandler';
