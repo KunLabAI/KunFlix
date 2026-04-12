@@ -548,10 +548,10 @@ body {
   }
 }
 
-/* React Flow 自定义光标样式 - 使用 !important 覆盖默认样式 */
+/* React Flow 光标样式 - 使用系统默认光标 */
 .react-flow__pane,
 .react-flow__pane.react-flow__pane {
-  cursor: crosshair !important;
+  cursor: default !important;
 }
 
 .react-flow__pane.dragging,
@@ -561,12 +561,12 @@ body {
 
 /* 框选时的选区样式 */
 .react-flow__pane.selecting {
-  cursor: crosshair !important;
+  cursor: default !important;
 }
 
 /* 禁用默认的 grab 光标 */
 .react-flow__pane[data-no-drag="true"] {
-  cursor: crosshair !important;
+  cursor: default !important;
 }
 
 /* 框选时的选区样式 */

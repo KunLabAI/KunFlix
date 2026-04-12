@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { MousePointer2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -71,17 +72,9 @@ export function CanvasCursor() {
         transform: 'translate(-50%, -50%)',
       }}
     >
-      {/* 默认/框选模式 - 十字准星 */}
+      {/* 默认/框选模式 - MousePointer2 指针 */}
       {cursorMode !== 'pan' && (
-        <div className="relative w-6 h-6">
-          {/* 外圆环 */}
-          <div className="absolute inset-0 rounded-full border-2 border-primary/30" />
-          {/* 十字线 */}
-          <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-primary -translate-y-1/2" />
-          <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-primary -translate-x-1/2" />
-          {/* 中心点 */}
-          <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-primary rounded-full -translate-x-1/2 -translate-y-1/2" />
-        </div>
+        <MousePointer2 className="w-5 h-5 text-primary drop-shadow-md" />
       )}
 
       {/* 拖拽模式 - 手型 */}

@@ -6,9 +6,10 @@ import { useCanvasStore } from '@/store/useCanvasStore';
 export function useTheaterLoading(theaterId: string) {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const { loadTheater, setTheaterId, saveToBackend } = useCanvasStore();
+  const { loadTheater, setTheaterId, saveToBackend, isDirty, isSaving, isSyncing } = useCanvasStore();
   const loaded = useRef(false);
 
+  // Load theater on mount (wait for auth)
   useEffect(() => {
     if (!isAuthenticated || loaded.current) return;
     loaded.current = true;
@@ -17,10 +18,23 @@ export function useTheaterLoading(theaterId: string) {
     });
   }, [isAuthenticated, theaterId, loadTheater, router]);
 
+  // Ensure theaterId is set
   useEffect(() => {
     setTheaterId(theaterId);
   }, [theaterId, setTheaterId]);
 
+  // Auto-save with 2s debounce
+  useEffect(() => {
+    if (!isDirty || isSaving || isSyncing) return;
+
+    const timer = setTimeout(() => {
+      saveToBackend().catch(console.error);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [isDirty, isSaving, isSyncing, saveToBackend]);
+
+  // Save on network recovery
   useEffect(() => {
     const handleOnline = () => {
       if (useCanvasStore.getState().isDirty) {
