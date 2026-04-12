@@ -151,6 +151,7 @@ export interface ChatSessionInfo {
   title: string;
   agentId: string;
   agentName: string;
+  createdAt: string;
   updatedAt: string;
 }
 

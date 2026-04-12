@@ -6,6 +6,7 @@ import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X } from 'lucide-
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
 
 /** Ensure media URL has /api/media/ prefix */
 const normalizeMediaUrl = (url: string | null | undefined): string | null => {
@@ -19,6 +20,7 @@ type ColType = 'text' | 'number' | 'image' | 'video' | 'audio';
 const MEDIA_TYPES = new Set<ColType>(['image', 'video', 'audio']);
 
 const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeData>>) => {
+  const { t } = useTranslation();
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
@@ -27,7 +29,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
   const { getNode } = useReactFlow();
 
   const handleDelete = (e: React.MouseEvent) => {
-    if (confirm("确定要删除这张多维表格卡吗？")) {
+    if (confirm(t('canvas.node.deleteConfirm.storyboard'))) {
       deleteNode(id);
     }
   };
@@ -112,11 +114,11 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           <div className="flex-1 min-w-0 flex items-center">
             <h3 
               className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none gap-2" 
-              title="多维表格卡" 
+              title={t('canvas.node.storyboardCard')} 
               onPointerDown={(e) => e.stopPropagation()}
             >
               <Clapperboard className="w-4 h-4 text-amber-600" />
-              多维表格卡
+              {t('canvas.node.storyboardCard')}
             </h3>
           </div>
         </div>
@@ -205,7 +207,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                                     <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
                                       <Play className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                                     </div>
-                                    <span className="text-[10px] text-muted-foreground leading-tight truncate">播放</span>
+                                    <span className="text-[10px] text-muted-foreground leading-tight truncate">{t('canvas.node.storyboard.play')}</span>
                                   </button>
                                 ) : (
                                   <div className="w-24 h-16 rounded-md border border-dashed border-border/40 bg-muted/20 flex items-center justify-center">
@@ -233,8 +235,8 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                  <span className="text-sm font-medium text-foreground/60">暂无数据</span>
-                  <span className="text-[10px] text-muted-foreground/50">等待 Agent 填入数据</span>
+                  <span className="text-sm font-medium text-foreground/60">{t('canvas.node.storyboard.noData')}</span>
+                  <span className="text-[10px] text-muted-foreground/50">{t('canvas.node.storyboard.waitingForAgent')}</span>
                 </div>
               )}
           </CardContent>
@@ -284,12 +286,12 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
             {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,
-              title: '创建副本',
+              title: t('canvas.node.toolbar.duplicate'),
             },
             {
               icon: <Trash2 className="h-3.5 w-3.5" />,
               onClick: handleDelete,
-              title: '删除',
+              title: t('canvas.node.toolbar.delete'),
               variant: 'danger',
             },
           ] as ToolbarAction[]}

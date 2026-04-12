@@ -82,7 +82,7 @@ jest.mock('@/store/useCanvasStore', () => ({
 }));
 
 // Import after mocks
-import { ScriptEditor } from '../ScriptEditor';
+import { ScriptEditor } from '../TextEditor';
 
 describe('ScriptEditor WYSIWYG', () => {
   const mockOnUpdate = jest.fn();

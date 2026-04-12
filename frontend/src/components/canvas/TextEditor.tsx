@@ -13,6 +13,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 /**
  * Convert Markdown string to Tiptap JSON content
@@ -117,6 +118,7 @@ interface ScriptEditorProps {
 
 export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCountChange }: ScriptEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   // Memoize normalized content to prevent unnecessary re-parsing
   const normalizedContent = useMemo(() => {
@@ -155,7 +157,7 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
       Placeholder.configure({
         showOnlyWhenEditable: false,
         placeholder: ({ editor }) => {
-          return editor.isEditable ? '请输入内容...' : '双击进入编辑模式...';
+          return editor.isEditable ? t('canvas.editor.placeholder') : t('canvas.editor.placeholderReadonly');
         },
       }),
       CharacterCount,

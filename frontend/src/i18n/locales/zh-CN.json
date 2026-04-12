@@ -106,6 +106,147 @@
     "videoCard": "视频卡",
     "audioCard": "音频卡",
     "storyboardCard": "多维表格卡",
+    "node": {
+      "textCard": "文本卡",
+      "imageCard": "图片卡",
+      "audioCard": "音频卡",
+      "storyboardCard": "多维表格卡",
+      "videoCard": "视频卡",
+      "unnamedTextCard": "无标题文本卡",
+      "unnamedImageCard": "未命名图片卡",
+      "unnamedAudioCard": "未命名音频卡",
+      "unnamedVideoCard": "未命名视频卡",
+      "newTextCard": "新文本卡",
+      "newImageCard": "新图片卡",
+      "newAudioCard": "新音频卡",
+      "newVideoCard": "新视频卡",
+      "copySuffix": "{{name}} (副本)",
+      "deleteConfirm": {
+        "text": "确定要删除这张文本卡吗？",
+        "image": "确定要删除这张图片卡吗？",
+        "audio": "确定要删除这张音频卡吗？",
+        "storyboard": "确定要删除这张多维表格卡吗？",
+        "video": "确定要删除这张视频卡吗？"
+      },
+      "toolbar": {
+        "duplicate": "创建副本",
+        "delete": "删除",
+        "aiEdit": "AI 编辑",
+        "reference": "引用",
+        "unreference": "撤销引用",
+        "fitContain": "适应卡片 (留白)",
+        "fitCover": "填充卡片 (裁剪)",
+        "aiAssist": "AI 辅助",
+        "edit": "编辑",
+        "finishEdit": "完成编辑"
+      },
+      "upload": {
+        "uploadImage": "上传图片",
+        "uploadAudio": "上传音频",
+        "uploadVideo": "上传视频",
+        "retry": "重试",
+        "uploadFailed": "上传失败，请重试",
+        "imageFormatError": "仅支持 jpg、jpeg、png、webp 格式",
+        "imageSizeError": "图片大小不能超过 5MB",
+        "audioFormatError": "仅支持 mp3、wav、ogg、flac、aac、m4a 格式",
+        "audioSizeError": "音频大小不能超过 100MB",
+        "videoFormatError": "仅支持 mp4、webm、ogg 格式",
+        "videoSizeError": "视频大小不能超过 500MB"
+      },
+      "preview": {
+        "dragOrFullscreen": "拖拽移动节点 / 双击全屏预览"
+      },
+      "audio": {
+        "showLyrics": "查看歌词",
+        "hideLyrics": "收起歌词"
+      },
+      "video": {
+        "dragToMove": "拖拽移动节点"
+      },
+      "storyboard": {
+        "noData": "暂无数据",
+        "waitingForAgent": "等待 Agent 填入数据",
+        "play": "播放"
+      },
+      "charCount": "{{count}} 字"
+    },
+    "editor": {
+      "placeholder": "请输入内容...",
+      "placeholderReadonly": "双击进入编辑模式..."
+    },
+    "help": {
+      "title": "画布快捷键",
+      "buttonTitle": "快捷键帮助",
+      "sections": {
+        "basic": "基础",
+        "multiSelect": "多选",
+        "view": "视图",
+        "edit": "编辑",
+        "ai": "AI"
+      },
+      "shortcuts": {
+        "selectBox": {
+          "title": "框选节点",
+          "description": "空白处拖拽鼠标"
+        },
+        "moveCanvas": {
+          "title": "移动画布",
+          "description": "空格键+拖拽"
+        },
+        "moveNode": {
+          "title": "移动节点",
+          "description": "直接拖拽节点"
+        },
+        "addSelect": {
+          "title": "添加选中",
+          "description": "Shift+点击节点"
+        },
+        "batchSelect": {
+          "title": "批量框选",
+          "description": "Shift+拖拽"
+        },
+        "zoomIn": {
+          "title": "放大",
+          "description": "放大画布"
+        },
+        "zoomOut": {
+          "title": "缩小",
+          "description": "缩小画布"
+        },
+        "fitView": {
+          "title": "适应视图",
+          "description": "适应所有节点"
+        },
+        "delete": {
+          "title": "删除",
+          "description": "删除选中节点"
+        },
+        "undo": {
+          "title": "撤销",
+          "description": "撤销上一步"
+        },
+        "redo": {
+          "title": "重做",
+          "description": "重做下一步"
+        },
+        "save": {
+          "title": "保存",
+          "description": "手动保存"
+        },
+        "aiEdit": {
+          "title": "AI 编辑",
+          "description": "拖拽到 AI 面板"
+        },
+        "multiImageEdit": {
+          "title": "多图编辑",
+          "description": "最多 5 个图像"
+        }
+      },
+      "tip": "提示：将节点拖拽到 AI 对话面板可进行智能编辑"
+    },
+    "edge": {
+      "deleteTitle": "删除连线"
+    },
     "dropToCreateNode": "释放以创建 {{type}}节点",
     "multiFileDrop": "支持拖拽多个文件",
     "fileType": {

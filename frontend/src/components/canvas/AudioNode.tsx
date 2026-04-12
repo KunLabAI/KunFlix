@@ -3,13 +3,16 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music, ChevronDown } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music, ChevronDown, Headphones, Quote } from 'lucide-react';
 import { useCanvasStore, AudioNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
 
 const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
+  const { t } = useTranslation();
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
@@ -67,7 +70,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张音频卡吗？")) {
+    if (confirm(t('canvas.node.deleteConfirm.audio'))) {
       deleteNode(id);
     }
   };
@@ -77,6 +80,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
     const node = getNode(id);
     if (node) {
       const currentData = node.data as AudioNodeData;
+      const currentName = currentData.name || t('canvas.node.unnamedAudioCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
         id: `audio-${uuidv4()}`,
@@ -87,7 +91,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         selected: false,
         data: {
           ...currentData,
-          name: currentData.name ? `${currentData.name} (副本)` : '未命名音频卡 (副本)',
+          name: t('canvas.node.copySuffix', { name: currentName }),
           uploading: false,
         },
       };
@@ -107,11 +111,11 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
     // Validate type and size (100MB max for audio)
     const validTypes = ['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/flac', 'audio/aac', 'audio/x-m4a'];
     if (!validTypes.includes(file.type)) {
-      setUploadError('仅支持 mp3、wav、ogg、flac、aac、m4a 格式');
+      setUploadError(t('canvas.node.upload.audioFormatError'));
       return;
     }
     if (file.size > 100 * 1024 * 1024) {
-      setUploadError('音频大小不能超过 100MB');
+      setUploadError(t('canvas.node.upload.audioSizeError'));
       return;
     }
 
@@ -172,7 +176,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
       response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
     } catch (error: any) {
       console.error('Upload error:', error);
-      setUploadError(error.message || '上传失败，请重试');
+      setUploadError(error.message || t('canvas.node.upload.uploadFailed'));
       updateNodeData(id, { uploading: false });
     } finally {
       URL.revokeObjectURL(objectUrl);
@@ -183,6 +187,37 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
   };
 
   const isUploading = data.uploading;
+
+  const handleReference = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 确保 audioUrl 是完整的 /api/media/ 路径
+    let audioUrl = data.audioUrl || '';
+    const needsPrefix = audioUrl && !audioUrl.startsWith('http') && !audioUrl.startsWith('/api/media/') && !audioUrl.startsWith('data:');
+    needsPrefix && (audioUrl = `/api/media/${audioUrl}`);
+    
+    // 检查节点是否已在附件中
+    const store = useAIAssistantStore.getState();
+    const isReferenced = store.nodeAttachments.some(a => a.nodeId === id);
+    
+    if (isReferenced) {
+      // 已引用则撤销引用
+      store.removeNodeAttachment(id);
+    } else {
+      // 未引用则添加引用
+      store.addNodeAttachment({
+        nodeId: id,
+        nodeType: 'audio',
+        label: data.name || t('canvas.node.unnamedAudioCard'),
+        excerpt: data.description || '',
+        thumbnailUrl: audioUrl,
+        meta: {},
+      });
+      store.setIsOpen(true);
+    }
+  };
+
+  // 检查节点是否已被引用
+  const isReferenced = useAIAssistantStore((state) => state.nodeAttachments.some(a => a.nodeId === id));
 
   return (
     <>
@@ -210,7 +245,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         className="hidden" 
         accept=".mp3,.wav,.ogg,.flac,.aac,.m4a" 
         onChange={handleFileChange}
-        aria-label="选择音频"
+        aria-label={t('canvas.node.upload.uploadAudio')}
         data-testid="file-upload-input"
       />
 
@@ -230,7 +265,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                   updateNodeData(id, { name: e.target.value });
                 }}
                 className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-                placeholder="未命名音频卡"
+                placeholder={t('canvas.node.unnamedAudioCard')}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 onKeyDown={handleTitleKeyDown}
@@ -243,7 +278,8 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleTitleDoubleClick}
               >
-                {data.name || '未命名音频卡'}
+                <Headphones className="w-4 h-4 text-amber-500 mr-2 shrink-0" />
+                {data.name || t('canvas.node.unnamedAudioCard')}
               </h3>
             )}
           </div>
@@ -262,7 +298,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                   onClick={handleUploadClick} 
                   variant="default" 
                   role="button" 
-                  aria-label="上传音频"
+                  aria-label={t('canvas.node.upload.uploadAudio')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -271,7 +307,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                   }}
                 >
                   <Upload className="w-4 h-4 mr-2" />
-                  上传音频
+                  {t('canvas.node.upload.uploadAudio')}
                 </Button>
               </div>
             )}
@@ -296,7 +332,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                       onPointerDown={(e) => e.stopPropagation()}
                     >
                       <ChevronDown className={`h-3 w-3 transition-transform ${showLyrics ? 'rotate-180' : ''}`} />
-                      {showLyrics ? '收起歌词' : '查看歌词'}
+                      {showLyrics ? t('canvas.node.audio.hideLyrics') : t('canvas.node.audio.showLyrics')}
                     </button>
                     {showLyrics && (
                       <div className="mt-1.5 p-2 rounded bg-muted/50 text-[11px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto custom-scrollbar">
@@ -334,7 +370,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                   variant="outline" 
                   size="sm" 
                   role="button" 
-                  aria-label="重试上传"
+                  aria-label={t('canvas.node.upload.retry')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -342,7 +378,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
                     }
                   }}
                 >
-                  <RefreshCw className="w-3 h-3 mr-2" /> 重试
+                  <RefreshCw className="w-3 h-3 mr-2" /> {t('canvas.node.upload.retry')}
                 </Button>
               </div>
             )}
@@ -353,14 +389,20 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         <NodeToolbar
           actions={[
             {
+              icon: <Quote className="h-3.5 w-3.5" />,
+              onClick: handleReference,
+              title: isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference'),
+              variant: isReferenced ? 'primary' : undefined,
+            },
+            {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,
-              title: '创建副本',
+              title: t('canvas.node.toolbar.duplicate'),
             },
             {
               icon: <Trash2 className="h-3.5 w-3.5" />,
               onClick: handleDelete,
-              title: '删除',
+              title: t('canvas.node.toolbar.delete'),
               variant: 'danger',
             },
           ] as ToolbarAction[]}

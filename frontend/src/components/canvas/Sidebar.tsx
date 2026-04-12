@@ -15,7 +15,8 @@ const NODE_TYPES = [
     icon: ScrollText, 
     color: 'text-node-blue', 
     bg: 'bg-node-blue/10',
-    data: { title: '新文本卡', content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] },
+    titleKey: 'canvas.node.newTextCard',
+    data: { content: { type: 'doc', content: [{ type: 'paragraph' }] }, tags: [] },
     dimensions: { width: 420, height: 320 }
   },
   { 
@@ -25,7 +26,8 @@ const NODE_TYPES = [
     icon: ImageIcon, 
     color: 'text-node-green', 
     bg: 'bg-node-green/10',
-    data: { name: '新图片卡', description: '' },
+    titleKey: 'canvas.node.newImageCard',
+    data: { description: '' },
     dimensions: { width: 512, height: 384 }
   },
   { 
@@ -35,7 +37,8 @@ const NODE_TYPES = [
     icon: Video, 
     color: 'text-node-yellow', 
     bg: 'bg-node-yellow/10',
-    data: { name: '新视频卡', description: '' },
+    titleKey: 'canvas.node.newVideoCard',
+    data: { description: '' },
     dimensions: { width: 512, height: 384 }
   },
   { 
@@ -45,7 +48,8 @@ const NODE_TYPES = [
     icon: Headphones, 
     color: 'text-amber-500', 
     bg: 'bg-amber-500/10',
-    data: { name: '新音频卡', description: '' },
+    titleKey: 'canvas.node.newAudioCard',
+    data: { description: '' },
     dimensions: { width: 360, height: 200 }
   },
   { 
@@ -55,6 +59,7 @@ const NODE_TYPES = [
     icon: Table2, 
     color: 'text-node-purple', 
     bg: 'bg-node-purple/10',
+    titleKey: 'canvas.node.storyboardCard',
     data: { shotNumber: '01', duration: 3, description: '', pivotConfig: { rows: [], cols: [], values: [] } },
     dimensions: { width: 768, height: 512 }
   },
@@ -136,6 +141,21 @@ export const Sidebar = () => {
     }, 0);
   };
 
+  // 获取带国际化标题的节点数据
+  const getNodeDataWithType = (nodeType: string) => {
+    const nodeConfig = NODE_TYPES.find(n => n.type === nodeType);
+    if (!nodeConfig) return {};
+    
+    const title = t(nodeConfig.titleKey || 'canvas.node.unnamedTextCard');
+    const baseData = nodeConfig.data || {};
+    
+    // text 节点使用 title 字段，其他节点使用 name 字段
+    if (nodeType === 'text') {
+      return { ...baseData, title };
+    }
+    return { ...baseData, name: title };
+  };
+
   const onAssetDragStart = (event: React.DragEvent, asset: { file_type: string | null; url: string; original_name: string | null; filename: string }) => {
     const builder = DRAG_DATA_BUILDERS[asset.file_type ?? ''];
     const name = asset.original_name || asset.filename;
@@ -174,7 +194,7 @@ export const Sidebar = () => {
                 <div
                   key={node.type}
                   draggable
-                  onDragStart={(e) => onDragStart(e, node.type, node.data, node.dimensions)}
+                  onDragStart={(e) => onDragStart(e, node.type, getNodeDataWithType(node.type), node.dimensions)}
                   className="group flex items-start gap-3 px-2 py-2 rounded-lg cursor-grab active:cursor-grabbing hover:bg-secondary transition-colors"
                 >
                   <div className={cn("p-1.5 rounded-md mt-0.5", node.bg)}>

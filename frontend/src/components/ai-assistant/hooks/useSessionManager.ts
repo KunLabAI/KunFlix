@@ -61,12 +61,13 @@ export function useSessionManager() {
     try {
       const sessionsRes = await api.get(`/chats/?theater_id=${targetTheaterId}&limit=50`);
       const sessions = sessionsRes.data || [];
-      const chatList: ChatSessionInfo[] = sessions.map((s: { id: string; title: string; agent_id: string; updated_at: string }) => ({
+      const chatList: ChatSessionInfo[] = sessions.map((s: { id: string; title: string; agent_id: string; created_at: string; updated_at: string }) => ({
         id: s.id,
         title: s.title || '未命名对话',
         agentId: s.agent_id,
         agentName: '',
-        updatedAt: s.updated_at,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at || s.created_at,
       }));
       setTheaterChatList(chatList);
       return chatList;
@@ -164,6 +165,7 @@ export function useSessionManager() {
           title: res.data.title || `画布对话 - ${new Date().toLocaleDateString()}`,
           agentId: selectedAgent.id,
           agentName: selectedAgent.name || 'AI 助手',
+          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
 
@@ -211,6 +213,7 @@ export function useSessionManager() {
         title: res.data.title || `画布对话 - ${new Date().toLocaleDateString()}`,
         agentId: selectedAgent.id,
         agentName: selectedAgent.name || 'AI 助手',
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
 
