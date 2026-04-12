@@ -3,13 +3,16 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Wand2, Check, Copy } from 'lucide-react';
+import { Pencil, Trash2, Wand2, Check, Copy, ScrollText, Quote } from 'lucide-react';
 import { useCanvasStore, ScriptNodeData, CanvasNode } from '@/store/useCanvasStore';
-import { ScriptEditor } from './ScriptEditor';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import { ScriptEditor } from './TextEditor';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
 
 const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => {
+  const { t } = useTranslation();
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
@@ -76,7 +79,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张文本卡吗？")) {
+    if (confirm(t('canvas.node.deleteConfirm.text'))) {
       deleteNode(id);
     }
   };
@@ -86,6 +89,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     const node = getNode(id);
     if (node) {
       const currentData = isEditing ? editData : node.data as ScriptNodeData;
+      const currentTitle = currentData.title || t('canvas.node.unnamedTextCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
         id: `script-${uuidv4()}`,
@@ -96,7 +100,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         selected: false,
         data: {
           ...currentData,
-          title: currentData.title ? `${currentData.title} (副本)` : '无标题文本卡 (副本)',
+          title: t('canvas.node.copySuffix', { name: currentTitle }),
         },
       };
       addNode(newNode);
@@ -105,8 +109,53 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
   const handleAIAssist = (e: React.MouseEvent) => {
     e.stopPropagation();
-    alert("AI 辅助功能正在开发中...");
+    // TODO: Implement AI assist functionality
+    alert('AI Assist is under development...');
   };
+
+  const handleReference = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 获取文本内容摘要
+    const content = data.content;
+    let excerpt = '';
+    if (typeof content === 'string') {
+      excerpt = content.slice(0, 200);
+    } else if (content && typeof content === 'object' && 'content' in content) {
+      // 从 Tiptap JSON 中提取文本
+      const extractText = (node: any): string => {
+        if (!node) return '';
+        if (node.type === 'text' && node.text) return node.text;
+        if (node.content && Array.isArray(node.content)) {
+          return node.content.map(extractText).join(' ');
+        }
+        return '';
+      };
+      excerpt = extractText(content).slice(0, 200);
+    }
+    
+    // 检查节点是否已在附件中
+    const store = useAIAssistantStore.getState();
+    const isReferenced = store.nodeAttachments.some(a => a.nodeId === id);
+    
+    if (isReferenced) {
+      // 已引用则撤销引用
+      store.removeNodeAttachment(id);
+    } else {
+      // 未引用则添加引用
+      store.addNodeAttachment({
+        nodeId: id,
+        nodeType: 'text',
+        label: data.title || t('canvas.node.unnamedTextCard'),
+        excerpt,
+        thumbnailUrl: '',
+        meta: {},
+      });
+      store.setIsOpen(true);
+    }
+  };
+
+  // 检查节点是否已被引用
+  const isReferenced = useAIAssistantStore((state) => state.nodeAttachments.some(a => a.nodeId === id));
 
   const handleFinishEdit = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -149,7 +198,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
                   updateNodeData(id, newData);
                 }}
                 className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-                placeholder="无标题文本卡"
+                placeholder={t('canvas.node.unnamedTextCard')}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
@@ -167,13 +216,14 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleEdit}
               >
-                {data.title || '无标题文本卡'}
+                <ScrollText className="w-4 h-4 text-node-blue mr-2 shrink-0" />
+                {data.title || t('canvas.node.unnamedTextCard')}
               </h3>
             )}
           </div>
           {/* 字数统计 */}
           <div className="text-xs font-medium text-muted-foreground/60 flex-shrink-0 select-none">
-            {charCount} 字
+            {t('canvas.node.charCount', { count: charCount })}
           </div>
         </div>
 
@@ -196,14 +246,14 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         <CardFooter className="script-node__footer p-2 bg-secondary/10 flex justify-end gap-2 border-t">
           {isEditing ? (
             <Button variant="default" size="sm" className="h-8" onClick={handleFinishEdit}>
-              <Check className="h-4 w-4 mr-1" /> 完成编辑
+              <Check className="h-4 w-4 mr-1" /> {t('canvas.node.toolbar.finishEdit')}
             </Button>
           ) : (
             <>
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={handleAIAssist} title="AI 辅助">
-                <Wand2 className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className={`h-8 w-8 hover:bg-background ${isReferenced ? 'text-primary bg-primary/10' : ''}`} onClick={handleReference} title={isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference')}>
+                <Quote className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={handleEdit} title="编辑">
+              <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-background" onClick={handleEdit} title={t('canvas.node.toolbar.edit')}>
                 <Pencil className="h-4 w-4" />
               </Button>
             </>
@@ -215,14 +265,20 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       <NodeToolbar
         actions={[
           {
+            icon: <Quote className="h-3.5 w-3.5" />,
+            onClick: handleReference,
+            title: isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference'),
+            variant: isReferenced ? 'primary' : undefined,
+          },
+          {
             icon: <Copy className="h-3.5 w-3.5" />,
             onClick: handleDuplicate,
-            title: '创建副本',
+            title: t('canvas.node.toolbar.duplicate'),
           },
           {
             icon: <Trash2 className="h-3.5 w-3.5" />,
             onClick: handleDelete,
-            title: '删除',
+            title: t('canvas.node.toolbar.delete'),
             variant: 'danger',
           },
         ] as ToolbarAction[]}

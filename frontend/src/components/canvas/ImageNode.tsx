@@ -4,14 +4,16 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut, Sparkles } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, X, ZoomIn, ZoomOut, Quote, Image as ImageIcon } from 'lucide-react';
 import { useCanvasStore, CharacterNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>>) => {
+  const { t } = useTranslation();
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const updateNodeDimensions = useCanvasStore((state) => state.updateNodeDimensions);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -76,7 +78,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张图片卡吗？")) {
+    if (confirm(t('canvas.node.deleteConfirm.image'))) {
       deleteNode(id);
     }
   };
@@ -86,6 +88,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     const node = getNode(id);
     if (node) {
       const currentData = node.data as CharacterNodeData;
+      const currentName = currentData.name || t('canvas.node.unnamedImageCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
         id: `character-${uuidv4()}`,
@@ -96,7 +99,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         selected: false,
         data: {
           ...currentData,
-          name: currentData.name ? `${currentData.name} (副本)` : '未命名图片卡 (副本)',
+          name: t('canvas.node.copySuffix', { name: currentName }),
           uploading: false,
         },
       };
@@ -110,25 +113,36 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     updateNodeData(id, { fitMode: currentFitMode === 'contain' ? 'cover' : 'contain' });
   };
 
-  const handleAIEdit = (e: React.MouseEvent) => {
+  const handleReference = (e: React.MouseEvent) => {
     e.stopPropagation();
     // 确保 imageUrl 是完整的 /api/media/ 路径
     let imageUrl = data.imageUrl || '';
     const needsPrefix = imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('/api/media/') && !imageUrl.startsWith('data:');
     needsPrefix && (imageUrl = `/api/media/${imageUrl}`);
     
-    // 使用 nodeAttachments 代替 imageEditContext，统一预览样式（与拖拽一致）
+    // 检查节点是否已在附件中
     const store = useAIAssistantStore.getState();
-    store.addNodeAttachment({
-      nodeId: id,
-      nodeType: 'image',
-      label: data.name || '未命名图片卡',
-      excerpt: data.description || '',
-      thumbnailUrl: imageUrl,
-      meta: { fromAIEdit: true },
-    });
-    store.setIsOpen(true);
+    const isReferenced = store.nodeAttachments.some(a => a.nodeId === id);
+    
+    if (isReferenced) {
+      // 已引用则撤销引用
+      store.removeNodeAttachment(id);
+    } else {
+      // 未引用则添加引用
+      store.addNodeAttachment({
+        nodeId: id,
+        nodeType: 'image',
+        label: data.name || t('canvas.node.unnamedImageCard'),
+        excerpt: data.description || '',
+        thumbnailUrl: imageUrl,
+        meta: {},
+      });
+      store.setIsOpen(true);
+    }
   };
+
+  // 检查节点是否已被引用
+  const isReferenced = useAIAssistantStore((state) => state.nodeAttachments.some(a => a.nodeId === id));
 
   const handleUploadClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -142,11 +156,11 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     // Validate type and size
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      setUploadError('仅支持 jpg、jpeg、png、webp 格式');
+      setUploadError(t('canvas.node.upload.imageFormatError'));
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setUploadError('图片大小不能超过 5MB');
+      setUploadError(t('canvas.node.upload.imageSizeError'));
       return;
     }
 
@@ -205,7 +219,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
       updateNodeData(id, { imageUrl: response.url, uploading: false });
     } catch (error: any) {
       console.error('Upload error:', error);
-      setUploadError(error.message || '上传失败，请重试');
+      setUploadError(error.message || t('canvas.node.upload.uploadFailed'));
       updateNodeData(id, { uploading: false });
     } finally {
       URL.revokeObjectURL(objectUrl);
@@ -348,7 +362,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         className="hidden" 
         accept=".jpg,.jpeg,.png,.webp" 
         onChange={handleFileChange}
-        aria-label="选择图片"
+        aria-label={t('canvas.node.upload.uploadImage')}
         data-testid="file-upload-input"
       />
 
@@ -368,7 +382,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                   updateNodeData(id, { name: e.target.value });
                 }}
                 className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-                placeholder="未命名图片卡"
+                placeholder={t('canvas.node.unnamedImageCard')}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 onKeyDown={handleTitleKeyDown}
@@ -381,7 +395,8 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleTitleDoubleClick}
               >
-                {data.name || '未命名图片卡'}
+                <ImageIcon className="w-4 h-4 text-node-green mr-2 shrink-0" />
+                {data.name || t('canvas.node.unnamedImageCard')}
               </h3>
             )}
           </div>
@@ -402,7 +417,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 onClick={handleUploadClick} 
                 variant="default" 
                 role="button" 
-                aria-label="上传图片"
+                aria-label={t('canvas.node.upload.uploadImage')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -411,7 +426,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 }}
               >
                 <Upload className="w-4 h-4 mr-2" />
-                上传图片
+                {t('canvas.node.upload.uploadImage')}
               </Button>
             )}
 
@@ -428,7 +443,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 {/* 拖拽遮罩：不含 nodrag，透明，允许 React Flow 接管拖拽，同时支持双击全屏等操作 */}
                 <div 
                   className="absolute inset-0 cursor-grab active:cursor-grabbing z-10"
-                  title="拖拽移动节点 / 双击全屏预览"
+                  title={t('canvas.node.preview.dragOrFullscreen')}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     setPreviewOpen(true);
@@ -463,7 +478,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                   variant="outline" 
                   size="sm" 
                   role="button" 
-                  aria-label="重试上传"
+                  aria-label={t('canvas.node.upload.retry')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -471,7 +486,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                     }
                   }}
                 >
-                  <RefreshCw className="w-3 h-3 mr-2" /> 重试
+                  <RefreshCw className="w-3 h-3 mr-2" /> {t('canvas.node.upload.retry')}
                 </Button>
               </div>
             )}
@@ -482,26 +497,26 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         <NodeToolbar
           actions={[
             {
-              icon: <Sparkles className="h-3.5 w-3.5" />,
-              onClick: handleAIEdit,
-              title: 'AI 编辑',
-              variant: 'primary',
+              icon: <Quote className="h-3.5 w-3.5" />,
+              onClick: handleReference,
+              title: isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference'),
+              variant: isReferenced ? 'primary' : undefined,
             },
             {
               icon: data.fitMode === 'cover' ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />,
               onClick: handleToggleFitMode,
-              title: data.fitMode === 'cover' ? '适应卡片 (留白)' : '填充卡片 (裁剪)',
+              title: data.fitMode === 'cover' ? t('canvas.node.toolbar.fitContain') : t('canvas.node.toolbar.fitCover'),
               ariaLabel: '切换图片适配模式',
             },
             {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,
-              title: '创建副本',
+              title: t('canvas.node.toolbar.duplicate'),
             },
             {
               icon: <Trash2 className="h-3.5 w-3.5" />,
               onClick: handleDelete,
-              title: '删除',
+              title: t('canvas.node.toolbar.delete'),
               variant: 'danger',
             },
           ] as ToolbarAction[]}

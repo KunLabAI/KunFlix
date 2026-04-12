@@ -189,7 +189,7 @@ function ChatHistoryDropdown({
                   {t('ai.noChats')}
                 </div>
               )}
-              {chatList.map((chat) => {
+              {[...chatList].sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()).map((chat) => {
                 const isCurrent = chat.id === currentSessionId;
                 return (
                   <div

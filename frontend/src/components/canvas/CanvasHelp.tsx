@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useTranslation } from 'react-i18next';
 
 interface ShortcutItemProps {
   icon: React.ReactNode;
@@ -61,6 +62,7 @@ function ShortcutSection({ title, children }: ShortcutSectionProps) {
 }
 
 export function CanvasHelpButton() {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -71,7 +73,7 @@ export function CanvasHelpButton() {
         size="icon"
         className="h-8 w-8 rounded-full bg-card border border-border/50 shadow-sm text-muted-foreground hover:text-foreground hover:bg-accent"
         onClick={() => setIsOpen(true)}
-        title="快捷键帮助"
+        title={t('canvas.help.buttonTitle')}
       >
         <HelpCircle className="w-4 h-4" />
       </Button>
@@ -82,115 +84,115 @@ export function CanvasHelpButton() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Command className="w-5 h-5" />
-              画布快捷键
+              {t('canvas.help.title')}
             </DialogTitle>
           </DialogHeader>
 
           <div className="mt-4">
             {/* 基础操作 */}
-            <ShortcutSection title="基础">
+            <ShortcutSection title={t('canvas.help.sections.basic')}>
               <ShortcutItem
                 icon={<MousePointer2 className="w-4 h-4" />}
-                title="框选节点"
-                description="空白处拖拽鼠标"
+                title={t('canvas.help.shortcuts.selectBox.title')}
+                description={t('canvas.help.shortcuts.selectBox.description')}
                 keys={['左键拖拽']}
               />
               <ShortcutItem
                 icon={<Hand className="w-4 h-4" />}
-                title="移动画布"
-                description="空格键+拖拽"
+                title={t('canvas.help.shortcuts.moveCanvas.title')}
+                description={t('canvas.help.shortcuts.moveCanvas.description')}
                 keys={['Space']}
               />
               <ShortcutItem
                 icon={<Move className="w-4 h-4" />}
-                title="移动节点"
-                description="直接拖拽节点"
+                title={t('canvas.help.shortcuts.moveNode.title')}
+                description={t('canvas.help.shortcuts.moveNode.description')}
               />
             </ShortcutSection>
 
             {/* 多选操作 */}
-            <ShortcutSection title="多选">
+            <ShortcutSection title={t('canvas.help.sections.multiSelect')}>
               <ShortcutItem
                 icon={<Plus className="w-4 h-4" />}
-                title="添加选中"
-                description="Shift+点击节点"
+                title={t('canvas.help.shortcuts.addSelect.title')}
+                description={t('canvas.help.shortcuts.addSelect.description')}
                 keys={['Shift', '点击']}
               />
               <ShortcutItem
                 icon={<Square className="w-4 h-4" />}
-                title="批量框选"
-                description="Shift+拖拽"
+                title={t('canvas.help.shortcuts.batchSelect.title')}
+                description={t('canvas.help.shortcuts.batchSelect.description')}
                 keys={['Shift', '拖拽']}
               />
             </ShortcutSection>
 
             {/* 视图操作 */}
-            <ShortcutSection title="视图">
+            <ShortcutSection title={t('canvas.help.sections.view')}>
               <ShortcutItem
                 icon={<ZoomIn className="w-4 h-4" />}
-                title="放大"
-                description="放大画布"
+                title={t('canvas.help.shortcuts.zoomIn.title')}
+                description={t('canvas.help.shortcuts.zoomIn.description')}
                 keys={['Ctrl', '+']}
               />
               <ShortcutItem
                 icon={<ZoomOut className="w-4 h-4" />}
-                title="缩小"
-                description="缩小画布"
+                title={t('canvas.help.shortcuts.zoomOut.title')}
+                description={t('canvas.help.shortcuts.zoomOut.description')}
                 keys={['Ctrl', '-']}
               />
               <ShortcutItem
                 icon={<Maximize className="w-4 h-4" />}
-                title="适应视图"
-                description="适应所有节点"
+                title={t('canvas.help.shortcuts.fitView.title')}
+                description={t('canvas.help.shortcuts.fitView.description')}
                 keys={['Ctrl', '0']}
               />
             </ShortcutSection>
 
             {/* 编辑操作 */}
-            <ShortcutSection title="编辑">
+            <ShortcutSection title={t('canvas.help.sections.edit')}>
               <ShortcutItem
                 icon={<Trash2 className="w-4 h-4" />}
-                title="删除"
-                description="删除选中节点"
+                title={t('canvas.help.shortcuts.delete.title')}
+                description={t('canvas.help.shortcuts.delete.description')}
                 keys={['Delete']}
               />
               <ShortcutItem
                 icon={<Undo2 className="w-4 h-4" />}
-                title="撤销"
-                description="撤销上一步"
+                title={t('canvas.help.shortcuts.undo.title')}
+                description={t('canvas.help.shortcuts.undo.description')}
                 keys={['Ctrl', 'Z']}
               />
               <ShortcutItem
                 icon={<Redo2 className="w-4 h-4" />}
-                title="重做"
-                description="重做下一步"
+                title={t('canvas.help.shortcuts.redo.title')}
+                description={t('canvas.help.shortcuts.redo.description')}
                 keys={['Ctrl', 'Y']}
               />
               <ShortcutItem
                 icon={<Save className="w-4 h-4" />}
-                title="保存"
-                description="手动保存"
+                title={t('canvas.help.shortcuts.save.title')}
+                description={t('canvas.help.shortcuts.save.description')}
                 keys={['Ctrl', 'S']}
               />
             </ShortcutSection>
 
             {/* AI 操作 */}
-            <ShortcutSection title="AI">
+            <ShortcutSection title={t('canvas.help.sections.ai')}>
               <ShortcutItem
                 icon={<Sparkles className="w-4 h-4" />}
-                title="AI 编辑"
-                description="拖拽到 AI 面板"
+                title={t('canvas.help.shortcuts.aiEdit.title')}
+                description={t('canvas.help.shortcuts.aiEdit.description')}
               />
               <ShortcutItem
                 icon={<span className="text-xs font-bold">5</span>}
-                title="多图编辑"
-                description="最多 5 个图像"
+                title={t('canvas.help.shortcuts.multiImageEdit.title')}
+                description={t('canvas.help.shortcuts.multiImageEdit.description')}
               />
             </ShortcutSection>
           </div>
 
           <div className="mt-4 pt-3 border-t text-xs text-muted-foreground text-center">
-            提示：将节点拖拽到 AI 对话面板可进行智能编辑
+            {t('canvas.help.tip')}
           </div>
         </DialogContent>
       </Dialog>

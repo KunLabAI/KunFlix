@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import ScriptNode from '../ScriptNode';
+import ScriptNode from '../TextNode';
 import { useCanvasStore } from '@/store/useCanvasStore';
 
 // Mock zustand store

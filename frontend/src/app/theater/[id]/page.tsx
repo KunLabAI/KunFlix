@@ -24,8 +24,8 @@ import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNod
 import { useResourceStore } from '@/store/useResourceStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
 import { ZoomControls } from '@/components/canvas/ZoomControls';
-import ScriptNode from '@/components/canvas/ScriptNode';
-import CharacterNode from '@/components/canvas/CharacterNode';
+import ScriptNode from '@/components/canvas/TextNode';
+import CharacterNode from '@/components/canvas/ImageNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
 import VideoNode from '@/components/canvas/VideoNode';
 import AudioNode from '@/components/canvas/AudioNode';
@@ -67,7 +67,7 @@ function InfiniteCanvas() {
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { screenToFlowPosition, getViewport } = useReactFlow();
+  const { screenToFlowPosition, getViewport, zoomIn, zoomOut, fitView } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
   const [viewport, setViewportState] = useState({ x: 0, y: 0, zoom: 1 });
   
@@ -303,11 +303,29 @@ function InfiniteCanvas() {
         event.preventDefault();
         redo();
       }
+
+      // Zoom In: Ctrl + = (also handles + key)
+      if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
+        event.preventDefault();
+        zoomIn();
+      }
+
+      // Zoom Out: Ctrl + -
+      if ((event.ctrlKey || event.metaKey) && event.key === '-') {
+        event.preventDefault();
+        zoomOut();
+      }
+
+      // Fit View: Ctrl + 0
+      if ((event.ctrlKey || event.metaKey) && event.key === '0') {
+        event.preventDefault();
+        fitView({ padding: 0.2, maxZoom: 1 });
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, saveToBackend]);
+  }, [undo, redo, saveToBackend, zoomIn, zoomOut, fitView]);
 
   // File type detection (映射表模式)
   const FILE_TYPE_MATCHERS: Array<{ type: 'text' | 'image' | 'video' | 'audio'; mimes: string[]; exts: string[] }> = [

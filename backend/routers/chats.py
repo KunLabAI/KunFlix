@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 from typing import List, Optional
 import logging
 
@@ -54,7 +55,7 @@ async def list_sessions(
     current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(ChatSession).order_by(ChatSession.updated_at.desc())
+    query = select(ChatSession).order_by(func.coalesce(ChatSession.updated_at, ChatSession.created_at).desc())
     query = scoped_query(query, ChatSession, current_user)
 
     if agent_id:

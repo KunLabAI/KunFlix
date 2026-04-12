@@ -106,6 +106,147 @@
     "videoCard": "Video Card",
     "audioCard": "Audio Card",
     "storyboardCard": "Pivot Table Card",
+    "node": {
+      "textCard": "Text Card",
+      "imageCard": "Image Card",
+      "audioCard": "Audio Card",
+      "storyboardCard": "Pivot Table Card",
+      "videoCard": "Video Card",
+      "unnamedTextCard": "Untitled Text Card",
+      "unnamedImageCard": "Untitled Image Card",
+      "unnamedAudioCard": "Untitled Audio Card",
+      "unnamedVideoCard": "Untitled Video Card",
+      "newTextCard": "New Text Card",
+      "newImageCard": "New Image Card",
+      "newAudioCard": "New Audio Card",
+      "newVideoCard": "New Video Card",
+      "copySuffix": "{{name}} (Copy)",
+      "deleteConfirm": {
+        "text": "Are you sure you want to delete this text card?",
+        "image": "Are you sure you want to delete this image card?",
+        "audio": "Are you sure you want to delete this audio card?",
+        "storyboard": "Are you sure you want to delete this pivot table card?",
+        "video": "Are you sure you want to delete this video card?"
+      },
+      "toolbar": {
+        "duplicate": "Duplicate",
+        "delete": "Delete",
+        "aiEdit": "AI Edit",
+        "reference": "Reference",
+        "unreference": "Remove Reference",
+        "fitContain": "Fit Card (Contain)",
+        "fitCover": "Fill Card (Cover)",
+        "aiAssist": "AI Assist",
+        "edit": "Edit",
+        "finishEdit": "Done"
+      },
+      "upload": {
+        "uploadImage": "Upload Image",
+        "uploadAudio": "Upload Audio",
+        "uploadVideo": "Upload Video",
+        "retry": "Retry",
+        "uploadFailed": "Upload failed, please retry",
+        "imageFormatError": "Only jpg, jpeg, png, webp formats are supported",
+        "imageSizeError": "Image size cannot exceed 5MB",
+        "audioFormatError": "Only mp3, wav, ogg, flac, aac, m4a formats are supported",
+        "audioSizeError": "Audio size cannot exceed 100MB",
+        "videoFormatError": "Only mp4, webm, ogg formats are supported",
+        "videoSizeError": "Video size cannot exceed 500MB"
+      },
+      "preview": {
+        "dragOrFullscreen": "Drag to move / Double-click for fullscreen preview"
+      },
+      "audio": {
+        "showLyrics": "Show Lyrics",
+        "hideLyrics": "Hide Lyrics"
+      },
+      "video": {
+        "dragToMove": "Drag to move node"
+      },
+      "storyboard": {
+        "noData": "No Data",
+        "waitingForAgent": "Waiting for Agent data...",
+        "play": "Play"
+      },
+      "charCount": "{{count}} chars"
+    },
+    "editor": {
+      "placeholder": "Enter content...",
+      "placeholderReadonly": "Double-click to edit..."
+    },
+    "help": {
+      "title": "Canvas Shortcuts",
+      "buttonTitle": "Keyboard Shortcuts",
+      "sections": {
+        "basic": "Basic",
+        "multiSelect": "Multi-Select",
+        "view": "View",
+        "edit": "Edit",
+        "ai": "AI"
+      },
+      "shortcuts": {
+        "selectBox": {
+          "title": "Select Box",
+          "description": "Drag on empty space"
+        },
+        "moveCanvas": {
+          "title": "Move Canvas",
+          "description": "Space + Drag"
+        },
+        "moveNode": {
+          "title": "Move Node",
+          "description": "Drag node directly"
+        },
+        "addSelect": {
+          "title": "Add Selection",
+          "description": "Shift + Click node"
+        },
+        "batchSelect": {
+          "title": "Batch Select",
+          "description": "Shift + Drag"
+        },
+        "zoomIn": {
+          "title": "Zoom In",
+          "description": "Zoom in canvas"
+        },
+        "zoomOut": {
+          "title": "Zoom Out",
+          "description": "Zoom out canvas"
+        },
+        "fitView": {
+          "title": "Fit View",
+          "description": "Fit all nodes"
+        },
+        "delete": {
+          "title": "Delete",
+          "description": "Delete selected nodes"
+        },
+        "undo": {
+          "title": "Undo",
+          "description": "Undo last action"
+        },
+        "redo": {
+          "title": "Redo",
+          "description": "Redo next action"
+        },
+        "save": {
+          "title": "Save",
+          "description": "Manual save"
+        },
+        "aiEdit": {
+          "title": "AI Edit",
+          "description": "Drag to AI panel"
+        },
+        "multiImageEdit": {
+          "title": "Multi-Image Edit",
+          "description": "Up to 5 images"
+        }
+      },
+      "tip": "Tip: Drag nodes to the AI chat panel for smart editing"
+    },
+    "edge": {
+      "deleteTitle": "Delete connection"
+    },
     "dropToCreateNode": "Drop to create {{type}} node",
     "multiFileDrop": "Multiple files supported",
     "fileType": {

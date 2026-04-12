@@ -3,13 +3,16 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote } from 'lucide-react';
 import { useCanvasStore, VideoNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
+import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { useTranslation } from 'react-i18next';
 
 const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
+  const { t } = useTranslation();
   const updateNodeData = useCanvasStore((state) => state.updateNodeData);
   const updateNodeDimensions = useCanvasStore((state) => state.updateNodeDimensions);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
@@ -67,7 +70,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm("确定要删除这张视频卡吗？")) {
+    if (confirm(t('canvas.node.deleteConfirm.video'))) {
       deleteNode(id);
     }
   };
@@ -77,6 +80,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     const node = getNode(id);
     if (node) {
       const currentData = node.data as VideoNodeData;
+      const currentName = currentData.name || t('canvas.node.unnamedVideoCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
         id: `video-${uuidv4()}`,
@@ -87,7 +91,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         selected: false,
         data: {
           ...currentData,
-          name: currentData.name ? `${currentData.name} (副本)` : '未命名视频卡 (副本)',
+          name: t('canvas.node.copySuffix', { name: currentName }),
           uploading: false,
         },
       };
@@ -101,6 +105,37 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     updateNodeData(id, { fitMode: currentFitMode === 'contain' ? 'cover' : 'contain' });
   };
 
+  const handleReference = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // 确保 videoUrl 是完整的 /api/media/ 路径
+    let videoUrl = data.videoUrl || '';
+    const needsPrefix = videoUrl && !videoUrl.startsWith('http') && !videoUrl.startsWith('/api/media/') && !videoUrl.startsWith('data:');
+    needsPrefix && (videoUrl = `/api/media/${videoUrl}`);
+    
+    // 检查节点是否已在附件中
+    const store = useAIAssistantStore.getState();
+    const isReferenced = store.nodeAttachments.some(a => a.nodeId === id);
+    
+    if (isReferenced) {
+      // 已引用则撤销引用
+      store.removeNodeAttachment(id);
+    } else {
+      // 未引用则添加引用
+      store.addNodeAttachment({
+        nodeId: id,
+        nodeType: 'video',
+        label: data.name || t('canvas.node.unnamedVideoCard'),
+        excerpt: data.description || '',
+        thumbnailUrl: videoUrl,
+        meta: {},
+      });
+      store.setIsOpen(true);
+    }
+  };
+
+  // 检查节点是否已被引用
+  const isReferenced = useAIAssistantStore((state) => state.nodeAttachments.some(a => a.nodeId === id));
+
   const handleUploadClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     fileInputRef.current?.click();
@@ -113,11 +148,11 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     // Validate type and size (500MB max for video)
     const validTypes = ['video/mp4', 'video/webm', 'video/ogg'];
     if (!validTypes.includes(file.type)) {
-      setUploadError('仅支持 mp4、webm、ogg 格式');
+      setUploadError(t('canvas.node.upload.videoFormatError'));
       return;
     }
     if (file.size > 500 * 1024 * 1024) {
-      setUploadError('视频大小不能超过 500MB');
+      setUploadError(t('canvas.node.upload.videoSizeError'));
       return;
     }
 
@@ -179,7 +214,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
       response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
     } catch (error: any) {
       console.error('Upload error:', error);
-      setUploadError(error.message || '上传失败，请重试');
+      setUploadError(error.message || t('canvas.node.upload.uploadFailed'));
       updateNodeData(id, { uploading: false });
     } finally {
       URL.revokeObjectURL(objectUrl);
@@ -251,7 +286,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         className="hidden" 
         accept=".mp4,.webm,.ogg" 
         onChange={handleFileChange}
-        aria-label="选择视频"
+        aria-label={t('canvas.node.upload.uploadVideo')}
         data-testid="file-upload-input"
       />
 
@@ -271,7 +306,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   updateNodeData(id, { name: e.target.value });
                 }}
                 className="font-bold text-sm h-7 bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-none"
-                placeholder="未命名视频卡"
+                placeholder={t('canvas.node.unnamedVideoCard')}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
                 onKeyDown={handleTitleKeyDown}
@@ -284,7 +319,8 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={handleTitleDoubleClick}
               >
-                {data.name || '未命名视频卡'}
+                <Film className="w-4 h-4 text-node-yellow mr-2 shrink-0" />
+                {data.name || t('canvas.node.unnamedVideoCard')}
               </h3>
             )}
           </div>
@@ -299,7 +335,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                 onClick={handleUploadClick} 
                 variant="default" 
                 role="button" 
-                aria-label="上传视频"
+                aria-label={t('canvas.node.upload.uploadVideo')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -308,7 +344,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                 }}
               >
                 <Upload className="w-4 h-4 mr-2" />
-                上传视频
+                {t('canvas.node.upload.uploadVideo')}
               </Button>
             )}
 
@@ -331,7 +367,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                 {/* 顶部/中部拖拽遮罩：不含 nodrag，透明，鼠标移入时不影响视觉但能被拖拽 */}
                 <div 
                   className="absolute top-0 left-0 w-full h-[calc(100%-50px)] cursor-grab active:cursor-grabbing z-10"
-                  title="拖拽移动节点"
+                  title={t('canvas.node.video.dragToMove')}
                   // 不加 e.stopPropagation() 从而允许 React Flow 接管拖拽
                   // 双击穿透到下方的卡片，这里也可以处理一下双击播放暂停（如果需要）
                 />
@@ -364,7 +400,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   variant="outline" 
                   size="sm" 
                   role="button" 
-                  aria-label="重试上传"
+                  aria-label={t('canvas.node.upload.retry')}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -372,7 +408,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                     }
                   }}
                 >
-                  <RefreshCw className="w-3 h-3 mr-2" /> 重试
+                  <RefreshCw className="w-3 h-3 mr-2" /> {t('canvas.node.upload.retry')}
                 </Button>
               </div>
             )}
@@ -383,20 +419,26 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         <NodeToolbar
           actions={[
             {
+              icon: <Quote className="h-3.5 w-3.5" />,
+              onClick: handleReference,
+              title: isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference'),
+              variant: isReferenced ? 'primary' : undefined,
+            },
+            {
               icon: data.fitMode === 'cover' ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />,
               onClick: handleToggleFitMode,
-              title: data.fitMode === 'cover' ? '适应卡片 (留白)' : '填充卡片 (裁剪)',
+              title: data.fitMode === 'cover' ? t('canvas.node.toolbar.fitContain') : t('canvas.node.toolbar.fitCover'),
               ariaLabel: '切换视频适配模式',
             },
             {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,
-              title: '创建副本',
+              title: t('canvas.node.toolbar.duplicate'),
             },
             {
               icon: <Trash2 className="h-3.5 w-3.5" />,
               onClick: handleDelete,
-              title: '删除',
+              title: t('canvas.node.toolbar.delete'),
               variant: 'danger',
             },
           ] as ToolbarAction[]}

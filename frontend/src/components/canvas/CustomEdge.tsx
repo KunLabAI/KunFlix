@@ -1,6 +1,7 @@
 import React from 'react';
 import { EdgeProps, getBezierPath } from '@xyflow/react';
 import { useCanvasStore } from '@/store/useCanvasStore';
+import { useTranslation } from 'react-i18next';
 
 export function CustomEdge({
   id,
@@ -14,6 +15,7 @@ export function CustomEdge({
   markerEnd,
   selected,
 }: EdgeProps) {
+  const { t } = useTranslation();
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -85,7 +87,7 @@ export function CustomEdge({
             onMouseLeave={handleMouseLeave}
             className="w-6 h-6 bg-white dark:bg-zinc-800 border-2 border-zinc-300 dark:border-zinc-500 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 hover:scale-125 transition-all duration-150 cursor-pointer shadow-lg"
             style={{ pointerEvents: 'auto' }}
-            title="删除连线"
+            title={t('canvas.edge.deleteTitle')}
           >
             <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
