@@ -68,7 +68,7 @@ async def _save_result_item(item, response_format: str) -> str:
 
     # b64_json 模式
     if b64_data:
-        return save_inline_image("image/png", base64.b64decode(b64_data))
+        return await save_inline_image("image/png", base64.b64decode(b64_data))
 
     # url 模式
     if url_data:

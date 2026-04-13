@@ -89,7 +89,7 @@ async def execute_music_task_background(
             return
 
         # ---- 保存音频文件 ----
-        audio_url = save_audio_data(result.audio_data, result.mime_type)
+        audio_url = await save_audio_data(result.audio_data, result.mime_type)
 
         # ---- 计费 ----
         credit_cost = 0.0

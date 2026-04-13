@@ -3,6 +3,7 @@ Chat shared utilities: SSE formatting, content serialization, image helpers.
 
 Shared by routers/chats.py, routers/admin_debug.py, and chat generation modules.
 """
+import asyncio
 import json
 import base64
 import mimetypes
@@ -73,8 +74,8 @@ def get_last_image_path(history) -> str | None:
     return None
 
 
-def image_file_to_data_url(path: str) -> str | None:
-    """Read a local image file and convert to data URL for multimodal input."""
+def _image_file_to_data_url_sync(path: str) -> str | None:
+    """Read a local image file and convert to data URL (synchronous, for thread offload)."""
     file_path = Path(path)
     if not file_path.exists():
         return None
@@ -84,6 +85,11 @@ def image_file_to_data_url(path: str) -> str | None:
     data = file_path.read_bytes()
     b64 = base64.b64encode(data).decode("ascii")
     return f"data:{mime};base64,{b64}"
+
+
+async def image_file_to_data_url(path: str) -> str | None:
+    """Read a local image file and convert to data URL for multimodal input."""
+    return await asyncio.to_thread(_image_file_to_data_url_sync, path)
 
 
 def inject_image_to_message(msg: dict, data_url: str):
@@ -97,7 +103,7 @@ def inject_image_to_message(msg: dict, data_url: str):
     msg["content"] = builder(user_content)
 
 
-def inject_attachment_images(msg: dict) -> list[str]:
+async def inject_attachment_images(msg: dict) -> list[str]:
     """Parse __ATTACHMENTS__ metadata from message text, inject ALL image attachments as multimodal parts.
 
     Returns list of injected filenames for logging.
@@ -125,19 +131,20 @@ def inject_attachment_images(msg: dict) -> list[str]:
     if not image_urls:
         return []
 
-    # Convert each to data URL and build multimodal parts
+    # Convert each to data URL and build multimodal parts (parallel I/O)
+    filenames = [extract_media_filename(url) for url, _ in image_urls]
+    data_urls = await asyncio.gather(*[
+        image_file_to_data_url(str(MEDIA_DIR / fn)) for fn in filenames if fn
+    ])
+
     image_parts = []
     injected = []
-    for url, label in image_urls:
-        filename = extract_media_filename(url)
-        if not filename:
-            continue
-        data_url = image_file_to_data_url(str(MEDIA_DIR / filename))
+    for fn, data_url in zip([f for f in filenames if f], data_urls):
         if not data_url:
             continue
         image_parts.append({"type": "image_url", "image_url": {"url": data_url}})
-        image_parts.append({"type": "text", "text": f"[Image source path: /api/media/{filename} — use this path when passing to tools, do NOT pass base64 data]"})
-        injected.append(filename)
+        image_parts.append({"type": "text", "text": f"[Image source path: /api/media/{fn} \u2014 use this path when passing to tools, do NOT pass base64 data]"})
+        injected.append(fn)
 
     if not image_parts:
         return []

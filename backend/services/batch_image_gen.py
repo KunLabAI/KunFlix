@@ -90,10 +90,10 @@ async def _generate_single_image(
                 
                 inline_data = getattr(part, 'inline_data', None)
                 data = getattr(inline_data, 'data', None) if inline_data else None
-                data and setattr(
-                    result, 'image_url',
-                    save_inline_image(getattr(inline_data, 'mime_type', 'image/png'), data)
-                )
+                if data:
+                    result.image_url = await save_inline_image(
+                        getattr(inline_data, 'mime_type', 'image/png'), data
+                    )
         
         # Token 统计
         usage = getattr(response, 'usage_metadata', None)
