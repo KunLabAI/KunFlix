@@ -131,7 +131,7 @@ async def _execute_complex_multi_agent(
         filename = extract_media_filename(edit_image_url)
         if filename:
             _local_path = str(MEDIA_DIR / filename)
-            edit_image_data_url = image_file_to_data_url(_local_path)
+            edit_image_data_url = await image_file_to_data_url(_local_path)
             edit_image_data_url and logger.info(f"[Multi-Agent] Injected edit image: {filename}")
     
     # 将图片注入到最后一条用户消息或添加新的用户消息

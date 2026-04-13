@@ -1,4 +1,5 @@
 """媒体文件保存工具"""
+import asyncio
 from pathlib import Path
 import uuid
 import logging
@@ -26,13 +27,13 @@ AUDIO_MIME_TO_EXT = {
 }
 
 
-def save_inline_image(mime_type: str, data: bytes) -> str:
+async def save_inline_image(mime_type: str, data: bytes) -> str:
     """保存 inline_data 图片，返回 /api/media/{uuid}.{ext} 路径"""
     MEDIA_DIR.mkdir(exist_ok=True)
     ext = MIME_TO_EXT.get(mime_type, "png")
     filename = f"{uuid.uuid4()}.{ext}"
     filepath = MEDIA_DIR / filename
-    filepath.write_bytes(data)
+    await asyncio.to_thread(filepath.write_bytes, data)
     logger.info(f"Saved image: {filename} ({len(data)} bytes, {mime_type})")
     return f"/api/media/{filename}"
 
@@ -53,7 +54,7 @@ async def save_video_from_url(video_url: str, headers: dict | None = None) -> st
     async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
         resp = await client.get(video_url, headers=headers)
         resp.raise_for_status()
-        filepath.write_bytes(resp.content)
+        await asyncio.to_thread(filepath.write_bytes, resp.content)
 
     logger.info(f"Saved video: {filename} ({len(resp.content)} bytes) from {video_url}")
     return f"/api/media/{filename}"
@@ -84,15 +85,15 @@ async def save_image_from_url(image_url: str) -> str:
     content_type = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
     mime = _CONTENT_TYPE_TO_MIME.get(content_type, "image/png")
 
-    return save_inline_image(mime, data)
+    return await save_inline_image(mime, data)
 
 
-def save_audio_data(audio_bytes: bytes, mime_type: str) -> str:
+async def save_audio_data(audio_bytes: bytes, mime_type: str) -> str:
     """保存音频数据，返回 /api/media/{uuid}.{ext} 路径"""
     MEDIA_DIR.mkdir(exist_ok=True)
     ext = AUDIO_MIME_TO_EXT.get(mime_type, "mp3")
     filename = f"{uuid.uuid4()}.{ext}"
     filepath = MEDIA_DIR / filename
-    filepath.write_bytes(audio_bytes)
+    await asyncio.to_thread(filepath.write_bytes, audio_bytes)
     logger.info("Saved audio: %s (%d bytes, %s)", filename, len(audio_bytes), mime_type)
     return f"/api/media/{filename}"

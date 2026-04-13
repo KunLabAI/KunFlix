@@ -382,7 +382,7 @@ async def _save_xai_image_item(item: dict, response_format: str) -> str:
     # b64_json 格式
     if b64_data:
         image_bytes = base64.b64decode(b64_data)
-        return save_inline_image("image/png", image_bytes)
+        return await save_inline_image("image/png", image_bytes)
 
     # url 格式
     if url_data:
@@ -402,7 +402,7 @@ async def _save_xai_image_item_sdk(item, response_format: str) -> str:
     # b64_json 格式
     if b64_data:
         image_bytes = base64.b64decode(b64_data)
-        return save_inline_image("image/png", image_bytes)
+        return await save_inline_image("image/png", image_bytes)
 
     # url 格式
     if url_data:
@@ -888,7 +888,7 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                     data = getattr(inline_data, 'data', None)
                     if data:
                         mime_type = getattr(inline_data, 'mime_type', 'image/png')
-                        url = save_inline_image(mime_type, data)
+                        url = await save_inline_image(mime_type, data)
                         logger.info(f"Gemini image saved: {url} ({len(data)} bytes)")
                         md = f"\n\n![image]({url})\n\n"
                         result.full_response += md

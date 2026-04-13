@@ -109,9 +109,8 @@ async def generate_single_agent(
 
     # 路径 1：从消息文本的 __ATTACHMENTS__ 解析所有图片附件
     last_msg = messages[-1] if messages else None
-    (last_msg and last_msg.get("role") == "user") and (
-        _injected_images := inject_attachment_images(last_msg)
-    )
+    if last_msg and last_msg.get("role") == "user":
+        _injected_images = await inject_attachment_images(last_msg)
 
     # 路径 2/3：__ATTACHMENTS__ 未注入任何图片时，回退到单图注入
     _edit_image_data_url = None
@@ -120,11 +119,11 @@ async def generate_single_agent(
         # 路径 2：画布节点单图
         if edit_image_url:
             _img_filename = extract_media_filename(edit_image_url)
-            _img_filename and (_edit_image_data_url := image_file_to_data_url(str(MEDIA_DIR / _img_filename)))
+            _img_filename and (_edit_image_data_url := await image_file_to_data_url(str(MEDIA_DIR / _img_filename)))
         # 路径 3：历史图片编辑 — 需要 image_generation_enabled
         elif edit_last_image and image_gen_enabled:
             last_image_path = get_last_image_path(history)
-            last_image_path and (_edit_image_data_url := image_file_to_data_url(last_image_path))
+            last_image_path and (_edit_image_data_url := await image_file_to_data_url(last_image_path))
 
         if _edit_image_data_url and last_msg and last_msg.get("role") == "user":
             inject_image_to_message(last_msg, _edit_image_data_url)

@@ -4,6 +4,7 @@ Image editing tool provider.
 Provides edit_image tool for AI-powered image editing.
 Uses the same global configuration as generate_image tool.
 """
+import asyncio
 import json
 import logging
 import re
@@ -50,7 +51,7 @@ _SINGLE_IMAGE_MAX_DIM = 2048  # 单图：较高质量
 _MULTI_IMAGE_MAX_DIM = 1024   # 多图：控制总 payload
 
 
-def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
+async def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
     """Resolve image URL to a format suitable for API.
     
     When max_dimension > 0, local files are downscaled before encoding
@@ -75,7 +76,7 @@ def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
     if match:
         filename = match.group(1)
         local_path = MEDIA_DIR / filename
-        return _local_file_to_data_url(local_path, max_dimension)
+        return await asyncio.to_thread(_local_file_to_data_url, local_path, max_dimension)
     
     # 纯文件名或 UUID（无路径前缀）→ 尝试在 media 目录查找
     # 支持格式：xxx.jpg, xxx.png, xxx (无扩展名)
@@ -83,14 +84,14 @@ def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
         # 先尝试直接查找
         direct_path = MEDIA_DIR / image_url
         if direct_path.exists():
-            return _local_file_to_data_url(direct_path, max_dimension)
+            return await asyncio.to_thread(_local_file_to_data_url, direct_path, max_dimension)
         
         # 如果没有扩展名，尝试匹配常见图片扩展名
         if "." not in image_url:
             for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
                 candidate_path = MEDIA_DIR / (image_url + ext)
                 if candidate_path.exists():
-                    return _local_file_to_data_url(candidate_path, max_dimension)
+                    return await asyncio.to_thread(_local_file_to_data_url, candidate_path, max_dimension)
     
     # 无法识别的格式，原样返回
     return image_url
@@ -365,7 +366,8 @@ async def _edit_via_gemini(
     )
     
     # contents: [image_part_1, image_part_2, ..., prompt_text]
-    response = client.models.generate_content(
+    # 使用异步 API 避免阻塞事件循环（同步 client.models 会导致并行工具调用时全局阻塞）
+    response = await client.aio.models.generate_content(
         model=model or "gemini-2.0-flash-exp-image-generation",
         contents=[*image_parts, prompt],
         config=config,
@@ -378,7 +380,7 @@ async def _edit_via_gemini(
             inline_data = getattr(part, "inline_data", None)
             data = getattr(inline_data, "data", None) if inline_data else None
             if data:
-                return save_inline_image(
+                return await save_inline_image(
                     getattr(inline_data, "mime_type", "image/png"), data
                 )
     
@@ -506,7 +508,7 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
     # 解析所有 URL（/api/media/xxx → base64 data URL 等）
     # 压缩图片避免 base64 payload 过大导致 xAI 服务器断连
     compress_dim = _MULTI_IMAGE_MAX_DIM if len(raw_urls) > 1 else _SINGLE_IMAGE_MAX_DIM
-    resolved_urls = [_resolve_image_url(u, max_dimension=compress_dim) for u in raw_urls]
+    resolved_urls = await asyncio.gather(*[_resolve_image_url(u, max_dimension=compress_dim) for u in raw_urls])
     # 用于画布节点关联的原始首图 URL
     primary_image_url = raw_urls[0]
     

@@ -8,11 +8,14 @@ Shared by chats.py (with theater_id) and admin_debug.py (theater_id=None).
 - load_skill is dispatched independently (skill system is a peer-level concept).
 - Every execution is logged to the tool_executions table (non-blocking).
 """
+import asyncio
 import json
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from database import AsyncSessionLocal
 from services.tool_execution_logger import record_tool_execution
 
 if TYPE_CHECKING:
@@ -87,6 +90,37 @@ async def append_tool_round_with_errors(
     await _FORMAT_HANDLERS[is_anthropic](messages, result, tool_manager, ctx, valid_calls, error_calls)
 
 
+async def _execute_valid_calls_parallel(
+    valid_calls: list, tool_manager: "ToolManager", ctx: "ToolContext",
+) -> list[tuple[str, str]]:
+    """Execute valid tool calls in parallel, return list of (tc_id, content).
+
+    Tools are fired concurrently via asyncio.gather so independent API calls
+    (e.g. 3× edit_image) run in parallel instead of sequentially.
+
+    Each parallel task gets its own AsyncSession to avoid SQLAlchemy
+    ``IllegalStateChangeError`` when multiple tools commit concurrently.
+    """
+
+    # Single tool – reuse the existing session, no extra overhead
+    if len(valid_calls) == 1:
+        tc, args = valid_calls[0]
+        content = await get_tool_result(tool_manager, tc.name, args, ctx)
+        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+        return [(tc.id, content)]
+
+    # Multiple tools – each gets an independent DB session
+    async def _run(tc, args):
+        async with AsyncSessionLocal() as session:
+            isolated_ctx = replace(ctx, db=session)
+            content = await get_tool_result(tool_manager, tc.name, args, isolated_ctx)
+            logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+            return tc.id, content
+
+    results = await asyncio.gather(*[_run(tc, args) for tc, args in valid_calls])
+    return list(results)
+
+
 async def _append_anthropic_tool_round(
     messages: list, result, tool_manager: "ToolManager", ctx: "ToolContext",
 ):
@@ -99,15 +133,14 @@ async def _append_anthropic_tool_round(
             "type": "tool_use", "id": tc.id, "name": tc.name, "input": args,
         })
     messages.append({"role": "assistant", "content": assistant_blocks})
-
-    tool_results = []
-    for tc in result.tool_calls:
-        args = json.loads(tc.arguments)
-        content = await get_tool_result(tool_manager, tc.name, args, ctx)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
-        tool_results.append({
-            "type": "tool_result", "tool_use_id": tc.id, "content": content,
-        })
+    
+    results = await _execute_valid_calls_parallel(
+        [(tc, json.loads(tc.arguments)) for tc in result.tool_calls], tool_manager, ctx,
+    )
+    tool_results = [
+        {"type": "tool_result", "tool_use_id": tc_id, "content": content}
+        for tc_id, content in results
+    ]
     messages.append({"role": "user", "content": tool_results})
     result.full_response = ""
 
@@ -133,18 +166,18 @@ async def _append_anthropic_tool_round_with_errors(
             "type": "tool_use", "id": tc.id, "name": tc.name, "input": args,
         })
     messages.append({"role": "assistant", "content": assistant_blocks})
-
-    tool_results = []
-    # 处理有效调用
-    for tc, args in valid_calls:
-        content = await get_tool_result(tool_manager, tc.name, args, ctx)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
-        tool_results.append({
-            "type": "tool_result", "tool_use_id": tc.id, "content": content,
-        })
+    
+    # 并行执行有效调用
+    results = await _execute_valid_calls_parallel(valid_calls, tool_manager, ctx)
+    results_map = dict(results)
+    
+    tool_results = [
+        {"type": "tool_result", "tool_use_id": tc.id, "content": results_map[tc.id]}
+        for tc, _ in valid_calls
+    ]
     # 处理错误调用 - 直接返回错误信息
     for tc, error_msg in error_calls:
-        logger.info(f"  {tc.name}(ERROR) → {error_msg}")
+        logger.info(f"  {tc.name}(ERROR) \u2192 {error_msg}")
         tool_results.append({
             "type": "tool_result", "tool_use_id": tc.id, "content": error_msg,
         })
@@ -169,13 +202,13 @@ async def _append_openai_tool_round(
         ],
     }
     messages.append(assistant_msg)
-
-    for tc in result.tool_calls:
-        args = json.loads(tc.arguments)
-        content = await get_tool_result(tool_manager, tc.name, args, ctx)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+    
+    results = await _execute_valid_calls_parallel(
+        [(tc, json.loads(tc.arguments)) for tc in result.tool_calls], tool_manager, ctx,
+    )
+    for tc_id, content in results:
         messages.append({
-            "role": "tool", "tool_call_id": tc.id, "content": content,
+            "role": "tool", "tool_call_id": tc_id, "content": content,
         })
     result.full_response = ""
 
@@ -200,17 +233,17 @@ async def _append_openai_tool_round_with_errors(
         ],
     }
     messages.append(assistant_msg)
-
-    # 处理有效调用
-    for tc, args in valid_calls:
-        content = await get_tool_result(tool_manager, tc.name, args, ctx)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+    
+    # 并行执行有效调用
+    results = await _execute_valid_calls_parallel(valid_calls, tool_manager, ctx)
+    results_map = dict(results)
+    for tc, _ in valid_calls:
         messages.append({
-            "role": "tool", "tool_call_id": tc.id, "content": content,
+            "role": "tool", "tool_call_id": tc.id, "content": results_map[tc.id],
         })
     # 处理错误调用 - 直接返回错误信息
     for tc, error_msg in error_calls:
-        logger.info(f"  {tc.name}(ERROR) → {error_msg}")
+        logger.info(f"  {tc.name}(ERROR) \u2192 {error_msg}")
         messages.append({
             "role": "tool", "tool_call_id": tc.id, "content": error_msg,
         })

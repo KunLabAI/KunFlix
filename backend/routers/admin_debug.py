@@ -341,7 +341,7 @@ async def _generate_single_agent_debug(
     if edit_last_image and image_gen_enabled:
         last_image_path = get_last_image_path(history)
         if last_image_path is not None:
-            data_url = image_file_to_data_url(last_image_path)
+            data_url = await image_file_to_data_url(last_image_path)
             if data_url and messages:
                 last_msg = messages[-1]
                 (last_msg.get("role") == "user") and inject_image_to_message(last_msg, data_url)
