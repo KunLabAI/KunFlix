@@ -7,29 +7,26 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, Image as ImageIcon, Video, Music,
   LayoutGrid, List, FolderOpen, Loader2, Upload, X, AlertCircle,
-  Search, Home, Users, Sun, Moon, User, LogOut, Settings
+  Search, Home, User, LogOut, Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useResourceStore, FileTypeFilter } from "@/store/useResourceStore";
 import { AssetItem } from "@/lib/resourceApi";
-import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import AssetCard from "@/components/resources/AssetCard";
 import AssetEditDialog from "@/components/resources/AssetEditDialog";
 import AssetDeleteDialog from "@/components/resources/AssetDeleteDialog";
 import AssetPreviewDialog from "@/components/resources/AssetPreviewDialog";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
+import SettingsDialog from "@/components/SettingsDialog";
 
 // 导航链接配置
 const NAV_LINKS = [
   { key: "home", labelKey: "nav.home", href: "/", icon: Home },
   { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen },
-  { key: "community", labelKey: "nav.community", href: "#", icon: Users },
 ];
 
 // 用户菜单配置
 const USER_MENU_ITEMS = [
-  { key: "profile", labelKey: "userMenu.profile", icon: User },
   { key: "settings", labelKey: "userMenu.settings", icon: Settings },
 ];
 
@@ -62,17 +59,10 @@ const STATUS_STYLES: Record<string, string> = {
   error: "bg-destructive",
 };
 
-// 主题 aria-label 映射
-const THEME_LABELS: Record<string, string> = {
-  dark: "theme.switchToLight",
-  light: "theme.switchToDark",
-};
-
 export default function ResourcesPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
-  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const {
     assets, total, isLoading, hasMore, typeFilter, uploadQueue,
@@ -85,6 +75,7 @@ export default function ResourcesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -174,8 +165,7 @@ export default function ResourcesPage() {
   // 用户菜单处理
   const handleUserMenuClick = (key: string) => {
     const handlers: Record<string, () => void> = {
-      profile: () => console.log("Profile clicked"),
-      settings: () => console.log("Settings clicked"),
+      settings: () => setSettingsOpen(true),
     };
     handlers[key]?.();
     setUserMenuOpen(false);
@@ -254,7 +244,7 @@ export default function ResourcesPage() {
               })}
             </nav>
 
-            {/* Right: Search + Theme + Language + User */}
+            {/* Right: Search + User */}
             <div className="flex items-center gap-2">
               {/* Search Container */}
               <div className="search-container relative flex items-center">
@@ -307,18 +297,6 @@ export default function ResourcesPage() {
                   )}
                 </AnimatePresence>
               </div>
-
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                aria-label={t(THEME_LABELS[theme])}
-              >
-                {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-
-              {/* Language Switcher */}
-              <LanguageSwitcher />
 
               {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
@@ -666,6 +644,8 @@ export default function ResourcesPage() {
         asset={deleteTarget}
         onClose={() => setDeleteTarget(null)}
       />
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </main>
   );
 }

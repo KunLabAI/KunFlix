@@ -104,18 +104,29 @@ export interface User {
   email: string;
   nickname: string;
   is_active: boolean;
+  is_balance_frozen: boolean;
   current_chapter: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_input_chars: number;
   total_output_chars: number;
   credits: number;
+  // 存储空间
+  storage_used_bytes: number;
+  storage_quota_bytes: number;
   // 订阅信息
   subscription_plan_id?: string | null;
   subscription_status: 'inactive' | 'active' | 'expired';
   subscription_start_at?: string | null;
   subscription_end_at?: string | null;
+  // 登录追踪
+  register_ip?: string | null;
+  last_login_ip?: string | null;
   last_login_at: string | null;
+  // 设备信息
+  last_device_type?: string | null;
+  last_os?: string | null;
+  last_browser?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -187,6 +198,7 @@ export interface SubscriptionPlan {
   price_usd: number;
   credits: number;
   billing_period: 'monthly' | 'yearly' | 'lifetime';
+  storage_quota_bytes: number;
   features: string[];
   is_active: boolean;
   sort_order: number;

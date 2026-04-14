@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, generate_uuid
+from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, generate_uuid
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.media_utils import MEDIA_DIR
 
@@ -484,6 +484,39 @@ async def _maybe_create_edit_node(
         return None
 
 
+# MIME -> file_type 映射
+_MIME_CATEGORY = {"image/": "image", "video/": "video", "audio/": "audio"}
+
+
+async def _register_edited_image_asset(edited_url: str, ctx: "ToolContext") -> None:
+    """将编辑后的图片注册为用户 Asset 记录，使其出现在用户资产模块中。"""
+    user_id = ctx.user_id
+    db = ctx.db
+    # 无用户上下文时跳过
+    try:
+        filename = edited_url.rsplit("/", 1)[-1]  # e.g. "uuid.png"
+        filepath = MEDIA_DIR / filename
+        ext = filename.rsplit(".", 1)[-1].lower()
+        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/png")
+        size = filepath.stat().st_size if filepath.exists() else None
+        asset = Asset(
+            id=generate_uuid(),
+            user_id=user_id,
+            filename=filename,
+            original_name=f"edited_{filename}",
+            file_path=filename,
+            file_type="image",
+            mime_type=mime,
+            size=size,
+        )
+        db.add(asset)
+        await db.flush()
+        logger.info("Registered edited image as asset: %s (user=%s)", filename, user_id)
+    except Exception as e:
+        logger.warning("Failed to register edited image asset: %s", e, exc_info=True)
+
+
 async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
     """Execute edit_image tool.
     
@@ -571,6 +604,9 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
             
         if not edited_url:
             return json.dumps({"error": "Image editing returned no result. The request may have been filtered."})
+        
+        # 将编辑后的图片注册为用户资产
+        await _register_edited_image_asset(edited_url, ctx)
             
         # 画布上下文存在时，自动创建新节点并连线到源节点（保留原始节点不变）
         canvas_result = ctx.theater_id and await _maybe_create_edit_node(edited_url, primary_image_url, ctx)

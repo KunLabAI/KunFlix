@@ -27,6 +27,69 @@
     "zh": "中文",
     "en": "English"
   },
+  "profile": {
+    "title": "个人资料",
+    "basicInfo": "基本信息",
+    "email": "邮箱",
+    "nickname": "昵称",
+    "accountData": "账户数据",
+    "credits": "积分余额",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "storage": "存储空间",
+    "storageUsage": "使用量",
+    "subscription": "订阅信息",
+    "subStatus": "订阅状态",
+    "subActive": "生效中",
+    "subInactive": "未订阅",
+    "subExpired": "已过期"
+  },
+  "settings": {
+    "title": "设置",
+    "tabs": {
+      "subscription": "订阅",
+      "general": "通用",
+      "billing": "账单"
+    },
+    "subscription": {
+      "plan": "计划",
+      "currentPlan": "当前计划",
+      "freePlan": "Free",
+      "upgradeDesc": "升级以获取与你需求完全匹配的额度。",
+      "upgrade": "升级",
+      "remainingCredits": "剩余积分",
+      "usage": "使用情况",
+      "dailyUsage": "每日使用情况",
+      "noUsageData": "暂无消耗记录",
+      "extraCredits": "额外积分",
+      "noExtraCredits": "暂无额外积分"
+    },
+    "general": {
+      "profile": "个人资料",
+      "name": "姓名",
+      "languageAndTime": "语言与时间",
+      "displayLanguage": "界面显示语言",
+      "timezone": "时区",
+      "appearance": "外观",
+      "themeLight": "浅色",
+      "themeSystem": "跟随系统",
+      "themeDark": "深色",
+      "storage": "资源空间",
+      "storageUsed": "已使用",
+      "storageQuota": "总配额",
+      "storagePercent": "使用率",
+      "manageResources": "管理资源库",
+      "loadingStorage": "加载中..."
+    },
+    "billing": {
+      "plan": "计划",
+      "freePlan": "免费计划",
+      "dailyCreditsLimit": "每日 {{count}} credits 限额",
+      "upgradePlan": "升级计划",
+      "history": "历史记录",
+      "noHistory": "暂无订阅记录"
+    }
+  },
   "resources": {
     "title": "我的资产库",
     "uploadFile": "上传文件",

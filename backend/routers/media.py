@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from database import get_db
-from models import Agent, LLMProvider, Asset, generate_uuid, ToolConfig
+from models import Agent, LLMProvider, Asset, User, SubscriptionPlan, generate_uuid, ToolConfig
 from auth import get_current_active_user
 from schemas import (
     BatchImageGenerateRequest,
@@ -122,6 +122,24 @@ async def upload_media(
         HTTPException(status_code=413, detail=f"文件大小超出限制（{file_type} 最大 {max_label}），当前 {len(contents) / 1024 / 1024:.1f}MB")
     )
 
+    # 存储配额校验
+    file_size = len(contents)
+    used = current_user.storage_used_bytes or 0
+    # 有效配额：取用户个人配额与订阅套餐配额的较大值
+    quota = current_user.storage_quota_bytes or 2147483648
+    plan_result = await db.execute(
+        select(SubscriptionPlan.storage_quota_bytes)
+        .where(SubscriptionPlan.id == current_user.subscription_plan_id)
+    ) if current_user.subscription_plan_id else None
+    plan_quota = (plan_result.scalar() if plan_result else None) or 0
+    effective_quota = max(quota, plan_quota)
+    (used + file_size <= effective_quota) or (_ for _ in ()).throw(
+        HTTPException(
+            status_code=413,
+            detail=f"存储空间不足。已用 {used / 1024 / 1024 / 1024:.2f}GB / 配额 {effective_quota / 1024 / 1024 / 1024:.1f}GB",
+        )
+    )
+
     try:
         filepath.write_bytes(contents)
         logger.info(f"Uploaded file saved: {new_filename} ({len(contents)} bytes)")
@@ -142,6 +160,12 @@ async def upload_media(
         size=len(contents),
     )
     db.add(asset)
+
+    # 更新用户已用存储空间
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    user.storage_used_bytes = (user.storage_used_bytes or 0) + len(contents)
+
     await db.commit()
     await db.refresh(asset)
 
@@ -253,9 +277,16 @@ async def delete_asset(
     asset or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Asset not found"))
 
     filename = asset.filename
+    asset_size = asset.size or 0
 
     # 先删数据库记录
     await db.delete(asset)
+
+    # 扣减用户已用存储空间
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    user.storage_used_bytes = max(0, (user.storage_used_bytes or 0) - asset_size)
+
     await db.commit()
 
     # 再删文件系统文件
@@ -263,6 +294,31 @@ async def delete_asset(
     logger.info(f"Hard deleted asset: {asset_id} / {filename}")
 
     return {"detail": "Asset deleted"}
+
+
+@router.get("/storage-usage")
+async def storage_usage(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """返回当前用户的存储空间使用情况"""
+    used = current_user.storage_used_bytes or 0
+    quota = current_user.storage_quota_bytes or 2147483648
+    # 查询订阅套餐配额
+    plan_quota = 0
+    plan_result = await db.execute(
+        select(SubscriptionPlan.storage_quota_bytes)
+        .where(SubscriptionPlan.id == current_user.subscription_plan_id)
+    ) if current_user.subscription_plan_id else None
+    plan_quota = (plan_result.scalar() if plan_result else None) or 0
+    effective_quota = max(quota, plan_quota)
+    usage_percent = round(used / effective_quota * 100, 2) if effective_quota else 0
+
+    return {
+        "used_bytes": used,
+        "quota_bytes": effective_quota,
+        "usage_percent": usage_percent,
+    }
 
 
 # ---------------------------------------------------------------------------

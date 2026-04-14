@@ -18,6 +18,15 @@ export interface User {
   credits: number;
   total_input_tokens: number;
   total_output_tokens: number;
+  // 存储空间
+  storage_used_bytes: number;
+  storage_quota_bytes: number;
+  // 订阅信息
+  subscription_status: 'inactive' | 'active' | 'expired';
+  subscription_plan_id?: string | null;
+  // 用户偏好
+  preferred_theme?: string;
+  preferred_language?: string;
 }
 
 export interface TokenResponse {

@@ -81,6 +81,11 @@ async def dashboard_overview(
     ) or 0
     api_error_rate = round(tool_errors / tool_total * 100, 2) if tool_total else 0
 
+    # 全平台存储总量
+    total_storage_used = await db.scalar(
+        select(func.coalesce(func.sum(User.storage_used_bytes), 0))
+    ) or 0
+
     return {
         "total_users": total_users,
         "active_users": active_users,
@@ -94,6 +99,7 @@ async def dashboard_overview(
         "api_error_rate": api_error_rate,
         "tool_total_calls": tool_total,
         "tool_errors": tool_errors,
+        "total_storage_used": total_storage_used,
     }
 
 
@@ -340,6 +346,16 @@ async def content_stats(
     ) or 0
     tool_avg_ms = await db.scalar(select(func.avg(ToolExecution.duration_ms)))
 
+    # 存储按文件类型分布
+    storage_result = await db.execute(
+        select(
+            Asset.file_type,
+            func.coalesce(func.sum(Asset.size), 0).label("total_bytes"),
+        )
+        .group_by(Asset.file_type)
+    )
+    storage_by_type = {(r.file_type or "unknown"): r.total_bytes for r in storage_result.all()}
+
     return {
         "video": {
             "total": video_total,
@@ -360,6 +376,7 @@ async def content_stats(
             "success_rate": music_success_rate,
         },
         "assets_by_type": asset_by_type,
+        "storage_by_type": storage_by_type,
         "tool_execution": {
             "total": tool_total,
             "errors": tool_errors,
