@@ -3,38 +3,29 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { 
-  Search, Menu, X, User, Sun, Moon, Home, FolderOpen, Users, 
-  LogOut, Settings 
+  Search, Menu, X, User, Home, FolderOpen, 
+  LogOut, Settings
 } from "lucide-react";
-import { useTheme } from "@/context/ThemeContext";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
+import SettingsDialog from "@/components/SettingsDialog";
+
 
 // 导航链接配置
 const NAV_LINKS = [
   { key: "home", labelKey: "nav.home", href: "/", icon: Home },
   { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen },
-  { key: "community", labelKey: "nav.community", href: "#", icon: Users },
 ];
 
 // 用户菜单配置
 const USER_MENU_ITEMS = [
-  { key: "profile", labelKey: "userMenu.profile", icon: User },
   { key: "settings", labelKey: "userMenu.settings", icon: Settings },
 ];
 
-// 主题 aria-label 映射
-const THEME_LABELS: Record<string, string> = {
-  dark: "theme.switchToLight",
-  light: "theme.switchToDark",
-};
-
 export default function TopBar() {
   const { t } = useTranslation();
-  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -43,6 +34,8 @@ export default function TopBar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   
   const userMenuRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -77,8 +70,7 @@ export default function TopBar() {
   // 用户菜单处理
   const handleUserMenuClick = (key: string) => {
     const handlers: Record<string, () => void> = {
-      profile: () => console.log("Profile clicked"),
-      settings: () => console.log("Settings clicked"),
+      settings: () => setSettingsOpen(true),
     };
     handlers[key]?.();
     setUserMenuOpen(false);
@@ -143,7 +135,7 @@ export default function TopBar() {
               })}
             </nav>
 
-            {/* Right: Search + Theme + Language + User */}
+            {/* Right: Search + User */}
             <div className="flex items-center gap-2">
               {/* Search Container */}
               <div className="search-container relative flex items-center">
@@ -196,18 +188,6 @@ export default function TopBar() {
                   )}
                 </AnimatePresence>
               </div>
-
-              {/* Theme Toggle */}
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                aria-label={t(THEME_LABELS[theme])}
-              >
-                {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-
-              {/* Language Switcher */}
-              <LanguageSwitcher />
 
               {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
@@ -368,6 +348,9 @@ export default function TopBar() {
           />
         )}
       </AnimatePresence>
+
+      {/* Settings Dialog */}
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   );
 }

@@ -71,12 +71,29 @@ const BILLING_PERIODS: Record<string, { label: string; short: string }> = {
 // 基准积分成本（1 积分 = $0.01 USD）
 const CREDIT_BASE_COST_USD = 0.01;
 
+// 存储配额选项 (GB)
+const STORAGE_QUOTA_OPTIONS: { label: string; bytes: number }[] = [
+  { label: '1 GB', bytes: 1 * 1024 ** 3 },
+  { label: '2 GB', bytes: 2 * 1024 ** 3 },
+  { label: '5 GB', bytes: 5 * 1024 ** 3 },
+  { label: '10 GB', bytes: 10 * 1024 ** 3 },
+  { label: '20 GB', bytes: 20 * 1024 ** 3 },
+  { label: '50 GB', bytes: 50 * 1024 ** 3 },
+  { label: '100 GB', bytes: 100 * 1024 ** 3 },
+];
+
+function formatStorageQuota(bytes: number): string {
+  const gb = bytes / (1024 ** 3);
+  return gb >= 1 ? `${gb} GB` : `${(bytes / (1024 ** 2)).toFixed(0)} MB`;
+}
+
 const formSchema = z.object({
   name: z.string().min(1, '请输入套餐名称'),
   description: z.string().optional(),
   price_usd: z.number().positive('价格必须大于 0'),
   credits: z.number().positive('积分数量必须大于 0'),
   billing_period: z.enum(['monthly', 'yearly', 'lifetime']),
+  storage_quota_gb: z.number().min(0.1, '存储配额必须大于 0'),
   features: z.array(z.object({ value: z.string().min(1, '请输入特性描述') })),
   is_active: z.boolean(),
   sort_order: z.number().int().min(0),
@@ -103,6 +120,7 @@ export default function SubscriptionsPage() {
       price_usd: 9.99,
       credits: 1000,
       billing_period: 'monthly',
+      storage_quota_gb: 2,
       features: [],
       is_active: true,
       sort_order: 0,
@@ -130,6 +148,7 @@ export default function SubscriptionsPage() {
       price_usd: 9.99,
       credits: 1000,
       billing_period: 'monthly',
+      storage_quota_gb: 2,
       features: [],
       is_active: true,
       sort_order: (plans?.length ?? 0) * 10,
@@ -145,6 +164,7 @@ export default function SubscriptionsPage() {
       price_usd: plan.price_usd,
       credits: plan.credits,
       billing_period: plan.billing_period,
+      storage_quota_gb: (plan.storage_quota_bytes || 2147483648) / (1024 ** 3),
       features: plan.features.map(f => ({ value: f })),
       is_active: plan.is_active,
       sort_order: plan.sort_order,
@@ -168,7 +188,10 @@ export default function SubscriptionsPage() {
       const payload = {
         ...values,
         features: values.features.map(f => f.value),
+        storage_quota_bytes: Math.round(values.storage_quota_gb * 1024 ** 3),
       };
+      // 移除临时字段
+      delete (payload as any).storage_quota_gb;
 
       editing
         ? await updatePlan(editing.id, payload)
@@ -209,6 +232,7 @@ export default function SubscriptionsPage() {
               <TableHead>计费周期</TableHead>
               <TableHead className="text-right">价格 (USD)</TableHead>
               <TableHead className="text-right">积分</TableHead>
+              <TableHead className="text-right">存储配额</TableHead>
               <TableHead className="text-right">单价 ($/积分)</TableHead>
               <TableHead className="text-right">利润率</TableHead>
               <TableHead>状态</TableHead>
@@ -218,12 +242,12 @@ export default function SubscriptionsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">加载中...</TableCell>
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">加载中...</TableCell>
               </TableRow>
             )}
             {!isLoading && (!plans || plans.length === 0) && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">暂无套餐数据</TableCell>
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">暂无套餐数据</TableCell>
               </TableRow>
             )}
             {plans?.map((plan) => {
@@ -246,6 +270,7 @@ export default function SubscriptionsPage() {
                   </TableCell>
                   <TableCell className="text-right font-mono">${plan.price_usd.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-mono">{plan.credits.toLocaleString()}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{formatStorageQuota(plan.storage_quota_bytes || 2147483648)}</TableCell>
                   <TableCell className="text-right font-mono text-xs">${up.toFixed(4)}</TableCell>
                   <TableCell className="text-right">
                     <span className={
@@ -442,6 +467,26 @@ export default function SubscriptionsPage() {
                   )}
                 />
               </div>
+
+              <FormField
+                control={form.control}
+                name="storage_quota_gb"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>存储配额 (GB)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step={0.5}
+                        min={0.1}
+                        value={field.value}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* 特性列表 */}
               <div>

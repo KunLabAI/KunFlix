@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func as sa_func
+from user_agents import parse as parse_ua
 
 from auth import (
     hash_password,
@@ -15,7 +19,7 @@ from auth import (
 )
 from config import settings
 from database import get_db
-from models import User
+from models import User, CreditTransaction
 from schemas import (
     UserRegister,
     UserLogin,
@@ -23,6 +27,8 @@ from schemas import (
     TokenResponse,
     AccessTokenResponse,
     UserResponse,
+    UserPreferencesUpdate,
+    CreditTransactionResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +91,18 @@ async def login(
     # Update login metadata
     user.last_login_at = datetime.now(timezone.utc)
     user.last_login_ip = request.client.host if request.client else None
+
+    # Parse device info from User-Agent
+    ua_string = request.headers.get("user-agent", "")
+    ua = parse_ua(ua_string)
+    # 设备类型映射表
+    _device_type_map = {True: "mobile", False: "tablet"}
+    device_type = _device_type_map.get(ua.is_mobile, "tablet") if (ua.is_mobile or ua.is_tablet) else "desktop"
+    user.last_device_type = device_type
+    user.last_os = f"{ua.os.family} {ua.os.version_string}".strip()
+    user.last_browser = f"{ua.browser.family} {ua.browser.version_string}".strip()
+    user.last_user_agent = ua_string[:500]
+
     await db.commit()
     await db.refresh(user)
 
@@ -133,3 +151,78 @@ async def refresh(
 async def me(current_user: User = Depends(get_current_active_user)):
     """Return the authenticated user's profile."""
     return current_user
+
+
+@router.patch("/preferences", response_model=UserResponse)
+async def update_preferences(
+    body: UserPreferencesUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """更新用户偏好设置（主题、语言）"""
+    VALID_THEMES = {"light", "dark", "system"}
+    VALID_LANGS = {"zh-CN", "en-US"}
+
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalars().first()
+
+    updates = body.model_dump(exclude_none=True)
+    # 校验值是否合法（用映射表驱动）
+    field_validators = {
+        "preferred_theme": VALID_THEMES,
+        "preferred_language": VALID_LANGS,
+    }
+    for field, allowed in field_validators.items():
+        val = updates.get(field)
+        val and val not in allowed and (_ for _ in ()).throw(
+            HTTPException(status_code=422, detail=f"Invalid {field}: {val}")
+        )
+
+    for field, val in updates.items():
+        setattr(user, field, val)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.get("/credits/history", response_model=List[CreditTransactionResponse])
+async def credits_history(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户的积分变动历史"""
+    result = await db.execute(
+        select(CreditTransaction)
+        .filter(CreditTransaction.user_id == current_user.id)
+        .order_by(CreditTransaction.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return [CreditTransactionResponse.model_validate(t) for t in result.scalars().all()]
+
+
+@router.get("/credits/daily-usage")
+async def credits_daily_usage(
+    days: int = Query(30, ge=1, le=90),
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户最近N天的每日积分消耗聚合"""
+    result = await db.execute(
+        select(
+            sa_func.date(CreditTransaction.created_at).label("date"),
+            sa_func.sum(sa_func.abs(CreditTransaction.amount)).label("total"),
+        )
+        .filter(
+            CreditTransaction.user_id == current_user.id,
+            CreditTransaction.amount < 0,  # 仅统计消耗
+            CreditTransaction.created_at >= sa_func.date("now", f"-{days} days"),
+        )
+        .group_by(sa_func.date(CreditTransaction.created_at))
+        .order_by(sa_func.date(CreditTransaction.created_at))
+    )
+    rows = result.all()
+    return [{"date": str(r.date), "total": round(r.total, 2)} for r in rows]

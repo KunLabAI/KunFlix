@@ -63,9 +63,25 @@ class User(Base):
     total_input_chars = Column(BigInteger, default=0)
     total_output_chars = Column(BigInteger, default=0)
     credits = Column(Float, default=0.0, nullable=False)  # 积分余额
+
+    # 存储空间
+    storage_used_bytes = Column(BigInteger, default=0)              # 已用空间(字节)
+    storage_quota_bytes = Column(BigInteger, default=2147483648)    # 个人配额(字节)，默认2GB，可被订阅覆盖
+
+    # 登录追踪
     register_ip = Column(String(45), nullable=True)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
+
+    # 用户偏好
+    preferred_theme = Column(String(20), default="system")     # light | dark | system
+    preferred_language = Column(String(10), default="zh-CN")   # zh-CN | en-US
+
+    # 设备信息（最近一次登录）
+    last_device_type = Column(String(50), nullable=True)     # desktop / mobile / tablet
+    last_os = Column(String(100), nullable=True)              # Windows 11, macOS 15 等
+    last_browser = Column(String(100), nullable=True)         # Chrome 120, Safari 18 等
+    last_user_agent = Column(String(500), nullable=True)      # 完整 UA 字符串
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -401,6 +417,9 @@ class SubscriptionPlan(Base):
     price_usd = Column(Float, nullable=False)       # 套餐价格 (USD)
     credits = Column(Float, nullable=False)          # 包含积分数
     billing_period = Column(String(20), default="monthly")  # monthly | yearly | lifetime
+
+    # Resource limits
+    storage_quota_bytes = Column(BigInteger, default=2147483648)  # 存储配额(字节)，默认2GB
 
     # Features & display
     features = Column(JSON, default=[])              # ["特性1", "特性2", ...]

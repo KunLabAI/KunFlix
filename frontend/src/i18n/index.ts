@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import api from "@/lib/api";
 
 import zhCN from "./locales/zh-CN.json";
 import enUS from "./locales/en-US.json";
@@ -19,9 +20,12 @@ i18n.use(initReactI18next).init({
   },
 });
 
-// 语言变更时自动持久化到 localStorage
+// 语言变更时自动持久化到 localStorage 并同步后端
 i18n.on("languageChanged", (lng) => {
-  typeof window !== "undefined" && localStorage.setItem("i18n-lang", lng);
+  if (typeof window === "undefined") return;
+  localStorage.setItem("i18n-lang", lng);
+  // fire-and-forget sync
+  api.patch("/auth/preferences", { preferred_language: lng }).catch(() => {});
 });
 
 export default i18n;

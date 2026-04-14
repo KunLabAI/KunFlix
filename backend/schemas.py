@@ -36,16 +36,34 @@ class UserResponse(BaseModel):
     total_input_chars: int = 0
     total_output_chars: int = 0
     credits: float = 0.0
+    # 存储空间
+    storage_used_bytes: int = 0
+    storage_quota_bytes: int = 2147483648
     # 订阅信息
     subscription_plan_id: Optional[str] = None
     subscription_status: str = "inactive"
     subscription_start_at: Optional[Any] = None
     subscription_end_at: Optional[Any] = None
+    # 登录追踪
+    register_ip: Optional[str] = None
+    last_login_ip: Optional[str] = None
     last_login_at: Optional[Any] = None
+    # 设备信息
+    last_device_type: Optional[str] = None
+    last_os: Optional[str] = None
+    last_browser: Optional[str] = None
+    # 用户偏好
+    preferred_theme: str = "system"
+    preferred_language: str = "zh-CN"
     created_at: Optional[Any] = None
     updated_at: Optional[Any] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserPreferencesUpdate(BaseModel):
+    preferred_theme: Optional[str] = None
+    preferred_language: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -505,6 +523,7 @@ class SubscriptionPlanBase(BaseModel):
     features: List[str] = Field(default_factory=list)
     is_active: bool = True
     sort_order: int = 0
+    storage_quota_bytes: int = 2147483648  # 默认 2GB
 
 
 class SubscriptionPlanCreate(SubscriptionPlanBase):
@@ -520,6 +539,7 @@ class SubscriptionPlanUpdate(BaseModel):
     features: Optional[List[str]] = None
     is_active: Optional[bool] = None
     sort_order: Optional[int] = None
+    storage_quota_bytes: Optional[int] = None
 
 
 class SubscriptionPlanResponse(SubscriptionPlanBase):

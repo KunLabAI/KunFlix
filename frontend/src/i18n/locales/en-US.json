@@ -27,6 +27,69 @@
     "zh": "中文",
     "en": "English"
   },
+  "profile": {
+    "title": "Profile",
+    "basicInfo": "Basic Info",
+    "email": "Email",
+    "nickname": "Nickname",
+    "accountData": "Account Data",
+    "credits": "Credits",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "storage": "Storage",
+    "storageUsage": "Usage",
+    "subscription": "Subscription",
+    "subStatus": "Status",
+    "subActive": "Active",
+    "subInactive": "Inactive",
+    "subExpired": "Expired"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabs": {
+      "subscription": "Subscription",
+      "general": "General",
+      "billing": "Billing"
+    },
+    "subscription": {
+      "plan": "Plan",
+      "currentPlan": "Current Plan",
+      "freePlan": "Free",
+      "upgradeDesc": "Upgrade to get a quota that matches your needs.",
+      "upgrade": "Upgrade",
+      "remainingCredits": "Remaining Credits",
+      "usage": "Usage",
+      "dailyUsage": "Daily Usage",
+      "noUsageData": "No usage data yet",
+      "extraCredits": "Extra Credits",
+      "noExtraCredits": "No extra credits"
+    },
+    "general": {
+      "profile": "Profile",
+      "name": "Name",
+      "languageAndTime": "Language & Time",
+      "displayLanguage": "Display Language",
+      "timezone": "Timezone",
+      "appearance": "Appearance",
+      "themeLight": "Light",
+      "themeSystem": "System",
+      "themeDark": "Dark",
+      "storage": "Storage",
+      "storageUsed": "Used",
+      "storageQuota": "Quota",
+      "storagePercent": "Usage",
+      "manageResources": "Manage Resources",
+      "loadingStorage": "Loading..."
+    },
+    "billing": {
+      "plan": "Plan",
+      "freePlan": "Free Plan",
+      "dailyCreditsLimit": "Daily {{count}} credits limit",
+      "upgradePlan": "Upgrade Plan",
+      "history": "History",
+      "noHistory": "No billing history"
+    }
+  },
   "resources": {
     "title": "My Assets",
     "uploadFile": "Upload",

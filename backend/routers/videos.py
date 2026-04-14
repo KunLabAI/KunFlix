@@ -10,7 +10,7 @@ from typing import Optional
 import logging
 
 from database import get_db
-from models import LLMProvider, VideoTask, ChatMessage
+from models import LLMProvider, VideoTask, ChatMessage, Asset, generate_uuid
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
@@ -204,6 +204,9 @@ async def get_video_task_status(
             task.output_duration_seconds = poll_result.duration_seconds or task.duration
             task.completed_at = datetime.now(timezone.utc)
 
+            # 将生成的视频注册为用户资产
+            await _register_video_asset(local_url, entity_id, db)
+
             # 计费：从 provider.model_costs[model] 获取费率
             rate_map = (provider.model_costs or {}).get(task.model, {})
             credit_cost, billing_metadata = calculate_video_credit_cost(task, rate_map)
@@ -236,6 +239,29 @@ async def get_video_task_status(
     await db.refresh(task)
 
     return _build_task_response(task, provider_name=provider.name)
+
+
+async def _register_video_asset(local_url: str, user_id: str, db: AsyncSession) -> None:
+    """将生成/编辑的视频注册为用户 Asset 记录。"""
+    try:
+        filename = local_url.rsplit("/", 1)[-1]  # e.g. "uuid.mp4"
+        filepath = MEDIA_DIR / filename
+        size = filepath.stat().st_size if filepath.exists() else None
+        asset = Asset(
+            id=generate_uuid(),
+            user_id=user_id,
+            filename=filename,
+            original_name=f"generated_{filename}",
+            file_path=filename,
+            file_type="video",
+            mime_type="video/mp4",
+            size=size,
+        )
+        db.add(asset)
+        await db.flush()
+        logger.info("Registered video as asset: %s (user=%s)", filename, user_id)
+    except Exception as e:
+        logger.warning("Failed to register video asset: %s", e, exc_info=True)
 
 
 @router.get("/session/{session_id}", response_model=list[VideoTaskResponse])

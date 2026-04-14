@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/context/AuthContext";
 import type { TokenResponse } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import api from "@/lib/api";
 import { App } from "antd";
 import { cn } from "@/lib/utils";
@@ -191,7 +192,15 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const { login } = useAuth();
+  const { restoreTheme } = useTheme();
   const { message } = App.useApp();
+
+  // 登录后恢复用户主题/语言偏好
+  const applyUserPreferences = (u: TokenResponse["user"]) => {
+    const theme = u.preferred_theme as "light" | "dark" | "system" | undefined;
+    theme && restoreTheme(theme);
+    u.preferred_language && i18n.changeLanguage(u.preferred_language);
+  };
 
   const FORM_FIELDS = useMemo(() => getFormFields(t), [t]);
   const VALIDATORS = useMemo(() => getValidators(t), [t]);
@@ -239,6 +248,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await api.post<TokenResponse>("/auth/login", { email, password });
+      // 恢复用户偏好
+      applyUserPreferences(data.user);
       message.success(t("login.loginSuccess", { name: data.user.nickname }));
       login(data.access_token, data.refresh_token, data.user);
     } catch (err: any) {
@@ -255,6 +266,8 @@ export default function LoginPage() {
     try {
       await api.post("/auth/register", { email, nickname, password });
       const { data } = await api.post<TokenResponse>("/auth/login", { email, password });
+      // 恢复用户偏好
+      applyUserPreferences(data.user);
       message.success(t("login.registerSuccess", { name: data.user.nickname }));
       login(data.access_token, data.refresh_token, data.user);
     } catch (err: any) {
