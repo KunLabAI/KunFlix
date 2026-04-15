@@ -82,6 +82,32 @@ export function createDragPreview(label: string, icon?: string): HTMLElement {
 }
 
 /**
+ * 创建图片拖拽预览元素（使用图片本身）
+ */
+export function createImageDragPreview(imageUrl: string, maxSize = 200): HTMLElement {
+  const preview = document.createElement('div');
+  preview.style.position = 'absolute';
+  preview.style.top = '-1000px';
+  preview.style.opacity = '0.75';
+  preview.style.pointerEvents = 'none';
+  preview.style.borderRadius = '8px';
+  preview.style.overflow = 'hidden';
+  preview.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+  
+  const img = document.createElement('img');
+  img.src = imageUrl;
+  img.style.maxWidth = `${maxSize}px`;
+  img.style.maxHeight = `${maxSize}px`;
+  img.style.display = 'block';
+  img.style.objectFit = 'contain';
+  img.draggable = false;
+  
+  preview.appendChild(img);
+  document.body.appendChild(preview);
+  return preview;
+}
+
+/**
  * 清理拖拽预览元素
  */
 export function cleanupDragPreview(preview: HTMLElement | null): void {
@@ -151,6 +177,30 @@ export function handleTextDragStart(
 
   const preview = createDragPreview(displayTitle, '📝');
   event.dataTransfer.setDragImage(preview, 0, 0);
+
+  return preview;
+}
+
+/**
+ * 图片拖拽开始处理器（使用图片作为预览）
+ */
+export function handleImageDragStart(
+  event: React.DragEvent,
+  imageUrl: string,
+  name?: string
+): HTMLElement | null {
+  // 使用 alt 文本作为节点名称，避免使用图像ID
+  const nodeName = name || '图片';
+  
+  setDragData(event, 'image', {
+    name: nodeName,
+    imageUrl,
+    description: '',
+  });
+
+  // 使用图片本身作为拖拽预览
+  const preview = createImageDragPreview(imageUrl);
+  event.dataTransfer.setDragImage(preview, preview.offsetWidth / 2, preview.offsetHeight / 2);
 
   return preview;
 }

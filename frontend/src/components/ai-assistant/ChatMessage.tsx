@@ -218,7 +218,8 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
       <LazyImage
         src={srcString}
         alt={alt}
-        className={cn("max-w-full h-auto rounded-lg my-2", props.className)}
+        className={cn("max-w-full rounded-lg my-2", props.className)}
+        maxHeight={320}
       />
     );
   },
