@@ -197,7 +197,7 @@ Enter the Admin Dashboard (http://localhost:3888) and input the corresponding AP
 - OpenAI
 - Google Gemini
 - xAI Grok
-- Volcano Engine
+- Volcengine
 - MiniMax
 - DeepSeek
 - Dashscope (Alibaba Bailian)

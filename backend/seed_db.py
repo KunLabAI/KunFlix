@@ -54,7 +54,7 @@ DEFAULT_PROVIDERS = [
     {
         "name": "Grok",
         "provider_type": "xai",
-        "models": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning", "grok-imagine-image-pro", "grok-imagine-image"],
+        "models": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning", "grok-imagine-image-pro", "grok-imagine-image", "grok-imagine-video"],
         "tags": ["llm", "image"],
     },
     {
