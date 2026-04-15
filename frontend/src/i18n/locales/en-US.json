@@ -49,7 +49,8 @@
     "tabs": {
       "subscription": "Subscription",
       "general": "General",
-      "billing": "Billing"
+      "billing": "Billing",
+      "about": "About"
     },
     "subscription": {
       "plan": "Plan",
@@ -87,7 +88,19 @@
       "dailyCreditsLimit": "Daily {{count}} credits limit",
       "upgradePlan": "Upgrade Plan",
       "history": "History",
-      "noHistory": "No billing history"
+      "noHistory": "No billing history",
+      "inDevelopment": "Feature in development, stay tuned"
+    },
+    "about": {
+      "changelog": "Changelog",
+      "refresh": "Refresh",
+      "loading": "Loading...",
+      "fetchError": "Failed to fetch changelog, please try again later",
+      "retry": "Retry",
+      "noReleases": "No releases yet",
+      "latest": "Latest",
+      "viewOnGitHub": "View on GitHub",
+      "website": "Website"
     }
   },
   "resources": {
