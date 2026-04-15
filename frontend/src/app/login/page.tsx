@@ -17,23 +17,23 @@ import Logo from "@/components/Logo";
 
 // 本地素材图片
 const EFFECT_IMAGES = [
-  "/effect/023576f6-ce4d-4e16-ae0f-22ce69ac363e.png",
+  "/effect/023576f6-ce4d-4e16-ae0f-22ce69ac363e.jpg",
   "/effect/0d563961-5ad4-4d26-8d21-7b0152302e46.jpg",
   "/effect/1619b2eb-11a6-4302-9b0a-c4ee79283af6.jpg",
-  "/effect/18c5dedb-6fe7-4708-b864-afab675ca140.png",
+  "/effect/18c5dedb-6fe7-4708-b864-afab675ca140.jpg",
   "/effect/2d25e12c-adff-476d-8eaa-6a0cc73371f3.jpg",
-  "/effect/30a18532-606d-4f5f-841a-9a071a3d465e.png",
-  "/effect/5d13bdc6-329f-4475-92a6-bbc8703f4034.png",
-  "/effect/697b54f4-0941-43d6-8577-06442d49cd4d.png",
-  "/effect/79a6397c-83cc-419e-b42e-431d0db6b773.png",
-  "/effect/7a628fe3-6633-4f87-9c50-a91b14402c8e.png",
+  "/effect/30a18532-606d-4f5f-841a-9a071a3d465e.jpg",
+  "/effect/5d13bdc6-329f-4475-92a6-bbc8703f4034.jpg",
+  "/effect/697b54f4-0941-43d6-8577-06442d49cd4d.jpg",
+  "/effect/79a6397c-83cc-419e-b42e-431d0db6b773.jpg",
+  "/effect/7a628fe3-6633-4f87-9c50-a91b14402c8e.jpg",
   "/effect/a422bcd0-20ed-4496-b909-2e5b081e61e7.jpg",
   "/effect/c70ea786-873a-484e-a4e3-597f00985821.jpg",
-  "/effect/c86b0964-cb67-4402-b227-5b53305c2bc2.png",
+  "/effect/c86b0964-cb67-4402-b227-5b53305c2bc2.jpg",
   "/effect/ee13c0e5-e668-492b-9334-dcf861cb7dab.jpg",
   "/effect/f3d7d5f9-0f21-460a-9e3b-c1465495ae90.jpg",
-  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd2.png",
-  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd9.png",
+  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd2.jpg",
+  "/effect/f8b65eac-dcf8-4c36-ad5e-a911872a4bd9.jpg",
 ];
 
 // 手动分配3行，每行8张，确保行间无重复、视觉均匀
