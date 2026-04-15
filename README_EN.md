@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🎬 KunFlix
+<img src="frontend/public/kunflix_logo_favicon.svg" alt="KunFlix Logo" width="64" height="64" />
+
+# KunFlix
 
 **AI-Powered Film & Advertising Content Creation Platform**
 

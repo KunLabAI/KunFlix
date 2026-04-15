@@ -6,12 +6,12 @@ import {
   Search, Menu, X, User, Home, FolderOpen, 
   LogOut, Settings
 } from "lucide-react";
-import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import SettingsDialog from "@/components/SettingsDialog";
+import Logo from "@/components/Logo";
 
 
 // 导航链接配置
@@ -99,13 +99,7 @@ export default function TopBar() {
                 onClick={() => handleNavigate("/")}
                 className="flex items-center gap-2 group"
               >
-                <Image
-                  src="/KunFlix_logo.png"
-                  alt="KunFlix"
-                  width={32}
-                  height={32}
-                  className="rounded-lg"
-                />
+                <Logo size={32} />
                 <span className="hidden sm:block font-semibold text-foreground text-sm tracking-tight">
                   KunFlix
                 </span>

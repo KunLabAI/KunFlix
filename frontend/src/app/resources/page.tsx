@@ -18,6 +18,7 @@ import AssetEditDialog from "@/components/resources/AssetEditDialog";
 import AssetDeleteDialog from "@/components/resources/AssetDeleteDialog";
 import AssetPreviewDialog from "@/components/resources/AssetPreviewDialog";
 import SettingsDialog from "@/components/SettingsDialog";
+import Logo from "@/components/Logo";
 
 // 导航链接配置
 const NAV_LINKS = [
@@ -207,9 +208,7 @@ export default function ResourcesPage() {
                 onClick={() => handleNavigate("/")}
                 className="flex items-center gap-2 group"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">IN</span>
-                </div>
+                <Logo size={32} />
                 <span className="hidden sm:block font-semibold text-foreground text-sm tracking-tight">
                   KunFlix
                 </span>

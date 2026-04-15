@@ -13,6 +13,7 @@ import { useTheme } from "@/context/ThemeContext";
 import api from "@/lib/api";
 import { App } from "antd";
 import { cn } from "@/lib/utils";
+import Logo from "@/components/Logo";
 
 // 本地素材图片
 const EFFECT_IMAGES = [
@@ -292,6 +293,12 @@ export default function LoginPage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
+      {/* ===== Layer 0: Logo in top-left corner ===== */}
+      <div className="fixed top-6 left-6 z-50 flex items-center gap-3">
+        <Logo size={36} />
+        <span className="text-xl font-bold text-foreground tracking-tight">KunFlix</span>
+      </div>
+
       {/* ===== Layer 1: Full-screen Film Strip Background ===== */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         {/* Film strip rows with 45° diagonal scrolling */}
