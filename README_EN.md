@@ -120,18 +120,6 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 </tr>
 </table>
 
-### System Components
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        KunFlix System                        │
-├─────────────┬─────────────┬─────────────┬─────────────────┤
-│ Agent Engine │ Skills Sys. │ Multimodal  │ Real-time Comm. │
-├─────────────┼─────────────┼─────────────┼─────────────────┤
-│ Billing Sys. │ Visual Dash │ Asset Mgmt. │ Third-party Int.│
-└─────────────┴─────────────┴─────────────┴─────────────────┘
-```
-
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -142,32 +130,34 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 
 ### Installation
 
-<details>
-<summary><b>📦 1. Clone Repository</b></summary>
+<summary><b>📦 Clone Repository</b></summary>
 
 ```bash
 git clone https://github.com/KunLabAI/KunFlix.git
 cd KunFlix
 ```
-</details>
+
+### 🎯 One-Command Start
+
+```bash
+python dev.py
+```
 
 <details>
-<summary><b>⚙️ 2. Backend Setup</b></summary>
+<summary><b>⚙️ 1. Backend Setup</b></summary>
 
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env
-# Edit .env to configure database and AI service keys
-python seed_db.py  # Initialize database
-python main.py     # Start backend service
+python seed_db.py
+python main.py
 ```
 </details>
 
 <details>
-<summary><b>🎨 3. Frontend Setup</b></summary>
+<summary><b>🎨 2. Frontend Setup</b></summary>
 
 ```bash
 cd frontend
@@ -179,7 +169,7 @@ npm run dev
 </details>
 
 <details>
-<summary><b>📊 4. Admin Dashboard Setup</b></summary>
+<summary><b>📊 3. Admin Dashboard Setup</b></summary>
 
 ```bash
 cd backend/admin
@@ -188,12 +178,6 @@ npm run dev
 ```
 </details>
 
-### 🎯 One-Command Start
-
-```bash
-python dev.py
-```
-
 ### Access URLs
 
 | Service | URL |
@@ -201,6 +185,38 @@ python dev.py
 | 🎭 Theater Client | http://localhost:3666 |
 | 📊 Admin Dashboard | http://localhost:3888 |
 | 📖 API Docs | http://localhost:8000/docs |
+
+## 📋 Quick Start Guide
+
+### 1. Configure AI Providers
+
+Enter the Admin Dashboard (http://localhost:3888) and input the corresponding API Key in the **AI Providers module**:
+
+- OpenAI
+- Google Gemini
+- xAI Grok
+- Volcano Engine
+- MiniMax
+- DeepSeek
+- Dashscope (Alibaba Bailian)
+- Other providers will be supported in future updates
+
+### 2. Create an Agent
+
+Create an agent in the **Agent Management page**:
+
+1. Enter the agent name and description
+2. Select the underlying model (e.g., Grok, Gemini, etc.). We recommend using multimodal models; currently, Gemini shows excellent support for artistic content
+3. **Enable Preset Capabilities (Skills)**: Enable image generation, video generation, music generation, and other skills based on your needs
+4. **Tools Module**: After enabling Skills, the Tools module can be left disabled by default
+
+### 3. Start Creating
+
+Once created, frontend users can use this agent in the **Infinite Canvas** for creation:
+
+- Chat with the agent to describe your creative needs
+- The agent automatically invokes enabled skills to generate content
+- Generated images, videos, and music are automatically saved as reusable assets
 
 ## 💡 Use Cases
 
@@ -235,36 +251,6 @@ python dev.py
 </tr>
 </table>
 
-## 🧩 Core Functions
-
-### Intelligent Agent System
-
-AgentScope-based multi-agent architecture that automatically breaks down task chains:
-
-```
-Script Agent → Character Agent → Video Agent
-      │              │              │
-      ▼              ▼              ▼
-Script/Storyboard  Asset Library  Video Clips
-```
-
-### Skills Plugin System
-
-| Skill | Description |
-|:---:|:---|
-| 🎭 **Consistent Character** | Ensures visual consistency across scenes |
-| 🎨 **Video Style Transfer** | Transforms videos into specified artistic styles |
-| 🌐 **Multi-language Dubbing** | Supports multi-language AI voice-over and subtitles |
-
-### Multimodal Processing
-
-```
-Text → Scripts/Storyboards/Character Descriptions
-Image → Character Design/Scene Art/Posters
-Video → Clip Generation/Effect Compositing
-Audio → Voice-over/Background Music/Sound Effects
-```
-
 ## 📂 Directory Structure
 
 ```bash
@@ -278,6 +264,19 @@ KunFlix/
 ├── frontend/                  # Theater client frontend
 └── ...
 ```
+
+## 🗺️ Roadmap
+
+We are continuously iterating on KunFlix. Here are the upcoming core features:
+
+| Priority | Feature | Status | Description |
+|:---:|:---|:---:|:---|
+| 🔴 High | Canvas Node Toolization | 🚧 In Progress | Transform content nodes (images, videos, audio) in the canvas into tools, enabling agents to directly reference and remix them |
+| 🔴 High | TTS Provider Expansion | 📋 Planned | Integrate more TTS providers (Azure TTS, ElevenLabs, Volcano Engine, etc.) for more voice options |
+| 🟡 Medium | TTS Node Features | 📋 Planned | Add dedicated TTS nodes in the canvas, supporting text-to-speech, voice cloning, multi-character dubbing, and more |
+| 🟡 Medium | Multi-Agent Module Optimization | 🚧 In Progress | Optimize multi-agent collaboration stability, task dispatch logic, and event stream display |
+
+> 💡 Welcome to submit feature requests or vote for your most anticipated features via [GitHub Issues](https://github.com/KunLabAI/KunFlix/issues)!
 
 ## 🤝 Community & Support
 
