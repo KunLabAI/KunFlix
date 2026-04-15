@@ -13,7 +13,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
-[🚀 快速开始](#-快速开始) · [✨ 核心特性](#-核心特性) · [📖 文档](#-技术架构) · [🤝 贡献](#-社区与支持)
+[🚀 快速开始](#-快速开始) · [✨ 核心特性](#-核心特性) · [📖 文档](#-技术架构) · [🗺️ 路线图](#-路线图-roadmap) · [🤝 贡献](#-社区与支持)
+
+> 📚 [技术文档](.qoder/repowiki/zh/content/) | [Technical Docs](.qoder/repowiki/en/content/)（可能需重写，仅供参考）
 
 [English](./README_EN.md) | 简体中文
 
@@ -194,14 +196,14 @@ npm run dev
 
 进入后台管理端（http://localhost:3888），在 **AI 供应商模块** 输入对应 API Key：
 
-- OpenAI
+- OpenAI/ Azure OpenAI
 - Google Gemini
 - xAI Grok
-- 火山引擎
 - MiniMax
 - DeepSeek
 - Dashscope（阿里百炼）
-- 其他供应商未支持，后续陆续支持
+- 火供应商未支持，后续陆续支持豆包
+- 其他支持的供应商
 
 ### 2. 创建智能体
 
