@@ -158,9 +158,8 @@ cd KunFlix
 cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-# 编辑 .env 配置数据库和AI服务密钥
+pip install -r requirements.txt  #安装所有依赖项
+alembic upgrade head # 先运行数据库迁移，创建所有表
 python seed_db.py  # 初始化数据库
 python main.py     # 启动后端服务
 ```

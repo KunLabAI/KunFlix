@@ -21,6 +21,11 @@ ADMIN_HASH = '$2b$12$W/T/QaQO3/ymVEr2aCWg4ewCawGBmrZoLya9152UbBpWa2ElI10l.'  # '
 
 
 def upgrade() -> None:
+    # 检查表是否存在
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_tables = inspector.get_table_names()
+
     # 1. Create users table
     op.create_table(
         'users',
@@ -95,15 +100,17 @@ def upgrade() -> None:
     with op.batch_alter_table('story_chapters') as batch_op:
         batch_op.alter_column('player_id', new_column_name='user_id')
 
-    # 5. Add user_id to assets
-    with op.batch_alter_table('assets') as batch_op:
-        batch_op.add_column(sa.Column('user_id', sa.String(36), nullable=True))
-        batch_op.create_index('ix_assets_user_id', ['user_id'])
+    # 5. Add user_id to assets (only if table exists)
+    if 'assets' in existing_tables:
+        with op.batch_alter_table('assets') as batch_op:
+            batch_op.add_column(sa.Column('user_id', sa.String(36), nullable=True))
+            batch_op.create_index('ix_assets_user_id', ['user_id'])
 
-    # 6. Add user_id to chat_sessions
-    with op.batch_alter_table('chat_sessions') as batch_op:
-        batch_op.add_column(sa.Column('user_id', sa.String(36), nullable=True))
-        batch_op.create_index('ix_chat_sessions_user_id', ['user_id'])
+    # 6. Add user_id to chat_sessions (only if table exists)
+    if 'chat_sessions' in existing_tables:
+        with op.batch_alter_table('chat_sessions') as batch_op:
+            batch_op.add_column(sa.Column('user_id', sa.String(36), nullable=True))
+            batch_op.create_index('ix_chat_sessions_user_id', ['user_id'])
 
     # 7. Drop players table
     op.drop_table('players')

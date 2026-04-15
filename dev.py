@@ -41,6 +41,18 @@ def setup_backend():
         
     return python_exec
 
+def init_database(python_exec):
+    """初始化数据库（执行迁移和种子数据），幂等操作"""
+    log("Initializing database...", "[DATABASE]")
+    
+    seed_script = os.path.join(BACKEND_DIR, "seed_db.py")
+    try:
+        subprocess.check_call([python_exec, seed_script], cwd=BACKEND_DIR)
+        log("Database initialization completed.", "[DATABASE]")
+    except subprocess.CalledProcessError as e:
+        log(f"Database initialization failed: {e}", "[DATABASE]")
+        sys.exit(1)
+
 def setup_frontend():
     """检查并安装前端依赖"""
     log("Checking frontend environment...", "[FRONTEND]")
@@ -105,6 +117,9 @@ def main():
              subprocess.check_call("npm install", shell=True, cwd=ADMIN_DIR)
         except subprocess.CalledProcessError:
              log("Failed to install admin dependencies.", "[ADMIN]")
+
+    # Initialize database (migrations + seed data), idempotent operation
+    init_database(python_exec)
 
     log("Setup complete. Starting servers...")
 
