@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { 
@@ -16,6 +16,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useConfirmDialog, useInputDialog } from "@/components/ui/confirm-dialog";
+
+// 滑动阈值配置
+const SWIPE_THRESHOLD = 10; // 水平移动超过 10px 视为滑动意图
 
 // 状态配置映射表
 const STATUS_CONFIG: Record<string, { 
@@ -82,6 +85,11 @@ export default function TheaterCard({
   const statusConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft;
   const StatusIcon = statusConfig.icon;
 
+  // ========== 滑动检测机制 ==========
+  // 用于区分：水平滑动（轮播滚动）vs 点击（进入剧场）
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isSwipingRef = useRef(false);
+
   // 从画布节点中提取图片/视频作为背景
   const extractBackgroundFromNodes = (): string | null => {
     const mediaNodes = nodes.filter((node) => 
@@ -122,6 +130,48 @@ export default function TheaterCard({
 
   const timeLabel = formatTime(updatedAt);
   const hasActions = onRename || onDuplicate || onDelete;
+
+  // ========== 指针事件处理 ==========
+  // 记录指针按下位置
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // 只处理左键
+    if (e.button !== 0) return;
+    // 忽略下拉菜单和按钮
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-radix-collection-item]') || target.closest('button')) return;
+
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    isSwipingRef.current = false;
+  }, []);
+
+  // 检测是否在水平滑动
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!pointerStartRef.current) return;
+
+    const deltaX = Math.abs(e.clientX - pointerStartRef.current.x);
+    const deltaY = Math.abs(e.clientY - pointerStartRef.current.y);
+
+    // 水平移动大于阈值且水平方向为主时，标记为滑动
+    if (deltaX > SWIPE_THRESHOLD && deltaX > deltaY) {
+      isSwipingRef.current = true;
+    }
+  }, []);
+
+  // 指针抬起 - 清理状态
+  const handlePointerUp = useCallback(() => {
+    pointerStartRef.current = null;
+  }, []);
+
+  // 点击处理 - 如果是滑动则阻止
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (isSwipingRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      isSwipingRef.current = false;
+      return;
+    }
+    onClick?.();
+  }, [onClick]);
 
   // 重命名处理
   const handleRename = async (e: React.MouseEvent) => {
@@ -194,7 +244,11 @@ export default function TheaterCard({
           "shadow-sm hover:shadow-md transition-shadow duration-500",
           isLoading && "opacity-70 pointer-events-none"
         )}
-        onClick={onClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onClick={handleClick}
       >
         {/* Card Container */}
         <div className="relative w-full h-full rounded-2xl overflow-hidden">
@@ -302,7 +356,7 @@ export default function TheaterCard({
 
             <div className="flex items-center justify-between rounded-xl px-4 py-3 backdrop-blur-md bg-background/20 border border-border/50 transition-all duration-300 group-hover:bg-background/30">
               <div className="flex items-center gap-2">
-                <Play className="w-4 h-4 fill-current" />
+                <Play className="w-4 w-4 fill-current" />
                 <span className="text-sm font-semibold tracking-wide">{t("theater.openTheater")}</span>
               </div>
               <ArrowRight className="h-4 w-4 transform transition-transform duration-300 group-hover:translate-x-1" />

@@ -462,6 +462,10 @@
       "storyboardMsg": "帮我生成一段分镜脚本。",
       "polishStory": "润色一段故事文案",
       "polishStoryMsg": "帮我润色一段故事文案。"
+    },
+    "image": {
+      "dragToCanvas": "拖拽到画布",
+      "doubleClickZoom": "双击放大"
     }
   }
 }

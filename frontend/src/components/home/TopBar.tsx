@@ -6,6 +6,7 @@ import {
   Search, Menu, X, User, Home, FolderOpen, 
   LogOut, Settings
 } from "lucide-react";
+import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
@@ -98,9 +99,13 @@ export default function TopBar() {
                 onClick={() => handleNavigate("/")}
                 className="flex items-center gap-2 group"
               >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-node-purple to-node-blue flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">IN</span>
-                </div>
+                <Image
+                  src="/KunFlix_logo.png"
+                  alt="KunFlix"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
                 <span className="hidden sm:block font-semibold text-foreground text-sm tracking-tight">
                   KunFlix
                 </span>

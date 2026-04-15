@@ -39,6 +39,12 @@ class UserResponse(BaseModel):
     # 存储空间
     storage_used_bytes: int = 0
     storage_quota_bytes: int = 2147483648
+
+    @field_validator("storage_used_bytes", "storage_quota_bytes", mode="before")
+    @classmethod
+    def _coerce_storage(cls, v: Any, info: Any) -> int:
+        defaults = {"storage_used_bytes": 0, "storage_quota_bytes": 2147483648}
+        return v if v is not None else defaults.get(info.field_name, 0)
     # 订阅信息
     subscription_plan_id: Optional[str] = None
     subscription_status: str = "inactive"

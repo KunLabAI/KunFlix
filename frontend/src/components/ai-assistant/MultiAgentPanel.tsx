@@ -253,7 +253,8 @@ export function MultiAgentPanel({ steps, isThinking = false, className }: MultiA
                                         key={`${tc.tool_name}-img-${j}`}
                                         src={src}
                                         alt={tc.tool_name}
-                                        className="mt-1.5 rounded max-w-full max-h-48 object-contain"
+                                        className="mt-1.5 rounded max-w-full"
+                                        maxHeight={192}
                                       />
                                     ) : null;
                                   })}

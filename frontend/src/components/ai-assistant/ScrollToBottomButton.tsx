@@ -34,21 +34,20 @@ export function ScrollToBottomButton({
         >
           <Button
             variant="secondary"
-            size="sm"
+            size="icon"
             onClick={onClick}
             className={cn(
-              'h-8 px-3 rounded-full shadow-lg border border-border/50',
+              'h-8 w-8 rounded-full shadow-lg border border-border/50',
               'bg-background/90 backdrop-blur-sm hover:bg-background',
-              'flex items-center gap-2 text-xs font-medium',
+              'flex items-center justify-center relative',
               hasNewMessages && 'bg-primary/10 text-primary border-primary/30'
             )}
           >
-            <ArrowDown className="h-3.5 w-3.5" />
-            <span>{hasNewMessages ? '新消息' : '回到底部'}</span>
+            <ArrowDown className="h-4 w-4" />
             {hasNewMessages && (
-              <span className="flex h-2 w-2 relative">
+              <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-primary"></span>
               </span>
             )}
           </Button>

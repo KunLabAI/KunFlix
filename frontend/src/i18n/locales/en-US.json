@@ -462,6 +462,10 @@
       "storyboardMsg": "Help me generate a storyboard script.",
       "polishStory": "Polish a story",
       "polishStoryMsg": "Help me polish a story copy."
+    },
+    "image": {
+      "dragToCanvas": "Drag to canvas",
+      "doubleClickZoom": "Double-click to zoom"
     }
   }
 }
