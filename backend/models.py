@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean, BigInteger
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean, BigInteger, Numeric
 from sqlalchemy.sql import func
 from database import Base
 
@@ -23,7 +23,7 @@ class Admin(Base):
     total_output_tokens = Column(BigInteger, default=0)
     total_input_chars = Column(BigInteger, default=0)
     total_output_chars = Column(BigInteger, default=0)
-    credits = Column(Float, default=0.0, nullable=False)  # 积分余额
+    credits = Column(Numeric(18, 4), default=0.0, nullable=False)  # 积分余额
 
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
@@ -62,7 +62,7 @@ class User(Base):
     total_output_tokens = Column(BigInteger, default=0)
     total_input_chars = Column(BigInteger, default=0)
     total_output_chars = Column(BigInteger, default=0)
-    credits = Column(Float, default=0.0, nullable=False)  # 积分余额
+    credits = Column(Numeric(18, 4), default=0.0, nullable=False)  # 积分余额
 
     # 存储空间
     storage_used_bytes = Column(BigInteger, default=0)              # 已用空间(字节)
@@ -306,17 +306,18 @@ class CreditTransaction(Base):
     agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
 
-    transaction_type = Column(String(20), nullable=False)  # deduction | recharge | admin_adjust
-    amount = Column(Float, nullable=False)          # 负数=扣费, 正数=充值
-    balance_before = Column(Float, nullable=False)
-    balance_after = Column(Float, nullable=False)
+    transaction_type = Column(String(20), nullable=False)  # deduction | recharge | admin_adjust | refund
+    amount = Column(Numeric(18, 4), nullable=False)          # 负数=扣费, 正数=充值
+    balance_before = Column(Numeric(18, 4), nullable=False)
+    balance_after = Column(Numeric(18, 4), nullable=False)
 
     input_tokens = Column(Integer, default=0)
     output_tokens = Column(Integer, default=0)
     metadata_json = Column(JSON, default={})  # 费率快照等扩展信息
     description = Column(Text, nullable=True)
+    idempotency_key = Column(String(100), unique=True, nullable=True, index=True)  # 幂等键
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class TaskExecution(Base):
@@ -415,7 +416,7 @@ class SubscriptionPlan(Base):
 
     # Pricing
     price_usd = Column(Float, nullable=False)       # 套餐价格 (USD)
-    credits = Column(Float, nullable=False)          # 包含积分数
+    credits = Column(Numeric(18, 4), nullable=False)          # 包含积分数
     billing_period = Column(String(20), default="monthly")  # monthly | yearly | lifetime
 
     # Resource limits

@@ -16,7 +16,7 @@ from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
 from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
-from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError
+from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
 from services.media_utils import save_video_from_url, MEDIA_DIR
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,14 @@ async def create_video_task(
 ):
     """提交视频生成任务"""
     entity_id = current_user.id
+
+    # 余额预检查
+    try:
+        balance_ok = await check_balance_sufficient(entity_id, 0, db)
+        if not balance_ok:
+            raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
+    except BalanceFrozenError:
+        raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
 
     # 查询 LLMProvider
     provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == request.provider_id))
@@ -219,6 +227,7 @@ async def get_video_task_status(
                 session=db,
                 metadata=billing_metadata,
                 transaction_type="consumption",
+                idempotency_key=f"video:{task.id}",
             )
 
             # 在聊天会话中插入视频消息

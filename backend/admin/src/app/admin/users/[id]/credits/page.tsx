@@ -49,7 +49,7 @@ export default function CreditHistoryPage() {
           <h2 className="text-2xl font-bold tracking-tight">积分历史</h2>
           <p className="text-sm text-muted-foreground">
             用户: {user?.nickname || '加载中...'} ({user?.email})
-            {user && ` - 当前余额: ${user.credits?.toFixed(2) || '0.00'}`}
+            {user && ` - 当前余额: ${Number(user.credits || 0).toFixed(2)}`}
           </p>
         </div>
       </div>
@@ -92,13 +92,13 @@ export default function CreditHistoryPage() {
                     <Badge variant={typeInfo.variant}>{typeInfo.label}</Badge>
                   </TableCell>
                   <TableCell className={`text-right tabular-nums font-mono ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    {isPositive ? '+' : ''}{tx.amount.toFixed(2)}
+                    {isPositive ? '+' : ''}{Number(tx.amount).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-mono text-muted-foreground">
-                    {tx.balance_before.toFixed(2)}
+                    {Number(tx.balance_before).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums font-mono">
-                    {tx.balance_after.toFixed(2)}
+                    {Number(tx.balance_after).toFixed(2)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-xs text-muted-foreground">
                     {tx.input_tokens > 0 || tx.output_tokens > 0

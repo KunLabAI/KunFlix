@@ -204,7 +204,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             </div>
             <div className="mt-5 flex items-baseline gap-2">
               <span className="text-3xl font-bold tabular-nums text-foreground">
-                {(user?.credits ?? 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {Number(user?.credits ?? 1000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
               <span className="text-sm text-muted-foreground flex items-center gap-1">
                 {t("settings.subscription.remainingCredits")}

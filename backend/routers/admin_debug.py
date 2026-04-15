@@ -591,7 +591,7 @@ async def _generate_single_agent_debug(
                 # 调试模式也扣费（可选：管理员可以透支）
                 credit_cost, billing_metadata = calculate_credit_cost(result, agent)
                 if credit_cost > 0:
-                    balance_before = entity.credits or 0
+                    balance_before = float(entity.credits or 0)
                     entity.credits = max(0, balance_before - credit_cost)
                     tx_kwargs = {
                         "admin_id": admin_id,

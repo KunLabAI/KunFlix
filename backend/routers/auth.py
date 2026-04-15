@@ -225,4 +225,4 @@ async def credits_daily_usage(
         .order_by(sa_func.date(CreditTransaction.created_at))
     )
     rows = result.all()
-    return [{"date": str(r.date), "total": round(r.total, 2)} for r in rows]
+    return [{"date": str(r.date), "total": round(float(r.total or 0), 2)} for r in rows]

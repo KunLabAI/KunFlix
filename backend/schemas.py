@@ -449,6 +449,7 @@ class CreditTransactionResponse(BaseModel):
     output_tokens: int = 0
     metadata_json: Optional[Dict[str, Any]] = None
     description: Optional[str] = None
+    idempotency_key: Optional[str] = None
     created_at: Any
 
     model_config = ConfigDict(from_attributes=True)
@@ -456,6 +457,12 @@ class CreditTransactionResponse(BaseModel):
 
 class CreditAdjustRequest(BaseModel):
     amount: float
+    description: str = ""
+
+
+class CreditRefundRequest(BaseModel):
+    amount: float
+    transaction_id: Optional[str] = None  # 关联的原始交易ID
     description: str = ""
 
 

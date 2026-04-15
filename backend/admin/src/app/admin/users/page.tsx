@@ -265,7 +265,7 @@ export default function UsersPage() {
                   <TableCell className="font-medium">{user.email}</TableCell>
                   <TableCell>{user.nickname}</TableCell>
                   <TableCell className="text-right tabular-nums font-mono">
-                    {(user.credits || 0).toFixed(2)}
+                    {Number(user.credits || 0).toFixed(2)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
@@ -397,7 +397,7 @@ export default function UsersPage() {
                 <section>
                   <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Coins className="h-3.5 w-3.5" />账户数据</h4>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">积分余额</span><span className="font-mono">{(u.credits || 0).toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">积分余额</span><span className="font-mono">{Number(u.credits || 0).toFixed(2)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">输入Token</span><span className="font-mono">{(u.total_input_tokens || 0).toLocaleString()}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">输出Token</span><span className="font-mono">{(u.total_output_tokens || 0).toLocaleString()}</span></div>
                   </div>
@@ -456,7 +456,7 @@ export default function UsersPage() {
           <DialogHeader>
             <DialogTitle>积分管理</DialogTitle>
             <DialogDescription>
-              为用户 {selectedUser?.nickname} 调整积分（当前余额: {selectedUser?.credits?.toFixed(2) || '0.00'}）
+              为用户 {selectedUser?.nickname} 调整积分（当前余额: {Number(selectedUser?.credits || 0).toFixed(2)}）
             </DialogDescription>
           </DialogHeader>
           <Form {...creditForm}>
