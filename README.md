@@ -197,13 +197,13 @@ npm run dev
 进入后台管理端（http://localhost:3888），在 **AI 供应商模块** 输入对应 API Key：
 
 - OpenAI/ Azure OpenAI
-- Google Gemini
+- Google Gemini 
 - xAI Grok
 - MiniMax
 - DeepSeek
 - Dashscope（阿里百炼）
-- 火供应商未支持，后续陆续支持豆包
-- 其他支持的供应商
+- 火山引擎/火山方舟
+- 其他供应商后续支持
 
 ### 2. 创建智能体
 
