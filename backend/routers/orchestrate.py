@@ -13,6 +13,7 @@ from models import TaskExecution, SubTask, User
 from schemas import OrchestrationRequest, TaskExecutionResponse, SubTaskResponse
 from auth import get_current_active_user
 from services.orchestrator import DynamicOrchestrator
+from services.billing import check_balance_sufficient, BalanceFrozenError
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,12 @@ async def execute_orchestration(
     Returns a streaming response with Server-Sent Events (SSE) for real-time progress.
     """
     # Check user credits for paid operations
-    if (current_user.credits or 0) <= 0:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient credits for orchestration task"
-        )
+    try:
+        balance_ok = await check_balance_sufficient(current_user.id, 0, db)
+        if not balance_ok:
+            raise HTTPException(status_code=402, detail="Insufficient credits for orchestration task")
+    except BalanceFrozenError:
+        raise HTTPException(status_code=403, detail="Account balance is frozen")
 
     orchestrator = DynamicOrchestrator(db)
 

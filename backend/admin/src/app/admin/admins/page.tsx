@@ -264,7 +264,7 @@ export default function AdminsPage() {
                   <TableCell>
                     <Badge variant={levelInfo.variant}>{levelInfo.label}</Badge>
                   </TableCell>
-                  <TableCell className="font-mono">{(admin.credits ?? 0).toFixed(2)}</TableCell>
+                  <TableCell className="font-mono">{Number(admin.credits ?? 0).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={admin.is_active ? 'default' : 'secondary'}>
                       {admin.is_active ? '启用' : '禁用'}
@@ -479,7 +479,7 @@ export default function AdminsPage() {
           <DialogHeader>
             <DialogTitle>调整积分</DialogTitle>
             <DialogDescription>
-              管理员: {selectedAdmin?.nickname} | 当前余额: {(selectedAdmin?.credits ?? 0).toFixed(2)}
+              管理员: {selectedAdmin?.nickname} | 当前余额: {Number(selectedAdmin?.credits ?? 0).toFixed(2)}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

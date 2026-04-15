@@ -45,7 +45,7 @@
     "@types/react-window": "^1.8.8",
     "@xyflow/react": "^12.10.1",
     "antd": "^6.3.0",
-    "axios": "^1.13.5",
+    "axios": "^1.15.0",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "framer-motion": "^12.34.3",

@@ -13,6 +13,7 @@ from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.chat_utils import serialize_content, deserialize_content
 from services.chat_generation import generate_single_agent
 from services.chat_multi_agent import generate_multi_agent
+from services.billing import is_paid_agent as check_is_paid_agent, check_balance_sufficient, BalanceFrozenError
 
 logger = logging.getLogger(__name__)
 
@@ -180,16 +181,15 @@ async def send_message(
     # 捕获上下文变量
     entity_id = current_user.id
     is_admin = is_admin_entity(current_user)
-    is_paid_agent = (
-        agent.input_credit_per_1m > 0
-        or agent.output_credit_per_1m > 0
-        or agent.image_output_credit_per_1m > 0
-        or agent.search_credit_per_query > 0
-    )
 
-    # 3. 积分预检查：付费智能体且余额不足则友好拒绝
-    if is_paid_agent and (current_user.credits or 0) <= 0:
-        raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
+    # 3. 积分预检查：付费智能体 + 余额/冻结检查（映射表驱动判定）
+    if check_is_paid_agent(agent):
+        try:
+            balance_ok = await check_balance_sufficient(entity_id, 0, db)
+            if not balance_ok:
+                raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
+        except BalanceFrozenError:
+            raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
 
     # 4. 判断是否为 Leader 多智能体模式
     is_multi_agent = agent.is_leader and agent.member_agent_ids

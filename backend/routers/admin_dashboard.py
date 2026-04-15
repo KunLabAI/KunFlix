@@ -93,7 +93,7 @@ async def dashboard_overview(
         "total_assets": total_assets,
         "total_video_tasks": total_video_tasks,
         "total_music_tasks": total_music_tasks,
-        "total_credits_consumed": round(total_credits_consumed, 2),
+        "total_credits_consumed": round(float(total_credits_consumed), 2),
         "paid_users": paid_users,
         "paid_conversion_rate": paid_conversion_rate,
         "api_error_rate": api_error_rate,
@@ -202,7 +202,7 @@ async def token_leaderboard(
             "input_tokens": r.total_input_tokens or 0,
             "output_tokens": r.total_output_tokens or 0,
             "total_tokens": r.total_tokens or 0,
-            "credits": round(r.credits or 0, 2),
+            "credits": round(float(r.credits or 0), 2),
         }
         for idx, r in enumerate(rows)
     ]

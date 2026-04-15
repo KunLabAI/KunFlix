@@ -251,8 +251,9 @@ export default function SubscriptionsPage() {
               </TableRow>
             )}
             {plans?.map((plan) => {
-              const up = plan.credits > 0 ? plan.price_usd / plan.credits : 0;
-              const bc = plan.credits * CREDIT_BASE_COST_USD;
+              const credits = Number(plan.credits || 0);
+              const up = credits > 0 ? plan.price_usd / credits : 0;
+              const bc = credits * CREDIT_BASE_COST_USD;
               const margin = bc > 0 ? ((plan.price_usd - bc) / bc * 100) : 0;
               return (
                 <TableRow key={plan.id}>

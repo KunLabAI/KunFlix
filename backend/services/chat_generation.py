@@ -22,7 +22,7 @@ from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient, is_paid_agent as check_is_paid_agent
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
 
@@ -213,6 +213,18 @@ async def generate_single_agent(
     logger.info(f"{'-'*60}")
 
     # 调用 LLM 流式接口（含工具调用循环）
+    # 二次余额防护：服务层在 LLM 调用前再次验证（防止路由层检查后余额被并发消耗）
+    if check_is_paid_agent(agent):
+        try:
+            async with AsyncSessionLocal() as _pre_db:
+                _balance_ok = await check_balance_sufficient(entity_id, 0, _pre_db)
+                if not _balance_ok:
+                    yield sse("error", {"message": "积分余额不足，请充值后继续使用"})
+                    return
+        except BalanceFrozenError:
+            yield sse("error", {"message": "账户资金已冻结，请联系管理员"})
+            return
+
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     # 从智能体配置读取工具调用轮次限制，默认100，范围10-200
     MAX_TOOL_ROUNDS = max(10, min(200, agent.max_tool_rounds or 100))
@@ -496,7 +508,8 @@ async def generate_single_agent(
                     cost=credit_cost,
                     session=session,
                     metadata=billing_metadata,
-                    transaction_type="consumption"
+                    transaction_type="consumption",
+                    idempotency_key=f"chat:{assistant_msg.id}",
                 )
             except InsufficientCreditsError:
                 billing_event["insufficient"] = True

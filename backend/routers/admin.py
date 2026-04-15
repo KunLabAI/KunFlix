@@ -5,16 +5,18 @@ from sqlalchemy import func, delete
 from typing import List, Dict, Any, Optional
 
 from database import get_db
-from models import User, LLMProvider, Asset, Admin, CreditTransaction, SubscriptionPlan, ChatSession, Theater
+from models import User, LLMProvider, Asset, Admin, CreditTransaction, SubscriptionPlan, ChatSession, Theater, generate_uuid
 from auth import require_admin, hash_password
 from schemas import (
     CreditAdjustRequest,
+    CreditRefundRequest,
     CreditTransactionResponse,
     SubscriptionAssignRequest,
     AdminCreate,
     AdminUpdate,
     AdminResponse,
 )
+from services.billing import refund_credits_atomic
 
 router = APIRouter(
     prefix="/api/admin",
@@ -72,7 +74,7 @@ async def get_users(
             "is_balance_frozen": u.is_balance_frozen,
             "total_input_tokens": u.total_input_tokens or 0,
             "total_output_tokens": u.total_output_tokens or 0,
-            "credits": u.credits or 0.0,
+            "credits": float(u.credits or 0),
             "storage_used_bytes": u.storage_used_bytes or 0,
             "storage_quota_bytes": u.storage_quota_bytes or 2147483648,
             "subscription_plan_id": u.subscription_plan_id,
@@ -112,7 +114,7 @@ async def get_user_detail(
         "is_balance_frozen": user.is_balance_frozen,
         "total_input_tokens": user.total_input_tokens or 0,
         "total_output_tokens": user.total_output_tokens or 0,
-        "credits": user.credits or 0.0,
+        "credits": float(user.credits or 0),
         "storage_used_bytes": user.storage_used_bytes or 0,
         "storage_quota_bytes": user.storage_quota_bytes or 2147483648,
         "subscription_plan_id": user.subscription_plan_id,
@@ -168,7 +170,7 @@ async def adjust_user_credits(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    balance_before = user.credits or 0.0
+    balance_before = float(user.credits or 0)
     balance_after = max(0, balance_before + body.amount)  # 不允许负数余额
 
     # 更新用户积分
@@ -200,6 +202,48 @@ async def adjust_user_credits(
         "balance_before": balance_before,
         "balance_after": balance_after,
         "amount": body.amount,
+    }
+
+
+@router.post("/users/{user_id}/credits/refund")
+async def refund_user_credits(
+    user_id: str,
+    body: CreditRefundRequest,
+    current_admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """管理员为用户退款积分"""
+    # 验证用户存在
+    user_result = await db.execute(select(User).filter(User.id == user_id))
+    user = user_result.scalars().first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    idempotency_key = f"admin_refund:{body.transaction_id or generate_uuid()}"
+
+    transaction = await refund_credits_atomic(
+        user_id=user_id,
+        amount=body.amount,
+        session=db,
+        metadata={
+            "admin_id": current_admin.id,
+            "admin_email": current_admin.email,
+            "operation": "admin_refund",
+            "original_transaction_id": body.transaction_id,
+        },
+        description=body.description or "Admin refund",
+        idempotency_key=idempotency_key,
+    )
+
+    await db.commit()
+    await db.refresh(user)
+
+    return {
+        "ok": True,
+        "balance_before": float(transaction.balance_before) if transaction else float(user.credits or 0),
+        "balance_after": float(user.credits or 0),
+        "amount": body.amount,
+        "idempotency_key": idempotency_key,
     }
 
 
@@ -262,8 +306,8 @@ async def assign_user_subscription(
     # 自动发放积分
     credits_granted = 0.0
     if body.auto_grant_credits:
-        balance_before = user.credits or 0.0
-        credits_granted = plan.credits
+        balance_before = float(user.credits or 0)
+        credits_granted = float(plan.credits or 0)
         user.credits = balance_before + credits_granted
 
         # 记录积分交易
@@ -448,7 +492,7 @@ async def adjust_admin_credits(
     if not admin:
         raise HTTPException(status_code=404, detail="Admin not found")
 
-    balance_before = admin.credits or 0.0
+    balance_before = float(admin.credits or 0)
     balance_after = max(0, balance_before + body.amount)
 
     admin.credits = balance_after

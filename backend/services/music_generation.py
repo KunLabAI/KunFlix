@@ -171,6 +171,7 @@ async def _calculate_and_deduct(
         session=db,
         metadata=metadata,
         transaction_type="consumption",
+        idempotency_key=f"music:{task_id}",
     )
 
     return total_cost, metadata

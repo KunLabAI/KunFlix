@@ -16,7 +16,7 @@ import logging
 
 from models import Agent, TaskExecution, SubTask, User, CreditTransaction
 from services.agent_executor import AgentExecutor, ExecutionResult
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient
 from services.llm_stream import StreamResult
 from services.tool_manager import ToolManager
 from services.tool_manager.context import ToolContext
@@ -645,6 +645,16 @@ class DynamicOrchestrator:
         # 1. Load leader and members
         leader, members = await self._load_leader_and_members(leader_agent_id)
 
+        # 1.5 余额预检查（服务层二次防护）
+        try:
+            balance_ok = await check_balance_sufficient(user_id, 0, self.db)
+            if not balance_ok:
+                yield OrchestrationEvent("task_failed", {"error": "Insufficient credits", "message": "积分余额不足"})
+                return
+        except BalanceFrozenError:
+            yield OrchestrationEvent("task_failed", {"error": "Balance frozen", "message": "账户资金已冻结"})
+            return
+
         # 2. Create TaskExecution record
         task_execution = TaskExecution(
             leader_agent_id=leader_agent_id,
@@ -1138,7 +1148,8 @@ Provide a cohesive final result that integrates all outputs:"""
                     ),
                     "description": f"Multi-agent task: {task_execution.task_description[:100]}"
                 },
-                transaction_type="deduction"
+                transaction_type="deduction",
+                idempotency_key=f"orchestrate:{task_execution.id}",
             )
         except InsufficientCreditsError:
             billing_status = "insufficient"

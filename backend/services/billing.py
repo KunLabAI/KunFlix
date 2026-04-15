@@ -2,10 +2,11 @@
 多维度积分计费计算器 - 映射表驱动，避免 if 分支
 """
 from typing import Dict, Tuple, Optional
+from decimal import Decimal
 from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-from models import User, CreditTransaction
+from models import User, Admin, CreditTransaction
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +49,18 @@ class BalanceFrozenError(Exception):
     """用户资金已冻结异常"""
     pass
 
+def is_paid_agent(agent) -> bool:
+    """映射表驱动判定 agent 是否为付费模型（任一计费维度费率 > 0）"""
+    return any(
+        (getattr(agent, field, 0) or 0) > 0
+        for field, _scale in BILLING_DIMENSIONS.values()
+    )
+
+
 async def check_balance_sufficient(user_id: str, estimated_cost: float, session: AsyncSession) -> bool:
     """
     检查用户余额是否足够支付预估费用，并检查是否冻结。
+    同时支持 User 和 Admin 双路查询（映射表驱动）。
     
     Args:
         user_id: 用户ID
@@ -69,33 +79,32 @@ async def check_balance_sufficient(user_id: str, estimated_cost: float, session:
     row = result.first()
     
     if row:
-        current_balance = float(row.credits or 0)
-        is_frozen = row.is_balance_frozen or False
-        
-        if is_frozen:
+        if row.is_balance_frozen:
             raise BalanceFrozenError(f"User {user_id} balance is frozen")
-        
-        return current_balance >= estimated_cost
+        return float(row.credits or 0) >= estimated_cost
 
-    # 2. 尝试查询管理员
-    from models import Admin
+    # 2. 尝试查询管理员（Admin 无冻结状态）
     stmt_admin = select(Admin.credits).where(Admin.id == user_id)
     result_admin = await session.execute(stmt_admin)
     row_admin = result_admin.first()
     
-    if row_admin:
-        current_balance = float(row_admin.credits or 0)
-        return current_balance >= estimated_cost
+    return float(row_admin.credits or 0) >= estimated_cost if row_admin else False
 
-    return False
+async def _check_idempotency(session: AsyncSession, key: str) -> Optional[CreditTransaction]:
+    """幂等性检查：查找已有相同 idempotency_key 的交易记录"""
+    stmt = select(CreditTransaction).where(CreditTransaction.idempotency_key == key)
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
 
 async def refund_credits_atomic(
     user_id: str,
     amount: float,
     session: AsyncSession,
     metadata: Dict = None,
-    description: str = "Refund"
-) -> CreditTransaction:
+    description: str = "Refund",
+    idempotency_key: str = None,
+) -> Optional[CreditTransaction]:
     """
     原子退还用户积分。
     
@@ -105,24 +114,35 @@ async def refund_credits_atomic(
         session: 数据库会话
         metadata: 交易元数据
         description: 描述
+        idempotency_key: 幂等键（防重复退款）
         
     Returns:
-        CreditTransaction: 交易记录
+        CreditTransaction: 交易记录，amount<=0 时返回 None
     """
     if amount < 0:
         raise ValueError("Refund amount cannot be negative")
     
     if amount == 0:
-        pass
+        return None
 
-    amount_float = float(amount)
+    # 幂等性检查
+    if idempotency_key:
+        existing = await _check_idempotency(session, idempotency_key)
+        if existing:
+            logger.info(f"Idempotent refund hit: key={idempotency_key}")
+            return existing
+
+    amount_val = Decimal(str(amount))
     
-    # 1. 原子增加余额 (User)
-    # UPDATE users SET credits = credits + :amount WHERE id = :id
+    # 1. 先获取当前余额作为 balance_before (精度改进)
+    balance_before_user = await session.execute(select(User.credits).where(User.id == user_id))
+    user_balance_row = balance_before_user.scalar()
+    
+    # 2. 原子增加余额 (User)
     stmt = (
         update(User)
         .where(User.id == user_id)
-        .values(credits=User.credits + amount_float)
+        .values(credits=User.credits + amount_val)
         .execution_options(synchronize_session="fetch")
     )
     
@@ -130,52 +150,46 @@ async def refund_credits_atomic(
     
     if result.rowcount == 0:
         # 尝试增加 Admin 余额
-        from models import Admin
+        balance_before_admin = await session.execute(select(Admin.credits).where(Admin.id == user_id))
+        admin_balance_row = balance_before_admin.scalar()
+        
         stmt_admin = (
             update(Admin)
             .where(Admin.id == user_id)
-            .values(credits=Admin.credits + amount_float)
+            .values(credits=Admin.credits + amount_val)
             .execution_options(synchronize_session="fetch")
         )
         result_admin = await session.execute(stmt_admin)
         
-        if result_admin.rowcount > 0:
-             balance_stmt = select(Admin.credits).where(Admin.id == user_id)
-             balance_result = await session.execute(balance_stmt)
-             current_balance = float(balance_result.scalar() or 0)
-             balance_before = current_balance - amount_float
-             
-             transaction = CreditTransaction(
-                admin_id=user_id,
-                amount=amount_float,
-                balance_before=balance_before,
-                balance_after=current_balance,
-                transaction_type="refund",
-                metadata_json=metadata or {},
-                description=description
-            )
-             session.add(transaction)
-             return transaction
-             
-        raise ValueError(f"User/Admin {user_id} not found")
+        if result_admin.rowcount == 0:
+            raise ValueError(f"User/Admin {user_id} not found")
         
-    # 2. 获取更新后的余额 (User)
-    balance_stmt = select(User.credits).where(User.id == user_id)
-    balance_result = await session.execute(balance_stmt)
-    current_balance = float(balance_result.scalar() or 0)
+        balance_before = float(admin_balance_row or 0)
+        transaction = CreditTransaction(
+            admin_id=user_id,
+            amount=float(amount_val),
+            balance_before=balance_before,
+            balance_after=balance_before + float(amount_val),
+            transaction_type="refund",
+            metadata_json=metadata or {},
+            description=description,
+            idempotency_key=idempotency_key,
+        )
+        session.add(transaction)
+        return transaction
     
-    # 推算退还前的余额
-    balance_before = current_balance - amount_float
+    # User 路径
+    balance_before = float(user_balance_row or 0)
     
-    # 3. 创建交易记录
     transaction = CreditTransaction(
         user_id=user_id,
-        amount=amount_float,  # 收入为正
+        amount=float(amount_val),
         balance_before=balance_before,
-        balance_after=current_balance,
+        balance_after=balance_before + float(amount_val),
         transaction_type="refund",
         metadata_json=metadata or {},
-        description=description
+        description=description,
+        idempotency_key=idempotency_key,
     )
     session.add(transaction)
     
@@ -186,8 +200,9 @@ async def deduct_credits_atomic(
     cost: float, 
     session: AsyncSession, 
     metadata: Dict = None,
-    transaction_type: str = "consumption"
-) -> CreditTransaction:
+    transaction_type: str = "consumption",
+    idempotency_key: str = None,
+) -> Optional[CreditTransaction]:
     """
     原子扣除用户积分。
     使用 UPDATE ... WHERE ... 语句确保并发安全。
@@ -198,120 +213,117 @@ async def deduct_credits_atomic(
         session: 数据库会话
         metadata: 交易元数据
         transaction_type: 交易类型
+        idempotency_key: 幂等键（防重复扣费）
         
     Returns:
-        CreditTransaction: 创建的交易记录
+        CreditTransaction: 创建的交易记录，cost<=0 时返回 None
         
     Raises:
         InsufficientCreditsError: 余额不足
+        BalanceFrozenError: 账户冻结
         ValueError: 扣除金额无效
     """
     if cost < 0:
         raise ValueError("Cost cannot be negative")
         
     if cost == 0:
-        # 如果费用为0，仅记录交易但不扣费（或者直接返回）
-        # 这里选择记录以便追踪零成本调用
-        pass
+        return None
 
-    cost_float = float(cost)
+    # 幂等性检查
+    if idempotency_key:
+        existing = await _check_idempotency(session, idempotency_key)
+        if existing:
+            logger.info(f"Idempotent deduction hit: key={idempotency_key}")
+            return existing
+
+    cost_val = Decimal(str(cost))
     
-    # 1. 原子更新余额
-    # UPDATE users SET credits = credits - :cost WHERE id = :id AND credits >= :cost AND is_balance_frozen = False
+    # 1. 先获取当前余额作为 balance_before (精度改进)
+    balance_before_stmt = select(User.credits).where(User.id == user_id)
+    balance_before_result = await session.execute(balance_before_stmt)
+    user_balance_row = balance_before_result.scalar()
     
-    # Try updating User table first
+    # 2. 原子更新余额（User）
     stmt = (
         update(User)
         .where(User.id == user_id)
-        .where(User.credits >= cost_float)
-        .where(User.is_balance_frozen == False)  # 确保未冻结
-        .values(credits=User.credits - cost_float)
+        .where(User.credits >= cost_val)
+        .where(User.is_balance_frozen == False)
+        .values(credits=User.credits - cost_val)
         .execution_options(synchronize_session="fetch")
     )
     
     result = await session.execute(stmt)
     
-    if result.rowcount == 0:
-        # Check if it is an Admin
-        from models import Admin
-        stmt_admin = (
-            update(Admin)
-            .where(Admin.id == user_id)
-            .where(Admin.credits >= cost_float)
-            .values(credits=Admin.credits - cost_float)
-            .execution_options(synchronize_session="fetch")
+    if result.rowcount > 0:
+        # User 扣费成功
+        balance_before = float(user_balance_row or 0)
+        cost_f = float(cost_val)
+        transaction = CreditTransaction(
+            user_id=user_id,
+            amount=-cost_f,
+            balance_before=balance_before,
+            balance_after=balance_before - cost_f,
+            transaction_type=transaction_type,
+            metadata_json=metadata or {},
+            idempotency_key=idempotency_key,
         )
-        result_admin = await session.execute(stmt_admin)
-        
-        if result_admin.rowcount > 0:
-             # It was an admin, and update succeeded
-             balance_stmt = select(Admin.credits).where(Admin.id == user_id)
-             balance_result = await session.execute(balance_stmt)
-             current_balance = float(balance_result.scalar() or 0)
-             balance_before = current_balance + cost_float
-             
-             transaction = CreditTransaction(
-                admin_id=user_id,  # Use admin_id column
-                amount=-cost_float,
-                balance_before=balance_before,
-                balance_after=current_balance,
-                transaction_type=transaction_type,
-                metadata_json=metadata or {}
-            )
-             session.add(transaction)
-             return transaction
-
-        # Update failed, check reasons (User or Admin)
-        # Check User first
-        stmt_check = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
-        res_check = await session.execute(stmt_check)
-        row = res_check.first()
-        
-        if row:
-             if row.is_balance_frozen:
-                 raise BalanceFrozenError(f"User {user_id} balance is frozen")
-             if float(row.credits or 0) < cost_float:
-                logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
-                raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
-        
-        # Check Admin
-        stmt_check_admin = select(Admin.credits).where(Admin.id == user_id)
-        res_check_admin = await session.execute(stmt_check_admin)
-        row_admin = res_check_admin.first()
-        
-        if row_admin:
-             if float(row_admin.credits or 0) < cost_float:
-                logger.warning(f"Insufficient credits for admin {user_id}. Cost: {cost}")
-                raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
-             # Add check for update failure even with sufficient credits
-             raise Exception("Failed to deduct credits for admin (unknown reason)")
-        
-        if not row and not row_admin:
-            raise ValueError(f"User/Admin {user_id} not found")
-            
-        # 其他未知原因
-        raise Exception("Failed to deduct credits (unknown reason)")
+        session.add(transaction)
+        return transaction
     
-    # 2. 获取更新后的余额（User）
-    balance_stmt = select(User.credits).where(User.id == user_id)
-    balance_result = await session.execute(balance_stmt)
-    current_balance = float(balance_result.scalar() or 0)
+    # 3. User 更新失败，尝试 Admin
+    balance_before_admin_stmt = select(Admin.credits).where(Admin.id == user_id)
+    balance_before_admin_result = await session.execute(balance_before_admin_stmt)
+    admin_balance_row = balance_before_admin_result.scalar()
     
-    # 推算扣除前的余额 (仅供参考)
-    balance_before = current_balance + cost_float
-    
-    # 3. 创建交易记录
-    transaction = CreditTransaction(
-        user_id=user_id,
-        amount=-cost_float,  # 支出为负
-        balance_before=balance_before,
-        balance_after=current_balance,
-        transaction_type=transaction_type,
-        metadata_json=metadata or {}
+    stmt_admin = (
+        update(Admin)
+        .where(Admin.id == user_id)
+        .where(Admin.credits >= cost_val)
+        .values(credits=Admin.credits - cost_val)
+        .execution_options(synchronize_session="fetch")
     )
-    session.add(transaction)
+    result_admin = await session.execute(stmt_admin)
     
-    return transaction
+    if result_admin.rowcount > 0:
+        balance_before = float(admin_balance_row or 0)
+        cost_f = float(cost_val)
+        transaction = CreditTransaction(
+            admin_id=user_id,
+            amount=-cost_f,
+            balance_before=balance_before,
+            balance_after=balance_before - cost_f,
+            transaction_type=transaction_type,
+            metadata_json=metadata or {},
+            idempotency_key=idempotency_key,
+        )
+        session.add(transaction)
+        return transaction
+
+    # 4. 双路更新均失败，诊断原因
+    stmt_check = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
+    res_check = await session.execute(stmt_check)
+    row = res_check.first()
+    
+    if row:
+        if row.is_balance_frozen:
+            raise BalanceFrozenError(f"User {user_id} balance is frozen")
+        if float(row.credits or 0) < float(cost_val):
+            logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
+            raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+    
+    stmt_check_admin = select(Admin.credits).where(Admin.id == user_id)
+    res_check_admin = await session.execute(stmt_check_admin)
+    row_admin = res_check_admin.scalar()
+    
+    if row_admin is not None and float(row_admin or 0) < float(cost_val):
+        logger.warning(f"Insufficient credits for admin {user_id}. Cost: {cost}")
+        raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
+    
+    if not row and row_admin is None:
+        raise ValueError(f"User/Admin {user_id} not found")
+        
+    raise Exception("Failed to deduct credits (unknown reason)")
 
 def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
     """

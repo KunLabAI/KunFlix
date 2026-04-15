@@ -265,13 +265,16 @@ async def generate_with_template(
     credit_cost, billing_metadata = calculate_credit_cost(final_result, agent)
 
     # 执行原子扣费
+    from models import generate_uuid
+    _deduct_idempotency_key = f"prompt_tpl:{generate_uuid()}"
     try:
         (credit_cost > 0) and await deduct_credits_atomic(
             user_id=_current.id,
             cost=credit_cost,
             session=db,
             metadata=billing_metadata,
-            transaction_type="consumption"
+            transaction_type="consumption",
+            idempotency_key=_deduct_idempotency_key,
         )
         await db.commit()
     except InsufficientCreditsError:
