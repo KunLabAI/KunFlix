@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { 
-  Search, Menu, X, User, Home, FolderOpen, 
+  Search, Menu, X, Home, FolderOpen,
   LogOut, Settings
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -198,8 +198,8 @@ export default function TopBar() {
                   )}
                   aria-label={t("userMenu.label")}
                 >
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
-                    <User className="w-3 h-3 text-primary-foreground" />
+                  <div className="w-6 h-6 rounded-full bg-amber-800 flex items-center justify-center text-white text-xs font-semibold">
+                    {(user?.nickname ?? "U").charAt(0).toLowerCase()}
                   </div>
                 </button>
 
@@ -314,8 +314,8 @@ export default function TopBar() {
               {/* Mobile User Section */}
               <div className="mt-auto pt-6 border-t border-border">
                 <div className="flex items-center gap-3 px-3 py-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
-                    <User className="w-5 h-5 text-primary-foreground" />
+                  <div className="w-10 h-10 rounded-full bg-amber-800 flex items-center justify-center text-white text-lg font-semibold">
+                    {(user?.nickname ?? "U").charAt(0).toLowerCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{user?.nickname || t("userMenu.guest")}</p>

@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, Image as ImageIcon, Video, Music,
   LayoutGrid, List, FolderOpen, Loader2, Upload, X, AlertCircle,
-  Search, Home, User, LogOut, Settings
+  Search, Home, LogOut, Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useResourceStore, FileTypeFilter } from "@/store/useResourceStore";
@@ -196,9 +196,9 @@ export default function ResourcesPage() {
   const emptyDesc = searchQuery ? t("resources.noMatchDescription") : t("resources.emptyDescription");
 
   return (
-    <main className="min-h-screen flex flex-col bg-background text-foreground">
+    <main className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Top Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+      <header className="shrink-0 bg-background/80 backdrop-blur-xl border-b border-border/50 z-50">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
@@ -307,8 +307,8 @@ export default function ResourcesPage() {
                   )}
                   aria-label={t("userMenu.label")}
                 >
-                  <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-muted flex items-center justify-center">
-                    <User className="w-3 h-3 text-primary-foreground" />
+                  <div className="w-6 h-6 rounded-full bg-amber-800 flex items-center justify-center text-white text-xs font-semibold">
+                    {(user?.nickname ?? "U").charAt(0).toLowerCase()}
                   </div>
                 </button>
 
@@ -361,7 +361,7 @@ export default function ResourcesPage() {
       </header>
 
       {/* Sub Header - Title, Filters, View Mode in one row */}
-      <div className="fixed top-16 left-0 right-0 z-40 bg-background/80 backdrop-blur-xl">
+      <div className="shrink-0 bg-background/80 backdrop-blur-xl z-40">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 gap-4">
             {/* Left: Title + Resource Count */}
@@ -464,7 +464,8 @@ export default function ResourcesPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-36 pb-6">
+      <div className="flex-1 overflow-y-auto w-full">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-6">
         {/* Size limit error */}
         <AnimatePresence>
           {sizeError && (
@@ -626,6 +627,7 @@ export default function ResourcesPage() {
           </div>
         )}
         <div ref={sentinelRef} className="h-4" />
+        </div>
         </div>
       </div>
 
