@@ -13,7 +13,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
-[🚀 Quick Start](#-quick-start) · [✨ Features](#-core-features) · [📖 Docs](#-tech-stack) · [🤝 Contributing](#-community--support)
+[🚀 Quick Start](#-quick-start) · [✨ Features](#-core-features) · [📖 Docs](#-tech-stack) · [🗺️ Roadmap](#-roadmap) · [🤝 Contributing](#-community--support)
+
+> 📚 [技术文档](.qoder/repowiki/zh/content/) | [Technical Docs](.qoder/repowiki/en/content/) (May need rewriting, for reference only)
 
 English | [简体中文](./README.md)
 
