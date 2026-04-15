@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { motion, useAnimation } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import TheaterCard from "./TheaterCard";
 import CreateTheaterCard from "./CreateTheaterCard";
@@ -24,11 +24,12 @@ export default function RecentTheaters() {
   const [theaters, setTheaters] = useState<TheaterWithNodes[]>([]);
   const [loading, setLoading] = useState(true);
   const fetched = useRef(false);
+  const controls = useAnimation();
 
   useEffect(() => {
     const updateWidth = () => {
       if (carouselRef.current) {
-        setWidth(carouselRef.current.scrollWidth - carouselRef.current.offsetWidth);
+        setWidth(Math.max(0, carouselRef.current.scrollWidth - carouselRef.current.offsetWidth));
       }
     };
 
@@ -91,6 +92,8 @@ export default function RecentTheaters() {
   const handleDelete = async (id: string) => {
     try {
       await theaterApi.deleteTheater(id);
+      // 先重置拖拽位置到起始点，再更新列表，避免约束冲突
+      controls.set({ x: 0 });
       setTheaters((prev) => prev.filter((th) => th.id !== id));
     } catch (err) {
       console.error("Failed to delete theater:", err);
@@ -122,6 +125,7 @@ export default function RecentTheaters() {
         <motion.div
           drag="x"
           dragConstraints={{ right: 0, left: -width }}
+          animate={controls}
           className="flex gap-6"
         >
           {/* Create Theater Card - Always First */}

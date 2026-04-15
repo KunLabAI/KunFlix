@@ -20,9 +20,9 @@ export const metadata: Metadata = {
   title: "KunFlix",
   description: "An AI-powered infinite narrative theater",
   icons: {
-    icon: "/KunFlix_logo.png",
-    shortcut: "/KunFlix_logo.png",
-    apple: "/KunFlix_logo.png",
+    icon: "/kunflix_logo_favicon.svg",
+    shortcut: "/kunflix_logo_favicon.svg",
+    apple: "/kunflix_logo_favicon.svg",
   },
 };
 
