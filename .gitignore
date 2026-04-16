@@ -98,3 +98,6 @@ frontend/public/*.png
 frontend/public/*.jpg
 frontend/public/*.jpeg
 
+# 统一使用 npm，忽略其他锁定文件
+pnpm-lock.yaml
+yarn.lock
