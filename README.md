@@ -139,10 +139,16 @@ git clone https://github.com/KunLabAI/KunFlix.git
 cd KunFlix
 ```
 
-### 🎯 一键启动(推荐)
+### 🎯 开发模式一键启动
 
 ```bash
 python dev.py
+```
+
+### 🎯 生产模式一键启动(推荐)
+
+```bash
+python start.py
 ```
 
 ### 或者 手动安装

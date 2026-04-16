@@ -139,10 +139,16 @@ git clone https://github.com/KunLabAI/KunFlix.git
 cd KunFlix
 ```
 
-### 🎯 One-Command Start
+### 🎯 Development Mode One-Command Start
 
 ```bash
 python dev.py
+```
+
+### 🎯 Production Mode One-Command Start (Recommended)
+
+```bash
+python start.py
 ```
 
 <details>
