@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from services.music_providers import (
@@ -17,12 +18,17 @@ from services.music_providers import (
     GeminiLyriaAdapter,
     extract_music_provider_type,
 )
-from services.media_utils import save_audio_data
+from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT
+from models import Asset, generate_uuid
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# Local media directory
+MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
+
 
 # ---------------------------------------------------------------------------
 # 供应商注册表
@@ -46,6 +52,41 @@ async def generate_music(ctx: MusicContext) -> MusicResult:
         if adapter
         else MusicResult(status="failed", error=f"Unsupported music provider: {ctx.provider_type}")
     )
+
+
+# ---------------------------------------------------------------------------
+# Asset Registration
+# ---------------------------------------------------------------------------
+
+async def _register_music_asset(audio_url: str, mime_type: str, user_id: str, db: "AsyncSession") -> None:
+    """将生成的音乐注册为用户 Asset 记录，使其出现在用户资产模块中。"""
+    (not user_id) and logger.debug("Skipping music asset registration: no user_id")
+    
+    (not user_id) or await _do_register_music_asset(audio_url, mime_type, user_id, db)
+
+
+async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str, db: "AsyncSession") -> None:
+    """实际执行音乐资产注册。"""
+    try:
+        filename = audio_url.rsplit("/", 1)[-1]  # e.g. "uuid.mp3"
+        filepath = MEDIA_DIR / filename
+        size = filepath.stat().st_size if filepath.exists() else None
+        
+        asset = Asset(
+            id=generate_uuid(),
+            user_id=user_id,
+            filename=filename,
+            original_name=f"generated_{filename}",
+            file_path=filename,
+            file_type="audio",
+            mime_type=mime_type,
+            size=size,
+        )
+        db.add(asset)
+        await db.flush()
+        logger.info("Registered music as asset: %s (user=%s)", filename, user_id)
+    except Exception as e:
+        logger.warning("Failed to register music asset: %s", e, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +131,9 @@ async def execute_music_task_background(
 
         # ---- 保存音频文件 ----
         audio_url = await save_audio_data(result.audio_data, result.mime_type)
+        
+        # ---- 注册用户资产 ----
+        await _register_music_asset(audio_url, result.mime_type, user_id, db)
 
         # ---- 计费 ----
         credit_cost = 0.0

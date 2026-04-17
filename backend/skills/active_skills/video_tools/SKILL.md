@@ -37,6 +37,33 @@ Choose the correct `video_mode` based on the user's input:
 
 **CRITICAL**: When the user provides **2 or more images** as references (e.g. "use image A and image B to generate a video"), you **MUST** use `video_mode="reference_images"` with the `reference_images` array. Do NOT use `image_to_video` — that mode only accepts a single first-frame image and will ignore all other images.
 
+### Audio Generation (Dialogue, Narration, Sound Effects)
+
+**IMPORTANT**: Many video models (e.g. Gemini Veo 3.0/3.1, Seedance 2.0) are **fully multimodal** — they can generate videos **with audio** including:
+- **Dialogue** — characters speaking lines
+- **Narration/Voiceover** — off-screen narrator voice
+- **Sound effects** — environmental sounds, footsteps, etc.
+- **Ambient audio** — background atmosphere
+
+**You do NOT need reference audio to generate videos with dialogue.** Simply describe the dialogue, narration, or sound effects in the `prompt`, and the model will generate them automatically.
+
+**Example prompts with audio:**
+```
+# Dialogue example
+prompt="A woman walks into the coffee shop and says 'Good morning!' to the barista with a warm smile, ambient coffee shop sounds, cinematic lighting"
+
+# Narration example  
+prompt="A documentary-style shot of a cheetah running across the savanna, narrator voice describing 'The cheetah can reach speeds of 70 miles per hour', dramatic music builds"
+
+# Sound effects example
+prompt="A car speeds through a rainy city street at night, tires splashing through puddles, engine roaring, rain pattering on the windshield"
+```
+
+When to use `reference_audios`:
+- To **clone a specific voice style** or tone from an existing audio sample
+- To **match music genre/mood** from a reference track
+- The model will inherit voice characteristics or musical style from the reference
+
 ### Parameters
 
 | Parameter | Type | Required | Description |
@@ -50,7 +77,7 @@ Choose the correct `video_mode` based on the user's input:
 | `last_frame_image` | string | No | URL of the last frame image. Creates a video transitioning from first frame to last frame. |
 | `reference_images` | string[] | No | Array of reference image URLs for multimodal generation (max 9). Use with video_mode="reference_images". |
 | `reference_videos` | string[] | No | Array of reference video URLs for multimodal generation or video extension (max 3). |
-| `reference_audios` | string[] | No | Array of reference audio URLs (wav/mp3, 2-15s each, max 3). The model inherits audio characteristics. |
+| `reference_audios` | string[] | No | (Optional) Reference audio URLs (wav/mp3, 2-15s each, max 3) for voice cloning or style matching. **Not required for dialogue/narration** — just describe audio in the prompt. |
 | `return_last_frame` | boolean | No | If true, returns the last frame image URL of the generated video (useful for chaining consecutive videos). |
 
 ### Examples
