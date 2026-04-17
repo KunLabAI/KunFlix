@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import LLMProvider, Agent, ToolConfig
+from models import LLMProvider, Agent, ToolConfig, Asset, generate_uuid
 from services.xai_image_gen import (
     batch_generate_xai_images,
     XAIBatchImageConfig,
@@ -33,6 +34,9 @@ from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAP
 from services.tool_manager.context import ToolContext
 
 logger = logging.getLogger(__name__)
+
+# Local media directory
+MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -190,12 +194,72 @@ _IMAGE_GENERATORS: dict[str, Any] = {
 
 
 # ---------------------------------------------------------------------------
+# Asset Registration
+# ---------------------------------------------------------------------------
+
+# MIME -> file_type mapping
+_MIME_CATEGORY = {"image/": "image", "video/": "video", "audio/": "audio"}
+
+
+async def _register_generated_image_assets(image_urls: list[str], user_id: str | None, db: AsyncSession) -> None:
+    """将生成的图片注册为用户 Asset 记录，使其出现在用户资产模块中。
+    
+    与 edit_image 的 _register_edited_image_asset 类似，但支持批量注册。
+    """
+    # 无用户上下文时跳过
+    (not user_id) and logger.debug("Skipping asset registration: no user_id")
+    (not user_id) and None
+    
+    for url in (image_urls if user_id else []):
+        try:
+            # 从 URL 提取文件名 (e.g. "/api/media/uuid.png" -> "uuid.png")
+            filename = url.rsplit("/", 1)[-1]
+            filepath = MEDIA_DIR / filename
+            
+            # 确定 MIME 类型
+            ext = filename.rsplit(".", 1)[-1].lower()
+            mime = {
+                "png": "image/png",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "webp": "image/webp",
+                "gif": "image/gif",
+            }.get(ext, "image/png")
+            
+            # 获取文件大小
+            size = filepath.stat().st_size if filepath.exists() else None
+            
+            asset = Asset(
+                id=generate_uuid(),
+                user_id=user_id,
+                filename=filename,
+                original_name=f"generated_{filename}",
+                file_path=filename,
+                file_type="image",
+                mime_type=mime,
+                size=size,
+            )
+            db.add(asset)
+            logger.info("Registered generated image as asset: %s (user=%s)", filename, user_id)
+        except Exception as e:
+            logger.warning("Failed to register generated image asset: %s", e, exc_info=True)
+    
+    # 批量 flush，确保所有资产都被持久化
+    try:
+        await db.flush()
+    except Exception as e:
+        logger.warning("Failed to flush assets: %s", e, exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Tool Execution
 # ---------------------------------------------------------------------------
 
-async def _execute_image_gen_tool(args: dict, agent: Agent, db: AsyncSession) -> str:
+async def _execute_image_gen_tool(args: dict, ctx: ToolContext) -> str:
+    """Execute generate_image tool with asset registration."""
     prompt = args.get("prompt", "")
     aspect_ratio = args.get("aspect_ratio")
+    db = ctx.db
 
     # 从全局 ToolConfig 读取配置
     cfg = await _get_global_image_config(db)
@@ -222,12 +286,16 @@ async def _execute_image_gen_tool(args: dict, agent: Agent, db: AsyncSession) ->
     )
     provider = result.scalar_one_or_none()
 
-    return json.dumps({"error": f"Image provider {provider_id} not found or inactive"}) if not provider else (
-        await _do_generate(provider, model, prompt, aspect_ratio, n, cfg)
+    (not provider) and logger.warning("Image provider %s not found or inactive", provider_id)
+    
+    return (
+        json.dumps({"error": f"Image provider {provider_id} not found or inactive"})
+        if not provider
+        else await _do_generate(provider, model, prompt, aspect_ratio, n, cfg, ctx)
     )
 
 
-async def _do_generate(provider, model: str, prompt: str, aspect_ratio: str | None, n: int, cfg: dict) -> str:
+async def _do_generate(provider, model: str, prompt: str, aspect_ratio: str | None, n: int, cfg: dict, ctx: ToolContext) -> str:
     adapted = to_provider_config(provider.provider_type.lower(), cfg)
 
     _img_cfg = (adapted.get("image_config") or {}).copy() if adapted else {}
@@ -235,12 +303,17 @@ async def _do_generate(provider, model: str, prompt: str, aspect_ratio: str | No
     adapted_with_override = {**adapted, "image_config": _img_cfg} if adapted else {"image_config": _img_cfg}
 
     generator = _IMAGE_GENERATORS.get(provider.provider_type.lower())
-    return json.dumps({"error": f"Unsupported image provider type: {provider.provider_type}"}) if not generator else (
-        await _run_generator(generator, provider, model, prompt, adapted_with_override, n)
+    
+    (not generator) and logger.warning("Unsupported image provider type: %s", provider.provider_type)
+    
+    return (
+        json.dumps({"error": f"Unsupported image provider type: {provider.provider_type}"})
+        if not generator
+        else await _run_generator(generator, provider, model, prompt, adapted_with_override, n, ctx)
     )
 
 
-async def _run_generator(generator, provider, model: str, prompt: str, config: dict, n: int) -> str:
+async def _run_generator(generator, provider, model: str, prompt: str, config: dict, n: int, ctx: ToolContext) -> str:
     try:
         image_urls = await generator(
             api_key=provider.api_key,
@@ -253,6 +326,9 @@ async def _run_generator(generator, provider, model: str, prompt: str, config: d
     except Exception as e:
         logger.error("generate_image tool error: %s", e)
         return json.dumps({"error": f"Image generation failed: {str(e)}"})
+
+    # 生成成功后注册资产
+    image_urls and await _register_generated_image_assets(image_urls, ctx.user_id, ctx.db)
 
     return (
         "No images were generated. The request may have been filtered by content moderation."
@@ -307,7 +383,7 @@ class ImageGenProvider:
         return [_build_image_gen_tool_def(provider_type)] if is_tool_gen else []
 
     async def execute(self, name: str, args: dict, ctx: ToolContext) -> str:
-        return await _execute_image_gen_tool(args, ctx.agent, ctx.db)
+        return await _execute_image_gen_tool(args, ctx)
 
     def rebuild_defs(self, ctx: ToolContext) -> list[dict] | None:
         return None

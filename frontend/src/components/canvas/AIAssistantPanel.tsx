@@ -25,12 +25,53 @@ import { usePerformanceMonitor } from '@/components/ai-assistant';
 import { WelcomeMessage } from '@/components/ai-assistant/WelcomeMessage';
 import type { NodeAttachment, UploadedFile, PastedContent } from '@/store/useAIAssistantStore';
 
+// 格式化表格数据为 Markdown 表格
+function formatTableData(columns: { key: string; label?: string }[], rows: Record<string, unknown>[]): string {
+  const colLabels = columns.map(c => c.label || c.key);
+  const header = '| ' + colLabels.join(' | ') + ' |';
+  const separator = '| ' + columns.map(() => '---').join(' | ') + ' |';
+  
+  // 限制最多显示前 20 行，避免上下文过长
+  const displayRows = rows.slice(0, 20);
+  const dataLines = displayRows.map(row => {
+    const cells = columns.map(c => {
+      const val = row[c.key];
+      if (val === null || val === undefined) return '';
+      if (typeof val === 'object') return JSON.stringify(val);
+      return String(val);
+    });
+    return '| ' + cells.join(' | ') + ' |';
+  });
+  
+  let table = header + '\n' + separator + '\n' + dataLines.join('\n');
+  
+  // 如果有截断，添加提示
+  if (rows.length > 20) {
+    table += `\n\n*(共 ${rows.length} 行，仅显示前 20 行)*`;
+  }
+  
+  return table;
+}
+
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
 const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment) => string> = {
   text: (a) => `[引用文本卡「${a.label}」]\n内容摘要：${a.excerpt || '（空）'}`,
   image: (a) => `[引用图像卡「${a.label}」]\n图像描述：${a.excerpt || '无描述'}`,
   video: (a) => `[引用视频卡「${a.label}」]\n视频描述：${a.excerpt || '无描述'}`,
-  storyboard: (a) => `[引用分镜卡「${a.label}」]\n分镜描述：${a.excerpt || '无描述'}`,
+  storyboard: (a) => {
+    const meta = a.meta as { tableColumns?: { key: string; label?: string }[]; tableData?: Record<string, unknown>[] } | undefined;
+    const columns = meta?.tableColumns;
+    const rows = meta?.tableData;
+    
+    // 如果有表格数据，格式化输出
+    if (Array.isArray(rows) && rows.length > 0 && Array.isArray(columns) && columns.length > 0) {
+      const tableStr = formatTableData(columns, rows);
+      return `[引用多维表格「${a.label}」]\n\n${tableStr}`;
+    }
+    
+    // 否则使用原来的分镜格式
+    return `[引用分镜卡「${a.label}」]\n分镜描述：${a.excerpt || '无描述'}`;
+  },
 };
 
 function buildAttachmentContext(attachments: NodeAttachment[], userMessage: string): string {
