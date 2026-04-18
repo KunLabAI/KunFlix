@@ -42,6 +42,7 @@ export type CharacterNodeData = {
 };
 
 export type StoryboardNodeData = {
+  title?: string;
   shotNumber: string;
   description: string;
   duration: number; // in seconds

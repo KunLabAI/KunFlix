@@ -2,7 +2,8 @@
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow, NodeResizer } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X, Pencil } from 'lucide-react';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
@@ -25,6 +26,8 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitle, setEditTitle] = useState(data.title || '');
   const [previewMedia, setPreviewMedia] = useState<{ type: ColType; url: string } | null>(null);
   const { getNode } = useReactFlow();
 
@@ -112,14 +115,37 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         {/* 标题悬浮在卡片上方，不占节点布局空间 */}
         <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
           <div className="flex-1 min-w-0 flex items-center">
-            <h3 
-              className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none gap-2" 
-              title={t('canvas.node.storyboardCard')} 
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <Clapperboard className="w-4 h-4 text-amber-600" />
-              {t('canvas.node.storyboardCard')}
-            </h3>
+            {isEditingTitle ? (
+              <Input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                onBlur={() => {
+                  setIsEditingTitle(false);
+                  updateNodeData(id, { title: editTitle });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsEditingTitle(false);
+                    updateNodeData(id, { title: editTitle });
+                  }
+                }}
+                className="h-7 text-sm font-bold px-2 py-0"
+                autoFocus
+              />
+            ) : (
+              <h3 
+                className="font-bold text-sm h-7 flex items-center truncate text-foreground/90 cursor-text select-text hover:text-primary leading-none gap-2" 
+                title={data.title || t('canvas.node.storyboardCard')} 
+                onPointerDown={(e) => e.stopPropagation()}
+                onDoubleClick={() => {
+                  setEditTitle(data.title || '');
+                  setIsEditingTitle(true);
+                }}
+              >
+                <Clapperboard className="w-4 h-4 text-amber-600" />
+                {data.title || t('canvas.node.storyboardCard')}
+              </h3>
+            )}
           </div>
         </div>
 

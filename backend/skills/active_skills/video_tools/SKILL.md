@@ -220,6 +220,42 @@ When the video generation API returns an error, the error message will be passed
 3. Suggest alternatives (e.g. use AI-generated character images instead of real photos)
 4. Wait for the user to provide new input before trying again
 
+## Script and Storyboard Workflow
+
+When the user provides a script file or storyboard description, follow these principles:
+
+### Core Principles
+- **One script generates one video by default** (not one video per shot)
+- Describe the complete shot sequence in a single `generate_video` call through the prompt
+
+### Multi-Shot Prompt Construction
+Combine multiple shots into a coherent prompt using shot transition descriptions:
+
+```
+[Opening shot] → [Transition/camera movement] → [Middle shot] → [Transition/camera movement] → [Ending shot]
+
+Example:
+"A woman walks into a coffee shop (opening shot), 
+ the camera follows her as she approaches the counter (tracking shot), 
+ she smiles and orders a latte (close-up), 
+ camera pulls back to show the bustling cafe atmosphere (wide shot)"
+```
+
+### When to Split Into Multiple Videos
+
+| Scenario | Approach | Notes |
+|----------|----------|-------|
+| Continuous action in same time/space | **Single video** | Use prompt to describe shot transitions |
+| Different scenes/time periods | **Multiple videos** | One video per scene, concatenate later with `edit_video` |
+| Need precise control per shot parameters | **Multiple videos** | Generate separately then concatenate |
+
+### Strict Script Adherence
+- **Do NOT add content outside the script** — only generate what is explicitly described
+- **Do NOT expand the plot** — even if the script is short, do not add your own storyline
+- **Maintain character/scene consistency** — use `reference_images` to provide character/scene references
+
+---
+
 ## Canvas Node → Multimodal Reference Workflow
 
 Canvas nodes are identified by UUIDs. To use canvas media as multimodal references:
