@@ -209,19 +209,7 @@ def _build_video_gen_tool_def(
         "type": "function",
         "function": {
             "name": VIDEO_GEN_TOOL_NAME,
-            "description": (
-                "Generate a video from a text prompt, images, videos, audio references, or any combination. "
-                "Use this tool when the user asks you to create, generate, or produce a video, "
-                "animation, or motion content. Video generation is asynchronous and takes 1-5 minutes. "
-                "The tool returns a task ID; the user will be notified when the video is ready.\n\n"
-                "IMPORTANT — Multimodal reference numbering convention:\n"
-                "The array ORDER determines the number used in the prompt. "
-                "reference_images[0]=图片1, reference_images[1]=图片2; "
-                "reference_videos[0]=视频1, reference_videos[1]=视频2; "
-                "reference_audios[0]=音频1, reference_audios[1]=音频2.\n"
-                "To use canvas node media: first call list_canvas_nodes/get_canvas_node to get imageUrl/videoUrl, "
-                "then pass URLs in the desired order and write the prompt using numbered references."
-            ),
+            "description": "Generate a video from text, images, videos, or audio references. Returns a task ID.",
             "parameters": {
                 "type": "object",
                 "properties": properties,
