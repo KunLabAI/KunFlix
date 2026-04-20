@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 MAX_LLM_RETRIES = 3                 # 单次 stream_completion 调用最大重试次数
 MAX_CONSECUTIVE_TOOL_FAILURES = 5   # 连续工具调用失败上限（触发工具循环熔断）
 RETRY_BACKOFF_SECONDS = (0.5, 1.0, 2.0)  # 重试退避时间
+MAX_THINKING_ONLY_RETRIES = 1       # 模型仅输出思考内容时的重试次数
+
+import re
+_THINK_ONLY_RE = re.compile(r'^\s*<think>.*?</think>\s*$', re.DOTALL)
 
 
 async def generate_single_agent(
@@ -235,6 +239,7 @@ async def generate_single_agent(
     _SSE_START = {True: "skill_call", False: "tool_call"}
     _SSE_END = {True: "skill_loaded", False: "tool_result"}
     _consecutive_tool_failures = 0   # Harness: 连续工具失败计数器
+    _thinking_only_retried = False     # thinking-only 重试标记（防止无限循环）
     try:
         for _round in range(MAX_TOOL_ROUNDS + 1):
             is_last_round = _round == MAX_TOOL_ROUNDS
@@ -279,8 +284,41 @@ async def generate_single_agent(
                 yield sse("llm_circuit_breaker", {"retries": MAX_LLM_RETRIES, "round": _round + 1})
                 raise Exception(f"LLM circuit breaker: all {MAX_LLM_RETRIES} attempts failed in round {_round + 1}")
 
-            # 无 tool_calls → 直接结束
+            # 无 tool_calls → 检查是否仅有思考内容（无可见文本）
             if not (result and result.tool_calls):
+                # 检测 thinking-only 响应：full_response 全部在 <think> 标签内，无用户可见文本
+                _is_thinking_only = (
+                    result
+                    and result.full_response
+                    and _THINK_ONLY_RE.match(result.full_response)
+                )
+                if _is_thinking_only and not _thinking_only_retried:
+                    _thinking_only_retried = True
+                    logger.warning("Response is thinking-only (no visible text), retrying LLM call")
+                    # 保留 thinking 内容（已发送到前端），重置 result 并重新调用 LLM
+                    _saved_thinking = result.full_response
+                    result = None
+                    for _retry2 in range(MAX_LLM_RETRIES):
+                        try:
+                            async for chunk, result in stream_completion(
+                                provider_type=provider.provider_type,
+                                api_key=provider.api_key,
+                                base_url=provider.base_url,
+                                model=agent.model,
+                                messages=messages,
+                                temperature=min((agent.temperature or 0.7) + 0.2, 1.5),
+                                context_window=agent.context_window,
+                                thinking_mode=agent.thinking_mode,
+                                gemini_config=_eff_gemini,
+                                tools=current_tools,
+                                xai_image_config=_eff_xai,
+                            ):
+                                yield sse("text", {"chunk": chunk})
+                            # 将保留的 thinking 合并回 full_response
+                            result and setattr(result, 'full_response', _saved_thinking + result.full_response)
+                            break
+                        except Exception as retry_err:
+                            logger.warning(f"Thinking-only retry {_retry2 + 1} failed: {retry_err}")
                 break
 
             # 处理工具调用，包括参数解析错误的情况
@@ -451,6 +489,8 @@ async def generate_single_agent(
     logger.info(f"{'='*60}\n")
 
     # 保存助手消息、更新统计、扣费（仅在生成成功后执行）
+    # 使用 asyncio.create_task 将持久化操作与 SSE 请求生命周期解耦，
+    # 避免客户端断开连接时导致 CancelledError / Connection closed。
     billing_event = {
         "credit_cost": 0,
         "context_usage": {
@@ -458,89 +498,117 @@ async def generate_single_agent(
             "context_window": agent.context_window,
         },
     }
-    _compaction_result = None
-    async with AsyncSessionLocal() as session:
+
+    # Prepare content for assistant（映射表驱动，避免 if-else）
+    _content_builders = {
+        True: lambda: json.dumps({
+            "text": result.full_response,
+            "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
+            "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls]
+        }, ensure_ascii=False),
+        False: lambda: result.full_response,
+    }
+    final_content = _content_builders[bool(loaded_skills or all_tool_calls)]()
+
+    _persist_state = {"compaction": None}  # mutable container for cross-scope sharing
+
+    async def _persist_message_and_billing():
+        """Background task: save message, update stats, deduct credits.
+        
+        Runs independently of the SSE request lifecycle so client disconnect
+        cannot cancel the database writes.
+        """
+        nonlocal billing_event
         try:
-            # Prepare content for assistant（映射表驱动，避免 if-else）
-            _content_builders = {
-                True: lambda: json.dumps({
-                    "text": result.full_response,
-                    "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
-                    "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls]
-                }, ensure_ascii=False),
-                False: lambda: result.full_response,
-            }
-            final_content = _content_builders[bool(loaded_skills or all_tool_calls)]()
-
-            assistant_msg = ChatMessage(
-                session_id=session_id,
-                role="assistant",
-                content=final_content,
-            )
-            session.add(assistant_msg)
-
-            # 更新会话时间戳和累计 token 使用量
-            from sqlalchemy import func as sa_func
-            s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
-            s = s_result.scalars().first()
-            s and setattr(s, 'updated_at', sa_func.now())
-            s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
-            s and setattr(s, 'last_round_tokens', result.input_tokens + result.output_tokens)
-
-            # 查询实体并更新统计（映射表驱动，避免 if-else）
-            entity_model_map = {True: Admin, False: User}
-            entity_model = entity_model_map[is_admin]
-            e_result = await session.execute(select(entity_model).filter(entity_model.id == entity_id))
-            entity = e_result.scalars().first()
-            if entity:
-                entity.total_input_tokens = (entity.total_input_tokens or 0) + result.input_tokens
-                entity.total_output_tokens = (entity.total_output_tokens or 0) + result.output_tokens
-                entity.total_input_chars = (entity.total_input_chars or 0) + input_chars
-                entity.total_output_chars = (entity.total_output_chars or 0) + len(result.full_response)
-
-            # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
-            credit_cost, billing_metadata = calculate_credit_cost(result, agent)
-            billing_event["credit_cost"] = round(credit_cost, 6)
-
-            try:
-                (credit_cost > 0) and await deduct_credits_atomic(
-                    user_id=entity_id,
-                    cost=credit_cost,
-                    session=session,
-                    metadata=billing_metadata,
-                    transaction_type="consumption",
-                    idempotency_key=f"chat:{assistant_msg.id}",
+            async with AsyncSessionLocal() as session:
+                assistant_msg = ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content=final_content,
                 )
-            except InsufficientCreditsError:
-                billing_event["insufficient"] = True
-                logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
-            except BalanceFrozenError:
-                billing_event["frozen"] = True
-                logger.warning(f"Balance frozen for {entity_id}")
+                session.add(assistant_msg)
 
-            # Post-generation deferred compaction（AI 已用完整上下文生成响应，现在为下轮压缩）
-            from services.context_compaction import compact_context
-            _compaction_result = await compact_context(
-                _messages_snapshot, agent, provider, session, session_id,
-                session_obj=s,
-                actual_total_tokens=result.input_tokens + result.output_tokens,
-            )
+                # 更新会话时间戳和累计 token 使用量
+                from sqlalchemy import func as sa_func
+                s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+                s = s_result.scalars().first()
+                s and setattr(s, 'updated_at', sa_func.now())
+                s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
+                s and setattr(s, 'last_round_tokens', result.input_tokens + result.output_tokens)
 
-            await session.commit()
+                # 查询实体并更新统计（映射表驱动，避免 if-else）
+                entity_model_map = {True: Admin, False: User}
+                entity_model = entity_model_map[is_admin]
+                e_result = await session.execute(select(entity_model).filter(entity_model.id == entity_id))
+                entity = e_result.scalars().first()
+                if entity:
+                    entity.total_input_tokens = (entity.total_input_tokens or 0) + result.input_tokens
+                    entity.total_output_tokens = (entity.total_output_tokens or 0) + result.output_tokens
+                    entity.total_input_chars = (entity.total_input_chars or 0) + input_chars
+                    entity.total_output_chars = (entity.total_output_chars or 0) + len(result.full_response)
 
-            # 查询最新余额
-            balance_result = await session.execute(
-                select(entity_model.credits).where(entity_model.id == entity_id)
-            )
-            billing_event["remaining_credits"] = round(float(balance_result.scalar() or 0), 4)
+                # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
+                credit_cost, billing_metadata = calculate_credit_cost(result, agent)
+                billing_event["credit_cost"] = round(credit_cost, 6)
+
+                try:
+                    (credit_cost > 0) and await deduct_credits_atomic(
+                        user_id=entity_id,
+                        cost=credit_cost,
+                        session=session,
+                        metadata=billing_metadata,
+                        transaction_type="consumption",
+                        idempotency_key=f"chat:{assistant_msg.id}",
+                    )
+                except InsufficientCreditsError:
+                    billing_event["insufficient"] = True
+                    logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
+                except BalanceFrozenError:
+                    billing_event["frozen"] = True
+                    logger.warning(f"Balance frozen for {entity_id}")
+
+                # Post-generation deferred compaction
+                from services.context_compaction import compact_context
+                _persist_state["compaction"] = await compact_context(
+                    _messages_snapshot, agent, provider, session, session_id,
+                    session_obj=s,
+                    actual_total_tokens=result.input_tokens + result.output_tokens,
+                )
+
+                await session.commit()
+                logger.info("Message/billing saved successfully (background)")
 
         except Exception as e:
-            _compaction_result = None
-            logger.error(f"Failed to save message/billing: {e}")
+            logger.error(f"Background save failed: {e}")
+            # Retry: save message only with a fresh session
+            for _retry in range(2):
+                logger.warning(f"Background save retry ({_retry + 1}/2)...")
+                await asyncio.sleep(1.0 * (_retry + 1))
+                try:
+                    async with AsyncSessionLocal() as retry_session:
+                        retry_msg = ChatMessage(
+                            session_id=session_id, role="assistant", content=final_content,
+                        )
+                        retry_session.add(retry_msg)
+                        await retry_session.commit()
+                    logger.info("Message saved on background retry %d", _retry + 1)
+                    return
+                except Exception as retry_exc:
+                    logger.warning(f"Background retry {_retry + 1} failed: {retry_exc}")
+            logger.error(f"All background save retries failed for session {session_id}")
+
+    # 启动后台保存任务，使用 asyncio.shield 保护任务不被请求取消影响
+    try:
+        await asyncio.shield(_persist_message_and_billing())
+    except asyncio.CancelledError:
+        # generator 被取消，但 shield 内的保存操作仍在运行
+        logger.warning("SSE generator cancelled during save, persistence continues in background")
+        return
 
     # 发送压缩事件（如果触发了压缩）
-    _compaction_result and (yield sse("context_compacted", {
-        "summary": _compaction_result[1],
+    _compaction = _persist_state.get("compaction")
+    _compaction and (yield sse("context_compacted", {
+        "summary": _compaction[1],
     }))
 
     # 发送计费信息和完成事件
