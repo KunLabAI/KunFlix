@@ -40,7 +40,7 @@ import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_FILES = 10;
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-const PASTE_THRESHOLD = 200; // characters
+const PASTE_THRESHOLD = 10000; // characters
 const UNDO_HISTORY_LIMIT = 50; // 撤销历史最大条数
 const UNDO_DEBOUNCE_MS = 300; // 防抖保存间隔(ms)
 
@@ -473,12 +473,11 @@ export function MessageInput({
     })();
     if (hasFiles) return;
 
-    // 粘贴长文本
+    // 粘贴长文本（超过阈值时作为附件卡片处理，避免输入框溢出）
     const textData = clipboard.getData('text');
     const isLongText = textData && textData.length > PASTE_THRESHOLD && pastedContents.length < 5;
     isLongText && (() => {
       e.preventDefault();
-      updateInputValue(inputValue + textData.slice(0, PASTE_THRESHOLD) + '...');
       onAddPastedContent?.({
         id: crypto.randomUUID(),
         content: textData,
