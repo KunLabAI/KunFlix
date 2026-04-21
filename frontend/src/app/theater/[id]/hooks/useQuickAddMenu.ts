@@ -6,7 +6,7 @@ import { useCanvasStore, CanvasNode } from '@/store/useCanvasStore';
 // Node type default data registry (avoids switch/case)
 const nodeDefaultData: Record<string, Record<string, unknown>> = {
   text: { title: '新文本卡', content: null, tags: [] },
-  image: { name: '新图片卡', description: '', imageUrl: '', fitMode: 'cover' },
+  image: { name: '新图片卡', description: '', imageUrl: '', images: [] },
   storyboard: { shotNumber: '001', description: '', duration: 5 },
   video: { name: '新视频卡', description: '', videoUrl: '', fitMode: 'cover' },
   audio: { name: '新音频卡', description: '', audioUrl: '' },

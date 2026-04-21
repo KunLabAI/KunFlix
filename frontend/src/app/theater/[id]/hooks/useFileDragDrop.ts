@@ -159,7 +159,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
       position,
       width: dims.width,
       height: dims.height,
-      data: { name: fileName, description: '', imageUrl: objectUrl, uploading: true, fitMode: 'cover' } as CharacterNodeData,
+      data: { name: fileName, description: '', imageUrl: objectUrl, images: [objectUrl], uploading: true } as CharacterNodeData,
     };
     useCanvasStore.getState().addNode(newNode);
     await handleMediaUpload(file, newNode.id, objectUrl, 'imageUrl', t);

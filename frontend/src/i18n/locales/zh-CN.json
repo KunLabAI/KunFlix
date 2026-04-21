@@ -227,7 +227,17 @@
         "audioFormatError": "仅支持 mp3、wav、ogg、flac、aac、m4a 格式",
         "audioSizeError": "音频大小不能超过 100MB",
         "videoFormatError": "仅支持 mp4、webm、ogg 格式",
-        "videoSizeError": "视频大小不能超过 500MB"
+        "videoSizeError": "视频大小不能超过 500MB",
+        "maxReached": "已达上限 ({{max}}张)",
+        "addImage": "添加图片",
+        "fromLibrary": "从资产库选择",
+        "slotsLeft": "还可添加 {{count}} 张",
+        "alreadyAdded": "已添加",
+        "exportGrid": "导出多宫格",
+        "exporting": "导出中...",
+        "exportName": "{{name}} - 导出",
+        "exportRatioHigh": "高清",
+        "exportRatioMax": "极致"
       },
       "preview": {
         "dragOrFullscreen": "拖拽移动节点 / 双击全屏预览"

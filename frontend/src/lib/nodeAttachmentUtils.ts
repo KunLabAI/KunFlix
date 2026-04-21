@@ -35,10 +35,9 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
   },
   image: (node) => {
     const data = node.data as CharacterNodeData;
-    // 将 imageUrl 转换为完整的 /api/media/ 路径
-    let thumbnailUrl: string | null = data.imageUrl || null;
+    // 取第一张图片作为缩略图
+    let thumbnailUrl: string | null = (data.images && data.images[0]) || data.imageUrl || null;
     if (thumbnailUrl && !thumbnailUrl.startsWith('http') && !thumbnailUrl.startsWith('/api/media/') && !thumbnailUrl.startsWith('data:')) {
-      // 纯文件名或 UUID，添加 /api/media/ 前缀
       thumbnailUrl = `/api/media/${thumbnailUrl}`;
     }
     return {
@@ -47,7 +46,7 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
       label: data.name || '未命名图片',
       excerpt: data.description || '',
       thumbnailUrl,
-      meta: { fitMode: data.fitMode, uploading: data.uploading },
+      meta: { uploading: data.uploading },
     };
   },
   video: (node) => {

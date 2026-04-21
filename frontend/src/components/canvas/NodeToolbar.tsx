@@ -7,6 +7,7 @@ export interface ToolbarAction {
   title: string;
   ariaLabel?: string;
   variant?: 'default' | 'danger' | 'primary';
+  disabled?: boolean;
 }
 
 interface NodeToolbarProps {
@@ -28,6 +29,7 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ actions, className }) 
 
   return (
     <div 
+      data-node-toolbar
       className={cn(
         "absolute -bottom-12 left-1/2 -translate-x-1/2",
         "flex items-center",
@@ -38,7 +40,7 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ actions, className }) 
         className
       )}
     >
-      <div className="flex items-center bg-background/90 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 pointer-events-auto">
+      <div className="flex items-center bg-background/90 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 pointer-events-auto nodrag">
         {groupedActions.map((action, index) => {
           const isDanger = action.variant === 'danger';
           const isPrimary = action.variant === 'primary';
@@ -51,10 +53,12 @@ export const NodeToolbar: React.FC<NodeToolbarProps> = ({ actions, className }) 
                 <div className="w-px h-4 bg-border/50 mx-0.5" />
               )}
               <button
-                onClick={action.onClick}
+                onClick={action.disabled ? undefined : action.onClick}
+                disabled={action.disabled}
                 title={action.title}
                 aria-label={action.ariaLabel || action.title}
                 className={cn(
+                  action.disabled && "opacity-40 cursor-not-allowed",
                   "relative w-7 h-7 flex items-center justify-center rounded-full",
                   "transition-all duration-150 ease-out",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
