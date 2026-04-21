@@ -2,11 +2,13 @@ import { useState, useCallback, useRef } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
-import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, AudioNodeData } from '@/store/useCanvasStore';
+import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, AudioNodeData, StoryboardNodeData } from '@/store/useCanvasStore';
+import * as XLSX from 'xlsx';
 import { useResourceStore } from '@/store/useResourceStore';
 
 // File type detection matchers
-const FILE_TYPE_MATCHERS: Array<{ type: 'text' | 'image' | 'video' | 'audio'; mimes: string[]; exts: string[] }> = [
+const FILE_TYPE_MATCHERS: Array<{ type: FileType; mimes: string[]; exts: string[] }> = [
+  { type: 'spreadsheet', mimes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'text/csv'], exts: ['.xlsx', '.xls', '.csv'] },
   { type: 'text', mimes: ['text/plain', 'text/markdown', 'application/pdf'], exts: ['.txt', '.md', '.markdown', '.pdf'] },
   { type: 'image', mimes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'], exts: ['.png', '.jpg', '.jpeg', '.webp', '.gif'] },
   { type: 'video', mimes: ['video/mp4', 'video/webm', 'video/ogg', 'video/avi', 'video/quicktime', 'video/x-ms-wmv', 'video/x-flv'], exts: ['.mp4', '.webm', '.avi', '.mov', '.wmv', '.flv', '.mkv'] },
@@ -19,10 +21,11 @@ const SIZE_LIMITS: Record<string, number> = {
   image: 50 * 1024 * 1024,
   video: 500 * 1024 * 1024,
   audio: 100 * 1024 * 1024,
+  spreadsheet: 20 * 1024 * 1024,
 };
 
 // Batch limits per file type
-const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20 };
+const BATCH_LIMITS: Record<string, number> = { video: 5, image: 20, audio: 20, text: 20, spreadsheet: 10 };
 
 // Node default dimensions
 const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
@@ -30,9 +33,10 @@ const NODE_DIMENSIONS: Record<string, { width: number; height: number }> = {
   image: { width: 512, height: 384 },
   video: { width: 512, height: 384 },
   audio: { width: 360, height: 200 },
+  spreadsheet: { width: 500, height: 350 },
 };
 
-export type FileType = 'text' | 'image' | 'video' | 'audio';
+export type FileType = 'text' | 'image' | 'video' | 'audio' | 'spreadsheet';
 
 function getFileType(file: File): FileType | null {
   const mime = file.type;
@@ -208,6 +212,47 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     useCanvasStore.getState().addNode(newNode);
     await handleMediaUpload(file, newNode.id, objectUrl, 'audioUrl', t);
   },
+
+  spreadsheet: async (file, position, t) => {
+    if (file.size > SIZE_LIMITS.spreadsheet) {
+      alert(t('canvas.fileSizeError.spreadsheet'));
+      return;
+    }
+    const fileName = file.name.replace(/\.[^/.]+$/, '');
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const jsonRows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    const headerRow: string[] = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: '' })[0] ?? [];
+    const tableColumns = headerRow.map((label) => {
+      const key = String(label).trim();
+      return { key, label: key, type: 'text' as const };
+    });
+    const tableData = jsonRows.map((row, i) => ({
+      key: String(i),
+      ...tableColumns.reduce<Record<string, unknown>>((acc, col) => {
+        acc[col.key] = row[col.key] ?? '';
+        return acc;
+      }, {}),
+    }));
+    const dims = NODE_DIMENSIONS.spreadsheet;
+    const newNode: CanvasNode = {
+      id: `storyboard-${uuidv4()}`,
+      type: 'storyboard',
+      position,
+      width: dims.width,
+      height: dims.height,
+      data: {
+        title: fileName,
+        shotNumber: '',
+        description: '',
+        duration: 0,
+        tableColumns,
+        tableData,
+      } as StoryboardNodeData,
+    };
+    useCanvasStore.getState().addNode(newNode);
+  },
 };
 
 export function useFileDragDrop(wrapperRef: React.RefObject<HTMLDivElement | null>) {
@@ -252,6 +297,7 @@ export function useFileDragDrop(wrapperRef: React.RefObject<HTMLDivElement | nul
       image: t('canvas.fileNames.image'),
       audio: t('canvas.fileNames.audio'),
       text: t('canvas.fileNames.text'),
+      spreadsheet: t('canvas.fileNames.spreadsheet'),
     };
     const grouped: Record<string, File[]> = {};
     Array.from(files).forEach((file) => {

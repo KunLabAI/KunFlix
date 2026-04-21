@@ -580,3 +580,19 @@ body {
 .react-flow__node.selected {
   z-index: 10;
 }
+
+/* ── AI Node Effect Animations ────────────────────────────── */
+@keyframes nodeEffectPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes nodeEffectScan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+@keyframes nodeEffectBadgeBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}

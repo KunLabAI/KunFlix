@@ -274,7 +274,8 @@
       "storyboard": {
         "noData": "No Data",
         "waitingForAgent": "Waiting for Agent data...",
-        "play": "Play"
+        "play": "Play",
+        "exportExcel": "Export Excel"
       },
       "charCount": "{{count}} chars"
     },
@@ -362,13 +363,15 @@
       "image": "Image file",
       "video": "Video file",
       "audio": "Audio file",
+      "spreadsheet": "Spreadsheet",
       "default": "File"
     },
     "fileSizeError": {
       "text": "Text file size cannot exceed 10MB",
       "image": "Image size cannot exceed 50MB",
       "video": "Video size cannot exceed 500MB",
-      "audio": "Audio size cannot exceed 100MB"
+      "audio": "Audio size cannot exceed 100MB",
+      "spreadsheet": "Spreadsheet size cannot exceed 20MB"
     },
     "uploadFailed": "Upload failed: {{message}}",
     "audioUploadFailed": "Audio upload failed: {{message}}",
@@ -380,6 +383,7 @@
       "image": "Image",
       "audio": "Audio",
       "text": "Text",
+      "spreadsheet": "Spreadsheet",
       "default": "File"
     },
     "uploadFailedHttp": "Upload failed (HTTP {{status}})",

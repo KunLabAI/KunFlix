@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
@@ -68,7 +68,7 @@ function InfiniteCanvas() {
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { fitView } = useReactFlow();
+  const { fitView, setCenter } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
   const [viewport, setViewportState] = useState({ x: 0, y: 0, zoom: 1 });
   
@@ -80,6 +80,16 @@ function InfiniteCanvas() {
     snapToGrid, snapToGuides,
     setSnapToGrid, setSnapToGuides
   } = useCanvasStore();
+
+  // Auto-pan to newly created ghost nodes
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { x, y } = (e as CustomEvent).detail;
+      setCenter(x, y, { duration: 600, zoom: 1 });
+    };
+    window.addEventListener('ghost-node-added', handler);
+    return () => window.removeEventListener('ghost-node-added', handler);
+  }, [setCenter]);
 
   // --- Hooks ---
   useTheaterLoading(theaterId);

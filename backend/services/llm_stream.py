@@ -129,8 +129,14 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                 idx = tc_delta.index
                 entry = pending_tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
                 tc_delta.id and entry.update(id=tc_delta.id)
-                (tc_delta.function and tc_delta.function.name) and entry.update(name=tc_delta.function.name)
-                (tc_delta.function and tc_delta.function.arguments) and entry.update(arguments=entry["arguments"] + tc_delta.function.arguments)
+                # Early tool detection: yield signal on first name appearance
+                _new_name = tc_delta.function and tc_delta.function.name
+                _new_name and not entry["name"] and (yield f"__TOOL_PENDING__:{_new_name}")
+                _new_name and entry.update(name=_new_name)
+                _arg_chunk = tc_delta.function and tc_delta.function.arguments
+                _arg_chunk and entry.update(arguments=entry["arguments"] + _arg_chunk)
+                # Stream tool argument delta for progressive frontend rendering
+                (_arg_chunk and entry["name"]) and (yield f"__TOOL_DELTA__:{entry['name']}:{_arg_chunk}")
 
         if hasattr(chunk, 'usage') and chunk.usage:
             result.input_tokens = chunk.usage.prompt_tokens
@@ -226,8 +232,14 @@ async def _stream_xai_text(ctx: StreamContext, result: StreamResult) -> AsyncGen
                 idx = tc_delta.index
                 entry = pending_tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
                 tc_delta.id and entry.update(id=tc_delta.id)
-                (tc_delta.function and tc_delta.function.name) and entry.update(name=tc_delta.function.name)
-                (tc_delta.function and tc_delta.function.arguments) and entry.update(arguments=entry["arguments"] + tc_delta.function.arguments)
+                # Early tool detection: yield signal on first name appearance
+                _new_name = tc_delta.function and tc_delta.function.name
+                _new_name and not entry["name"] and (yield f"__TOOL_PENDING__:{_new_name}")
+                _new_name and entry.update(name=_new_name)
+                _arg_chunk = tc_delta.function and tc_delta.function.arguments
+                _arg_chunk and entry.update(arguments=entry["arguments"] + _arg_chunk)
+                # Stream tool argument delta for progressive frontend rendering
+                (_arg_chunk and entry["name"]) and (yield f"__TOOL_DELTA__:{entry['name']}:{_arg_chunk}")
 
         if hasattr(chunk, 'usage') and chunk.usage:
             result.input_tokens = chunk.usage.prompt_tokens
@@ -563,27 +575,40 @@ async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGen
         }
     
     # 统一使用流式调用（部分 Anthropic 兼容 API 如 MiniMax 强制要求 streaming）
+    # 使用 event-level 迭代替代 text_stream，以便在工具参数生成前就检测到 tool_use 块
     async with client.messages.stream(**request_params) as stream:
-        async for text in stream.text_stream:
-            result.full_response += text
-            yield text
-        
+        async for event in stream:
+            ev_type = getattr(event, 'type', '')
+
+            # Text content delta
+            text = (ev_type == 'content_block_delta') and getattr(getattr(event, 'delta', None), 'text', None)
+            if text:
+                result.full_response += text
+                yield text
+
+            # Tool use block start → yield early detection signal
+            # (content_block_start 包含工具名，早于参数生成，前端可提前显示加载状态)
+            block = (ev_type == 'content_block_start') and getattr(event, 'content_block', None)
+            tool_name = block and (getattr(block, 'type', '') == 'tool_use') and getattr(block, 'name', '')
+            tool_name and (yield f"__TOOL_PENDING__:{tool_name}")
+
+        # 事件迭代完成后，get_final_message() 直接返回已累积的完整消息
         final_message = await stream.get_final_message()
-        if final_message.usage:
-            result.input_tokens = final_message.usage.input_tokens
-            result.output_tokens = final_message.usage.output_tokens
-        
+        final_message.usage and (
+            setattr(result, 'input_tokens', final_message.usage.input_tokens),
+            setattr(result, 'output_tokens', final_message.usage.output_tokens),
+        )
+
         # 从 final_message 中提取 tool_use blocks
         for block in final_message.content:
-            block_type = getattr(block, "type", "")
-            if block_type == "tool_use":
-                import json
-                result.tool_calls = result.tool_calls or []
-                result.tool_calls.append(ToolCallResult(
-                    id=block.id,
-                    name=block.name,
-                    arguments=json.dumps(block.input) if isinstance(block.input, dict) else str(block.input),
-                ))
+            block_type = getattr(block, 'type', '')
+            (block_type == 'tool_use') and (
+                (result.tool_calls is not None or setattr(result, 'tool_calls', [])) or True
+            ) and result.tool_calls.append(ToolCallResult(
+                id=block.id,
+                name=block.name,
+                arguments=json.dumps(block.input) if isinstance(block.input, dict) else str(block.input),
+            ))
 
 
 # ============================================================

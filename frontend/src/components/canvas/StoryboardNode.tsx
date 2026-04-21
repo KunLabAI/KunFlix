@@ -1,11 +1,13 @@
 
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position, NodeProps, Node, useReactFlow, NodeResizer } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X, Pencil } from 'lucide-react';
+import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X, Pencil, FileSpreadsheet, Loader2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
+import NodeEffectOverlay from './NodeEffectOverlay';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 
@@ -19,6 +21,34 @@ const normalizeMediaUrl = (url: string | null | undefined): string | null => {
 
 type ColType = 'text' | 'number' | 'image' | 'video' | 'audio';
 const MEDIA_TYPES = new Set<ColType>(['image', 'video', 'audio']);
+
+/** Progressive row rendering: avoids blocking the main thread when many rows arrive at once */
+const INITIAL_BATCH = 10;
+const BATCH_SIZE = 8;
+
+function useProgressiveRows<T>(allRows: T[], isStreaming: boolean): T[] {
+  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
+  const prevLengthRef = useRef(allRows.length);
+
+  // Reset visible count when rows shrink (new node) or streaming starts
+  useEffect(() => {
+    (allRows.length < prevLengthRef.current) && setVisibleCount(INITIAL_BATCH);
+    prevLengthRef.current = allRows.length;
+  }, [allRows.length]);
+
+  // Progressively reveal more rows
+  useEffect(() => {
+    const remaining = allRows.length - visibleCount;
+    (remaining <= 0) && void 0;
+    // Use rAF chain for smooth progressive rendering
+    const frame = remaining > 0 ? requestAnimationFrame(() => {
+      setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, allRows.length));
+    }) : 0;
+    return () => { frame && cancelAnimationFrame(frame); };
+  }, [visibleCount, allRows.length]);
+
+  return allRows.slice(0, visibleCount);
+}
 
 const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeData>>) => {
   const { t } = useTranslation();
@@ -72,6 +102,24 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
   }, [data.tableData, data.tableColumns]);
 
   const hasData = tableInfo.total > 0;
+  const isStreaming = !!data._streaming;
+  const visibleRows = useProgressiveRows(tableInfo.rows, isStreaming);
+  const hasMoreRows = visibleRows.length < tableInfo.total;
+
+  const handleExportExcel = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const { columns, rows } = tableInfo;
+    const exportRows = rows.map((row: any) =>
+      columns.reduce<Record<string, unknown>>((acc, col) => {
+        acc[col.label] = MEDIA_TYPES.has(col.type) ? normalizeMediaUrl(row[col.key] as string) ?? '' : (row[col.key] ?? '');
+        return acc;
+      }, {})
+    );
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    XLSX.writeFile(wb, `${data.title || 'storyboard'}.xlsx`);
+  }, [tableInfo, data.title]);
 
   const handleCellBlur = useCallback((rowIndex: number, colKey: string, value: string) => {
     const td = data.tableData;
@@ -112,6 +160,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           }
         }}
       >
+        <NodeEffectOverlay nodeId={id} />
         {/* 标题悬浮在卡片上方，不占节点布局空间 */}
         <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
           <div className="flex-1 min-w-0 flex items-center">
@@ -179,7 +228,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                       </tr>
                     </thead>
                     <tbody>
-                      {tableInfo.rows.map((row: any, i: number) => (
+                      {visibleRows.map((row: any, i: number) => (
                         <tr key={i} className="border-b border-border/30 last:border-0 hover:bg-muted/20">
                           {tableInfo.columns.map(col => {
                             const isMedia = MEDIA_TYPES.has(col.type);
@@ -258,6 +307,18 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
                       ))}
                     </tbody>
                   </table>
+                  {/* Streaming / progressive loading indicator */}
+                  {(isStreaming || hasMoreRows) && (
+                    <div className="flex items-center justify-center gap-2 py-2 border-t border-border/20 bg-muted/30">
+                      <Loader2 className="w-3 h-3 animate-spin text-primary/60" />
+                      <span className="text-[10px] text-muted-foreground">
+                        {isStreaming
+                          ? `AI 正在生成数据... (${tableInfo.total} 行)`
+                          : `加载中... (${visibleRows.length}/${tableInfo.total})`
+                        }
+                      </span>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2">
@@ -309,6 +370,11 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
         {/* 工具条 */}
         <NodeToolbar
           actions={[
+            ...(hasData ? [{
+              icon: <FileSpreadsheet className="h-3.5 w-3.5" />,
+              onClick: handleExportExcel,
+              title: t('canvas.node.storyboard.exportExcel'),
+            }] : []),
             {
               icon: <Copy className="h-3.5 w-3.5" />,
               onClick: handleDuplicate,

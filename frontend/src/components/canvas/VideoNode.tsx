@@ -7,6 +7,7 @@ import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film,
 import { useCanvasStore, VideoNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import NodeEffectOverlay from './NodeEffectOverlay';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
@@ -294,7 +295,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         ref={nodeRef}
         className={`video-node-wrapper w-full h-full flex flex-col group relative ${isUploading ? 'nodrag' : ''}`}
       >
-        {/* 标题悬浮在卡片上方，不占节点布局空间 */}
+        <NodeEffectOverlay nodeId={id} />
         <div className="absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
           <div className="flex-1 min-w-0 flex items-center">
             {isEditingTitle ? (
