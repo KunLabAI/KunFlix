@@ -93,6 +93,7 @@ backend/media/*.MP4
 backend/media/*.mp3
 backend/media/*.wav
 backend/media/*.ogg
+backend/media/
 
 frontend/public/*.png
 frontend/public/*.jpg

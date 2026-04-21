@@ -87,9 +87,13 @@ async function handleMediaUpload(
   try {
     const response = await uploadFile(file, t);
     response.error && (() => { throw new Error(response.error); })();
-    const { updateNodeData } = useCanvasStore.getState();
+    const { updateNodeData, nodes } = useCanvasStore.getState();
     URL.revokeObjectURL(objectUrl);
-    updateNodeData(nodeId, { [urlField]: response.url, uploading: false } as any);
+    // 构建更新载荷：替换 urlField + images 数组中的 blob URL
+    const updatePayload: Record<string, unknown> = { [urlField]: response.url, uploading: false };
+    const currentImages: string[] = (nodes.find(n => n.id === nodeId)?.data as any)?.images || [];
+    currentImages.includes(objectUrl) && (updatePayload.images = currentImages.map((u: string) => u === objectUrl ? response.url : u));
+    updateNodeData(nodeId, updatePayload as any);
     response.asset && useResourceStore.getState().syncAssetFromUpload(response.asset);
   } catch (error: any) {
     console.error('Upload error:', error);

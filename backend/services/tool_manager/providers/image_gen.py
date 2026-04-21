@@ -32,11 +32,9 @@ from services.batch_image_gen import (
 )
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.tool_manager.context import ToolContext
+from services.media_utils import MEDIA_DIR, get_relative_path
 
 logger = logging.getLogger(__name__)
-
-# Local media directory
-MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "media"
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -125,7 +123,7 @@ async def _get_global_image_config(db: AsyncSession) -> dict:
 
 async def _generate_via_xai(
     api_key: str, base_url: str | None, model: str,
-    prompt: str, config: dict, n: int,
+    prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> list[str]:
     img_cfg = config.get("image_config") or {}
     xai_config = XAIBatchImageConfig(
@@ -140,13 +138,14 @@ async def _generate_via_xai(
         prompts=[prompt],
         config=xai_config,
         base_url=base_url,
+        user_id=user_id,
     )
     return [url for r in result.results for url in r.image_urls]
 
 
 async def _generate_via_gemini(
     api_key: str, base_url: str | None, model: str,
-    prompt: str, config: dict, n: int,
+    prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> list[str]:
     img_cfg = config.get("image_config") or {}
     gemini_config = BatchImageConfig(
@@ -160,13 +159,14 @@ async def _generate_via_gemini(
         model=model,
         prompts=[prompt] * n,
         config=gemini_config,
+        user_id=user_id,
     )
     return [r.image_url for r in result.results if r.image_url]
 
 
 async def _generate_via_ark(
     api_key: str, base_url: str | None, model: str,
-    prompt: str, config: dict, n: int,
+    prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> list[str]:
     img_cfg = config.get("image_config") or {}
     ark_config = ArkBatchImageConfig(
@@ -181,6 +181,7 @@ async def _generate_via_ark(
         prompts=[prompt],
         config=ark_config,
         base_url=base_url,
+        user_id=user_id,
     )
     return [url for r in result.results for url in r.image_urls]
 
@@ -214,7 +215,8 @@ async def _register_generated_image_assets(image_urls: list[str], user_id: str |
         try:
             # 从 URL 提取文件名 (e.g. "/api/media/uuid.png" -> "uuid.png")
             filename = url.rsplit("/", 1)[-1]
-            filepath = MEDIA_DIR / filename
+            relative = get_relative_path(user_id, "image", filename)
+            filepath = MEDIA_DIR / relative
             
             # 确定 MIME 类型
             ext = filename.rsplit(".", 1)[-1].lower()
@@ -234,7 +236,7 @@ async def _register_generated_image_assets(image_urls: list[str], user_id: str |
                 user_id=user_id,
                 filename=filename,
                 original_name=f"generated_{filename}",
-                file_path=filename,
+                file_path=relative,
                 file_type="image",
                 mime_type=mime,
                 size=size,
@@ -322,6 +324,7 @@ async def _run_generator(generator, provider, model: str, prompt: str, config: d
             prompt=prompt,
             config=config,
             n=n,
+            user_id=ctx.user_id,
         )
     except Exception as e:
         logger.error("generate_image tool error: %s", e)

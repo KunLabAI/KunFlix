@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   VectorSquare, Plus, ScrollText, Image as ImageIcon, Video, 
   Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useResourceStore } from '@/store/useResourceStore';
+import { resourceApi, AssetItem } from '@/lib/resourceApi';
 
 const NODE_TYPES = [
   { 
@@ -86,24 +86,82 @@ const EMPTY_STATE_CONFIG: Record<string, { icon: React.ElementType; labelKey: st
   audio: { icon: Headphones, labelKey: 'sidebar.noAudio' },
 };
 
+// Tab key -> API file_type 映射
+const TAB_TYPE_MAP: Record<string, string> = { images: 'image', videos: 'video', audio: 'audio' };
+const PAGE_SIZE = 20;
+
+interface TabState {
+  items: AssetItem[];
+  page: number;
+  total: number;
+  loading: boolean;
+  hasMore: boolean;
+}
+
+const INIT_TAB: TabState = { items: [], page: 0, total: 0, loading: false, hasMore: true };
+
 export const Sidebar = () => {
   const { t } = useTranslation();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'audio'>('images');
   let timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // 从 Resource Store 获取账号级别资产
-  const { assets, isLoading, fetchAssets } = useResourceStore();
 
-  // 面板打开时加载资产（大 pageSize + 强制全类型，确保侧边栏显示完整）
+  // 每个 tab 独立分页状态
+  const [tabData, setTabData] = useState<Record<string, TabState>>({
+    images: { ...INIT_TAB }, videos: { ...INIT_TAB }, audio: { ...INIT_TAB },
+  });
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tabDataRef = useRef(tabData);
+  tabDataRef.current = tabData;
+
+  // 加载指定 tab 的下一页（通过 ref 读取最新状态，避免闭包陈旧值）
+  const loadPage = useCallback(async (tab: string) => {
+    const snap = tabDataRef.current[tab];
+    // 已在加载或无更多数据
+    if (snap.loading || !snap.hasMore) return;
+
+    setTabData(prev => ({ ...prev, [tab]: { ...prev[tab], loading: true } }));
+
+    const nextPage = snap.page + 1;
+    try {
+      const res = await resourceApi.listAssets(nextPage, PAGE_SIZE, TAB_TYPE_MAP[tab]);
+      setTabData(prev => {
+        const s = prev[tab];
+        const existingIds = new Set(s.items.map(a => a.id));
+        const newItems = res.items.filter(a => !existingIds.has(a.id));
+        const merged = [...s.items, ...newItems];
+        return { ...prev, [tab]: { items: merged, page: nextPage, total: res.total, loading: false, hasMore: merged.length < res.total } };
+      });
+    } catch {
+      setTabData(prev => ({ ...prev, [tab]: { ...prev[tab], loading: false } }));
+    }
+  }, []);
+
+  // 面板打开 / 切换 tab 时，自动加载首页
   useEffect(() => {
-    activeMenu === 'assets' && fetchAssets({ pageSize: 100, typeFilter: 'all' });
+    if (activeMenu !== 'assets') return;
+    const s = tabDataRef.current[activeAssetTab];
+    s.page === 0 && !s.loading && loadPage(activeAssetTab);
+  }, [activeMenu, activeAssetTab, loadPage]);
+
+  // 面板关闭时重置所有 tab 数据
+  useEffect(() => {
+    activeMenu !== 'assets' && setTabData({ images: { ...INIT_TAB }, videos: { ...INIT_TAB }, audio: { ...INIT_TAB } });
   }, [activeMenu]);
 
-  // 按类型分组资产
-  const ASSET_IMAGES = useMemo(() => assets.filter(a => a.file_type === 'image'), [assets]);
-  const ASSET_VIDEOS = useMemo(() => assets.filter(a => a.file_type === 'video'), [assets]);
-  const ASSET_AUDIO = useMemo(() => assets.filter(a => a.file_type === 'audio'), [assets]);
+  // 滚动到底部时加载更多
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+    nearBottom && loadPage(activeAssetTab);
+  }, [activeAssetTab, loadPage]);
+
+  const curTab = tabData[activeAssetTab];
+  const ASSET_IMAGES = tabData.images.items;
+  const ASSET_VIDEOS = tabData.videos.items;
+  const ASSET_AUDIO = tabData.audio.items;
+  const isLoading = curTab.loading && curTab.items.length === 0;
 
   const handleMouseEnter = (menu: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -249,9 +307,9 @@ export const Sidebar = () => {
             </div>
 
             {/* Content Area */}
-            <div className="max-h-[300px] min-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+            <div ref={scrollRef} onScroll={handleScroll} className="max-h-[300px] min-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
               
-              {/* Loading state */}
+              {/* Loading state - 首次加载 */}
               {isLoading && (
                 <div className="flex items-center justify-center min-h-[280px]">
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -283,6 +341,11 @@ export const Sidebar = () => {
                     <div className="col-span-2 flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <ImagePlus className="w-8 h-8 mb-2 opacity-20" />
                       <span className="text-xs">{t('sidebar.noImages')}</span>
+                    </div>
+                  )}
+                  {curTab.loading && curTab.items.length > 0 && (
+                    <div className="col-span-2 flex justify-center py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     </div>
                   )}
                 </div>
@@ -320,6 +383,11 @@ export const Sidebar = () => {
                       <span className="text-xs">{t('sidebar.noVideos')}</span>
                     </div>
                   )}
+                  {curTab.loading && curTab.items.length > 0 && (
+                    <div className="col-span-2 flex justify-center py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -345,6 +413,11 @@ export const Sidebar = () => {
                     <div className="flex flex-col items-center justify-center h-full min-h-[280px] text-muted-foreground bg-secondary/50 rounded-lg border border-border/50 border-dashed">
                       <Music className="w-8 h-8 mb-2 opacity-20" />
                       <span className="text-xs">{t('sidebar.noMusic')}</span>
+                    </div>
+                  )}
+                  {curTab.loading && curTab.items.length > 0 && (
+                    <div className="flex justify-center py-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     </div>
                   )}
                 </div>

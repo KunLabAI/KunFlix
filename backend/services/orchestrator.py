@@ -258,6 +258,7 @@ class CollaborationStrategy(ABC):
                 tool_context=ctx,
                 tools=tool_defs,
                 max_tool_rounds=max_rounds,
+                user_id=self.user_id,
             ):
                 # Route events to OrchestrationEvents
                 _event_map = {
@@ -854,6 +855,7 @@ Provide a cohesive final result that integrates all outputs:"""
             agent_id=leader.id,
             messages=[{"role": "user", "content": review_prompt}],
             system_prompt_override="You are reviewing and integrating outputs from multiple agents. Provide a cohesive final result.",
+            user_id=self.user_id,
         ):
             review_result += chunk
             yield OrchestrationEvent("subtask_chunk", {

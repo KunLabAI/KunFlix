@@ -23,6 +23,7 @@ class StreamContext:
     gemini_config: Dict[str, Any] | None = None  # Gemini 3.1 配置
     xai_image_config: Dict[str, Any] | None = None  # xAI 图像生成配置
     tools: List[Dict[str, Any]] | None = None     # OpenAI-format tool definitions
+    user_id: str | None = None                     # 用户 ID（媒体文件目录隔离）
 
 
 @dataclass
@@ -302,7 +303,7 @@ async def _stream_xai_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
 
         # 解析编辑响应
         for item in data.get("data", []):
-            url = await _save_xai_image_item(item, response_format)
+            url = await _save_xai_image_item(item, response_format, user_id=ctx.user_id)
             md = f"\n\n![image]({url})\n\n"
             result.full_response += md
             result.generated_image_count += 1
@@ -331,7 +332,7 @@ async def _stream_xai_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
     response = await client.images.generate(**generate_params)
 
     for item in response.data:
-        url = await _save_xai_image_item_sdk(item, response_format)
+        url = await _save_xai_image_item_sdk(item, response_format, user_id=ctx.user_id)
         md = f"\n\n![image]({url})\n\n"
         result.full_response += md
         result.generated_image_count += 1
@@ -371,7 +372,7 @@ def _extract_xai_user_input(messages: List[Dict[str, Any]]) -> tuple[str, str | 
     return "", None
 
 
-async def _save_xai_image_item(item: dict, response_format: str) -> str:
+async def _save_xai_image_item(item: dict, response_format: str, user_id: str | None = None) -> str:
     """保存 xAI API 返回的图像数据（httpx 响应格式）"""
     import base64
     from services.media_utils import save_inline_image, save_image_from_url
@@ -382,16 +383,16 @@ async def _save_xai_image_item(item: dict, response_format: str) -> str:
     # b64_json 格式
     if b64_data:
         image_bytes = base64.b64decode(b64_data)
-        return await save_inline_image("image/png", image_bytes)
+        return await save_inline_image("image/png", image_bytes, user_id=user_id)
 
     # url 格式
     if url_data:
-        return await save_image_from_url(url_data)
+        return await save_image_from_url(url_data, user_id=user_id)
 
     return ""
 
 
-async def _save_xai_image_item_sdk(item, response_format: str) -> str:
+async def _save_xai_image_item_sdk(item, response_format: str, user_id: str | None = None) -> str:
     """保存 xAI SDK 返回的图像数据（OpenAI SDK ImagesResponse 格式）"""
     import base64
     from services.media_utils import save_inline_image, save_image_from_url
@@ -402,11 +403,11 @@ async def _save_xai_image_item_sdk(item, response_format: str) -> str:
     # b64_json 格式
     if b64_data:
         image_bytes = base64.b64decode(b64_data)
-        return await save_inline_image("image/png", image_bytes)
+        return await save_inline_image("image/png", image_bytes, user_id=user_id)
 
     # url 格式
     if url_data:
-        return await save_image_from_url(url_data)
+        return await save_image_from_url(url_data, user_id=user_id)
 
     return ""
 
@@ -464,7 +465,7 @@ async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
 
     for item in response.data:
         url_data = getattr(item, "url", None)
-        url = (await save_image_from_url(url_data)) if url_data else ""
+        url = (await save_image_from_url(url_data, user_id=ctx.user_id)) if url_data else ""
         md = f"\n\n![image]({url})\n\n"
         result.full_response += md
         result.generated_image_count += 1
@@ -888,7 +889,7 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
                     data = getattr(inline_data, 'data', None)
                     if data:
                         mime_type = getattr(inline_data, 'mime_type', 'image/png')
-                        url = await save_inline_image(mime_type, data)
+                        url = await save_inline_image(mime_type, data, user_id=ctx.user_id)
                         logger.info(f"Gemini image saved: {url} ({len(data)} bytes)")
                         md = f"\n\n![image]({url})\n\n"
                         result.full_response += md
@@ -1025,6 +1026,7 @@ async def stream_completion(
     gemini_config: Dict[str, Any] | None = None,
     tools: List[Dict[str, Any]] | None = None,
     xai_image_config: Dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> AsyncGenerator[tuple[str, StreamResult], None]:
     """
     统一的流式调用入口
@@ -1044,6 +1046,7 @@ async def stream_completion(
         gemini_config=gemini_config,
         xai_image_config=xai_image_config,
         tools=tools,
+        user_id=user_id,
     )
     result = StreamResult()
     

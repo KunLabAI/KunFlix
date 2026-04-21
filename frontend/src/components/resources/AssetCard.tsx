@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Image as ImageIcon, Video, Music, File, MoreHorizontal, Pencil, Replace, Trash2, ExternalLink } from "lucide-react";
+import { Image as ImageIcon, Video, Music, File, MoreHorizontal, Pencil, Replace, Trash2, ExternalLink, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssetItem } from "@/lib/resourceApi";
 import {
@@ -89,52 +89,82 @@ const PREVIEW_RENDERERS: Record<string, React.FC<{ url: string }>> = {
 interface AssetCardProps {
   asset: AssetItem;
   viewMode?: "grid" | "list";
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (asset: AssetItem) => void;
   onPreview: (asset: AssetItem) => void;
   onRename: (asset: AssetItem) => void;
   onReplace: (asset: AssetItem) => void;
   onDelete: (asset: AssetItem) => void;
+  /** data-attribute id for rubber-band hit testing */
+  "data-asset-id"?: string;
 }
 
-export default function AssetCard({ asset, viewMode = "grid", onPreview, onRename, onReplace, onDelete }: AssetCardProps) {
+export default function AssetCard({ asset, viewMode = "grid", selectable, selected, onToggleSelect, onPreview, onRename, onReplace, onDelete, ...rest }: AssetCardProps) {
   const Icon = TYPE_ICONS[asset.file_type ?? ""] ?? File;
   const Renderer = PREVIEW_RENDERERS[asset.file_type ?? ""] ?? DefaultPreview;
   const typeColorClass = TYPE_COLORS[asset.file_type ?? ""] ?? "text-muted-foreground bg-secondary";
 
+  // 选择模式下：点击卡片切换选中状态
+  const handleCardClick = () => {
+    selectable ? onToggleSelect?.(asset) : onPreview(asset);
+  };
+
   // 列表视图
-  if (viewMode === "list") {
-    return (
-      <motion.div
-        whileHover={{ x: 4 }}
-        className="group flex items-center gap-4 p-3 rounded-xl border border-border/50 bg-card hover:border-primary/30 hover:shadow-sm transition-all duration-200"
-      >
-        {/* Thumbnail */}
-        <div 
-          className="w-16 h-16 rounded-lg overflow-hidden bg-secondary shrink-0 cursor-pointer"
-          onClick={() => onPreview(asset)}
+  const listView = viewMode === "list";
+  const wrapperProps = { "data-asset-id": rest["data-asset-id"] ?? asset.id };
+
+  return listView ? (
+    <motion.div
+      whileHover={selectable ? undefined : { x: 4 }}
+      {...wrapperProps}
+      className={cn(
+        "group flex items-center gap-4 p-3 rounded-xl border bg-card transition-all duration-200",
+        selectable ? "cursor-pointer select-none" : "hover:shadow-sm",
+        selected ? "border-primary bg-primary/5" : "border-border/50 hover:border-primary/30"
+      )}
+      onClick={selectable ? handleCardClick : undefined}
+    >
+      {/* Selection checkbox (always visible in selection mode) */}
+      {selectable && (
+        <div
+          className={cn(
+            "shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+            selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40"
+          )}
         >
-          <Renderer url={asset.url} />
+          {selected && <Check className="w-3 h-3" />}
         </div>
+      )}
+      {/* Thumbnail */}
+      <div
+        className={cn("w-16 h-16 rounded-lg overflow-hidden bg-secondary shrink-0", !selectable && "cursor-pointer")}
+        onClick={selectable ? undefined : () => onPreview(asset)}
+      >
+        <Renderer url={asset.url} />
+      </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-foreground truncate">
-              {asset.original_name || asset.filename}
-            </span>
-          </div>
-          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-            <span className={cn("px-2 py-0.5 rounded-full", typeColorClass)}>
-              {asset.file_type === "image" && "图片"}
-              {asset.file_type === "video" && "视频"}
-              {asset.file_type === "audio" && "音频"}
-              {!asset.file_type && "文件"}
-            </span>
-            <span>{formatSize(asset.size)}</span>
-            <span>{formatDate(asset.created_at)}</span>
-          </div>
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-foreground truncate">
+            {asset.original_name || asset.filename}
+          </span>
         </div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+          <span className={cn("px-2 py-0.5 rounded-full", typeColorClass)}>
+            {asset.file_type === "image" && "图片"}
+            {asset.file_type === "video" && "视频"}
+            {asset.file_type === "audio" && "音频"}
+            {!asset.file_type && "文件"}
+          </span>
+          <span>{formatSize(asset.size)}</span>
+          <span>{formatDate(asset.created_at)}</span>
+        </div>
+      </div>
 
-        {/* Actions */}
+      {/* Actions - hidden in selection mode */}
+      {!selectable && (
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => onPreview(asset)}
@@ -163,53 +193,79 @@ export default function AssetCard({ asset, viewMode = "grid", onPreview, onRenam
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      </motion.div>
-    );
-  }
-
-  // 网格视图
-  return (
-    <div className="group relative rounded-xl border border-border/50 overflow-hidden bg-card hover:border-primary/30 hover:shadow-lg transition-all duration-200">
-      {/* Preview - clickable */}
-      <div className="aspect-square overflow-hidden cursor-pointer" onClick={() => onPreview(asset)}>
+      )}
+    </motion.div>
+  ) : (
+    /* 网格视图 */
+    <div
+      {...wrapperProps}
+      className={cn(
+        "group relative rounded-xl border overflow-hidden bg-card transition-all duration-200",
+        selectable ? "cursor-pointer select-none" : "hover:shadow-lg",
+        selected ? "border-primary ring-2 ring-primary/20" : "border-border/50 hover:border-primary/30"
+      )}
+      onClick={selectable ? handleCardClick : undefined}
+    >
+      {/* Selection checkbox - always visible in selection mode */}
+      {selectable && (
+        <div
+          className={cn(
+            "absolute top-2 left-2 z-10 w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+            selected
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-white/70 bg-black/30 backdrop-blur-sm"
+          )}
+        >
+          {selected && <Check className="w-3 h-3" />}
+        </div>
+      )}
+      {/* Preview area */}
+      <div
+        className={cn("aspect-square overflow-hidden", !selectable && "cursor-pointer")}
+        onClick={selectable ? undefined : () => onPreview(asset)}
+      >
         <Renderer url={asset.url} />
       </div>
 
-      {/* Bottom info overlay */}
-      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-2.5 pt-6 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
-        <div className="flex items-center gap-1.5">
-          <Icon className="w-3 h-3 text-white/70 shrink-0" />
-          <span className="text-[11px] text-white font-medium truncate">
-            {asset.original_name || asset.filename}
-          </span>
+      {/* Bottom info overlay - hidden in selection mode */}
+      {!selectable && (
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-2.5 pt-6 translate-y-full group-hover:translate-y-0 transition-transform duration-200">
+          <div className="flex items-center gap-1.5">
+            <Icon className="w-3 h-3 text-white/70 shrink-0" />
+            <span className="text-[11px] text-white font-medium truncate">
+              {asset.original_name || asset.filename}
+            </span>
+          </div>
+          <div className="text-[10px] text-white/50 mt-0.5">
+            {formatSize(asset.size)}
+          </div>
         </div>
-        <div className="text-[10px] text-white/50 mt-0.5">
-          {formatSize(asset.size)}
-        </div>
-      </div>
+      )}
 
-      {/* Action menu */}
-      <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="p-1 rounded-md bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-colors">
-              <MoreHorizontal className="w-3.5 h-3.5 text-white" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-36">
-            <DropdownMenuItem onClick={() => onRename(asset)}>
-              <Pencil className="w-3.5 h-3.5 mr-2" /> 重命名
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onReplace(asset)}>
-              <Replace className="w-3.5 h-3.5 mr-2" /> 替换文件
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onDelete(asset)} className="text-destructive focus:text-destructive">
-              <Trash2 className="w-3.5 h-3.5 mr-2" /> 删除
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {/* Action menu - hidden in selection mode */}
+      {!selectable && (
+        <div className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="p-1 rounded-md bg-black/40 backdrop-blur-sm hover:bg-black/60 transition-colors">
+                <MoreHorizontal className="w-3.5 h-3.5 text-white" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuItem onClick={() => onRename(asset)}>
+                <Pencil className="w-3.5 h-3.5 mr-2" /> 重命名
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onReplace(asset)}>
+                <Replace className="w-3.5 h-3.5 mr-2" /> 替换文件
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onDelete(asset)} className="text-destructive focus:text-destructive">
+                <Trash2 className="w-3.5 h-3.5 mr-2" /> 删除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
     </div>
   );
 }

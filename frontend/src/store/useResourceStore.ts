@@ -37,6 +37,7 @@ interface ResourceState {
   renameAsset: (id: string, name: string) => Promise<void>;
   replaceAssetFile: (id: string, file: File) => Promise<void>;
   deleteAsset: (id: string) => Promise<void>;
+  batchDeleteAssets: (ids: string[]) => Promise<number>;
   /** 从外部上传（如画布）同步新资产到 store */
   syncAssetFromUpload: (asset: AssetItem | Record<string, unknown>) => void;
   reset: () => void;
@@ -155,6 +156,23 @@ export const useResourceStore = create<ResourceState>((set, get) => ({
       assets: s.assets.filter((a) => a.id !== id),
       total: s.total - 1,
     }));
+  },
+
+  async batchDeleteAssets(ids) {
+    const idSet = new Set(ids);
+    // 乐观更新：先从 UI 移除
+    set((s) => ({
+      assets: s.assets.filter((a) => !idSet.has(a.id)),
+      total: Math.max(0, s.total - ids.length),
+    }));
+    try {
+      const res = await resourceApi.batchDeleteAssets(ids);
+      return res.deleted;
+    } catch (err) {
+      // 回滚：重新加载
+      get().fetchAssets();
+      throw err;
+    }
   },
 
   syncAssetFromUpload(asset) {

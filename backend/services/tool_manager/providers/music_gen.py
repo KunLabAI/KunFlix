@@ -21,6 +21,7 @@ from models import LLMProvider, MusicTask, ToolConfig
 from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provider_type
 from services.music_providers.base import MusicContext
 from services.music_generation import execute_music_task_background
+from services.media_utils import resolve_media_filepath
 
 if TYPE_CHECKING:
     from models import Agent
@@ -32,9 +33,6 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 MUSIC_GEN_TOOL_NAME = "generate_music"
-
-# 本地媒体目录
-_MEDIA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "media"
 
 # 模型能力映射表
 _MODEL_CAPS: dict[str, dict[str, Any]] = {
@@ -57,9 +55,9 @@ def _resolve_local_media(url: str | None) -> str | None:
     if not is_local:
         return url
     filename = url.rsplit("/", 1)[-1]
-    filepath = _MEDIA_DIR / filename
-    if not filepath.exists():
-        logger.warning("Local media file not found: %s", filepath)
+    filepath = resolve_media_filepath(filename)
+    if not filepath:
+        logger.warning("Local media file not found: %s", filename)
         return url
     mime, _ = mimetypes.guess_type(str(filepath))
     mime = mime or "image/jpeg"

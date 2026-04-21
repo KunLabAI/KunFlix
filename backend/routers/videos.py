@@ -17,7 +17,7 @@ from services.video_generation import submit_video_task, poll_video_task, VideoC
 from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
-from services.media_utils import save_video_from_url, MEDIA_DIR
+from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ async def get_video_task_status(
             provider_type == "gemini" and download_headers and None
             provider_type == "gemini" and (download_headers := {"x-goog-api-key": provider.api_key})
             
-            local_url = await save_video_from_url(poll_result.video_url, headers=download_headers)
+            local_url = await save_video_from_url(poll_result.video_url, headers=download_headers, user_id=entity_id)
             task.result_video_url = local_url
             task.output_duration_seconds = poll_result.duration_seconds or task.duration
             task.completed_at = datetime.now(timezone.utc)
@@ -254,14 +254,15 @@ async def _register_video_asset(local_url: str, user_id: str, db: AsyncSession) 
     """将生成/编辑的视频注册为用户 Asset 记录。"""
     try:
         filename = local_url.rsplit("/", 1)[-1]  # e.g. "uuid.mp4"
-        filepath = MEDIA_DIR / filename
+        relative = get_relative_path(user_id, "video", filename)
+        filepath = MEDIA_DIR / relative
         size = filepath.stat().st_size if filepath.exists() else None
         asset = Asset(
             id=generate_uuid(),
             user_id=user_id,
             filename=filename,
             original_name=f"generated_{filename}",
-            file_path=filename,
+            file_path=relative,
             file_type="video",
             mime_type="video/mp4",
             size=size,
@@ -342,7 +343,7 @@ def _try_delete_local_file(media_url: str):
     """尝试删除本地媒体文件，忽略不存在的情况"""
     # /api/media/xxx.mp4 → xxx.mp4
     filename = media_url.rsplit("/", 1)[-1]
-    filepath = MEDIA_DIR / filename
+    filepath = resolve_media_filepath(filename) or (MEDIA_DIR / filename)
     filepath.unlink(missing_ok=True)
     logger.info(f"Deleted local file: {filepath}")
 

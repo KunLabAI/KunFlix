@@ -11,7 +11,7 @@ import re
 from typing import Any
 from pathlib import Path
 
-from services.media_utils import MEDIA_DIR
+from services.media_utils import MEDIA_DIR, resolve_media_filepath
 
 
 def sse(event: str, data: dict) -> str:
@@ -70,7 +70,8 @@ def get_last_image_path(history) -> str | None:
         if m:
             url = m.group(1)  # /api/media/xxxx.png
             filename = url.rsplit("/", 1)[-1]
-            return str(MEDIA_DIR / filename)
+            resolved = resolve_media_filepath(filename)
+            return str(resolved) if resolved else None
     return None
 
 
@@ -133,13 +134,16 @@ async def inject_attachment_images(msg: dict) -> list[str]:
 
     # Convert each to data URL and build multimodal parts (parallel I/O)
     filenames = [extract_media_filename(url) for url, _ in image_urls]
+    valid_fns = [fn for fn in filenames if fn]
+    resolved_pairs = [(fn, resolve_media_filepath(fn)) for fn in valid_fns]
+    convert_tasks = [(fn, p) for fn, p in resolved_pairs if p]
     data_urls = await asyncio.gather(*[
-        image_file_to_data_url(str(MEDIA_DIR / fn)) for fn in filenames if fn
+        image_file_to_data_url(str(p)) for _, p in convert_tasks
     ])
 
     image_parts = []
     injected = []
-    for fn, data_url in zip([f for f in filenames if f], data_urls):
+    for (fn, _), data_url in zip(convert_tasks, data_urls):
         if not data_url:
             continue
         image_parts.append({"type": "image_url", "image_url": {"url": data_url}})
