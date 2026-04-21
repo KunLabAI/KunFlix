@@ -24,6 +24,10 @@ const GHOST_DIMENSIONS: Record<string, { width: number; height: number }> = {
   storyboard: { width: 398, height: 256 },
 };
 
+// Glow color matching NodeEffectOverlay scanning config (blue)
+const GLOW_COLOR = 'rgba(59,130,246,0.4)';
+const BG_COLOR = 'rgba(59,130,246,0.06)';
+
 const GhostNode = memo(({ data }: NodeProps<Node<GhostNodeData>>) => {
   const nodeType = data.targetNodeType || 'text';
   const config = TYPE_CONFIG[nodeType] || DEFAULT_CONFIG;
@@ -32,31 +36,47 @@ const GhostNode = memo(({ data }: NodeProps<Node<GhostNodeData>>) => {
 
   return (
     <div
-      className="rounded-xl border-2 border-dashed border-primary/30 bg-card/80 backdrop-blur-sm overflow-hidden relative"
+      className="rounded-xl bg-card/80 backdrop-blur-sm overflow-visible relative"
       style={{ width: dims.width, height: dims.height }}
     >
-      {/* Shimmer overlay */}
+      {/* ── Pulsing border + glow (same as NodeEffectOverlay scanning) ── */}
       <div
-        className="absolute inset-0 animate-ghost-shimmer"
+        className="absolute inset-[-3px] rounded-xl border-[1px] border-blue-400 pointer-events-none z-[1]"
         style={{
-          background: 'linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.08) 50%, transparent 100%)',
-          backgroundSize: '200% 100%',
+          animation: 'nodeEffectPulse 1.5s ease-in-out infinite',
+          boxShadow: `0 0 6px 2px ${GLOW_COLOR}, inset 0 0 6px 2px ${GLOW_COLOR}`,
         }}
       />
 
-      {/* Pulse ring */}
-      <div className="absolute inset-0 rounded-xl animate-ghost-pulse" />
+      {/* ── Background tint overlay ── */}
+      <div
+        className="absolute inset-0 rounded-xl pointer-events-none"
+        style={{ backgroundColor: BG_COLOR }}
+      />
 
-      {/* Content */}
+      {/* ── Scan bar (sweep effect) ── */}
+      <div className="absolute inset-0 rounded-xl pointer-events-none z-[2] overflow-hidden">
+        <div
+          className="absolute inset-y-0 w-1/3"
+          style={{
+            background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.15), transparent)',
+            animation: 'nodeEffectScan 2s ease-in-out infinite',
+          }}
+        />
+      </div>
+
+      {/* ── Floating badge (same as NodeEffectOverlay) ── */}
+      <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-[22] pointer-events-none">
+        <div
+          className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shadow-lg border bg-blue-500 text-white border-blue-300"
+          style={{ animation: 'nodeEffectBadgeBounce 1.5s ease-in-out infinite' }}
+        >
+          <span>{config.label}创建中…</span>
+        </div>
+      </div>
+
+      {/* ── Content ── */}
       <div className="relative z-10 flex flex-col items-center justify-center h-full gap-3">
-        <div className="relative">
-          <Icon className={`w-10 h-10 ${config.color} opacity-60`} />
-          <Sparkles className="w-4 h-4 text-primary absolute -top-1 -right-1 animate-pulse" />
-        </div>
-        <div className="text-center">
-          <p className="text-sm font-medium text-foreground/70">AI 正在创建</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{config.label}</p>
-        </div>
         {/* Loading dots */}
         <div className="flex gap-1.5">
           {[0, 150, 300].map((delay) => (

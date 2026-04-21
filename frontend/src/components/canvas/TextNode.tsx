@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Pencil, Trash2, Wand2, Check, Copy, ScrollText, Quote } from 'lucide-react';
 import { useCanvasStore, ScriptNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
+import NodeEffectOverlay from './NodeEffectOverlay';
 import { ScriptEditor } from './TextEditor';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
@@ -115,11 +116,11 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
   const handleReference = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // 获取文本内容摘要
+    // 获取文本内容
     const content = data.content;
-    let excerpt = '';
+    let fullText = '';
     if (typeof content === 'string') {
-      excerpt = content.slice(0, 200);
+      fullText = content;
     } else if (content && typeof content === 'object' && 'content' in content) {
       // 从 Tiptap JSON 中提取文本
       const extractText = (node: any): string => {
@@ -130,8 +131,11 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         }
         return '';
       };
-      excerpt = extractText(content).slice(0, 200);
+      fullText = extractText(content);
     }
+    const MAX_TEXT_LENGTH = 50000;
+    const clampedText = fullText.length > MAX_TEXT_LENGTH ? fullText.slice(0, MAX_TEXT_LENGTH) + '...' : fullText;
+    const excerpt = fullText.length > 150 ? fullText.slice(0, 150) + '...' : fullText;
     
     // 检查节点是否已在附件中
     const store = useAIAssistantStore.getState();
@@ -148,7 +152,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         label: data.title || t('canvas.node.unnamedTextCard'),
         excerpt,
         thumbnailUrl: '',
-        meta: {},
+        meta: { fullText: clampedText },
       });
       store.setIsOpen(true);
     }
@@ -186,6 +190,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
         data-editing={isEditing}
         onDoubleClick={!isEditing ? handleEdit : undefined}
       >
+        <NodeEffectOverlay nodeId={id} />
         {/* 标题悬浮在卡片上方，不占节点布局空间 */}
         <div className="script-node__title absolute bottom-full left-0 right-0 mb-1 px-1 flex items-center justify-between gap-2 min-h-[28px] nodrag">
           <div className="flex-1 min-w-0 flex items-center">

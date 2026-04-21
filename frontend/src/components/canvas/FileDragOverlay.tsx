@@ -1,7 +1,7 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
-import { FileText, Image, Film, Music } from 'lucide-react';
+import { FileText, Image, Film, Music, FileSpreadsheet } from 'lucide-react';
 import type { FileType } from '@/app/theater/[id]/hooks/useFileDragDrop';
 
 interface FileDragOverlayProps {
@@ -16,6 +16,7 @@ const FILE_TYPE_ICONS: Record<string, React.ReactNode> = {
   image: <Image className="w-8 h-8 text-emerald-500" />,
   video: <Film className="w-8 h-8 text-purple-500" />,
   audio: <Music className="w-8 h-8 text-amber-500" />,
+  spreadsheet: <FileSpreadsheet className="w-8 h-8 text-green-600" />,
 };
 
 const FILE_TYPE_LABEL_KEYS: Record<string, string> = {
@@ -23,6 +24,7 @@ const FILE_TYPE_LABEL_KEYS: Record<string, string> = {
   image: 'canvas.fileType.image',
   video: 'canvas.fileType.video',
   audio: 'canvas.fileType.audio',
+  spreadsheet: 'canvas.fileType.spreadsheet',
 };
 
 export function FileDragOverlay({ isDraggingFile, dragFileType, dragPosition }: FileDragOverlayProps) {

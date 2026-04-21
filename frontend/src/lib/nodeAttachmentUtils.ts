@@ -1,6 +1,9 @@
 import type { CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, StoryboardNodeData } from '@/store/useCanvasStore';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
 
+/** 文本节点发送给 AI 的最大纯文本字符数 */
+const MAX_TEXT_LENGTH = 50000;
+
 /**
  * 递归提取 Tiptap JSON 中的纯文本内容
  */
@@ -24,13 +27,15 @@ export function extractPlainTextFromTiptap(json: unknown, maxLength = 150): stri
 const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttachment> = {
   text: (node) => {
     const data = node.data as ScriptNodeData;
+    const raw = extractPlainTextFromTiptap(data.content, Infinity);
+    const fullText = raw.length > MAX_TEXT_LENGTH ? raw.slice(0, MAX_TEXT_LENGTH) + '...' : raw;
     return {
       nodeId: node.id,
       nodeType: 'text',
       label: data.title || '未命名文本',
-      excerpt: extractPlainTextFromTiptap(data.content, 150),
+      excerpt: raw.length > 150 ? raw.slice(0, 150) + '...' : raw,
       thumbnailUrl: null,
-      meta: { tags: data.tags },
+      meta: { tags: data.tags, fullText },
     };
   },
   image: (node) => {

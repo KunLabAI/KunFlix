@@ -55,7 +55,10 @@ function formatTableData(columns: { key: string; label?: string }[], rows: Recor
 
 // 节点类型 → 上下文前缀映射表（拼入消息正文，让 AI 感知节点内容）
 const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment) => string> = {
-  text: (a) => `[引用文本卡「${a.label}」]\n内容摘要：${a.excerpt || '（空）'}`,
+  text: (a) => {
+    const fullText = (a.meta as { fullText?: string })?.fullText || a.excerpt || '（空）';
+    return `[引用文本卡「${a.label}」]\n内容：${fullText}`;
+  },
   image: (a) => `[引用图像卡「${a.label}」]\n图像描述：${a.excerpt || '无描述'}`,
   video: (a) => `[引用视频卡「${a.label}」]\n视频描述：${a.excerpt || '无描述'}`,
   storyboard: (a) => {

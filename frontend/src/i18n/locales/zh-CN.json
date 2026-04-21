@@ -274,7 +274,8 @@
       "storyboard": {
         "noData": "暂无数据",
         "waitingForAgent": "等待 Agent 填入数据",
-        "play": "播放"
+        "play": "播放",
+        "exportExcel": "导出 Excel"
       },
       "charCount": "{{count}} 字"
     },
@@ -362,13 +363,15 @@
       "image": "图像文件",
       "video": "视频文件",
       "audio": "音频文件",
+      "spreadsheet": "表格文件",
       "default": "文件"
     },
     "fileSizeError": {
       "text": "文本文件大小不能超过 10MB",
       "image": "图片大小不能超过 50MB",
       "video": "视频大小不能超过 500MB",
-      "audio": "音频大小不能超过 100MB"
+      "audio": "音频大小不能超过 100MB",
+      "spreadsheet": "表格文件大小不能超过 20MB"
     },
     "uploadFailed": "上传失败: {{message}}",
     "audioUploadFailed": "音频上传失败: {{message}}",
@@ -380,6 +383,7 @@
       "image": "图片",
       "audio": "音频",
       "text": "文本",
+      "spreadsheet": "表格",
       "default": "文件"
     },
     "uploadFailedHttp": "上传失败 (HTTP {{status}})",

@@ -11,6 +11,43 @@ interface SSEEvent {
   data: unknown;
 }
 
+/**
+ * Attempt to parse partial JSON from a streaming tool argument string.
+ * Tries to extract storyboard fields (tableColumns, tableData, title, etc.)
+ * by progressively adding closing brackets to make the JSON valid.
+ */
+function parsePartialStoryboardArgs(jsonStr: string): {
+  title?: string;
+  description?: string;
+  shotNumber?: string;
+  duration?: number;
+  columns?: { key: string; label: string; type?: 'text' | 'number' | 'image' | 'video' | 'audio' }[];
+  rows?: Record<string, unknown>[];
+} | null {
+  // The accumulated string is the value of the "data" field inside the outer args JSON
+  // e.g. {"node_type":"storyboard","data":{"title":"...","tableColumns":[...],"tableData":[...]
+  // We try to close the JSON progressively
+  const closers = ['', '}', ']}', '"]}', '"]}', '}]}', '"}]}', '"}}', '}}', ']}}', '"]}}',' "]}}'];
+  for (const closer of closers) {
+    try {
+      const obj = JSON.parse(jsonStr + closer);
+      // Could be the outer args object {node_type, data: {...}} or just the data object
+      const dataObj = obj.data || obj;
+      const result: ReturnType<typeof parsePartialStoryboardArgs> = {};
+      dataObj.title && (result.title = String(dataObj.title));
+      dataObj.description && (result.description = String(dataObj.description));
+      dataObj.shotNumber && (result.shotNumber = String(dataObj.shotNumber));
+      dataObj.duration && (result.duration = Number(dataObj.duration));
+      Array.isArray(dataObj.tableColumns) && (result.columns = dataObj.tableColumns);
+      Array.isArray(dataObj.tableData) && (result.rows = dataObj.tableData);
+      return result;
+    } catch {
+      // Try next closer
+    }
+  }
+  return null;
+}
+
 interface StreamingState {
   skillCalls: { skill_name: string; status: 'loading' | 'loaded' }[];
   toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed'; result?: string }[];
@@ -31,6 +68,16 @@ export function useSSEHandler() {
   const setContextUsage = useAIAssistantStore((state) => state.setContextUsage);
   const { updateCredits } = useAuth();
   
+  // Debounced timer for clearing canvas node effects after tool chain completes
+  const effectClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Accumulated tool argument JSON for streaming storyboard creation
+  const streamingArgsRef = useRef<{ toolName: string; accumulated: string; lastParseLen: number; replaced: boolean }>({
+    toolName: '', accumulated: '', lastParseLen: 0, replaced: false,
+  });
+  // Throttle timer for partial JSON parsing
+  const parseThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // SSE事件处理状态引用
   const streamingStateRef = useRef<StreamingState>({
     skillCalls: [],
@@ -60,6 +107,9 @@ export function useSSEHandler() {
       doneScheduled: false,
       harnessEvents: [],
     };
+    // Reset streaming args accumulator
+    streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: false };
+    parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
   }, []);
 
   const parseSSELine = useCallback((line: string): SSEEvent | null => {
@@ -144,6 +194,27 @@ export function useSSEHandler() {
         });
       },
 
+      // 工具调用预告（LLM 开始生成工具参数时立即触发，早于 tool_call）
+      tool_pending: () => {
+        const toolName = (data as { tool_name?: string })?.tool_name || '';
+        // Cancel any pending effect clear
+        effectClearTimerRef.current && (clearTimeout(effectClearTimerRef.current), effectClearTimerRef.current = null);
+        const canvasStore = useCanvasStore.getState();
+        const PENDING_MAP: Record<string, () => void> = {
+          create_canvas_node: () => {
+            // No args yet (arguments still generating) → create ghost with default type
+            const hasGhost = canvasStore.nodes.some((n) => n.type === 'ghost');
+            !hasGhost && canvasStore.addGhostNode('text');
+          },
+          list_canvas_nodes: () => {
+            const effects: Record<string, 'scanning'> = {};
+            canvasStore.nodes.forEach((n) => { n.type !== 'ghost' && (effects[n.id] = 'scanning'); });
+            Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+          },
+        };
+        PENDING_MAP[toolName]?.();
+      },
+
       // 工具调用开始
       tool_call: () => {
         const toolName = (data as { tool_name?: string })?.tool_name || '';
@@ -151,13 +222,37 @@ export function useSSEHandler() {
         state.toolCalls.push({ tool_name: toolName, arguments: args, status: 'executing' });
         state.roundHasTools = true;
 
-        // Ghost node: show skeleton placeholder when agent creates a canvas node
+        // Canvas visual effects: show real-time feedback on affected nodes
+        // Cancel any pending clear — a new tool is starting, keep effects alive
+        effectClearTimerRef.current && (clearTimeout(effectClearTimerRef.current), effectClearTimerRef.current = null);
         const canvasStore = useCanvasStore.getState();
-        (toolName === 'create_canvas_node' && args) && canvasStore.addGhostNode(
-          (args.node_type as string) || 'text',
-          args.position_x as number | undefined,
-          args.position_y as number | undefined,
-        );
+        const CANVAS_EFFECT_MAP: Record<string, () => void> = {
+          create_canvas_node: () => {
+            // tool_call has complete args — replace ghost/streaming with real local node immediately
+            const nodeType = (args?.node_type as string) || 'text';
+            const nodeData = (args?.data as Record<string, unknown>) || {};
+            // Clear streaming args state
+            streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: true };
+            parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
+            // Replace ghost/streaming node with a fully-formed local node
+            canvasStore.replaceGhostWithLocalNode(nodeType, nodeData);
+          },
+          get_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'reading'),
+          update_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'updating'),
+          delete_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'deleting'),
+          list_canvas_nodes: () => {
+            const effects: Record<string, 'scanning'> = {};
+            canvasStore.nodes.forEach((n) => { n.type !== 'ghost' && (effects[n.id] = 'scanning'); });
+            Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+          },
+          create_canvas_edge: () => {
+            const effects: Record<string, 'connecting'> = {};
+            args?.source_node_id && (effects[args.source_node_id as string] = 'connecting');
+            args?.target_node_id && (effects[args.target_node_id as string] = 'connecting');
+            Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+          },
+        };
+        CANVAS_EFFECT_MAP[toolName]?.();
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -168,11 +263,79 @@ export function useSSEHandler() {
         });
       },
 
+      // 工具参数增量流式（LLM 逐 token 生成工具参数时触发）
+      tool_call_delta: () => {
+        const d = data as { tool_name?: string; chunk?: string };
+        const toolName = d.tool_name || '';
+        const chunk = d.chunk || '';
+
+        const sRef = streamingArgsRef.current;
+        // Initialize or continue accumulating
+        (sRef.toolName !== toolName) && (sRef.toolName = toolName, sRef.accumulated = '', sRef.lastParseLen = 0, sRef.replaced = false);
+        sRef.accumulated += chunk;
+
+        const canvasStore = useCanvasStore.getState();
+
+        // For update/get/delete: extract node_id early to apply targeted effect
+        const TARGETED_EFFECTS: Record<string, 'reading' | 'updating' | 'deleting'> = {
+          update_canvas_node: 'updating',
+          get_canvas_node: 'reading',
+          delete_canvas_node: 'deleting',
+        };
+        const targetEffect = TARGETED_EFFECTS[toolName];
+        targetEffect && (() => {
+          const nodeIdMatch = sRef.accumulated.match(/"node_id"\s*:\s*"([^"]+)"/);
+          nodeIdMatch && canvasStore.setNodeEffect(nodeIdMatch[1], targetEffect);
+        })();
+
+        // Streaming storyboard creation: progressive JSON parse
+        (toolName !== 'create_canvas_node' || sRef.replaced) && (void 0);
+
+        // Throttled partial JSON parse: attempt when accumulated > lastParse + 200 chars
+        const shouldParse = sRef.accumulated.length - sRef.lastParseLen > 200;
+
+        const tryParsePartial = () => {
+          const ref = streamingArgsRef.current;
+          ref.lastParseLen = ref.accumulated.length;
+          const parsed = parsePartialStoryboardArgs(ref.accumulated);
+          // Need at least columns to create a meaningful streaming node
+          (parsed && parsed.columns && parsed.columns.length > 0) && (() => {
+            const hasStreamingNode = canvasStore.nodes.some(
+              (n) => n.type === 'storyboard' && (n.data as any)?._streaming
+            );
+            const partialData = {
+              title: parsed.title,
+              description: parsed.description || '',
+              shotNumber: parsed.shotNumber || '',
+              duration: parsed.duration || 0,
+              tableColumns: parsed.columns,
+              tableData: parsed.rows || [],
+              _streaming: true,
+            };
+            hasStreamingNode
+              ? canvasStore.updateStreamingNode(partialData)
+              : canvasStore.replaceGhostWithStreamingNode(partialData);
+          })();
+        };
+
+        // Use throttle for parsing
+        (shouldParse && toolName === 'create_canvas_node' && !sRef.replaced) && (() => {
+          parseThrottleRef.current && clearTimeout(parseThrottleRef.current);
+          parseThrottleRef.current = setTimeout(tryParsePartial, 100);
+        })();
+      },
+
       // 工具执行完成
       tool_result: () => {
         const d = data as { tool_name?: string; success?: boolean; result?: string };
         const tool = state.toolCalls.find((t) => t.tool_name === (d.tool_name || '') && t.status === 'executing');
         tool && (tool.status = 'completed', tool.result = d.result);
+        // Debounced clear: reset timer so effects persist across rapid tool calls
+        effectClearTimerRef.current && clearTimeout(effectClearTimerRef.current);
+        effectClearTimerRef.current = setTimeout(() => {
+          useCanvasStore.getState().clearAllNodeEffects();
+          effectClearTimerRef.current = null;
+        }, 1500);
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.role === 'ai' && last?.status === 'streaming') {
@@ -519,9 +682,20 @@ export function useSSEHandler() {
       canvas_updated: () => {
         const { theater_id } = data as { theater_id: string };
         const store = useCanvasStore.getState();
-        if (store.theaterId === theater_id) {
-          store.syncTheater(theater_id);
-        }
+        // Don't clear effects here — let the debounced timer in tool_result handle it
+        // so the animation stays visible while the canvas syncs.
+        const hasGhostNodes = store.nodes.some((n) => n.type === 'ghost');
+        const hasStreamingNodes = store.nodes.some(
+          (n) => n.type === 'storyboard' && (n.data as any)?._streaming
+        );
+        // When ghost/streaming nodes exist, delay sync so animations play.
+        // For local nodes (from tool_call immediate creation), sync immediately.
+        const hasLocalNodes = store.nodes.some((n) => n.id.startsWith('local-'));
+        const syncDelay = hasLocalNodes ? 0 : (hasGhostNodes || hasStreamingNodes) ? 1200 : 0;
+        setTimeout(() => {
+          const s = useCanvasStore.getState();
+          (s.theaterId === theater_id) && s.syncTheater(theater_id);
+        }, syncDelay);
       },
 
       // 上下文压缩完成（旧消息已被摘要替代）

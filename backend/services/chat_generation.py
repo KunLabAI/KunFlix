@@ -229,6 +229,8 @@ async def generate_single_agent(
             yield sse("error", {"message": "账户资金已冻结，请联系管理员"})
             return
 
+    TOOL_PENDING_PREFIX = "__TOOL_PENDING__:"
+    TOOL_DELTA_PREFIX = "__TOOL_DELTA__:"
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     # 从智能体配置读取工具调用轮次限制，默认100，范围10-200
     MAX_TOOL_ROUNDS = max(10, min(200, agent.max_tool_rounds or 100))
@@ -266,7 +268,19 @@ async def generate_single_agent(
                         xai_image_config=_eff_xai,
                         user_id=entity_id,
                     ):
-                        yield sse("text", {"chunk": chunk})
+                        # Early tool detection / delta signals from stream layer
+                        _is_pending = chunk.startswith(TOOL_PENDING_PREFIX)
+                        _is_delta = (not _is_pending) and chunk.startswith(TOOL_DELTA_PREFIX)
+                        _is_pending and (
+                            (yield sse("tool_pending", {"tool_name": chunk[len(TOOL_PENDING_PREFIX):]})) or True
+                        )
+                        _is_delta and (
+                            (yield sse("tool_call_delta", {
+                                "tool_name": chunk[len(TOOL_DELTA_PREFIX):].split(":", 1)[0],
+                                "chunk": chunk[len(TOOL_DELTA_PREFIX):].split(":", 1)[1] if ":" in chunk[len(TOOL_DELTA_PREFIX):] else "",
+                            })) or True
+                        )
+                        (not _is_pending and not _is_delta) and (yield sse("text", {"chunk": chunk}))
                     _llm_success = True
                     break
                 except Exception as llm_err:
@@ -315,7 +329,19 @@ async def generate_single_agent(
                                 xai_image_config=_eff_xai,
                                 user_id=entity_id,
                             ):
-                                yield sse("text", {"chunk": chunk})
+                                # Early tool detection / delta signals from stream layer
+                                _is_pending2 = chunk.startswith(TOOL_PENDING_PREFIX)
+                                _is_delta2 = (not _is_pending2) and chunk.startswith(TOOL_DELTA_PREFIX)
+                                _is_pending2 and (
+                                    (yield sse("tool_pending", {"tool_name": chunk[len(TOOL_PENDING_PREFIX):]})) or True
+                                )
+                                _is_delta2 and (
+                                    (yield sse("tool_call_delta", {
+                                        "tool_name": chunk[len(TOOL_DELTA_PREFIX):].split(":", 1)[0],
+                                        "chunk": chunk[len(TOOL_DELTA_PREFIX):].split(":", 1)[1] if ":" in chunk[len(TOOL_DELTA_PREFIX):] else "",
+                                    })) or True
+                                )
+                                (not _is_pending2 and not _is_delta2) and (yield sse("text", {"chunk": chunk}))
                             # 将保留的 thinking 合并回 full_response
                             result and setattr(result, 'full_response', _saved_thinking + result.full_response)
                             break

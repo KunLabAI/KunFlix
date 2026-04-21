@@ -50,6 +50,7 @@ export type StoryboardNodeData = {
   pivotData?: any; // Cached or computed data
   tableData?: Record<string, unknown>[]; // Raw table rows provided by Agent
   tableColumns?: { key: string; label: string; type?: 'text' | 'number' | 'image' | 'video' | 'audio' }[]; // Column definitions from Agent
+  _streaming?: boolean; // Transient flag: node is being streamed from LLM deltas
 };
 
 export type VideoNodeData = {
@@ -72,6 +73,8 @@ export type GhostNodeData = {
   targetNodeType: string;  // The node type being created (text/image/video/audio/storyboard)
   label?: string;
 };
+
+export type NodeEffect = 'reading' | 'scanning' | 'updating' | 'deleting' | 'connecting';
 
 export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | GhostNodeData>;
 
@@ -132,6 +135,19 @@ interface CanvasState {
   // Ghost nodes (AI creating animation)
   addGhostNode: (nodeType: string, positionX?: number, positionY?: number) => void;
   removeGhostNodes: () => void;
+
+  // Streaming node: progressive storyboard creation from tool argument deltas
+  updateStreamingNode: (partialData: Partial<StoryboardNodeData>) => void;
+  replaceGhostWithStreamingNode: (data: Partial<StoryboardNodeData>) => void;
+  replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>) => void;
+  removeStreamingNodes: () => void;
+
+  // AI operation effects on existing nodes
+  activeNodeEffects: Record<string, NodeEffect>;
+  setNodeEffect: (nodeId: string, effect: NodeEffect) => void;
+  setNodeEffects: (effects: Record<string, NodeEffect>) => void;
+  clearNodeEffect: (nodeId: string) => void;
+  clearAllNodeEffects: () => void;
 }
 
 const MAX_HISTORY = 50;
@@ -487,8 +503,12 @@ export const useCanvasStore = create<CanvasState>()(
           }
 
           if (nodesChanged || edgesChanged) {
-            // Remove ghost nodes when real nodes arrive from backend
-            const finalNodes = nodesChanged ? mergedNodes.filter((n) => n.type !== 'ghost') : undefined;
+            // Remove ghost, streaming, and local preview nodes when real nodes arrive from backend
+            const finalNodes = nodesChanged ? mergedNodes.filter((n) =>
+              n.type !== 'ghost'
+              && !(n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming)
+              && !n.id.startsWith('local-')
+            ) : undefined;
             set({
               ...(nodesChanged ? { nodes: finalNodes! } : {}),
               ...(edgesChanged ? { edges: mergedEdges } : {}),
@@ -512,7 +532,7 @@ export const useCanvasStore = create<CanvasState>()(
           await theaterApi.updateTheater(theaterId, { title: theaterTitle });
 
           const detail = await theaterApi.saveCanvas(theaterId, {
-            nodes: nodes.filter((n) => n.type !== 'ghost').map(nodeToApi),
+            nodes: nodes.filter((n) => n.type !== 'ghost' && !n.id.startsWith('streaming-') && !n.id.startsWith('local-')).map(nodeToApi),
             edges: edges.map(edgeToApi),
             canvas_viewport: viewport as Record<string, number>,
           });
@@ -566,17 +586,113 @@ export const useCanvasStore = create<CanvasState>()(
           position: { x: finalX, y: finalY },
           width: dims.width,
           height: dims.height,
-          selectable: false,
-          draggable: false,
+          zIndex: 1000,
+          selectable: true,
+          draggable: true,
           data: { targetNodeType: nodeType } as GhostNodeData,
         };
         set({ nodes: [...nodes, ghostNode] });
+
+        // Notify canvas to auto-pan viewport to the new ghost node
+        typeof window !== 'undefined' && window.dispatchEvent(
+          new CustomEvent('ghost-node-added', {
+            detail: { x: finalX + dims.width / 2, y: finalY + dims.height / 2 },
+          })
+        );
       },
 
       removeGhostNodes: () => {
         const { nodes } = get();
         const filtered = nodes.filter((n) => n.type !== 'ghost');
         (filtered.length !== nodes.length) && set({ nodes: filtered });
+      },
+
+      // Replace ghost node with a streaming storyboard node (first delta data arrived)
+      replaceGhostWithStreamingNode: (data: Partial<StoryboardNodeData>) => {
+        const { nodes } = get();
+        const ghostIdx = nodes.findIndex((n) => n.type === 'ghost');
+        const ghost = ghostIdx >= 0 ? nodes[ghostIdx] : null;
+        // No ghost to replace — create a new streaming node at default position
+        const position = ghost ? ghost.position : { x: 100, y: 100 };
+        const streamingId = `streaming-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const streamingNode: CanvasNode = {
+          id: streamingId,
+          type: 'storyboard',
+          position,
+          width: 420,
+          height: 300,
+          data: {
+            shotNumber: '',
+            description: '',
+            duration: 0,
+            _streaming: true,
+            ...data,
+          } as StoryboardNodeData,
+        };
+        // Replace ghost with streaming node, or append if no ghost
+        const newNodes = ghost
+          ? nodes.map((n) => n.id === ghost.id ? streamingNode : n)
+          : [...nodes, streamingNode];
+        set({ nodes: newNodes });
+      },
+
+      // Update the active streaming node with new partial data (append rows)
+      updateStreamingNode: (partialData: Partial<StoryboardNodeData>) => {
+        const { nodes } = get();
+        const streamIdx = nodes.findIndex((n) => n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming);
+        (streamIdx >= 0) && set({
+          nodes: nodes.map((n, i) => i === streamIdx ? {
+            ...n,
+            data: { ...n.data, ...partialData },
+          } : n),
+        });
+      },
+
+      // Replace ghost/streaming node with a local node using complete tool_call args
+      replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>) => {
+        const { nodes } = get();
+        // Find streaming node first, then ghost
+        const targetIdx = nodes.findIndex(
+          (n) => (n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming) || n.type === 'ghost'
+        );
+        const target = targetIdx >= 0 ? nodes[targetIdx] : null;
+        const position = target ? target.position : { x: 100, y: 100 };
+        const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const localNode: CanvasNode = {
+          id: localId,
+          type: nodeType,
+          position,
+          width: 420,
+          height: 300,
+          data: data as StoryboardNodeData,
+        };
+        const newNodes = target
+          ? nodes.map((n) => n.id === target.id ? localNode : n)
+          : [...nodes, localNode];
+        set({ nodes: newNodes });
+      },
+
+      // Remove streaming nodes (cleanup)
+      removeStreamingNodes: () => {
+        const { nodes } = get();
+        const filtered = nodes.filter((n) => !(n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming));
+        (filtered.length !== nodes.length) && set({ nodes: filtered });
+      },
+
+      // AI operation effects
+      activeNodeEffects: {},
+      setNodeEffect: (nodeId: string, effect: NodeEffect) => {
+        set({ activeNodeEffects: { ...get().activeNodeEffects, [nodeId]: effect } });
+      },
+      setNodeEffects: (effects: Record<string, NodeEffect>) => {
+        set({ activeNodeEffects: { ...get().activeNodeEffects, ...effects } });
+      },
+      clearNodeEffect: (nodeId: string) => {
+        const { [nodeId]: _, ...rest } = get().activeNodeEffects;
+        set({ activeNodeEffects: rest });
+      },
+      clearAllNodeEffects: () => {
+        set({ activeNodeEffects: {} });
       },
     }),
     {
