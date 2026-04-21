@@ -227,7 +227,17 @@
         "audioFormatError": "Only mp3, wav, ogg, flac, aac, m4a formats are supported",
         "audioSizeError": "Audio size cannot exceed 100MB",
         "videoFormatError": "Only mp4, webm, ogg formats are supported",
-        "videoSizeError": "Video size cannot exceed 500MB"
+        "videoSizeError": "Video size cannot exceed 500MB",
+        "maxReached": "Max reached ({{max}} images)",
+        "addImage": "Add Image",
+        "fromLibrary": "Select from Library",
+        "slotsLeft": "{{count}} slots left",
+        "alreadyAdded": "Added",
+        "exportGrid": "Export Grid",
+        "exporting": "Exporting...",
+        "exportName": "{{name}} - Export",
+        "exportRatioHigh": "High",
+        "exportRatioMax": "Maximum"
       },
       "preview": {
         "dragOrFullscreen": "Drag to move / Double-click for fullscreen preview"

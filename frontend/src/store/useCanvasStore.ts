@@ -36,9 +36,9 @@ export type CharacterNodeData = {
   name: string;
   description: string;
   avatar?: string;
-  imageUrl?: string | null;
+  imageUrl?: string | null;       // 保留向后兼容（单图场景）
+  images?: string[];              // 多图数组，最多9张
   uploading?: boolean;
-  fitMode?: 'cover' | 'contain';
 };
 
 export type StoryboardNodeData = {
