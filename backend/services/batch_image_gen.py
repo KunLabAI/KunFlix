@@ -69,6 +69,7 @@ async def _generate_single_image(
     prompt_index: int,
     config: BatchImageConfig,
     config_params: dict[str, Any],
+    user_id: str | None = None,
 ) -> SingleImageResult:
     """生成单张图片（内部函数）"""
     result = SingleImageResult(prompt_index=prompt_index, prompt=prompt)
@@ -92,7 +93,8 @@ async def _generate_single_image(
                 data = getattr(inline_data, 'data', None) if inline_data else None
                 if data:
                     result.image_url = await save_inline_image(
-                        getattr(inline_data, 'mime_type', 'image/png'), data
+                        getattr(inline_data, 'mime_type', 'image/png'), data,
+                        user_id=user_id,
                     )
         
         # Token 统计
@@ -116,6 +118,7 @@ async def batch_generate_images(
     prompts: list[str],
     config: BatchImageConfig | None = None,
     max_concurrent: int = 4,
+    user_id: str | None = None,
 ) -> BatchImageResult:
     """
     批量生成图片（并行调用）
@@ -162,7 +165,7 @@ async def batch_generate_images(
     
     async def _bounded_generate(idx: int, prompt: str) -> SingleImageResult:
         async with semaphore:
-            return await _generate_single_image(client, model, prompt, idx, config, config_params)
+            return await _generate_single_image(client, model, prompt, idx, config, config_params, user_id=user_id)
     
     tasks = [_bounded_generate(i, p) for i, p in enumerate(prompts)]
     results = await asyncio.gather(*tasks, return_exceptions=True)

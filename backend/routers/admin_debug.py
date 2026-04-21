@@ -438,6 +438,7 @@ async def _generate_single_agent_debug(
                         gemini_config=_eff_gemini,
                         tools=current_tools,
                         xai_image_config=_eff_xai,
+                        user_id=admin_id,
                     ):
                         yield sse("text", {"chunk": chunk})
                     _llm_success = True

@@ -156,6 +156,7 @@ class AgentExecutor:
         context: Optional[Dict[str, Any]] = None,
         system_prompt_override: Optional[str] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
+        user_id: str | None = None,
     ) -> AsyncGenerator[Tuple[str, StreamResult], None]:
         """
         Execute an agent with streaming output, bypassing DialogAgent.reply().
@@ -186,6 +187,7 @@ class AgentExecutor:
             thinking_mode=agent_config.thinking_mode or False,
             gemini_config=agent_config.gemini_config,
             tools=tools,
+            user_id=user_id,
         ):
             yield chunk, result
 
@@ -198,6 +200,7 @@ class AgentExecutor:
         tools: Optional[List[Dict[str, Any]]] = None,
         max_tool_rounds: int = 100,
         system_prompt_override: Optional[str] = None,
+        user_id: str | None = None,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
         """
         Execute an agent with streaming + tool-call loop.
@@ -242,6 +245,7 @@ class AgentExecutor:
                 thinking_mode=agent_config.thinking_mode or False,
                 gemini_config=agent_config.gemini_config,
                 tools=round_tools,
+                user_id=user_id,
             ):
                 last_result = result
                 yield ("chunk", chunk, result)

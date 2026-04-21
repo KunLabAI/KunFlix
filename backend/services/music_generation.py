@@ -18,16 +18,13 @@ from services.music_providers import (
     GeminiLyriaAdapter,
     extract_music_provider_type,
 )
-from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT
+from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT, MEDIA_DIR, get_relative_path
 from models import Asset, generate_uuid
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
-
-# Local media directory
-MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +66,8 @@ async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str,
     """实际执行音乐资产注册。"""
     try:
         filename = audio_url.rsplit("/", 1)[-1]  # e.g. "uuid.mp3"
-        filepath = MEDIA_DIR / filename
+        relative = get_relative_path(user_id, "audio", filename)
+        filepath = MEDIA_DIR / relative
         size = filepath.stat().st_size if filepath.exists() else None
         
         asset = Asset(
@@ -77,7 +75,7 @@ async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str,
             user_id=user_id,
             filename=filename,
             original_name=f"generated_{filename}",
-            file_path=filename,
+            file_path=relative,
             file_type="audio",
             mime_type=mime_type,
             size=size,
@@ -130,7 +128,7 @@ async def execute_music_task_background(
             return
 
         # ---- 保存音频文件 ----
-        audio_url = await save_audio_data(result.audio_data, result.mime_type)
+        audio_url = await save_audio_data(result.audio_data, result.mime_type, user_id=user_id)
         
         # ---- 注册用户资产 ----
         await _register_music_asset(audio_url, result.mime_type, user_id, db)

@@ -105,4 +105,10 @@ export const resourceApi = {
   async deleteAsset(id: string): Promise<void> {
     await api.delete(`/media/assets/${id}`);
   },
+
+  /** 批量硬删除资源 */
+  async batchDeleteAssets(ids: string[]): Promise<{ deleted: number; requested: number }> {
+    const { data } = await api.post<{ deleted: number; requested: number }>("/media/assets/batch-delete", { asset_ids: ids });
+    return data;
+  },
 };

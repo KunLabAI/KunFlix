@@ -56,18 +56,18 @@ class ArkBatchImageResult:
         return self.failed == 0
 
 
-async def _save_result_item(item, response_format: str) -> str:
+async def _save_result_item(item, response_format: str, user_id: str | None = None) -> str:
     """保存单张图片结果，返回本地 URL"""
     b64_data = getattr(item, "b64_json", None)
     url_data = getattr(item, "url", None)
 
     # b64_json 模式
     if b64_data:
-        return await save_inline_image("image/png", base64.b64decode(b64_data))
+        return await save_inline_image("image/png", base64.b64decode(b64_data), user_id=user_id)
 
     # url 模式
     if url_data:
-        return await save_image_from_url(url_data)
+        return await save_image_from_url(url_data, user_id=user_id)
 
     return ""
 
@@ -78,6 +78,7 @@ async def _generate_single_prompt(
     prompt: str,
     prompt_index: int,
     config: ArkBatchImageConfig,
+    user_id: str | None = None,
 ) -> ArkSingleImageResult:
     """对单个 prompt 调用火山方舟 Seedream 图像生成 API"""
     result = ArkSingleImageResult(prompt_index=prompt_index, prompt=prompt)
@@ -98,7 +99,7 @@ async def _generate_single_prompt(
         response = await client.images.generate(**generate_params)
 
         for item in response.data:
-            url = await _save_result_item(item, config.response_format)
+            url = await _save_result_item(item, config.response_format, user_id=user_id)
             url and result.image_urls.append(url)
 
         result.image_count = len(result.image_urls)
@@ -123,6 +124,7 @@ async def batch_generate_ark_images(
     config: ArkBatchImageConfig | None = None,
     base_url: str | None = None,
     max_concurrent: int = 4,
+    user_id: str | None = None,
 ) -> ArkBatchImageResult:
     """
     批量生成火山方舟 Seedream 图片（并行调用）
@@ -157,7 +159,7 @@ async def batch_generate_ark_images(
 
     async def _bounded_generate(idx: int, prompt: str) -> ArkSingleImageResult:
         async with semaphore:
-            return await _generate_single_prompt(client, model, prompt, idx, config)
+            return await _generate_single_prompt(client, model, prompt, idx, config, user_id=user_id)
 
     tasks = [_bounded_generate(i, p) for i, p in enumerate(prompts)]
     results = await asyncio.gather(*tasks, return_exceptions=True)

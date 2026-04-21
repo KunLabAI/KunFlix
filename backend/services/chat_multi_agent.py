@@ -14,7 +14,7 @@ from services.chat_utils import (
 )
 from services.chat_generation import generate_single_agent
 from services.orchestrator import DynamicOrchestrator
-from services.media_utils import MEDIA_DIR
+from services.media_utils import resolve_media_filepath
 
 logger = logging.getLogger(__name__)
 
@@ -130,8 +130,9 @@ async def _execute_complex_multi_agent(
     if edit_image_url:
         filename = extract_media_filename(edit_image_url)
         if filename:
-            _local_path = str(MEDIA_DIR / filename)
-            edit_image_data_url = await image_file_to_data_url(_local_path)
+            _resolved = resolve_media_filepath(filename)
+            _local_path = str(_resolved) if _resolved else None
+            _local_path and (edit_image_data_url := await image_file_to_data_url(_local_path))
             edit_image_data_url and logger.info(f"[Multi-Agent] Injected edit image: {filename}")
     
     # 将图片注入到最后一条用户消息或添加新的用户消息

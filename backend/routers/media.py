@@ -1,11 +1,11 @@
 """媒体文件服务路由"""
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
 from fastapi.responses import FileResponse
 from pathlib import Path
 import re
 import logging
 import uuid
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -24,6 +24,7 @@ from schemas import (
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
 from services.image_config_adapter import to_provider_config
+from services.media_utils import build_media_storage_path, resolve_media_filepath, MEDIA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,6 @@ _MAX_UPLOAD_SIZES = {
     "audio": 100 * 1024 * 1024,   # 100MB
 }
 _MAX_UPLOAD_LABELS = { "image": "50MB", "video": "500MB", "audio": "100MB" }
-
-MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
 # 安全文件名：UUID + 已知媒体扩展名（图片 + 视频 + 音频）
 _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov|mp3|wav|ogg)$')
@@ -110,7 +109,6 @@ async def upload_media(
 
     MEDIA_DIR.mkdir(exist_ok=True)
     new_filename = f"{uuid.uuid4()}.{ext}"
-    filepath = MEDIA_DIR / new_filename
 
     contents = await file.read()
 
@@ -140,9 +138,11 @@ async def upload_media(
         )
     )
 
+    # 写入用户隔离目录
+    filepath, relative_path = build_media_storage_path(current_user.id, file_type, new_filename)
     try:
         filepath.write_bytes(contents)
-        logger.info(f"Uploaded file saved: {new_filename} ({len(contents)} bytes)")
+        logger.info(f"Uploaded file saved: {relative_path} ({len(contents)} bytes)")
     except Exception as e:
         logger.error(f"Error saving uploaded file: {e}")
         raise HTTPException(status_code=500, detail="Failed to save file")
@@ -154,7 +154,7 @@ async def upload_media(
         user_id=current_user.id,
         filename=new_filename,
         original_name=file.filename,
-        file_path=new_filename,
+        file_path=relative_path,
         file_type=_derive_file_type(mime),
         mime_type=mime,
         size=len(contents),
@@ -234,9 +234,10 @@ async def update_asset(
             HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
         )
 
-        MEDIA_DIR.mkdir(exist_ok=True)
+        mime = _EXT_MIME[ext]
+        new_file_type = _derive_file_type(mime)
         new_filename = f"{uuid.uuid4()}.{ext}"
-        filepath = MEDIA_DIR / new_filename
+        filepath, relative_path = build_media_storage_path(current_user.id, new_file_type, new_filename)
 
         try:
             contents = await file.read()
@@ -245,16 +246,15 @@ async def update_asset(
             logger.error(f"Error saving replacement file: {e}")
             raise HTTPException(status_code=500, detail="Failed to save file")
 
-        # 删除旧文件
-        old_path = MEDIA_DIR / asset.filename
+        # 删除旧文件（file_path 兼容平铺和隔离两种结构）
+        old_path = MEDIA_DIR / asset.file_path
         old_path.unlink(missing_ok=True)
 
         # 更新记录
-        mime = _EXT_MIME[ext]
         asset.filename = new_filename
-        asset.file_path = new_filename
+        asset.file_path = relative_path
         asset.mime_type = mime
-        asset.file_type = _derive_file_type(mime)
+        asset.file_type = new_file_type
         asset.size = len(contents)
 
     await db.commit()
@@ -276,7 +276,7 @@ async def delete_asset(
     asset = result.scalars().first()
     asset or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Asset not found"))
 
-    filename = asset.filename
+    file_path = asset.file_path
     asset_size = asset.size or 0
 
     # 先删数据库记录
@@ -289,11 +289,46 @@ async def delete_asset(
 
     await db.commit()
 
-    # 再删文件系统文件
-    (MEDIA_DIR / filename).unlink(missing_ok=True)
-    logger.info(f"Hard deleted asset: {asset_id} / {filename}")
+    # 再删文件系统文件（file_path 兼容平铺和隔离两种结构）
+    (MEDIA_DIR / file_path).unlink(missing_ok=True)
+    logger.info(f"Hard deleted asset: {asset_id} / {file_path}")
 
     return {"detail": "Asset deleted"}
+
+
+@router.post("/assets/batch-delete")
+async def batch_delete_assets(
+    asset_ids: List[str] = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """批量硬删除资源（单事务，性能优化）"""
+    # 一次性查出当前用户拥有的目标资产
+    result = await db.execute(
+        select(Asset).where(Asset.id.in_(asset_ids), Asset.user_id == current_user.id)
+    )
+    assets = result.scalars().all()
+
+    total_freed = 0
+    file_paths: list[str] = []
+    for asset in assets:
+        total_freed += asset.size or 0
+        file_paths.append(asset.file_path)
+        await db.delete(asset)
+
+    # 一次性扣减存储配额
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    user.storage_used_bytes = max(0, (user.storage_used_bytes or 0) - total_freed)
+
+    await db.commit()
+
+    # 事务成功后再删文件（file_path 兼容平铺和隔离两种结构）
+    for fp in file_paths:
+        (MEDIA_DIR / fp).unlink(missing_ok=True)
+
+    logger.info(f"Batch deleted {len(assets)} assets for user {current_user.id}")
+    return {"deleted": len(assets), "requested": len(asset_ids)}
 
 
 @router.get("/storage-usage")
@@ -327,12 +362,12 @@ async def storage_usage(
 
 @router.get("/{filename}")
 async def serve_media(filename: str):
-    """安全地提供媒体文件（支持无扩展名的 UUID 回退查找）"""
-    # 优先精确匹配（带扩展名）
+    """安全地提供媒体文件（支持无扩展名的 UUID 回退查找，兼容平铺和用户隔离目录）"""
+    # 优先精确匹配（带扩展名）— resolve_media_filepath 自动处理平铺/隔离两种结构
     matched = _SAFE_FILENAME.match(filename)
     if matched:
-        filepath = MEDIA_DIR / filename
-        filepath.exists() or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
+        filepath = resolve_media_filepath(filename)
+        filepath or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
         ext = filename.rsplit(".", 1)[-1]
         return FileResponse(
             filepath,
@@ -343,8 +378,8 @@ async def serve_media(filename: str):
     # 回退：纯 UUID（LLM 模型可能在回复中截断文件扩展名）
     if _UUID_ONLY.match(filename):
         for ext in _FALLBACK_EXTS:
-            candidate = MEDIA_DIR / f"{filename}.{ext}"
-            if candidate.exists():
+            candidate = resolve_media_filepath(f"{filename}.{ext}")
+            if candidate:
                 return FileResponse(
                     candidate,
                     media_type=_EXT_MIME.get(ext, "application/octet-stream"),

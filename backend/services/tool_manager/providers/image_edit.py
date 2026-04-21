@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, generate_uuid
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
-from services.media_utils import MEDIA_DIR
+from services.media_utils import MEDIA_DIR, get_relative_path, resolve_media_filepath
 
 if TYPE_CHECKING:
     from services.tool_manager.context import ToolContext
@@ -75,23 +75,23 @@ async def _resolve_image_url(image_url: str, max_dimension: int = 0) -> str:
     match = re.match(r"^/api/media/(.+)$", image_url)
     if match:
         filename = match.group(1)
-        local_path = MEDIA_DIR / filename
+        local_path = resolve_media_filepath(filename) or (MEDIA_DIR / filename)
         return await asyncio.to_thread(_local_file_to_data_url, local_path, max_dimension)
     
     # 纯文件名或 UUID（无路径前缀）→ 尝试在 media 目录查找
     # 支持格式：xxx.jpg, xxx.png, xxx (无扩展名)
-    if image_url and not "/" in image_url:
-        # 先尝试直接查找
-        direct_path = MEDIA_DIR / image_url
-        if direct_path.exists():
-            return await asyncio.to_thread(_local_file_to_data_url, direct_path, max_dimension)
+    if image_url and "/" not in image_url:
+        # 先用 resolve_media_filepath 统一查找（兼容平铺和用户隔离目录）
+        resolved = resolve_media_filepath(image_url)
+        if resolved:
+            return await asyncio.to_thread(_local_file_to_data_url, resolved, max_dimension)
         
         # 如果没有扩展名，尝试匹配常见图片扩展名
         if "." not in image_url:
             for ext in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
-                candidate_path = MEDIA_DIR / (image_url + ext)
-                if candidate_path.exists():
-                    return await asyncio.to_thread(_local_file_to_data_url, candidate_path, max_dimension)
+                candidate = resolve_media_filepath(image_url + ext)
+                if candidate:
+                    return await asyncio.to_thread(_local_file_to_data_url, candidate, max_dimension)
     
     # 无法识别的格式，原样返回
     return image_url
@@ -227,6 +227,7 @@ async def _edit_via_xai(
     prompt: str,
     aspect_ratio: str | None,
     resolution: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Edit image via xAI API.
     
@@ -289,7 +290,7 @@ async def _edit_via_xai(
         return ""
     
     result_url = images[0].get("url", "")
-    result_url and (result_url := await save_image_from_url(result_url))
+    result_url and (result_url := await save_image_from_url(result_url, user_id=user_id))
     return result_url
 
 
@@ -321,6 +322,7 @@ async def _edit_via_gemini(
     prompt: str,
     aspect_ratio: str | None,
     image_size: str | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Edit image via Gemini API.
     
@@ -381,7 +383,8 @@ async def _edit_via_gemini(
             data = getattr(inline_data, "data", None) if inline_data else None
             if data:
                 return await save_inline_image(
-                    getattr(inline_data, "mime_type", "image/png"), data
+                    getattr(inline_data, "mime_type", "image/png"), data,
+                    user_id=user_id,
                 )
     
     return ""
@@ -495,7 +498,8 @@ async def _register_edited_image_asset(edited_url: str, ctx: "ToolContext") -> N
     # 无用户上下文时跳过
     try:
         filename = edited_url.rsplit("/", 1)[-1]  # e.g. "uuid.png"
-        filepath = MEDIA_DIR / filename
+        relative = get_relative_path(user_id, "image", filename)
+        filepath = MEDIA_DIR / relative
         ext = filename.rsplit(".", 1)[-1].lower()
         mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
                 "webp": "image/webp", "gif": "image/gif"}.get(ext, "image/png")
@@ -505,7 +509,7 @@ async def _register_edited_image_asset(edited_url: str, ctx: "ToolContext") -> N
             user_id=user_id,
             filename=filename,
             original_name=f"edited_{filename}",
-            file_path=filename,
+            file_path=relative,
             file_type="image",
             mime_type=mime,
             size=size,
@@ -597,6 +601,7 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
             image_urls=resolved_urls,
             prompt=prompt,
             aspect_ratio=final_aspect,
+            user_id=ctx.user_id,
             **extra,
         )
             

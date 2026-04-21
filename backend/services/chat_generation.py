@@ -264,6 +264,7 @@ async def generate_single_agent(
                         gemini_config=_eff_gemini,
                         tools=current_tools,
                         xai_image_config=_eff_xai,
+                        user_id=entity_id,
                     ):
                         yield sse("text", {"chunk": chunk})
                     _llm_success = True
@@ -312,6 +313,7 @@ async def generate_single_agent(
                                 gemini_config=_eff_gemini,
                                 tools=current_tools,
                                 xai_image_config=_eff_xai,
+                                user_id=entity_id,
                             ):
                                 yield sse("text", {"chunk": chunk})
                             # 将保留的 thinking 合并回 full_response

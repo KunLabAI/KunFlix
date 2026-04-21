@@ -25,6 +25,7 @@ from services.video_providers.model_capabilities import (
     VIDEO_MODEL_CAPABILITIES,
     get_model_capabilities,
 )
+from services.media_utils import resolve_media_filepath
 
 if TYPE_CHECKING:
     from models import Agent
@@ -43,10 +44,6 @@ _DEFAULT_DURATIONS = [4, 5, 6, 8, 10]
 _DEFAULT_RESOLUTIONS = ["480p", "720p", "768p", "1080p"]
 _DEFAULT_MODES = ["text_to_video", "image_to_video"]
 
-# 本地媒体目录 (与 media_utils.MEDIA_DIR 相同)
-_MEDIA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "media"
-
-
 def _resolve_local_media(url: str | None) -> str | None:
     """将本地 /api/media/xxx.jpg 路径转换为 base64 data URI。
 
@@ -59,9 +56,9 @@ def _resolve_local_media(url: str | None) -> str | None:
     if not is_local:
         return url
     filename = url.rsplit("/", 1)[-1]
-    filepath = _MEDIA_DIR / filename
-    if not filepath.exists():
-        logger.warning("Local media file not found: %s", filepath)
+    filepath = resolve_media_filepath(filename)
+    if not filepath:
+        logger.warning("Local media file not found: %s", filename)
         return url
     mime, _ = mimetypes.guess_type(str(filepath))
     mime = mime or "image/jpeg"

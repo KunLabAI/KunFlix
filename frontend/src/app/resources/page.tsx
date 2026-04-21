@@ -7,8 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Layers, Image as ImageIcon, Video, Music,
   LayoutGrid, List, FolderOpen, Loader2, Upload, X, AlertCircle,
-  Search, Home, LogOut, Settings
+  Search, Home, LogOut, Settings, CheckSquare, Trash2, Download,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useResourceStore, FileTypeFilter } from "@/store/useResourceStore";
 import { AssetItem } from "@/lib/resourceApi";
@@ -77,6 +80,10 @@ export default function ResourcesPage() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [batchMode, setBatchMode] = useState<"delete" | "download" | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchDeleteIds, setBatchDeleteIds] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -185,6 +192,164 @@ export default function ResourcesPage() {
   const handleRename = useCallback((asset: AssetItem) => setEditTarget({ asset, mode: "rename" }), []);
   const handleReplace = useCallback((asset: AssetItem) => setEditTarget({ asset, mode: "replace" }), []);
   const handleDelete = useCallback((asset: AssetItem) => setDeleteTarget(asset), []);
+  const handleToggleSelect = useCallback((asset: AssetItem) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(asset.id) ? next.delete(asset.id) : next.add(asset.id);
+      return next;
+    });
+  }, []);
+
+  // 全选 / 取消全选
+  const handleSelectAll = useCallback(() => {
+    const allIds = filteredAssets.map(a => a.id);
+    setSelectedIds(prev => prev.size === allIds.length ? new Set() : new Set(allIds));
+  }, [filteredAssets]);
+
+  // 进入批量模式
+  const enterBatchMode = useCallback((mode: "delete" | "download") => {
+    setBatchMode(mode);
+    setSelectionMode(true);
+    setSelectedIds(new Set());
+  }, []);
+
+  // 退出选择模式
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setBatchMode(null);
+    setSelectedIds(new Set());
+  }, []);
+
+  // 批量删除确认
+  const handleBatchDelete = useCallback(() => {
+    setBatchDeleteIds(Array.from(selectedIds));
+  }, [selectedIds]);
+
+  // 批量删除完成后清理
+  const handleBatchDeleteClose = useCallback(() => {
+    setBatchDeleteIds([]);
+    exitSelectionMode();
+  }, [exitSelectionMode]);
+
+  // 批量下载
+  const [isDownloading, setIsDownloading] = useState(false);
+  const handleBatchDownload = useCallback(async () => {
+    const selected = assets.filter(a => selectedIds.has(a.id));
+    selected.length === 0 && null;
+    setIsDownloading(true);
+    try {
+      for (const asset of selected) {
+        const a = document.createElement("a");
+        a.href = asset.url;
+        a.download = asset.original_name || asset.filename;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // 稍作延迟避免浏览器阻止
+        await new Promise(r => setTimeout(r, 300));
+      }
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [assets, selectedIds]);
+
+  // ---------------------------------------------------------------------------
+  // Rubber-band (marquee) selection
+  // ---------------------------------------------------------------------------
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; x: number; y: number } | null>(null);
+  const rubberBandRef = useRef(rubberBand);
+  rubberBandRef.current = rubberBand;
+
+  // 获取滚动容器（.overflow-y-auto 父元素）
+  const getScrollContainer = useCallback(() => {
+    return gridContainerRef.current?.closest(".overflow-y-auto") as HTMLElement | null;
+  }, []);
+
+  const handleMarqueeStart = useCallback((e: React.MouseEvent) => {
+    const tag = (e.target as HTMLElement).tagName.toLowerCase();
+    const isInteractive = ["button", "input", "a", "video", "audio"].includes(tag) ||
+      (e.target as HTMLElement).closest("button, a, [role=\"menuitem\"], [data-radix-collection-item]");
+    // 仅在选择模式 + 左键 + 非交互元素上触发
+    selectionMode && e.button === 0 && !isInteractive && (() => {
+      const container = gridContainerRef.current;
+      const scrollEl = getScrollContainer();
+      const rect = container?.getBoundingClientRect();
+      const scrollTop = scrollEl?.scrollTop ?? 0;
+      rect && setRubberBand({
+        startX: e.clientX - rect.left,
+        startY: e.clientY - rect.top + scrollTop,
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top + scrollTop,
+      });
+    })();
+  }, [selectionMode, getScrollContainer]);
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      const rb = rubberBandRef.current;
+      const container = gridContainerRef.current;
+      rb && container && (() => {
+        const rect = container.getBoundingClientRect();
+        const scrollEl = container.closest(".overflow-y-auto") as HTMLElement | null;
+        const scrollTop = scrollEl?.scrollTop ?? 0;
+        setRubberBand(prev => prev ? {
+          ...prev,
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top + scrollTop,
+        } : null);
+      })();
+    };
+
+    const handleUp = () => {
+      const rb = rubberBandRef.current;
+      const container = gridContainerRef.current;
+      rb && container && (() => {
+        const minX = Math.min(rb.startX, rb.x);
+        const maxX = Math.max(rb.startX, rb.x);
+        const minY = Math.min(rb.startY, rb.y);
+        const maxY = Math.max(rb.startY, rb.y);
+
+        // 忽略面积太小的拖拽（避免误触发）
+        const area = (maxX - minX) * (maxY - minY);
+        area > 100 && (() => {
+          const cards = container.querySelectorAll("[data-asset-id]");
+          const containerRect = container.getBoundingClientRect();
+          const scrollEl = container.closest(".overflow-y-auto") as HTMLElement | null;
+          const scrollTop = scrollEl?.scrollTop ?? 0;
+          const hitIds = new Set<string>();
+
+          cards.forEach(card => {
+            const cardRect = card.getBoundingClientRect();
+            // 将 card 位置转换为与 rubber-band 相同的坐标系（容器相对 + scrollTop）
+            const cardLeft = cardRect.left - containerRect.left;
+            const cardTop = cardRect.top - containerRect.top + scrollTop;
+            const cardRight = cardLeft + cardRect.width;
+            const cardBottom = cardTop + cardRect.height;
+
+            const intersects = cardLeft < maxX && cardRight > minX && cardTop < maxY && cardBottom > minY;
+            const id = card.getAttribute("data-asset-id");
+            intersects && id && hitIds.add(id);
+          });
+
+          setSelectedIds(prev => {
+            const next = new Set(prev);
+            hitIds.forEach(id => next.add(id));
+            return next;
+          });
+        })();
+      })();
+      setRubberBand(null);
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   // 编辑/删除/预览 dialog 状态
   const [editTarget, setEditTarget] = useState<{ asset: AssetItem; mode: "rename" | "replace" } | null>(null);
@@ -431,6 +596,38 @@ export default function ResourcesPage() {
                 <Upload className="w-4 h-4" />
                 <span className="hidden sm:inline">{t("resources.uploadFile")}</span>
               </button>
+
+              {/* Batch Management Dropdown */}
+              {selectionMode ? (
+                <button
+                  onClick={exitSelectionMode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 transition-colors bg-primary/10 text-primary border border-primary/30"
+                >
+                  <X className="w-4 h-4" />
+                  <span className="hidden sm:inline">{t("resources.cancel")}</span>
+                </button>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 transition-colors border border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    >
+                      <CheckSquare className="w-4 h-4" />
+                      <span className="hidden sm:inline">{t("resources.batchManage")}</span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onClick={() => enterBatchMode("delete")}>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {t("resources.batchDelete")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => enterBatchMode("download")}>
+                      <Download className="w-4 h-4 mr-2" />
+                      {t("resources.batchDownload")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 
@@ -461,6 +658,58 @@ export default function ResourcesPage() {
             })}
           </div>
         </div>
+
+        {/* Batch Selection Action Bar — 固定在 Sub Header 下方 */}
+        <AnimatePresence>
+          {selectionMode && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 pb-2 pt-1">
+                <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleSelectAll}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      {selectedIds.size === filteredAssets.length && filteredAssets.length > 0
+                        ? t("resources.deselectAll")
+                        : t("resources.selectAll")}
+                    </button>
+                    <span className="text-sm text-muted-foreground">
+                      {t("resources.selectedCount", { count: selectedIds.size })}
+                    </span>
+                  </div>
+
+                  {/* 根据 batchMode 显示对应操作按钮 */}
+                  {batchMode === "delete" && (
+                    <button
+                      onClick={handleBatchDelete}
+                      disabled={selectedIds.size === 0}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      {t("resources.deleteSelected")}
+                    </button>
+                  )}
+                  {batchMode === "download" && (
+                    <button
+                      onClick={handleBatchDownload}
+                      disabled={selectedIds.size === 0 || isDownloading}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {isDownloading ? t("resources.downloading") : t("resources.downloadSelected")}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Content */}
@@ -569,37 +818,60 @@ export default function ResourcesPage() {
           />
 
           {filteredAssets.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className={cn(
-              viewMode === "grid"
-                ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
-                : "flex flex-col gap-3"
-            )}
+          <div
+            ref={gridContainerRef}
+            className="relative"
+            onMouseDown={handleMarqueeStart}
           >
-            <AnimatePresence mode="popLayout">
-              {filteredAssets.map((asset, index) => (
-                <motion.div
-                  key={asset.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ delay: index * 0.03 }}
-                  layout
-                >
-                  <AssetCard
-                    asset={asset}
-                    viewMode={viewMode}
-                    onPreview={handlePreview}
-                    onRename={handleRename}
-                    onReplace={handleReplace}
-                    onDelete={handleDelete}
-                  />
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </motion.div>
+            {/* Rubber-band selection overlay */}
+            {rubberBand && (() => {
+              const left = Math.min(rubberBand.startX, rubberBand.x);
+              const top = Math.min(rubberBand.startY, rubberBand.y);
+              const width = Math.abs(rubberBand.x - rubberBand.startX);
+              const height = Math.abs(rubberBand.y - rubberBand.startY);
+              return (
+                <div
+                  className="absolute z-30 border-2 border-primary/60 bg-primary/10 rounded-sm pointer-events-none"
+                  style={{ left, top, width, height }}
+                />
+              );
+            })()}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className={cn(
+                viewMode === "grid"
+                  ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+                  : "flex flex-col gap-3"
+              )}
+            >
+              <AnimatePresence mode="popLayout">
+                {filteredAssets.map((asset, index) => (
+                  <motion.div
+                    key={asset.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{ delay: index * 0.03 }}
+                    layout
+                    data-asset-id={asset.id}
+                  >
+                    <AssetCard
+                      asset={asset}
+                      viewMode={viewMode}
+                      selectable={selectionMode}
+                      selected={selectedIds.has(asset.id)}
+                      onToggleSelect={handleToggleSelect}
+                      onPreview={handlePreview}
+                      onRename={handleRename}
+                      onReplace={handleReplace}
+                      onDelete={handleDelete}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          </div>
         ) : (
           !isLoading && (
             <motion.div
@@ -644,6 +916,13 @@ export default function ResourcesPage() {
       <AssetDeleteDialog
         asset={deleteTarget}
         onClose={() => setDeleteTarget(null)}
+      />
+
+      {/* Batch Delete Dialog */}
+      <AssetDeleteDialog
+        asset={null}
+        batchIds={batchDeleteIds}
+        onClose={handleBatchDeleteClose}
       />
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
