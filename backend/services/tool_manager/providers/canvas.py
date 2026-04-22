@@ -39,69 +39,7 @@ def _migrate_node_type(node_type: str) -> str:
     return NODE_TYPE_MIGRATION.get(node_type, node_type)
 
 
-# Node type definitions with descriptions for Agent understanding
-NODE_TYPE_INFO = {
-    "text": {
-        "description": "文本节点：用于剧本、文案、广告等文字内容。支持富文本格式。",
-        "fields": {
-            "title": "标题，字符串类型，必填",
-            "content": "正文内容，Markdown格式字符串。支持标题(#/##/###)、段落、加粗(**text**)、斜体(*text*)、代码块等Markdown语法。创建节点时必须提供此字段，更新节点时如果不需要修改内容则不要包含此字段。",
-            "tags": "标签列表，数组类型，可选，用于分类和筛选"
-        },
-        "example": {
-            "title": "故事大纲",
-            "content": "# 第一章\n\n故事开始...\n\n## 场景一\n\n主角登场。",
-            "tags": ["大纲", "第一章"]
-        }
-    },
-    "image": {
-        "description": "图像节点：用于角色设定、场景、海报等图像内容。需要调用生图模型生成图像，支持JPEG/PNG/JPG格式图像。",
-        "fields": {
-            "name": "图像名称，字符串类型",
-            "description": "图像描述，字符串类型，包含场景、人物等信息",
-            "imageUrl": "图片URL地址，字符串类型，支持jpeg/png/jpg格式",
-            "fitMode": "图片适配模式，字符串类型，可选值为cover(填充)或contain(适应)"
-        },
-        "example": {"name": "小明", "description": "主角，18岁，性格开朗", "imageUrl": "/media/xxx.jpg", "fitMode": "cover"}
-    },
-    "video": {
-        "description": "视频节点：用于动画、短片、视频内容。需要调用视频处理模型生成视频，支持MP4格式视频。",
-        "fields": {
-            "name": "视频名称，字符串类型",
-            "description": "视频描述，字符串类型，包含场景、时长等信息",
-            "videoUrl": "视频URL地址，字符串类型，支持mp4格式",
-            "fitMode": "视频适配模式，字符串类型，可选值为cover(填充)或contain(适应)"
-        },
-        "example": {"name": "开场动画", "description": "城市夜景转场", "videoUrl": "/media/xxx.mp4", "fitMode": "cover"}
-    },
-    "audio": {
-        "description": "音频节点：用于背景音乐、音效、配音等音频内容。支持MP3/WAV/OGG格式。",
-        "fields": {
-            "name": "音频名称，字符串类型",
-            "description": "音频描述，字符串类型，包含风格、用途等信息",
-            "audioUrl": "音频URL地址，字符串类型，支持mp3/wav/ogg格式",
-            "lyrics": "歌词文本，字符串类型，可选"
-        },
-        "example": {"name": "背景音乐", "description": "城市夜景氛围音乐", "audioUrl": "/media/xxx.mp3"}
-    },
-    "storyboard": {
-        "description": "分镜节点：用于分镜脚本、镜头设计等多维表格内容。支持自定义表格数据，支持在单元格内引用图片、视频、音频。",
-        "fields": {
-            "shotNumber": "镜头号，字符串类型，如'1-1', '2-3'",
-            "description": "镜头描述，字符串类型，描述画面内容",
-            "duration": "时长，整数类型，单位为秒",
-            "tableData": "表格数据行，数组类型，每个元素是一个对象代表一行数据。媒体列的值应为媒体URL路径（如'/api/media/xxx.jpg'）。例如：[{\"scene\": \"城市夜景\", \"type\": \"全景\", \"duration\": 5, \"ref_image\": \"/api/media/abc.jpg\"}]",
-            "tableColumns": "表格列定义，数组类型，每个元素包含key(字段名)、label(显示名)、type(列类型)。type支持: text(文本)、number(数字)、image(图片缩略图)、video(视频缩略图)、audio(音频播放器)。媒体类型列的值应为/api/media/路径或完整URL。例如：[{\"key\": \"scene\", \"label\": \"场景\", \"type\": \"text\"}, {\"key\": \"ref_image\", \"label\": \"参考图\", \"type\": \"image\"}]"
-        },
-        "example": {
-            "shotNumber": "1-1",
-            "description": "全景：城市夜景",
-            "duration": 5,
-            "tableColumns": [{"key": "scene", "label": "场景", "type": "text"}, {"key": "type", "label": "镜头类型", "type": "text"}, {"key": "duration", "label": "时长", "type": "number"}, {"key": "ref_image", "label": "参考图", "type": "image"}],
-            "tableData": [{"scene": "城市夜景", "type": "全景", "duration": 5, "ref_image": "/api/media/example1.jpg"}, {"scene": "主角特写", "type": "近景", "duration": 3, "ref_image": "/api/media/example2.jpg"}]
-        }
-    }
-}
+# Node type definitions — detailed descriptions live in SKILL.md (progressive disclosure)
 
 # Schema for validation (simplified)
 NODE_TYPE_SCHEMA = {
@@ -132,17 +70,6 @@ def _estimate_text_node_size(data: dict) -> tuple[int, int]:
 # ---------------------------------------------------------------------------
 # Tool Definitions (OpenAI format)
 # ---------------------------------------------------------------------------
-
-def _build_node_type_description() -> str:
-    lines = ["节点类型说明："]
-    for node_type, info in NODE_TYPE_INFO.items():
-        lines.append(f"\n**{node_type}**: {info['description']}")
-        lines.append("字段说明：")
-        for field, desc in info['fields'].items():
-            lines.append(f"  - {field}: {desc}")
-        lines.append("示例：") if "example" in info else None
-        ("example" in info) and lines.append(f"  {info['example']}")
-    return "\n".join(lines)
 
 
 def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
@@ -189,7 +116,7 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "create_canvas_node",
-                "description": "在画布上创建新节点。字段结构参见 Skill 文档中的节点类型说明。",
+                "description": "在画布上创建新节点。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -219,7 +146,7 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "update_canvas_node",
-                "description": "更新节点数据，只需提供要修改的字段（增量合并）。",
+                "description": "更新节点数据，只需提供要修改的字段（增量合并）。支持同时更新位置。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -231,8 +158,16 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
                             "type": "object",
                             "description": "要更新的字段。",
                         },
+                        "position_x": {
+                            "type": "number",
+                            "description": "新的X坐标，可选。",
+                        },
+                        "position_y": {
+                            "type": "number",
+                            "description": "新的Y坐标，可选。",
+                        },
                     },
-                    "required": ["node_id", "data"],
+                    "required": ["node_id"],
                 },
             },
         },
@@ -269,7 +204,7 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
             "type": "function",
             "function": {
                 "name": "create_canvas_edge",
-                "description": "在两个节点之间创建连线。标准方向：source_handle='right-source', target_handle='left-target'。",
+                "description": "在两个节点之间创建连线。",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -534,6 +469,8 @@ async def _exec_update_node(
 ) -> str:
     node_id = args.get("node_id", "")
     new_data = args.get("data", {})
+    position_x = args.get("position_x")
+    position_y = args.get("position_y")
     migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
 
     query = select(TheaterNode).where(
@@ -546,13 +483,28 @@ async def _exec_update_node(
     return _error_result("Node not found") if not node else (
         _error_result(f"Cannot update node of type '{node.node_type}'")
         if node.node_type not in migrated_target_types
-        else await _do_update_node(node, new_data, db)
+        else await _do_update_node(node, new_data, db, position_x=position_x, position_y=position_y)
     )
 
 
-async def _do_update_node(node: TheaterNode, new_data: dict, db: AsyncSession) -> str:
-    filtered_new_data = {k: v for k, v in new_data.items() if v is not None}
-    merged_data = {**(node.data or {}), **filtered_new_data}
+async def _do_update_node(
+    node: TheaterNode, new_data: dict, db: AsyncSession,
+    *, position_x: float | None = None, position_y: float | None = None,
+) -> str:
+    # 从 data 中过滤掉位置字段，避免污染 JSON 数据
+    _POSITION_KEYS = {"position_x", "position_y", "positionX", "positionY"}
+    filtered_new_data = {k: v for k, v in new_data.items() if v is not None and k not in _POSITION_KEYS}
+
+    # 兼容：如果 agent 把位置放在 data 内部，也能正确提取
+    position_x = position_x if position_x is not None else new_data.get("position_x", new_data.get("positionX"))
+    position_y = position_y if position_y is not None else new_data.get("position_y", new_data.get("positionY"))
+
+    # 更新数据库位置列
+    position_x is not None and setattr(node, "position_x", float(position_x))
+    position_y is not None and setattr(node, "position_y", float(position_y))
+
+    # 合并节点数据（增量更新）
+    merged_data = {**(node.data or {}), **filtered_new_data} if filtered_new_data else node.data
     node.data = merged_data
 
     await db.commit()
