@@ -1,15 +1,16 @@
-import React, { memo, useState, useRef } from 'react';
+import React, { memo, useState, useRef, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music, ChevronDown, Headphones, Quote } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Music, ChevronDown, Headphones, Quote, Plus, FolderOpen, Loader2, X } from 'lucide-react';
 import { useCanvasStore, AudioNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
@@ -24,9 +25,12 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.name || '');
   const [showLyrics, setShowLyrics] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
   // Sync external title changes
   React.useEffect(() => {
@@ -102,8 +106,42 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
 
   const handleUploadClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    setShowAddMenu(false);
     fileInputRef.current?.click();
   };
+
+  const handleAddClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowAddMenu(prev => !prev);
+  };
+
+  const handlePickFromLibrary = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowAddMenu(false);
+    setShowAssetPicker(true);
+    useResourceStore.getState().fetchAssets({ pageSize: 100, typeFilter: 'audio' });
+  };
+
+  const handleSelectAsset = (assetUrl: string) => {
+    updateNodeData(id, { audioUrl: assetUrl, uploading: false } as Partial<AudioNodeData>);
+    setShowAssetPicker(false);
+  };
+
+  // 添加菜单级联按钮失焦关闭
+  React.useEffect(() => {
+    if (!showAddMenu) return;
+    const handle = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        addMenuRef.current && !addMenuRef.current.contains(target) &&
+        !target.closest('[data-node-toolbar]')
+      ) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showAddMenu]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -291,25 +329,8 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
             className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-4 overflow-hidden" 
           >
             {!data.audioUrl && !isUploading && !uploadError && (
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-                  <Music className="w-6 h-6 text-amber-500" />
-                </div>
-                <Button 
-                  onClick={handleUploadClick} 
-                  variant="default" 
-                  role="button" 
-                  aria-label={t('canvas.node.upload.uploadAudio')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleUploadClick();
-                    }
-                  }}
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {t('canvas.node.upload.uploadAudio')}
-                </Button>
+              <div className="flex flex-col items-center justify-center gap-1 py-8">
+                <Headphones className="w-10 h-10 text-muted-foreground/30" />
               </div>
             )}
 
@@ -388,12 +409,18 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
 
         {/* 工具条 */}
         <NodeToolbar
+          className={showAddMenu ? '!opacity-100 !pointer-events-auto !translate-y-0' : undefined}
           actions={[
             {
               icon: <Quote className="h-3.5 w-3.5" />,
               onClick: handleReference,
               title: isReferenced ? t('canvas.node.toolbar.unreference') : t('canvas.node.toolbar.reference'),
               variant: isReferenced ? 'primary' : undefined,
+            },
+            {
+              icon: <Plus className="h-3.5 w-3.5" />,
+              onClick: handleAddClick,
+              title: t('canvas.node.upload.addAudio'),
             },
             {
               icon: <Copy className="h-3.5 w-3.5" />,
@@ -408,6 +435,31 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
             },
           ] as ToolbarAction[]}
         />
+
+        {/* 添加音频级联按钮 */}
+        {showAddMenu && (
+          <div
+            ref={addMenuRef}
+            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
+            style={{ bottom: '-100px' }}
+          >
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              onClick={(e) => { e.stopPropagation(); handleUploadClick(e); }}
+              title={t('canvas.node.upload.uploadAudio')}
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-border/50" />
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              onClick={(e) => { e.stopPropagation(); handlePickFromLibrary(e); }}
+              title={t('canvas.node.upload.fromLibrary')}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Right Edge */}
         <div className="edge-handle-wrapper right group/handle pointer-events-auto">
@@ -429,8 +481,118 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
           </div>
         </div>
       </div>
+
+      {/* 资产库选择弹窗 */}
+      {showAssetPicker && typeof document !== 'undefined' && createPortal(
+        <AudioAssetPickerDialog
+          currentUrl={data.audioUrl || ''}
+          onSelect={handleSelectAsset}
+          onClose={() => setShowAssetPicker(false)}
+          t={t}
+        />,
+        document.body
+      )}
     </>
   );
 };
 
 export default memo(AudioNode);
+
+// ============================================================
+// 子组件：音频资产库选择弹窗
+// ============================================================
+interface AudioAssetPickerDialogProps {
+  currentUrl: string;
+  onSelect: (url: string) => void;
+  onClose: () => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+function AudioAssetPickerDialog({ currentUrl, onSelect, onClose, t }: AudioAssetPickerDialogProps) {
+  const assets = useResourceStore((s) => s.assets);
+  const isLoading = useResourceStore((s) => s.isLoading);
+  const audioAssets = useMemo(() => assets.filter(a => a.file_type === 'audio'), [assets]);
+
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { e.key === 'Escape' && onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        className="bg-background border border-border/50 rounded-xl w-full max-w-lg max-h-[70vh] flex flex-col overflow-hidden shadow-xl animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-amber-500" />
+            <span className="text-sm font-semibold">{t('canvas.node.upload.fromLibrary')}</span>
+          </div>
+          <button
+            className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            onClick={onClose}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!isLoading && audioAssets.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Music className="w-10 h-10 mb-3 opacity-20" />
+              <span className="text-sm">{t('sidebar.noAudio')}</span>
+            </div>
+          )}
+
+          {!isLoading && audioAssets.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {audioAssets.map((asset) => {
+                const isSelected = currentUrl === asset.url;
+                return (
+                  <button
+                    key={asset.id}
+                    disabled={isSelected}
+                    onClick={() => onSelect(asset.url)}
+                    className={`relative flex items-center gap-3 rounded-lg border p-3 transition-all ${
+                      isSelected
+                        ? 'opacity-40 cursor-not-allowed border-border/30'
+                        : 'border-border/50 hover:border-amber-500/60 hover:ring-1 hover:ring-amber-500/30 cursor-pointer'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0">
+                      <Music className="w-5 h-5 text-amber-500" />
+                    </div>
+                    <div className="flex-1 min-w-0 text-left">
+                      <span className="text-sm font-medium truncate block">
+                        {asset.original_name || asset.filename}
+                      </span>
+                      {asset.duration && (
+                        <span className="text-[11px] text-muted-foreground">
+                          {Math.floor(asset.duration / 60)}:{String(Math.floor(asset.duration % 60)).padStart(2, '0')}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <span className="text-[10px] font-medium text-muted-foreground">{t('canvas.node.upload.alreadyAdded')}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

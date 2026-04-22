@@ -90,13 +90,24 @@ async def append_tool_round_with_errors(
     await _FORMAT_HANDLERS[is_anthropic](messages, result, tool_manager, ctx, valid_calls, error_calls)
 
 
+# Canvas mutation tools that must run sequentially to avoid position conflicts
+_CANVAS_SEQUENTIAL_TOOLS = frozenset({
+    "create_canvas_node", "update_canvas_node", "delete_canvas_node",
+    "create_canvas_edge", "delete_canvas_edge",
+})
+
+
 async def _execute_valid_calls_parallel(
     valid_calls: list, tool_manager: "ToolManager", ctx: "ToolContext",
 ) -> list[tuple[str, str]]:
-    """Execute valid tool calls in parallel, return list of (tc_id, content).
+    """Execute valid tool calls, return list of (tc_id, content).
 
-    Tools are fired concurrently via asyncio.gather so independent API calls
-    (e.g. 3× edit_image) run in parallel instead of sequentially.
+    Most tools are fired concurrently via asyncio.gather so independent API
+    calls (e.g. 3× edit_image) run in parallel instead of sequentially.
+
+    Canvas mutation tools (create/update/delete node/edge) are executed
+    sequentially so each call sees the previous commit and auto-position
+    calculations don't collide.
 
     Each parallel task gets its own AsyncSession to avoid SQLAlchemy
     ``IllegalStateChangeError`` when multiple tools commit concurrently.
@@ -109,7 +120,13 @@ async def _execute_valid_calls_parallel(
         logger.info(f"  {tc.name}({args}) → {len(content)} chars")
         return [(tc.id, content)]
 
-    # Multiple tools – each gets an independent DB session
+    # Split into sequential (canvas mutations) and parallel (everything else)
+    sequential_calls = [(tc, args) for tc, args in valid_calls if tc.name in _CANVAS_SEQUENTIAL_TOOLS]
+    parallel_calls = [(tc, args) for tc, args in valid_calls if tc.name not in _CANVAS_SEQUENTIAL_TOOLS]
+
+    results: list[tuple[str, str]] = []
+
+    # Helper for parallel tasks with isolated DB sessions
     async def _run(tc, args):
         async with AsyncSessionLocal() as session:
             isolated_ctx = replace(ctx, db=session)
@@ -117,8 +134,36 @@ async def _execute_valid_calls_parallel(
             logger.info(f"  {tc.name}({args}) → {len(content)} chars")
             return tc.id, content
 
-    results = await asyncio.gather(*[_run(tc, args) for tc, args in valid_calls])
-    return list(results)
+    # Run canvas mutations sequentially (each needs to see prior commits)
+    async def _run_sequential():
+        seq_results = []
+        for tc, args in sequential_calls:
+            async with AsyncSessionLocal() as session:
+                isolated_ctx = replace(ctx, db=session)
+                content = await get_tool_result(tool_manager, tc.name, args, isolated_ctx)
+                logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+                seq_results.append((tc.id, content))
+        return seq_results
+
+    # Execute both groups concurrently: sequential canvas ops as one task,
+    # parallel ops each as their own task
+    tasks = []
+    sequential_calls and tasks.append(_run_sequential())
+    tasks.extend(_run(tc, args) for tc, args in parallel_calls)
+
+    gathered = await asyncio.gather(*tasks)
+
+    # Unpack results: first item is a list (sequential), rest are tuples (parallel)
+    results = []
+    gi = 0
+    if sequential_calls:
+        results.extend(gathered[gi])
+        gi += 1
+    for _ in parallel_calls:
+        results.append(gathered[gi])
+        gi += 1
+
+    return results
 
 
 async def _append_anthropic_tool_round(

@@ -566,18 +566,56 @@ export const useCanvasStore = create<CanvasState>()(
         };
         const dims = GHOST_DIMENSIONS[nodeType] || { width: 420, height: 300 };
 
-        // Estimate position: replicate backend _calculate_auto_position logic
+        // Estimate position: replicate backend _calculate_auto_position grid logic
         // when agent doesn't provide explicit coordinates
         let finalX = positionX;
         let finalY = positionY;
         const needsAutoPosition = finalX == null || finalY == null;
         const { nodes } = get();
         const realNodes = nodes.filter((n) => n.type !== 'ghost');
-        const AUTO_X_OFFSET = 460;
-        const maxX = realNodes.reduce((max, n) => Math.max(max, n.position.x), -Infinity);
-        const autoX = realNodes.length > 0 ? maxX + AUTO_X_OFFSET : 100;
+
+        const GRID_GAP_X = 40;
+        const GRID_GAP_Y = 60;
+        const GRID_MAX_ROW_WIDTH = 2400;
+        const DEF_W = 420;
+        const DEF_H = 300;
+        const START_X = 100;
+        const START_Y = 100;
+
+        let autoX = START_X;
+        let autoY = START_Y;
+        if (needsAutoPosition && realNodes.length > 0) {
+          // Group nodes into rows by Y-band, track rightmost edge per row
+          const rowBand = DEF_H + GRID_GAP_Y;
+          const occupiedRows = new Map<number, number>();
+          realNodes.forEach((n) => {
+            const nw = n.width ?? n.measured?.width ?? DEF_W;
+            const edge = n.position.x + nw;
+            const rowKey = Math.round(n.position.y / rowBand) * rowBand;
+            occupiedRows.set(rowKey, Math.max(occupiedRows.get(rowKey) ?? 0, edge));
+          });
+          // Try to fit in existing row
+          let placed = false;
+          const sortedRows = [...occupiedRows.keys()].sort((a, b) => a - b);
+          for (const rowY of sortedRows) {
+            const rowRight = occupiedRows.get(rowY)!;
+            const candidateX = rowRight + GRID_GAP_X;
+            (candidateX + DEF_W <= GRID_MAX_ROW_WIDTH) && (autoX = candidateX, autoY = Math.max(rowY, START_Y), placed = true);
+            placed && (void 0); // break equivalent
+            if (placed) break;
+          }
+          // All rows full → new row below
+          !placed && (() => {
+            const maxBottom = realNodes.reduce((max, n) => {
+              const nh = n.height ?? n.measured?.height ?? DEF_H;
+              return Math.max(max, n.position.y + nh);
+            }, 0);
+            autoX = START_X;
+            autoY = maxBottom + GRID_GAP_Y;
+          })();
+        }
         finalX = finalX ?? autoX;
-        finalY = finalY ?? (needsAutoPosition ? 100 : 100);
+        finalY = finalY ?? autoY;
 
         const ghostId = `ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const ghostNode: CanvasNode = {
