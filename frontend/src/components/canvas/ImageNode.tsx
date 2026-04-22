@@ -716,26 +716,8 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
             className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden" 
           >
             {imageList.length === 0 && !isUploading && !uploadError && (
-              <div className="flex flex-col items-center gap-2">
-                <Button 
-                  onClick={handleUploadClick} 
-                  variant="default" 
-                  role="button" 
-                  aria-label={t('canvas.node.upload.uploadImage')}
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {t('canvas.node.upload.uploadImage')}
-                </Button>
-                <Button
-                  onClick={handlePickFromLibrary}
-                  variant="outline"
-                  size="sm"
-                  role="button"
-                  aria-label={t('canvas.node.upload.fromLibrary')}
-                >
-                  <FolderOpen className="w-3.5 h-3.5 mr-1.5" />
-                  {t('canvas.node.upload.fromLibrary')}
-                </Button>
+              <div className="flex flex-col items-center justify-center gap-1 py-8">
+                <ImageIcon className="w-10 h-10 text-muted-foreground/30" />
               </div>
             )}
 

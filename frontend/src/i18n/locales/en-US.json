@@ -252,6 +252,8 @@
         "videoSizeError": "Video size cannot exceed 500MB",
         "maxReached": "Max reached ({{max}} images)",
         "addImage": "Add Image",
+        "addVideo": "Add Video",
+        "addAudio": "Add Audio",
         "fromLibrary": "Select from Library",
         "slotsLeft": "{{count}} slots left",
         "alreadyAdded": "Added",

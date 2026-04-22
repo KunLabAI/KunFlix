@@ -1,15 +1,16 @@
-import React, { memo, useState, useRef, useCallback } from 'react';
+import React, { memo, useState, useRef, useCallback, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote, Plus, FolderOpen, Loader2, X } from 'lucide-react';
 import { useCanvasStore, VideoNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
@@ -24,9 +25,12 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.name || '');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showAssetPicker, setShowAssetPicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
 
   // Sync external title changes
   React.useEffect(() => {
@@ -139,8 +143,42 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
   const handleUploadClick = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    setShowAddMenu(false);
     fileInputRef.current?.click();
   };
+
+  const handleAddClick = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowAddMenu(prev => !prev);
+  };
+
+  const handlePickFromLibrary = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setShowAddMenu(false);
+    setShowAssetPicker(true);
+    useResourceStore.getState().fetchAssets({ pageSize: 100, typeFilter: 'video' });
+  };
+
+  const handleSelectAsset = (assetUrl: string) => {
+    updateNodeData(id, { videoUrl: assetUrl, uploading: false } as Partial<VideoNodeData>);
+    setShowAssetPicker(false);
+  };
+
+  // 添加菜单级联按钮失焦关闭
+  React.useEffect(() => {
+    if (!showAddMenu) return;
+    const handle = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        addMenuRef.current && !addMenuRef.current.contains(target) &&
+        !target.closest('[data-node-toolbar]')
+      ) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showAddMenu]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -332,21 +370,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
             className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden" 
           >
             {!data.videoUrl && !isUploading && !uploadError && (
-              <Button 
-                onClick={handleUploadClick} 
-                variant="default" 
-                role="button" 
-                aria-label={t('canvas.node.upload.uploadVideo')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleUploadClick();
-                  }
-                }}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                {t('canvas.node.upload.uploadVideo')}
-              </Button>
+              <div className="flex flex-col items-center justify-center gap-1 py-8">
+                <Film className="w-12 h-12 text-muted-foreground/10" />
+              </div>
             )}
 
             {data.videoUrl && (
@@ -418,6 +444,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
         {/* 工具条 */}
         <NodeToolbar
+          className={showAddMenu ? '!opacity-100 !pointer-events-auto !translate-y-0' : undefined}
           actions={[
             {
               icon: <Quote className="h-3.5 w-3.5" />,
@@ -426,10 +453,14 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
               variant: isReferenced ? 'primary' : undefined,
             },
             {
+              icon: <Plus className="h-3.5 w-3.5" />,
+              onClick: handleAddClick,
+              title: t('canvas.node.upload.addVideo'),
+            },
+            {
               icon: data.fitMode === 'cover' ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />,
               onClick: handleToggleFitMode,
               title: data.fitMode === 'cover' ? t('canvas.node.toolbar.fitContain') : t('canvas.node.toolbar.fitCover'),
-              ariaLabel: '切换视频适配模式',
             },
             {
               icon: <Copy className="h-3.5 w-3.5" />,
@@ -444,6 +475,31 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
             },
           ] as ToolbarAction[]}
         />
+
+        {/* 添加视频级联按钮 */}
+        {showAddMenu && (
+          <div
+            ref={addMenuRef}
+            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
+            style={{ bottom: '-100px' }}
+          >
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              onClick={(e) => { e.stopPropagation(); handleUploadClick(e); }}
+              title={t('canvas.node.upload.uploadVideo')}
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+            <div className="w-px h-4 bg-border/50" />
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+              onClick={(e) => { e.stopPropagation(); handlePickFromLibrary(e); }}
+              title={t('canvas.node.upload.fromLibrary')}
+            >
+              <FolderOpen className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Right Edge */}
         <div className="edge-handle-wrapper right group/handle pointer-events-auto">
@@ -465,8 +521,118 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           </div>
         </div>
       </div>
+
+      {/* 资产库选择弹窗 */}
+      {showAssetPicker && typeof document !== 'undefined' && createPortal(
+        <VideoAssetPickerDialog
+          currentUrl={data.videoUrl || ''}
+          onSelect={handleSelectAsset}
+          onClose={() => setShowAssetPicker(false)}
+          t={t}
+        />,
+        document.body
+      )}
     </>
   );
 };
 
 export default memo(VideoNode);
+
+// ============================================================
+// 子组件：视频资产库选择弹窗
+// ============================================================
+interface VideoAssetPickerDialogProps {
+  currentUrl: string;
+  onSelect: (url: string) => void;
+  onClose: () => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+function VideoAssetPickerDialog({ currentUrl, onSelect, onClose, t }: VideoAssetPickerDialogProps) {
+  const assets = useResourceStore((s) => s.assets);
+  const isLoading = useResourceStore((s) => s.isLoading);
+  const videoAssets = useMemo(() => assets.filter(a => a.file_type === 'video'), [assets]);
+
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { e.key === 'Escape' && onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      <div
+        className="bg-background border border-border/50 rounded-xl w-full max-w-lg max-h-[70vh] flex flex-col overflow-hidden shadow-xl animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-node-yellow" />
+            <span className="text-sm font-semibold">{t('canvas.node.upload.fromLibrary')}</span>
+          </div>
+          <button
+            className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            onClick={onClose}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          {isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!isLoading && videoAssets.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+              <Film className="w-10 h-10 mb-3 opacity-20" />
+              <span className="text-sm">{t('sidebar.noVideos')}</span>
+            </div>
+          )}
+
+          {!isLoading && videoAssets.length > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              {videoAssets.map((asset) => {
+                const isSelected = currentUrl === asset.url;
+                return (
+                  <button
+                    key={asset.id}
+                    disabled={isSelected}
+                    onClick={() => onSelect(asset.url)}
+                    className={`relative group rounded-lg border overflow-hidden aspect-video transition-all ${
+                      isSelected
+                        ? 'opacity-40 cursor-not-allowed border-border/30'
+                        : 'border-border/50 hover:border-node-yellow/60 hover:ring-1 hover:ring-node-yellow/30 cursor-pointer'
+                    }`}
+                  >
+                    <video
+                      src={asset.url}
+                      className="w-full h-full object-cover"
+                      preload="metadata"
+                      muted
+                    />
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
+                        <span className="text-[10px] font-medium text-muted-foreground">{t('canvas.node.upload.alreadyAdded')}</span>
+                      </div>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-black/50 backdrop-blur-sm p-1 translate-y-full group-hover:translate-y-0 transition-transform">
+                      <span className="text-[10px] text-white font-medium truncate block">
+                        {asset.original_name || asset.filename}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -115,6 +115,9 @@ NODE_TYPE_SCHEMA = {
 _DEFAULT_NODE_WIDTH = 420
 _DEFAULT_NODE_HEIGHT = 300
 _DEFAULT_X_OFFSET = 460
+_GRID_GAP_X = 40          # horizontal gap between nodes in grid
+_GRID_GAP_Y = 60          # vertical gap between rows
+_GRID_MAX_ROW_WIDTH = 2400 # wrap to next row when exceeding this
 
 
 def _estimate_text_node_size(data: dict) -> tuple[int, int]:
@@ -477,12 +480,53 @@ async def _do_create_node(
 
 
 async def _calculate_auto_position(theater_id: str, db: AsyncSession) -> tuple[float, float]:
-    query = select(func.max(TheaterNode.position_x)).where(TheaterNode.theater_id == theater_id)
-    result = await db.execute(query)
-    max_x = result.scalar()
+    """Find the next non-overlapping position using a right-edge scan.
 
-    new_x = (max_x + _DEFAULT_X_OFFSET) if max_x is not None else 100
-    return new_x, 100
+    Instead of naively using max(position_x) + offset (which ignores node width
+    and always puts nodes at y=100), we now:
+    1. Query all existing nodes' bounding boxes.
+    2. Find the rightmost edge (position_x + width).
+    3. Place the new node to the right with a gap, wrapping to a new row
+       when the row gets too wide.
+    """
+    query = select(
+        TheaterNode.position_x,
+        TheaterNode.position_y,
+        TheaterNode.width,
+        TheaterNode.height,
+    ).where(TheaterNode.theater_id == theater_id)
+    result = await db.execute(query)
+    rows = result.all()
+
+    # No existing nodes — start at origin
+    start_x, start_y = 100.0, 100.0
+    node_count = len(rows)
+    (node_count == 0) and None  # early-return below
+    if node_count == 0:
+        return start_x, start_y
+
+    # Compute the rightmost edge and the bottom edge of each node
+    right_edge = 0.0
+    occupied_rows: dict[float, float] = {}  # y -> max right edge at that y-band
+    for px, py, w, h in rows:
+        nw = w or _DEFAULT_NODE_WIDTH
+        nh = h or _DEFAULT_NODE_HEIGHT
+        edge = px + nw
+        right_edge = max(right_edge, edge)
+        # Track rows: round y to nearest grid row for grouping
+        row_key = round(py / (_DEFAULT_NODE_HEIGHT + _GRID_GAP_Y)) * (_DEFAULT_NODE_HEIGHT + _GRID_GAP_Y)
+        occupied_rows[row_key] = max(occupied_rows.get(row_key, 0), edge)
+
+    # Try to place in the first row that still has room
+    for row_y in sorted(occupied_rows.keys()):
+        row_right = occupied_rows[row_y]
+        candidate_x = row_right + _GRID_GAP_X
+        if candidate_x + _DEFAULT_NODE_WIDTH <= _GRID_MAX_ROW_WIDTH:
+            return candidate_x, max(row_y, start_y)
+
+    # All rows are full — start a new row below the bottommost node
+    max_bottom = max(py + (h or _DEFAULT_NODE_HEIGHT) for px, py, w, h in rows)
+    return start_x, max_bottom + _GRID_GAP_Y
 
 
 async def _exec_update_node(
