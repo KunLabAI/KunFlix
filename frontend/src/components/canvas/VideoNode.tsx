@@ -1,4 +1,4 @@
-import React, { memo, useState, useRef, useCallback, useMemo } from 'react';
+import React, { memo, useState, useRef, useMemo } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
