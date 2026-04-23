@@ -19,6 +19,8 @@ from services.video_providers.model_capabilities import get_model_capabilities
 from services.video_providers.virtual_human_presets import list_presets as list_virtual_human_presets
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
 from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
+import base64
+import mimetypes
 
 logger = logging.getLogger(__name__)
 
@@ -105,14 +107,22 @@ async def create_video_task(
     # 推断供应商类型
     provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(request.model, provider.provider_type)
     
+    # ── 本地 /api/media/ 路径转 base64 data URL（供应商需要 HTTPS 或 base64） ──
+    image_url = _resolve_local_media_to_data_url(request.image_url)
+    last_frame_image = _resolve_local_media_to_data_url(request.last_frame_image)
+    extension_video_url = _resolve_local_media_to_data_url(request.extension_video_url)
+    reference_images = [
+        {**img, "url": _resolve_local_media_to_data_url(img.get("url"))} for img in (request.reference_images or [])
+    ]
+
     # 构建视频上下文
     ctx = VideoContext(
         api_key=provider.api_key,
         model=request.model,
         prompt=request.prompt,
         provider_type=provider_type,
-        image_url=request.image_url,
-        last_frame_image=request.last_frame_image,
+        image_url=image_url,
+        last_frame_image=last_frame_image,
         duration=config.duration,
         quality=config.quality,
         aspect_ratio=config.aspect_ratio,
@@ -120,8 +130,8 @@ async def create_video_task(
         video_mode=request.video_mode,
         prompt_optimizer=config.prompt_optimizer,
         fast_pretreatment=config.fast_pretreatment,
-        reference_images=request.reference_images or [],
-        extension_video_url=request.extension_video_url,
+        reference_images=reference_images,
+        extension_video_url=extension_video_url,
         reference_videos=request.reference_videos or [],
         reference_audios=request.reference_audios or [],
         return_last_frame=request.return_last_frame,
@@ -242,8 +252,11 @@ async def get_video_task_status(
             task.status = "failed"
             task.error_message = str(e)
 
-    # 失败处理
-    (poll_result.status == "failed") and setattr(task, "error_message", poll_result.error)
+    # 失败处理 — 确保 error_message 始终为字符串
+    (poll_result.status == "failed") and setattr(
+        task, "error_message",
+        poll_result.error.get("message", str(poll_result.error)) if isinstance(poll_result.error, dict) else str(poll_result.error or "")
+    )
 
     await db.commit()
     await db.refresh(task)
@@ -300,6 +313,32 @@ async def get_virtual_human_presets(
     """获取可用的虚拟人像预制列表，支持按性别和风格筛选"""
     presets = await list_virtual_human_presets(gender=gender, style=style)
     return {"count": len(presets), "presets": presets}
+
+
+@router.get("/providers/video")
+async def list_video_providers(
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取可用的视频生成供应商及其模型（用户端，不含敏感信息）"""
+    result = await db.execute(select(LLMProvider).where(LLMProvider.is_active == True))
+    providers = result.scalars().all()
+
+    items = []
+    for p in providers:
+        # 从 model_metadata 中筛选 video 类型模型
+        video_models = [
+            {"name": model_name, "display_name": meta.get("display_name", model_name)}
+            for model_name, meta in (p.model_metadata or {}).items()
+            if meta.get("model_type") == "video"
+        ]
+        video_models and items.append({
+            "id": p.id,
+            "name": p.name,
+            "provider_type": p.provider_type,
+            "models": video_models,
+        })
+    return {"providers": items}
 
 
 @router.get("/model-capabilities/{model_name}")
@@ -394,3 +433,35 @@ async def _insert_video_chat_message(db: AsyncSession, task: VideoTask):
     )
     db.add(msg)
     task.message_id = msg.id
+
+
+def _resolve_local_media_to_data_url(url: str | None) -> str | None:
+    """本地 /api/media/ 路径 → base64 data URL
+    
+    视频供应商要求 HTTPS 或 base64 data URL，
+    画布节点引用的图片是本地 /api/media/... 路径，
+    需要读取磁盘文件并转换为 base64 data URL。
+    """
+    url or None  # fast return
+    is_local = url and url.startswith("/api/media/")
+    is_local or (url and not url.startswith("data:") and not url.startswith("http"))
+    
+    # 只处理 /api/media/ 前缀的本地路径
+    # asset:// 协议 (火山方舟虚拟人像库/已授权真人素材) 直接透传给 Ark API
+    (not url or url.startswith("http") or url.startswith("data:") or url.startswith("asset://")) and None
+    if not url or url.startswith("http") or url.startswith("data:") or url.startswith("asset://"):
+        return url
+    
+    # 提取文件名: "/api/media/abc/image/xxx.jpg" → "abc/image/xxx.jpg"
+    filename = url.replace("/api/media/", "", 1) if url.startswith("/api/media/") else url
+    filepath = resolve_media_filepath(filename)
+    
+    # 无法解析则直接返回原始 URL
+    filepath or logger.warning(f"Cannot resolve local media path: {url}")
+    if not filepath or not filepath.is_file():
+        return url
+    
+    mime_type = mimetypes.guess_type(str(filepath))[0] or "image/jpeg"
+    raw = filepath.read_bytes()
+    b64 = base64.b64encode(raw).decode("ascii")
+    return f"data:{mime_type};base64,{b64}"
