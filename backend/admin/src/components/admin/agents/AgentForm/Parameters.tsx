@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { LLMProvider } from '@/types';
+import { getModelDisplayName } from '@/lib/api-utils';
 
 // 积分定价维度映射表（避免 if-else）
 const COST_DIMENSIONS = [
@@ -73,9 +74,13 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   // 压缩供应商的模型列表
   const compactionModelList = useMemo(() => {
     const p = providers?.find(pr => pr.id === compactionProviderId);
-    return p
+    const models = p
       ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
       : [];
+    return models.map((m: string) => ({
+      value: m,
+      displayName: getModelDisplayName(m, p?.model_metadata),
+    }));
   }, [compactionProviderId, providers]);
 
   // 获取当前模型的 API 成本数据
@@ -247,8 +252,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                             <SelectValue placeholder="选择模型" />
                           </SelectTrigger>
                           <SelectContent>
-                            {compactionModelList.map((m: string) => (
-                              <SelectItem key={m} value={m}>{m}</SelectItem>
+                            {compactionModelList.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>{m.displayName}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

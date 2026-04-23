@@ -21,7 +21,8 @@ import {
   Film,
   Blocks,
   ServerCog,
-  Wrench
+  Wrench,
+  UserCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: '视频生成',
       href: '/admin/videos',
       icon: Film,
+    },
+    {
+      title: '虚拟人像',
+      href: '/admin/virtual-humans',
+      icon: UserCircle,
     },
     {
       title: '提示词模板',

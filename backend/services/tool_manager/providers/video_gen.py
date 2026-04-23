@@ -25,6 +25,7 @@ from services.video_providers.model_capabilities import (
     VIDEO_MODEL_CAPABILITIES,
     get_model_capabilities,
 )
+from services.video_providers.virtual_human_presets import list_presets as list_vh_presets
 from services.media_utils import resolve_media_filepath
 
 if TYPE_CHECKING:
@@ -37,6 +38,13 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 VIDEO_GEN_TOOL_NAME = "generate_video"
+VH_PRESETS_TOOL_NAME = "list_virtual_human_presets"
+
+# Seedance 2.0 系列模型 (支持虚拟人像)
+_SEEDANCE_V2_MODELS = frozenset({
+    "doubao-seedance-2-0-260128",
+    "doubao-seedance-2-0-fast-260128",
+})
 
 # Superset fallback enums (used when model capabilities are unknown)
 _DEFAULT_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"]
@@ -51,7 +59,9 @@ def _resolve_local_media(url: str | None) -> str | None:
     本地相对路径无法被远端 API 访问，需要读取文件内联编码。
     """
     # None 或已是可用格式 → 原样返回
-    is_local = url and url.startswith("/api/media/")
+    # asset:// 协议 (火山方舟虚拟人像库) 直接透传给 Ark API
+    is_asset = url and url.startswith("asset://")
+    is_local = url and url.startswith("/api/media/") and not is_asset
     (not is_local) and None  # no-op, just avoid nested if
     if not is_local:
         return url
@@ -358,6 +368,60 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Virtual Human Presets Tool
+# ---------------------------------------------------------------------------
+
+_VH_PRESETS_TOOL_DEF = {
+    "type": "function",
+    "function": {
+        "name": VH_PRESETS_TOOL_NAME,
+        "description": (
+            "List available virtual human presets from Volcano Engine Ark platform. "
+            "Seedance 2.0 does not allow uploading real human face images directly — "
+            "use these preset virtual humans as reference images instead. "
+            "Returns asset URIs (asset://<id>) that can be passed to generate_video's reference_images."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "gender": {
+                    "type": "string",
+                    "enum": ["male", "female"],
+                    "description": "Filter by gender. Omit to list all.",
+                },
+                "style": {
+                    "type": "string",
+                    "description": "Filter by style tag (e.g. 'realistic', 'youthful'). Omit to list all.",
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+
+async def _execute_vh_presets_tool(args: dict, ctx: "ToolContext") -> str:
+    """Execute list_virtual_human_presets tool."""
+    gender = args.get("gender")
+    style = args.get("style")
+    presets = await list_vh_presets(gender=gender, style=style)
+
+    lines = [
+        f"Found {len(presets)} virtual human preset(s).\n",
+        "Use the `asset_uri` value as an element in `reference_images` when calling `generate_video`.\n",
+    ]
+    for p in presets:
+        lines.append(
+            f"- **{p['name']}** | {p['gender']} | {p['style']}\n"
+            f"  Asset URI: `{p['asset_uri']}`\n"
+            f"  Preview: {p['preview_url']}\n"
+            f"  {p['description']}\n"
+        )
+
+    return "\n".join(lines) if presets else "No virtual human presets available. Contact admin to add presets."
+
+
+# ---------------------------------------------------------------------------
 # VideoGenProvider class
 # ---------------------------------------------------------------------------
 
@@ -370,7 +434,7 @@ class VideoGenProvider:
 
     @property
     def tool_names(self) -> frozenset[str]:
-        return frozenset({VIDEO_GEN_TOOL_NAME})
+        return frozenset({VIDEO_GEN_TOOL_NAME, VH_PRESETS_TOOL_NAME})
 
     async def build_defs(self, ctx: "ToolContext") -> list[dict]:
         # Skill-gate: 如果 video_tools skill 已配置但未加载，延迟注入
@@ -405,10 +469,19 @@ class VideoGenProvider:
         # 获取模型能力以动态构建参数枚举
         model_name = global_config.get("video_model", "")
         caps = get_model_capabilities(model_name)
-        return [_build_video_gen_tool_def(model_name, caps)]
+        defs = [_build_video_gen_tool_def(model_name, caps)]
+
+        # Seedance 2.0 系列模型注入虚拟人像预制工具
+        (model_name in _SEEDANCE_V2_MODELS) and defs.append(_VH_PRESETS_TOOL_DEF)
+
+        return defs
 
     async def execute(self, name: str, args: dict, ctx: "ToolContext") -> str:
-        return await _execute_video_gen_tool(args, ctx)
+        return (
+            await _execute_vh_presets_tool(args, ctx)
+            if name == VH_PRESETS_TOOL_NAME
+            else await _execute_video_gen_tool(args, ctx)
+        )
 
     def rebuild_defs(self, ctx: "ToolContext") -> list[dict] | None:
         return None
@@ -416,10 +489,16 @@ class VideoGenProvider:
     def get_tool_metadata(self) -> list[dict]:
         """Return static metadata for registry display (uses superset)."""
         d = _build_video_gen_tool_def()
+        vh = _VH_PRESETS_TOOL_DEF
         return [
             {
                 "name": d["function"]["name"],
                 "description": d["function"]["description"],
                 "parameters": d["function"]["parameters"],
-            }
+            },
+            {
+                "name": vh["function"]["name"],
+                "description": vh["function"]["description"],
+                "parameters": vh["function"]["parameters"],
+            },
         ]

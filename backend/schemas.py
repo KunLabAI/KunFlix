@@ -158,6 +158,7 @@ class LLMProviderBase(BaseModel):
     is_default: bool = False
     config_json: Dict[str, Any] = {}
     model_costs: Dict[str, Dict[str, float]] = Field(default_factory=dict)  # Per-model API costs (USD)
+    model_metadata: Dict[str, Dict[str, str]] = Field(default_factory=dict)  # Per-model metadata (type & display_name)
 
 
 class LLMProviderCreate(LLMProviderBase):
@@ -175,6 +176,7 @@ class LLMProviderUpdate(BaseModel):
     is_default: Optional[bool] = None
     config_json: Optional[Dict[str, Any]] = None
     model_costs: Optional[Dict[str, Dict[str, float]]] = None
+    model_metadata: Optional[Dict[str, Dict[str, str]]] = None
 
 
 class LLMProviderResponse(LLMProviderBase):
@@ -975,9 +977,58 @@ class ToolConfigResponse(ToolConfigBase):
 
 
 # ---------------------------------------------------------------------------
+# Virtual Human Preset schemas (虚拟人像预制)
+# ---------------------------------------------------------------------------
+class VirtualHumanPresetCreate(BaseModel):
+    """创建虚拟人像"""
+    asset_id: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=100)
+    gender: str = Field(..., pattern=r"^(male|female)$")
+    style: str = Field(..., min_length=1, max_length=50)
+    preview_url: str = Field(..., min_length=1, max_length=2000)
+    description: str = Field(default="", max_length=500)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class VirtualHumanPresetUpdate(BaseModel):
+    """更新虚拟人像"""
+    asset_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    gender: Optional[str] = Field(None, pattern=r"^(male|female)$")
+    style: Optional[str] = Field(None, min_length=1, max_length=50)
+    preview_url: Optional[str] = Field(None, min_length=1, max_length=2000)
+    description: Optional[str] = Field(None, max_length=500)
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class VirtualHumanPresetResponse(BaseModel):
+    """虚拟人像响应"""
+    id: str
+    asset_id: str
+    name: str
+    gender: str
+    style: str
+    preview_url: str
+    description: str = ""
+    is_active: bool = True
+    sort_order: int = 0
+    asset_uri: str = ""
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("asset_uri", mode="before")
+    @classmethod
+    def _compute_asset_uri(cls, v: Any, info: Any) -> str:
+        return v or ""
+
+
+# ---------------------------------------------------------------------------
 # Music Task (音乐生成任务)
 # ---------------------------------------------------------------------------
-
 class MusicTaskResponse(BaseModel):
     """音乐生成任务响应"""
     id: str

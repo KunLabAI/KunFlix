@@ -21,6 +21,8 @@ import {
 } from '@/components/ui/select';
 import { LLMProvider, ImageProviderCapability, ImageGenToolConfigData } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
+import { collectModelsByType } from '@/lib/api-utils';
+import { AlertCircle } from 'lucide-react';
 
 // 标签映射表
 const ASPECT_RATIO_LABELS: Record<string, string> = {
@@ -61,7 +63,6 @@ export default function ImageGenConfigDialog({
 
   // 本地表单状态
   const [enabled, setEnabled] = useState(false);
-  const [providerId, setProviderId] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<string>('');
   const [quality, setQuality] = useState<string>('');
@@ -72,7 +73,6 @@ export default function ImageGenConfigDialog({
   useEffect(() => {
     const cfg = initialConfig;
     setEnabled(!!cfg?.image_generation_enabled);
-    setProviderId(cfg?.image_provider_id || '');
     setModel(cfg?.image_model || '');
     setAspectRatio(cfg?.image_config?.aspect_ratio || '');
     setQuality(cfg?.image_config?.quality || '');
@@ -80,19 +80,21 @@ export default function ImageGenConfigDialog({
     setOutputFormat(cfg?.image_config?.output_format || '');
   }, [initialConfig]);
 
-  // 当前选中供应商类型
-  const providerType = useMemo(() => {
-    const p = providers.find(pr => pr.id === providerId);
-    return p?.provider_type?.toLowerCase() || '';
-  }, [providerId, providers]);
+  // 按 model_type='image' 收集所有图像模型（扁平化，跨供应商）
+  const imageModels = useMemo(
+    () => collectModelsByType(providers, 'image'),
+    [providers],
+  );
 
-  // 当前供应商的模型列表
-  const modelList = useMemo(() => {
-    const p = providers.find(pr => pr.id === providerId);
-    return p
-      ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
-      : [];
-  }, [providerId, providers]);
+  // 当前选中模型对应的供应商类型（自动反推）
+  const selectedEntry = useMemo(
+    () => imageModels.find(m => m.value === model),
+    [imageModels, model],
+  );
+  const providerType = useMemo(() => {
+    const p = providers.find(pr => pr.id === selectedEntry?.providerId);
+    return p?.provider_type?.toLowerCase() || '';
+  }, [selectedEntry, providers]);
 
   // 当前供应商能力
   const caps = useMemo(
@@ -105,7 +107,7 @@ export default function ImageGenConfigDialog({
     try {
       const config: ImageGenToolConfigData = {
         image_generation_enabled: enabled,
-        image_provider_id: enabled ? (providerId || null) : null,
+        image_provider_id: enabled ? (selectedEntry?.providerId || null) : null,
         image_model: enabled ? (model || null) : null,
         image_config: enabled ? {
           aspect_ratio: aspectRatio || null,
@@ -148,41 +150,33 @@ export default function ImageGenConfigDialog({
 
           {enabled && (
             <div className="space-y-4 pt-2 border-t">
-              {/* 图像供应商 */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">图像供应商</Label>
-                <Select
-                  value={providerId}
-                  onValueChange={(val) => {
-                    setProviderId(val);
-                    setModel('');
-                  }}
-                >
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="选择图像供应商" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {providers.filter(p => p.is_active).map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* 无可用模型提示 */}
+              {imageModels.length === 0 && (
+                <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>
+                    未找到图像模型。请先在「供应商管理」中为供应商的模型设置「图像模型」类型。
+                  </span>
+                </div>
+              )}
 
-              {/* 图像模型 */}
+              {/* 图像模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">图像模型</Label>
                 <Select
                   value={model}
                   onValueChange={setModel}
-                  disabled={!providerId}
+                  disabled={imageModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={providerId ? "选择模型" : "请先选择供应商"} />
+                    <SelectValue placeholder={imageModels.length === 0 ? "无可用图像模型" : "选择图像模型"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {modelList.map((m: string) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    {imageModels.map((m) => (
+                      <SelectItem key={`${m.providerId}:${m.value}`} value={m.value}>
+                        {m.displayName}
+                        <span className="ml-2 text-muted-foreground text-[11px]">({m.providerName})</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

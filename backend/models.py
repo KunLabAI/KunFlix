@@ -187,6 +187,9 @@ class LLMProvider(Base):
     # Per-model API costs in USD: {"model_name": {"input": 0.125, "text_output": 0.75, ...}}
     model_costs = Column(JSON, default=dict)
 
+    # Per-model metadata: {"model_name": {"model_type": "language|image|video|audio|multimodal", "display_name": "可选别称"}}
+    model_metadata = Column(JSON, default=dict)
+
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -517,6 +520,27 @@ class AdminDebugMessage(Base):
     content = Column(Text)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class VirtualHumanPreset(Base):
+    """火山方舟预制虚拟人像"""
+    __tablename__ = "virtual_human_presets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    asset_id = Column(String(100), unique=True, nullable=False, index=True)  # 火山方舟 asset ID
+    name = Column(String(100), nullable=False)
+    gender = Column(String(10), nullable=False)           # male / female
+    style = Column(String(50), nullable=False)             # realistic / youthful 等
+    preview_url = Column(String(2000), nullable=False)     # 缩略图 URL（火山方舟签名 URL 较长）
+    description = Column(String(500), default="")
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)                # 排序权重
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    @property
+    def asset_uri(self) -> str:
+        return f"asset://{self.asset_id}"
 
 
 class ToolConfig(Base):

@@ -90,6 +90,7 @@ export interface LLMProvider {
   models: string[] | string;
   is_active: boolean;
   model_costs?: Record<string, Record<string, number>>;
+  model_metadata?: Record<string, { model_type?: string; display_name?: string }>;
 }
 
 export interface AgentFormValues extends Omit<Agent, 'id' | 'created_at' | 'updated_at'> {
@@ -450,4 +451,44 @@ export interface MusicTaskResponse {
   input_image_count: number;
   created_at: string;
   completed_at?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Virtual Human Preset types (火山方舟预制虚拟人像)
+// ---------------------------------------------------------------------------
+export interface VirtualHumanPreset {
+  id: string;
+  asset_id: string;
+  name: string;
+  gender: 'male' | 'female';
+  style: string;
+  preview_url: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+  asset_uri: string;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface VirtualHumanPresetCreate {
+  asset_id: string;
+  name: string;
+  gender: 'male' | 'female';
+  style: string;
+  preview_url: string;
+  description?: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface VirtualHumanPresetUpdate {
+  asset_id?: string;
+  name?: string;
+  gender?: 'male' | 'female';
+  style?: string;
+  preview_url?: string;
+  description?: string;
+  is_active?: boolean;
+  sort_order?: number;
 }

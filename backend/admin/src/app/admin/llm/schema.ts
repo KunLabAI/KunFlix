@@ -21,6 +21,14 @@ export const MODEL_TYPE_TAGS = [
   '多模态模型'
 ] as const;
 
+export const MODEL_TYPE_OPTIONS = [
+  { value: 'language', label: '语言模型' },
+  { value: 'image', label: '图像模型' },
+  { value: 'video', label: '视频模型' },
+  { value: 'audio', label: '音频模型' },
+  { value: 'multimodal', label: '多模态模型' },
+] as const;
+
 export const PROVIDER_ICONS: Record<string, string> = {
   openai: '/provider/openai.svg',
   azure: '/provider/azureai-color.svg',
@@ -66,6 +74,7 @@ export const formSchema = z.object({
   models: z.array(z.object({ 
     value: z.string().min(1, "请输入模型名称"),
     type: z.string().optional(),
+    display_name: z.string().optional(),
   })).min(1, "至少需要一个模型"),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
@@ -94,4 +103,5 @@ export type LLMProvider = {
   api_key?: string;
   config_json?: any;
   model_costs?: Record<string, Record<string, number>>;
+  model_metadata?: Record<string, { model_type?: string; display_name?: string }>;
 };
