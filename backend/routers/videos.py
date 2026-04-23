@@ -16,6 +16,7 @@ from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
 from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
+from services.video_providers.virtual_human_presets import list_presets as list_virtual_human_presets
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
 from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
 
@@ -288,6 +289,17 @@ async def get_session_video_tasks(
     )
     tasks = result.scalars().all()
     return [_build_task_response(t) for t in tasks]
+
+
+@router.get("/virtual-human-presets")
+async def get_virtual_human_presets(
+    gender: Optional[str] = None,
+    style: Optional[str] = None,
+    current_user=Depends(get_current_active_user_or_admin),
+):
+    """获取可用的虚拟人像预制列表，支持按性别和风格筛选"""
+    presets = await list_virtual_human_presets(gender=gender, style=style)
+    return {"count": len(presets), "presets": presets}
 
 
 @router.get("/model-capabilities/{model_name}")

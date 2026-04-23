@@ -29,16 +29,17 @@ logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
 # 保留应用日志
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, WebSocket, BackgroundTasks
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, WebSocket, BackgroundTasks, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 import os
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from models import User
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, theaters, skills_api, admin_debug, admin_tools, music, admin_dashboard
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, theaters, skills_api, admin_debug, admin_tools, music, admin_dashboard, admin_virtual_humans
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -112,6 +113,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(request: Request, exc: RequestValidationError):
+    logger.error("[422] %s %s => %s", request.method, request.url.path, exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 # DEBUG: Auth logging middleware (disabled — BaseHTTPMiddleware has significant
 # performance overhead on every request including SSE streams.  Re-enable only
 # when actively debugging authentication issues.)
@@ -160,6 +168,7 @@ app.include_router(admin_debug.router)
 app.include_router(admin_tools.router)
 app.include_router(music.router)
 app.include_router(admin_dashboard.router)
+app.include_router(admin_virtual_humans.router)
 
 
 @app.get("/")

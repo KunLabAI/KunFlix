@@ -33,7 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from '@/components/ui/use-toast';
 import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PRESET_COST_DIMENSIONS, MODEL_TYPE_TAGS, PROVIDER_OPTIONS, formSchema, LLMProvider } from '../schema';
+import { PRESET_COST_DIMENSIONS, MODEL_TYPE_TAGS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, formSchema, LLMProvider } from '../schema';
 
 interface ProviderFormProps {
   initialData?: LLMProvider;
@@ -55,9 +55,9 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       provider_type: initialData?.provider_type || "",
       tags: initialData?.tags || [],
       models: initialData?.models.map(m => {
-        // 不再从 config_json 恢复 model_tags
-        return { value: m, type: "" };
-      }) || [{ value: "", type: "" }],
+        const meta = initialData?.model_metadata?.[m];
+        return { value: m, type: meta?.model_type || "", display_name: meta?.display_name || "" };
+      }) || [{ value: "", type: "", display_name: "" }],
       base_url: initialData?.base_url || "",
       api_key: initialData?.api_key || "",
       config_json: initialData?.config_json && typeof initialData.config_json === 'object' ? JSON.stringify(initialData.config_json, null, 2) : (initialData?.config_json || "{}"),
@@ -142,18 +142,24 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       // });
 
       const configJsonObj = JSON.parse(values.config_json || '{}');
-      // 移除自动添加 model_tags 的逻辑，避免干扰测试连接
-      // if (Object.keys(modelTags).length > 0) {
-      //   configJsonObj.model_tags = modelTags;
-      // } else {
-      //   delete configJsonObj.model_tags;
-      // }
+
+      // 构造 model_metadata: {"model_name": {"model_type": "...", "display_name": "..."}}
+      const modelMetadata: Record<string, { model_type?: string; display_name?: string }> = {};
+      values.models.forEach(m => {
+        const entry: { model_type?: string; display_name?: string } = {};
+        if (m.type) entry.model_type = m.type;
+        if (m.display_name) entry.display_name = m.display_name;
+        if (Object.keys(entry).length > 0) {
+          modelMetadata[m.value] = entry;
+        }
+      });
 
       const submitValues = {
         ...values,
         models: modelNames,
         config_json: configJsonObj,
         model_costs: cleanedCosts,
+        model_metadata: modelMetadata,
       };
 
       if (initialData) {
@@ -328,7 +334,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                   <CardContent className="px-0 space-y-6">
                     <div className="space-y-4">
                       {fields.map((field, index) => (
-                        <div key={field.id} className="flex gap-4 items-start">
+                        <div key={field.id} className="flex gap-3 items-start">
                           <FormField
                             control={form.control}
                             name={`models.${index}.value`}
@@ -341,28 +347,39 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                               </FormItem>
                             )}
                           />
-                          {/* 移除了模型类型下拉框，因为不再将 type 存入 config_json */}
-                          {/* <FormField
+                          <FormField
+                            control={form.control}
+                            name={`models.${index}.display_name`}
+                            render={({ field }) => (
+                              <FormItem className="w-[160px]">
+                                <FormControl>
+                                  <Input placeholder="模型别称（选填）" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
                             control={form.control}
                             name={`models.${index}.type`}
                             render={({ field }) => (
-                              <FormItem className="w-[180px]">
+                              <FormItem className="w-[140px]">
                                 <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                                   <FormControl>
                                     <SelectTrigger>
-                                      <SelectValue placeholder="模型标签" />
+                                      <SelectValue placeholder="模型类型" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    {MODEL_TYPE_TAGS.map((tag) => (
-                                      <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                                    {MODEL_TYPE_OPTIONS.map((opt) => (
+                                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                                 <FormMessage />
                               </FormItem>
                             )}
-                          /> */}
+                          />
                           <Button
                             type="button"
                             variant="ghost"
@@ -380,7 +397,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => append({ value: "", type: "" })}
+                        onClick={() => append({ value: "", type: "", display_name: "" })}
                         className="w-full border-dashed"
                       >
                         <Plus className="mr-2 h-4 w-4" /> 添加模型

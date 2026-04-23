@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from '@/components/ui/textarea';
 import { LLMProvider } from '@/types';
-import { parseProviderModels } from '@/lib/api-utils';
+import { parseProviderModelsWithMeta } from '@/lib/api-utils';
 
 interface BasicInfoProps {
   providers: LLMProvider[];
@@ -37,7 +37,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
   const availableModels = useMemo(() => {
     if (!selectedProviderId || !providers) return [];
     const provider = providers.find(p => p.id === selectedProviderId);
-    return provider ? parseProviderModels(provider.models) : [];
+    return provider ? parseProviderModelsWithMeta(provider.models, provider.model_metadata) : [];
   }, [selectedProviderId, providers]);
 
   return (
@@ -147,7 +147,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 <Select 
                   onValueChange={(value) => {
                     // 防止意外清空：只有当新值非空或用户主动选择时才更新
-                    if (value || !availableModels.includes(field.value)) {
+                    if (value || !availableModels.some(m => m.value === field.value)) {
                       field.onChange(value);
                     }
                   }} 
@@ -161,8 +161,8 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                   </FormControl>
                   <SelectContent>
                     {availableModels.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m}
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>

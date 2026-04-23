@@ -21,10 +21,11 @@ import {
 } from '@/components/ui/select';
 import { LLMProvider, MusicGenToolConfigData } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
+import { collectModelsByType } from '@/lib/api-utils';
 import { AlertCircle } from 'lucide-react';
 
-// 音频供应商类型集合（Lyria 3 由 Gemini 供应商提供）
-const MUSIC_PROVIDER_TYPES = new Set(["gemini"]);
+// 音频供应商类型集合（已废弃，改用 model_type 过滤）
+// const MUSIC_PROVIDER_TYPES = new Set(["gemini"]);
 
 // 输出格式选项
 const OUTPUT_FORMAT_OPTIONS = [
@@ -54,7 +55,6 @@ export default function MusicGenConfigDialog({
 
   // 本地表单状态
   const [enabled, setEnabled] = useState(false);
-  const [providerId, setProviderId] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [outputFormat, setOutputFormat] = useState<string>('mp3');
 
@@ -62,24 +62,21 @@ export default function MusicGenConfigDialog({
   useEffect(() => {
     const cfg = initialConfig;
     setEnabled(!!cfg?.music_generation_enabled);
-    setProviderId(cfg?.music_provider_id || '');
     setModel(cfg?.music_model || '');
     setOutputFormat(cfg?.music_config?.output_format || 'mp3');
   }, [initialConfig]);
 
-  // 过滤支持音乐生成的供应商
-  const musicProviders = useMemo(
-    () => providers.filter(p => p.is_active && MUSIC_PROVIDER_TYPES.has(p.provider_type?.toLowerCase())),
+  // 按 model_type='audio' 收集所有音频模型（扁平化，跨供应商）
+  const audioModels = useMemo(
+    () => collectModelsByType(providers, 'audio'),
     [providers],
   );
 
-  // 从供应商配置获取模型列表
-  const modelList = useMemo(() => {
-    const p = musicProviders.find(pr => pr.id === providerId);
-    return p
-      ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
-      : [];
-  }, [providerId, musicProviders]);
+  // 当前选中模型对应的供应商（自动反推）
+  const selectedEntry = useMemo(
+    () => audioModels.find(m => m.value === model),
+    [audioModels, model],
+  );
 
   // 模型能力标签映射
   const MODEL_CAPS: Record<string, { label: string; description: string }> = {
@@ -94,7 +91,7 @@ export default function MusicGenConfigDialog({
     try {
       const config: MusicGenToolConfigData = {
         music_generation_enabled: enabled,
-        music_provider_id: enabled ? (providerId || null) : null,
+        music_provider_id: enabled ? (selectedEntry?.providerId || null) : null,
         music_model: enabled ? (model || null) : null,
         music_config: enabled ? {
           output_format: outputFormat || undefined,
@@ -134,51 +131,33 @@ export default function MusicGenConfigDialog({
 
           {enabled && (
             <div className="space-y-4 pt-2 border-t">
-              {/* 无可用供应商提示 */}
-              {musicProviders.length === 0 && (
+              {/* 无可用模型提示 */}
+              {audioModels.length === 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>
-                    未找到音乐供应商。请先在「供应商管理」中添加 Google Gemini 类型的供应商，并配置 Lyria 3 模型。
+                    未找到音频模型。请先在「供应商管理」中为供应商的模型设置「音频模型」类型。
                   </span>
                 </div>
               )}
 
-              {/* 音乐供应商 */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">音乐供应商</Label>
-                <Select
-                  value={providerId}
-                  onValueChange={(val) => {
-                    setProviderId(val);
-                    setModel('');
-                  }}
-                >
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="选择音乐供应商" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {musicProviders.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 音乐模型 */}
+              {/* 音乐模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">音乐模型</Label>
                 <Select
                   value={model}
                   onValueChange={setModel}
-                  disabled={!providerId || modelList.length === 0}
+                  disabled={audioModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={!providerId ? "请先选择供应商" : modelList.length === 0 ? "该供应商无可用模型" : "选择模型"} />
+                    <SelectValue placeholder={audioModels.length === 0 ? "无可用音频模型" : "选择音乐模型"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {modelList.map((m: string) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    {audioModels.map((m) => (
+                      <SelectItem key={`${m.providerId}:${m.value}`} value={m.value}>
+                        {m.displayName}
+                        <span className="ml-2 text-muted-foreground text-[11px]">({m.providerName})</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

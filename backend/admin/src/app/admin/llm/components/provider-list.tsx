@@ -136,9 +136,12 @@ export function ProviderList() {
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
-                    {provider.models?.slice(0, 2).map(model => (
-                      <Badge key={model} variant="outline" className="text-xs bg-muted/50 font-mono px-1.5 py-0">{model}</Badge>
-                    ))}
+                    {provider.models?.slice(0, 2).map(model => {
+                      const displayName = provider.model_metadata?.[model]?.display_name || model;
+                      return (
+                        <Badge key={model} variant="outline" className="text-xs bg-muted/50 font-mono px-1.5 py-0">{displayName}</Badge>
+                      );
+                    })}
                     {(provider.models?.length || 0) > 2 && (
                       <Badge variant="outline" className="text-xs bg-muted/50 px-1.5 py-0">+{provider.models.length - 2}</Badge>
                     )}

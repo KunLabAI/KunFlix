@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { LLMProvider, VideoModelCapabilities, VideoGenToolConfigData } from '@/types';
 import { useToast } from '@/components/ui/use-toast';
+import { collectModelsByType } from '@/lib/api-utils';
 import { AlertCircle } from 'lucide-react';
 
 // 标签映射表
@@ -33,9 +34,6 @@ const RESOLUTION_LABELS: Record<string, string> = {
   "480p": "480p", "720p": "720p (标准)", "768p": "768p",
   "1080p": "1080p (高清)", "4k": "4K (超高清)",
 };
-
-// 视频供应商类型集合
-const VIDEO_PROVIDER_TYPES = new Set(["xai", "minimax", "gemini", "ark"]);
 
 interface VideoGenConfigDialogProps {
   open: boolean;
@@ -61,7 +59,6 @@ export default function VideoGenConfigDialog({
 
   // 本地表单状态
   const [enabled, setEnabled] = useState(false);
-  const [providerId, setProviderId] = useState<string>('');
   const [model, setModel] = useState<string>('');
   const [duration, setDuration] = useState<string>('');
   const [quality, setQuality] = useState<string>('');
@@ -71,26 +68,23 @@ export default function VideoGenConfigDialog({
   useEffect(() => {
     const cfg = initialConfig;
     setEnabled(!!cfg?.video_generation_enabled);
-    setProviderId(cfg?.video_provider_id || '');
     setModel(cfg?.video_model || '');
     setDuration(String(cfg?.video_config?.duration || ''));
     setQuality(cfg?.video_config?.quality || '');
     setAspectRatio(cfg?.video_config?.aspect_ratio || '');
   }, [initialConfig]);
 
-  // 过滤支持视频生成的供应商
-  const videoProviders = useMemo(
-    () => providers.filter(p => p.is_active && VIDEO_PROVIDER_TYPES.has(p.provider_type?.toLowerCase())),
+  // 按 model_type='video' 收集所有视频模型（扁平化，跨供应商）
+  const videoModels = useMemo(
+    () => collectModelsByType(providers, 'video'),
     [providers],
   );
 
-  // 从供应商配置获取模型列表（与图像生成一致，模型在供应商管理中配置）
-  const modelList = useMemo(() => {
-    const p = videoProviders.find(pr => pr.id === providerId);
-    return p
-      ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
-      : [];
-  }, [providerId, videoProviders]);
+  // 当前选中模型对应的供应商（自动反推）
+  const selectedEntry = useMemo(
+    () => videoModels.find(m => m.value === model),
+    [videoModels, model],
+  );
 
   // 当前选中模型的能力（从 videoCapabilities 查询参数选项，可选增强）
   const caps = useMemo(
@@ -103,7 +97,7 @@ export default function VideoGenConfigDialog({
     try {
       const config: VideoGenToolConfigData = {
         video_generation_enabled: enabled,
-        video_provider_id: enabled ? (providerId || null) : null,
+        video_provider_id: enabled ? (selectedEntry?.providerId || null) : null,
         video_model: enabled ? (model || null) : null,
         video_config: enabled ? {
           duration: duration ? Number(duration) : undefined,
@@ -145,41 +139,17 @@ export default function VideoGenConfigDialog({
 
           {enabled && (
             <div className="space-y-4 pt-2 border-t">
-              {/* 无可用供应商提示 */}
-              {videoProviders.length === 0 && (
+              {/* 无可用模型提示 */}
+              {videoModels.length === 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>
-                    未找到视频供应商。请先在「供应商管理」中添加 xAI、MiniMax、Gemini 或火山方舟 (Ark) 类型的供应商。
+                    未找到视频模型。请先在「供应商管理」中为供应商的模型设置「视频模型」类型。
                   </span>
                 </div>
               )}
 
-              {/* 视频供应商 */}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">视频供应商</Label>
-                <Select
-                  value={providerId}
-                  onValueChange={(val) => {
-                    setProviderId(val);
-                    setModel('');
-                    setDuration('');
-                    setQuality('');
-                    setAspectRatio('');
-                  }}
-                >
-                  <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="选择视频供应商" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {videoProviders.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 视频模型 */}
+              {/* 视频模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">视频模型</Label>
                 <Select
@@ -190,14 +160,17 @@ export default function VideoGenConfigDialog({
                     setQuality('');
                     setAspectRatio('');
                   }}
-                  disabled={!providerId || modelList.length === 0}
+                  disabled={videoModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={!providerId ? "请先选择供应商" : modelList.length === 0 ? "该供应商无可用模型" : "选择模型"} />
+                    <SelectValue placeholder={videoModels.length === 0 ? "无可用视频模型" : "选择视频模型"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {modelList.map((m: string) => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    {videoModels.map((m) => (
+                      <SelectItem key={`${m.providerId}:${m.value}`} value={m.value}>
+                        {m.displayName}
+                        <span className="ml-2 text-muted-foreground text-[11px]">({m.providerName})</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
