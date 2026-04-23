@@ -53,12 +53,27 @@ export type StoryboardNodeData = {
   _streaming?: boolean; // Transient flag: node is being streamed from LLM deltas
 };
 
+export type VideoGenHistoryEntry = {
+  url: string;
+  quality?: string;
+  prompt?: string;
+  model?: string;
+  provider_id?: string;
+  video_mode?: string;
+  duration?: number;
+  aspect_ratio?: string;
+  createdAt?: string;
+};
+
 export type VideoNodeData = {
   name: string;
   description: string;
   videoUrl?: string | null;
   uploading?: boolean;
   fitMode?: 'cover' | 'contain';
+  generatedVideos?: VideoGenHistoryEntry[];
+  /** Pre-fill VideoGeneratePanel when node is created from history drag */
+  initialGenConfig?: Partial<VideoGenHistoryEntry>;
 };
 
 export type AudioNodeData = {

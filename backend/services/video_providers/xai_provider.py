@@ -188,7 +188,7 @@ class XAIVideoAdapter(VideoProviderAdapter):
             
             # 失败处理
             (mapped_status == "failed") and setattr(
-                result, "error", data.get("error", data.get("message", "Unknown error"))
+                result, "error", self._extract_error_message(data)
             )
             
             return result
@@ -196,3 +196,12 @@ class XAIVideoAdapter(VideoProviderAdapter):
         except Exception as e:
             logger.error(f"xAI poll failed for {task_id}: {e}")
             return VideoResult(task_id=task_id, status="pending", error=str(e))
+
+    @staticmethod
+    def _extract_error_message(data: dict) -> str:
+        """从 xAI 响应中提取错误信息字符串
+        
+        xAI error 字段可能是 str 或 dict {'code': '...', 'message': '...'}
+        """
+        raw = data.get("error", data.get("message", "Unknown error"))
+        return raw.get("message", str(raw)) if isinstance(raw, dict) else str(raw)

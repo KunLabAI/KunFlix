@@ -1,10 +1,11 @@
-import React, { memo, useState, useRef, useMemo } from 'react';
+import React, { memo, useState, useRef, useMemo, useCallback, useEffect, type DragEvent } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote, Plus, FolderOpen, Loader2, X } from 'lucide-react';
-import { useCanvasStore, VideoNodeData, CanvasNode } from '@/store/useCanvasStore';
+import { useCanvasStore, VideoNodeData, VideoGenHistoryEntry, CanvasNode } from '@/store/useCanvasStore';
+import { cn } from '@/lib/utils';
 import { useResourceStore } from '@/store/useResourceStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
@@ -12,6 +13,8 @@ import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import { v4 as uuidv4 } from 'uuid';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import VideoGeneratePanel from './VideoGeneratePanel';
+import { useVideoTask, type VideoCreateParams } from '@/hooks/useVideoGeneration';
 
 const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const { t } = useTranslation();
@@ -19,7 +22,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const updateNodeDimensions = useCanvasStore((state) => state.updateNodeDimensions);
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
-  const { getNode } = useReactFlow();
+  const { getNode, getEdges, screenToFlowPosition } = useReactFlow();
+
+  const canvasNodes = useCanvasStore((state) => state.nodes);
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -27,6 +32,147 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const [editTitle, setEditTitle] = useState(data.name || '');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
+
+  // ── AI video generation task (lifted from VideoGeneratePanel) ──
+  const videoTask = useVideoTask();
+  const taskActive = !!videoTask.taskId && !videoTask.isTerminal;
+  const taskDone = videoTask.isCompleted;
+  const taskFailed = videoTask.isFailed;
+
+  // Remember video URL before generation to restore if applying to next node
+  const prevVideoUrlRef = useRef<string | null>(null);
+  const lastSubmitParamsRef = useRef<VideoCreateParams | null>(null);
+
+  // Auto-apply generated video to this node + accumulate history
+  useEffect(() => {
+    const url = videoTask.status?.video_url;
+    url && videoTask.isCompleted && (() => {
+      const sp = lastSubmitParamsRef.current;
+      const entry: VideoGenHistoryEntry = {
+        url,
+        quality: videoTask.status?.quality,
+        prompt: videoTask.status?.prompt || sp?.prompt,
+        model: videoTask.status?.model || sp?.model,
+        provider_id: sp?.provider_id,
+        video_mode: sp?.video_mode,
+        duration: sp?.config?.duration,
+        aspect_ratio: sp?.config?.aspect_ratio,
+        createdAt: new Date().toISOString(),
+      };
+      const prev = data.generatedVideos || [];
+      const exists = prev.some(v => v.url === url);
+      updateNodeData(id, {
+        videoUrl: url,
+        uploading: false,
+        ...(!exists && { generatedVideos: [entry, ...prev] }),
+      } as Partial<VideoNodeData>);
+    })();
+  }, [videoTask.isCompleted, videoTask.status?.video_url]);
+
+  const handleVideoSubmit = useCallback((params: VideoCreateParams) => {
+    prevVideoUrlRef.current = data.videoUrl || null;
+    lastSubmitParamsRef.current = params;
+    videoTask.submit(params);
+  }, [data.videoUrl, videoTask.submit]);
+
+  const handleApplyToNode = useCallback(() => {
+    // Already auto-applied, just reset task
+    videoTask.reset();
+  }, [videoTask.reset]);
+
+  const handleApplyToNextNode = useCallback(() => {
+    const generatedUrl = videoTask.status?.video_url;
+    generatedUrl || videoTask.reset();
+    // Restore original video to this node
+    const prevUrl = prevVideoUrlRef.current;
+    prevUrl && updateNodeData(id, { videoUrl: prevUrl } as Partial<VideoNodeData>);
+
+    // Find connected next video node via edges
+    const edges = getEdges();
+    const outEdge = edges.find((e) => e.source === id);
+    const targetNode = outEdge ? getNode(outEdge.target) : null;
+    const isVideoTarget = targetNode?.type === 'video';
+
+    // Apply to existing next node or create new one
+    const targetId = isVideoTarget ? targetNode!.id : `video-${uuidv4()}`;
+    
+    generatedUrl && (() => {
+      isVideoTarget
+        ? updateNodeData(targetId, { videoUrl: generatedUrl } as Partial<VideoNodeData>)
+        : (() => {
+            const currentNode = getNode(id);
+            const posX = (currentNode?.position.x ?? 0) + (currentNode?.measured?.width ?? 300) + 80;
+            const posY = currentNode?.position.y ?? 0;
+            const newNode: CanvasNode = {
+              id: targetId,
+              type: 'video',
+              position: { x: posX, y: posY },
+              data: {
+                name: t('canvas.node.video.aiGenerated'),
+                videoUrl: generatedUrl,
+                fitMode: 'contain',
+              } as VideoNodeData,
+            };
+            addNode(newNode);
+            // Connect via edge
+            const { onConnect } = useCanvasStore.getState();
+            onConnect({ source: id, target: targetId, sourceHandle: 'right-source', targetHandle: 'left-target' });
+          })();
+    })();
+
+    videoTask.reset();
+  }, [videoTask.status?.video_url, videoTask.reset, id, getEdges, getNode, updateNodeData, addNode, t]);
+
+  const handleRetryGenerate = useCallback(() => {
+    // Restore original video and reset task
+    const prevUrl = prevVideoUrlRef.current;
+    prevUrl && updateNodeData(id, { videoUrl: prevUrl } as Partial<VideoNodeData>);
+    videoTask.reset();
+  }, [videoTask.reset, updateNodeData, id]);
+
+  const [showHistory, setShowHistory] = useState(false);
+  const historyVideos = data.generatedVideos || [];
+
+  // Drag history video to canvas
+  const handleHistoryDragStart = useCallback((e: DragEvent<HTMLDivElement>, video: VideoGenHistoryEntry) => {
+    e.dataTransfer.setData('application/video-history', JSON.stringify(video));
+    e.dataTransfer.effectAllowed = 'copy';
+  }, []);
+
+  const handleHistoryDragEnd = useCallback((e: DragEvent<HTMLDivElement>, video: VideoGenHistoryEntry) => {
+    // Only create node if dropped outside source node
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const droppedOnSelf = nodeRef.current?.contains(el);
+    droppedOnSelf || (() => {
+      const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const newNode: CanvasNode = {
+        id: `video-${uuidv4()}`,
+        type: 'video',
+        position: { x: pos.x - 128, y: pos.y - 96 },
+        data: {
+          name: t('canvas.node.video.aiGenerated'),
+          videoUrl: video.url,
+          fitMode: 'contain',
+          description: video.prompt || '',
+          initialGenConfig: {
+            prompt: video.prompt,
+            model: video.model,
+            provider_id: video.provider_id,
+            video_mode: video.video_mode,
+            duration: video.duration,
+            quality: video.quality,
+            aspect_ratio: video.aspect_ratio,
+          },
+        } as VideoNodeData,
+      };
+      addNode(newNode);
+    })();
+  }, [screenToFlowPosition, addNode, t]);
+
+  const handleHistoryClick = useCallback((videoUrl: string) => {
+    updateNodeData(id, { videoUrl } as Partial<VideoNodeData>);
+  }, [id, updateNodeData]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +308,11 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   const handleSelectAsset = (assetUrl: string) => {
     updateNodeData(id, { videoUrl: assetUrl, uploading: false } as Partial<VideoNodeData>);
     setShowAssetPicker(false);
+  };
+
+  // handleVideoGenerated kept for upload/library flows
+  const handleVideoGenerated = (videoUrl: string) => {
+    updateNodeData(id, { videoUrl, uploading: false } as Partial<VideoNodeData>);
   };
 
   // 添加菜单级联按钮失焦关闭
@@ -369,20 +520,36 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           <CardContent 
             className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden" 
           >
-            {!data.videoUrl && !isUploading && !uploadError && (
+            {/* Empty placeholder — no video and not generating */}
+            {!data.videoUrl && !isUploading && !uploadError && !taskActive && (
               <div className="flex flex-col items-center justify-center gap-1 py-8">
                 <Film className="w-12 h-12 text-muted-foreground/10" />
               </div>
             )}
 
+            {/* Generating pulse animation overlay — shown when task active */}
+            {taskActive && (
+              <>
+                <div
+                  className="absolute inset-[-3px] rounded-xl border-blue-400 border-[3px] pointer-events-none z-[20]"
+                  style={{
+                    animation: 'nodeEffectPulse 1.5s ease-in-out infinite',
+                    boxShadow: '0 0 12px 2px rgba(59,130,246,0.5), inset 0 0 12px 2px rgba(59,130,246,0.5)',
+                  }}
+                />
+                <div
+                  className="absolute inset-0 rounded-xl pointer-events-none z-[19]"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.08)' }}
+                />
+                <div className="absolute inset-0 flex flex-col items-center justify-center z-[21] pointer-events-none">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-2" />
+                  <span className="text-sm font-medium text-blue-400">{t('canvas.node.video.generatingHint')}</span>
+                </div>
+              </>
+            )}
+
             {data.videoUrl && (
               <div className="w-full h-full flex flex-col items-center justify-center relative group/video">
-                {/* 
-                  视频区域交互策略：
-                  - <video> 标签保持 nodrag，确保点击控件正常工作
-                  - 上方覆盖一层绝对定位的透明拖拽遮罩，占据视频除底部控件外的绝大部分区域
-                  - 底部保留约 50px 供控件使用
-                */}
                 <video 
                   src={data.videoUrl} 
                   controls
@@ -391,13 +558,31 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   onLoadedMetadata={handleLoadedMetadata}
                 />
                 
-                {/* 顶部/中部拖拽遮罩：不含 nodrag，透明，鼠标移入时不影响视觉但能被拖拽 */}
+                {/* Drag overlay */}
                 <div 
                   className="absolute top-0 left-0 w-full h-[calc(100%-50px)] cursor-grab active:cursor-grabbing z-10"
                   title={t('canvas.node.video.dragToMove')}
-                  // 不加 e.stopPropagation() 从而允许 React Flow 接管拖拽
-                  // 双击穿透到下方的卡片，这里也可以处理一下双击播放暂停（如果需要）
                 />
+
+                {/* Hover overlay: refresh + resolution badge — top-right */}
+                <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-200 z-[15] nodrag">
+                  {videoTask.status?.quality && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white backdrop-blur-sm">
+                      {videoTask.status.quality}
+                    </span>
+                  )}
+                  {taskDone && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleRetryGenerate(); }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="w-7 h-7 rounded-lg bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 flex items-center justify-center transition-colors"
+                      title={t('canvas.node.video.retryGenerate')}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -442,9 +627,12 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           </CardContent>
         </Card>
 
-        {/* 工具条 */}
+        {/* 工具条 — 顶部定位，避开标题区域 */}
         <NodeToolbar
-          className={showAddMenu ? '!opacity-100 !pointer-events-auto !translate-y-0' : undefined}
+          className={cn(
+            '!bottom-auto !-top-[64px] !-translate-y-1 group-hover:!translate-y-0',
+            showAddMenu && '!opacity-100 !pointer-events-auto !translate-y-0',
+          )}
           actions={[
             {
               icon: <Quote className="h-3.5 w-3.5" />,
@@ -480,8 +668,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         {showAddMenu && (
           <div
             ref={addMenuRef}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
-            style={{ bottom: '-100px' }}
+            className="absolute left-1/2 -translate-x-1/2 -top-[108px] flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
           >
             <button
               className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
@@ -522,6 +709,84 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         </div>
       </div>
 
+      {/* 生成历史侧边栏 — 节点左侧 */}
+      {historyVideos.length > 0 && (
+        <div
+          className={cn(
+            'absolute right-full top-0 bottom-0 mr-3 flex flex-col nodrag nopan z-10 transition-all duration-200',
+            showHistory ? 'w-[72px] opacity-100' : 'w-0 opacity-0 pointer-events-none',
+          )}
+        >
+          <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1.5 py-1">
+            {historyVideos.map((v, i) => (
+              <div
+                key={`${v.url}-${i}`}
+                draggable
+                onDragStart={(e) => handleHistoryDragStart(e, v)}
+                onDragEnd={(e) => handleHistoryDragEnd(e, v)}
+                onClick={() => handleHistoryClick(v.url)}
+                className={cn(
+                  'w-[68px] h-[44px] rounded-md border overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
+                  data.videoUrl === v.url
+                    ? 'border-primary ring-1 ring-primary/30'
+                    : 'border-border/50 hover:border-primary/50',
+                )}
+                title={v.prompt || v.quality || t('canvas.node.video.aiGenerated')}
+              >
+                <video
+                  src={v.url}
+                  className="w-full h-full object-cover pointer-events-none"
+                  muted
+                  preload="metadata"
+                />
+                {v.quality && (
+                  <span className="absolute bottom-0 right-0 px-1 py-px text-[8px] font-medium bg-black/70 text-white rounded-tl">
+                    {v.quality}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 历史侧边栏切换按钮 */}
+      {historyVideos.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowHistory(p => !p)}
+          className={cn(
+            'absolute right-full top-1/2 -translate-y-1/2 w-5 h-10 flex items-center justify-center rounded-l-md border border-r-0 bg-background/90 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-all nodrag z-10',
+            showHistory ? 'mr-[76px]' : 'mr-1',
+          )}
+          title={t('canvas.node.video.historyToggle')}
+        >
+          <span className="text-[10px] font-bold">{historyVideos.length}</span>
+        </button>
+      )}
+
+      {/* AI 视频生成内联面板 — 卡片下方，仅选中或任务进行中时显示，用 CSS 隐藏保留状态 */}
+      <div className={cn(
+        'absolute top-full left-0 right-0 mt-1.5 nodrag z-20 transition-opacity duration-150',
+        (selected || taskActive || taskDone || taskFailed) ? 'opacity-100' : 'opacity-0 pointer-events-none invisible',
+      )}>
+          <VideoGeneratePanel
+            onSubmit={handleVideoSubmit}
+            onStop={() => videoTask.reset()}
+            isSubmitting={videoTask.isSubmitting}
+            taskActive={taskActive}
+            taskDone={taskDone}
+            taskFailed={taskFailed}
+            taskError={videoTask.status?.error_message || t('canvas.node.video.failedDefault')}
+            submitError={videoTask.error}
+            hasExistingVideo={!!prevVideoUrlRef.current}
+            onApplyToNode={handleApplyToNode}
+            onApplyToNextNode={handleApplyToNextNode}
+            canvasNodes={canvasNodes}
+            initialConfig={data.initialGenConfig || null}
+          />
+        </div>
+
       {/* 资产库选择弹窗 */}
       {showAssetPicker && typeof document !== 'undefined' && createPortal(
         <VideoAssetPickerDialog
@@ -532,6 +797,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         />,
         document.body
       )}
+
     </>
   );
 };
