@@ -114,6 +114,12 @@ async def create_video_task(
     reference_images = [
         {**img, "url": _resolve_local_media_to_data_url(img.get("url"))} for img in (request.reference_images or [])
     ]
+    reference_videos = [
+        {**v, "url": _resolve_local_media_to_data_url(v.get("url"))} for v in (request.reference_videos or [])
+    ]
+    reference_audios = [
+        {**a, "url": _resolve_local_media_to_data_url(a.get("url"))} for a in (request.reference_audios or [])
+    ]
 
     # 构建视频上下文
     ctx = VideoContext(
@@ -132,8 +138,8 @@ async def create_video_task(
         fast_pretreatment=config.fast_pretreatment,
         reference_images=reference_images,
         extension_video_url=extension_video_url,
-        reference_videos=request.reference_videos or [],
-        reference_audios=request.reference_audios or [],
+        reference_videos=reference_videos,
+        reference_audios=reference_audios,
         return_last_frame=request.return_last_frame,
     )
 
@@ -461,7 +467,10 @@ def _resolve_local_media_to_data_url(url: str | None) -> str | None:
     if not filepath or not filepath.is_file():
         return url
     
-    mime_type = mimetypes.guess_type(str(filepath))[0] or "image/jpeg"
+    mime_type = mimetypes.guess_type(str(filepath))[0] or "application/octet-stream"
+    # Seedance 要求特定 MIME 格式: audio/mp3 (而非 audio/mpeg), audio/wav (而非 audio/x-wav)
+    _MIME_FIX = {"audio/mpeg": "audio/mp3", "audio/x-wav": "audio/wav", "video/quicktime": "video/mov"}
+    mime_type = _MIME_FIX.get(mime_type, mime_type)
     raw = filepath.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
     return f"data:{mime_type};base64,{b64}"

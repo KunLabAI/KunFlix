@@ -140,12 +140,21 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         resolution = self.RESOLUTION_MAP.get(ctx.quality.lower())
         resolution and parameters.update({"resolution": resolution})
         
-        # 时长 — 1080p/4k 强制 8 秒 (API 约束); 其余保留用户设定
-        duration = 8 * (resolution in ("1080p", "4k")) or ctx.duration
+        # 时长 — API 硬性约束:
+        #   1080p/4k/参考图片/视频扩展/首尾帧插值: 强制 8 秒
+        #   其余保留用户设定 (合法值: 4/5/6/8, 其中 5 仅 Veo 2.0)
+        has_constraint = resolution in ("1080p", "4k") or ctx.last_frame_image or ctx.reference_images or ctx.extension_video_url
+        duration = 8 * bool(has_constraint) or ctx.duration
         duration in (4, 5, 6, 8) and parameters.update({"durationSeconds": duration})
         
-        # personGeneration 参数
-        ctx.person_generation and parameters.update({"personGeneration": ctx.person_generation})
+        # personGeneration 参数 — Gemini Veo API 硬性约束:
+        #   text_to_video / video_extension: "allow_all" only
+        #   image_to_video / interpolation / reference_images: "allow_adult" only
+        _IMAGE_MODES = {"image_to_video", "reference_images"}
+        person_gen = ctx.person_generation or (
+            "allow_adult" * (ctx.video_mode in _IMAGE_MODES) or "allow_all"
+        )
+        parameters["personGeneration"] = person_gen
         
         # seed 参数 (Veo 3+ 支持)
         (ctx.seed is not None and ctx.model in self._SEED_MODELS) and parameters.update({
@@ -325,6 +334,20 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         video_response = response_data.get("generateVideoResponse", {})
         generated_samples = video_response.get("generatedSamples", [])
         
+        # 兜底: 直接在 response 下查找 generatedSamples (无 generateVideoResponse 包裹)
+        (not generated_samples) and (
+            generated_samples := response_data.get("generatedSamples", [])
+        )
+        
+        # RAI 安全过滤: 视频被内容审核拦截
+        rai_count = video_response.get("raiMediaFilteredCount", 0)
+        rai_reasons = video_response.get("raiMediaFilteredReasons", [])
+        (rai_count or rai_reasons) and not generated_samples and (
+            setattr(result, "status", "failed"),
+            setattr(result, "error", f"Video blocked by safety filter: {', '.join(rai_reasons) or 'content policy violation'}"),
+            logger.warning(f"Gemini Veo RAI filtered: count={rai_count}, reasons={rai_reasons}"),
+        )
+        
         generated_samples and self._process_first_sample(generated_samples[0], result)
     
     def _process_first_sample(self, sample: dict, result: VideoResult) -> None:
@@ -334,6 +357,8 @@ class GeminiVeoAdapter(VideoProviderAdapter):
         # 视频 URI
         video_uri = video_info.get("uri", "") if isinstance(video_info, dict) else ""
         video_uri and setattr(result, "video_url", video_uri)
+        video_uri and logger.info(f"Gemini Veo extracted video URI: {video_uri[:100]}...")
+        (not video_uri) and logger.warning(f"Gemini Veo: no URI in video_info: {video_info}")
     
     async def download_video(self, video_uri: str, api_key: str) -> bytes:
         """

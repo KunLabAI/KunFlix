@@ -9,9 +9,12 @@ import { cn } from '@/lib/utils';
 // Types
 // ---------------------------------------------------------------------------
 
+export type RefType = 'image' | 'video' | 'audio';
+
 export interface RefImage {
   url: string;
   name: string;
+  refType: RefType; // 参考类型：image / video / audio
   previewUrl?: string; // 虚拟人像用：展示缩略图（preview_url），提交时用 url（asset://...）
 }
 

@@ -26,6 +26,10 @@ export interface VideoModelCapabilities {
   supports_video_edit: boolean;
   supports_audio: boolean;
   max_reference_images: number;
+  supports_reference_videos?: boolean;
+  max_reference_videos?: number;
+  supports_reference_audios?: boolean;
+  max_reference_audios?: number;
   supports_prompt_optimizer: boolean;
   supports_fast_pretreatment: boolean;
   aspect_ratios: string[];
@@ -39,6 +43,8 @@ export interface VideoCreateParams {
   image_url?: string;
   last_frame_image?: string;
   reference_images?: { url: string }[];
+  reference_videos?: { url: string }[];
+  reference_audios?: { url: string }[];
   extension_video_url?: string;
   config?: {
     duration: number;
@@ -65,9 +71,9 @@ export interface VideoTaskStatus {
 // Label maps
 export const VIDEO_MODE_LABELS: Record<string, string> = {
   text_to_video: '文生视频',
-  image_to_video: '图生视频',
+  image_to_video: '图生视频(包含首尾帧)',
   edit: '视频编辑',
-  reference_images: '参考图生成',
+  reference_images: '多模态参考生成',
   video_extension: '视频扩展',
 };
 
@@ -75,7 +81,7 @@ export const VIDEO_MODE_LABELS_EN: Record<string, string> = {
   text_to_video: 'Text to Video',
   image_to_video: 'Image to Video',
   edit: 'Video Edit',
-  reference_images: 'Reference Images',
+  reference_images: 'Multi-modal Reference',
   video_extension: 'Video Extension',
 };
 

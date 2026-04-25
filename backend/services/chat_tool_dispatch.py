@@ -246,6 +246,8 @@ async def _append_openai_tool_round(
             for tc in result.tool_calls
         ],
     }
+    # DeepSeek thinking mode: pass reasoning_content back to API
+    result.reasoning_content and assistant_msg.update(reasoning_content=result.reasoning_content)
     messages.append(assistant_msg)
     
     results = await _execute_valid_calls_parallel(
@@ -277,6 +279,8 @@ async def _append_openai_tool_round_with_errors(
             for tc in all_calls
         ],
     }
+    # DeepSeek thinking mode: pass reasoning_content back to API
+    result.reasoning_content and assistant_msg.update(reasoning_content=result.reasoning_content)
     messages.append(assistant_msg)
     
     # 并行执行有效调用

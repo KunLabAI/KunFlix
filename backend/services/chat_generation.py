@@ -38,6 +38,22 @@ MAX_THINKING_ONLY_RETRIES = 1       # 模型仅输出思考内容时的重试次
 
 import re
 _THINK_ONLY_RE = re.compile(r'^\s*<think>.*?</think>\s*$', re.DOTALL)
+_THINK_EXTRACT_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
+
+
+def _extract_reasoning_to_msg(msg: dict) -> bool:
+    """Extract <think> blocks from content into reasoning_content field.
+    
+    DeepSeek thinking mode requires reasoning_content to be passed back
+    as a separate field on assistant messages. Returns True if extraction occurred.
+    """
+    content = msg.get("content", "")
+    match = _THINK_EXTRACT_RE.search(content)
+    match and msg.update(
+        reasoning_content=match.group(1),
+        content=_THINK_EXTRACT_RE.sub("", content).strip() or None,
+    )
+    return bool(match)
 
 
 async def generate_single_agent(
@@ -86,6 +102,7 @@ async def generate_single_agent(
      ))
 
     # 加载历史消息（跳过已被摘要覆盖的旧消息）
+    _is_thinking_provider = provider.provider_type in ("deepseek",)
     for msg in history[skip_count:]:
         role = msg.role if msg.role in ["user", "assistant", "system"] else "user"
         deserialized = deserialize_content(msg.content)
@@ -93,7 +110,12 @@ async def generate_single_agent(
             content_val = deserialized.get("text") or ""
         else:
             content_val = deserialized
-        messages.append({"role": role, "content": content_val})
+        hist_msg = {"role": role, "content": content_val}
+        # DeepSeek thinking mode: extract <think> blocks into reasoning_content field
+        (_is_thinking_provider and agent.thinking_mode
+         and role == "assistant" and isinstance(content_val, str)
+         and _extract_reasoning_to_msg(hist_msg))
+        messages.append(hist_msg)
 
     # 从全局 ToolConfig 读取图像生成配置
     from sqlalchemy import select as sql_select
