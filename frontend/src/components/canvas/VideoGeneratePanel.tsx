@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Settings2, Send, Sparkles, Zap, ChevronDown, Square, XCircle, ArrowRight, Paperclip, ImageIcon, Film, X, UserRound } from 'lucide-react';
+import { Settings2, Send, Sparkles, Zap, ChevronDown, Square, XCircle, ArrowRight, Paperclip, ImageIcon, Film, Music, X, UserRound } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { useTranslation } from 'react-i18next';
@@ -16,8 +16,8 @@ import {
   ASPECT_RATIO_LABELS,
   type VideoCreateParams,
 } from '@/hooks/useVideoGeneration';
-import type { CanvasNode, CharacterNodeData, VideoNodeData, VideoGenHistoryEntry } from '@/store/useCanvasStore';
-import RefTagInput, { type RefTagInputRef, type RefImage } from './RefTagInput';
+import type { CanvasNode, CharacterNodeData, VideoNodeData, AudioNodeData, VideoGenHistoryEntry } from '@/store/useCanvasStore';
+import RefTagInput, { type RefTagInputRef, type RefImage, type RefType } from './RefTagInput';
 
 // ---------------------------------------------------------------------------
 // Props — parent (VideoNode) owns task state
@@ -58,16 +58,23 @@ function getVideoNodeUrl(node: CanvasNode): string | null {
   return url;
 }
 
+function getAudioNodeUrl(node: CanvasNode): string | null {
+  const data = node.data as AudioNodeData;
+  let url: string | null = data.audioUrl || null;
+  url && !url.startsWith('http') && !url.startsWith('/api/media/') && !url.startsWith('data:') && (url = `/api/media/${url}`);
+  return url;
+}
+
 // Node picker mode determined by videoMode
-type PickerMode = 'none' | 'single_image' | 'multi_image' | 'video';
+type PickerMode = 'none' | 'single_image' | 'first_last_frame' | 'multi_image' | 'video';
 const PICKER_MODE_MAP: Record<string, PickerMode> = {
   text_to_video: 'none',
-  image_to_video: 'single_image',
+  image_to_video: 'first_last_frame',
   reference_images: 'multi_image',
   edit: 'video',
   video_extension: 'video',
 };
-const MAX_REFERENCE_IMAGES = 5;
+const DEFAULT_MAX_REFS = 5;
 
 // ---------------------------------------------------------------------------
 // Compact toggle switch
@@ -245,13 +252,40 @@ export default function VideoGeneratePanel({
     () => canvasNodes.filter((n) => n.type === 'video' && getVideoNodeUrl(n)),
     [canvasNodes],
   );
+  const audioNodes = useMemo(
+    () => canvasNodes.filter((n) => n.type === 'audio' && getAudioNodeUrl(n)),
+    [canvasNodes],
+  );
 
-  // Nodes to show in picker
-  const pickerNodes = pickerMode === 'video' ? videoNodes : imageNodes;
+  // Per-type limits from capabilities
+  const maxRefImages = capabilities?.max_reference_images ?? DEFAULT_MAX_REFS;
+  const supportsRefVideos = capabilities?.supports_reference_videos ?? false;
+  const supportsRefAudios = capabilities?.supports_reference_audios ?? false;
+  const maxRefVideos = capabilities?.max_reference_videos ?? 0;
+  const maxRefAudios = capabilities?.max_reference_audios ?? 0;
+  const maxTotalRefs = maxRefImages + maxRefVideos + maxRefAudios;
+
+  // Ref counts by type
+  const imageRefCount = referenceImages.filter(r => r.refType === 'image').length;
+  const videoRefCount = referenceImages.filter(r => r.refType === 'video').length;
+  const audioRefCount = referenceImages.filter(r => r.refType === 'audio').length;
+
+  // Nodes to show in picker — multi_image shows mixed types for Seedance
+  const pickerNodes = useMemo(() => {
+    const isMulti = pickerMode === 'multi_image';
+    const isVid = pickerMode === 'video';
+    const nodes = isVid ? videoNodes : isMulti ? [
+      ...imageNodes,
+      ...(supportsRefVideos ? videoNodes : []),
+      ...(supportsRefAudios ? audioNodes : []),
+    ] : imageNodes;
+    return nodes;
+  }, [pickerMode, imageNodes, videoNodes, audioNodes, supportsRefVideos, supportsRefAudios]);
+
   const hasPickerSelection =
     (pickerMode === 'single_image' && !!imageUrl) ||
+    (pickerMode === 'first_last_frame' && !!imageUrl && !!lastFrameImageUrl) ||
     (pickerMode === 'multi_image' && referenceImages.length > 0) ||
-    (pickerMode === 'multi_image' && referenceImages.length >= MAX_REFERENCE_IMAGES) || // disable picker when full
     (pickerMode === 'video' && !!extensionVideoUrl);
 
   // Click outside closes node picker
@@ -272,42 +306,43 @@ export default function VideoGeneratePanel({
     return () => document.removeEventListener('mousedown', handle);
   }, [showVhPicker]);
 
-  // Select a virtual human preset
+  // Select a virtual human preset (always image type)
   const handleSelectVhPreset = (preset: typeof vhPresets[number]) => {
-    const refsCount = referenceImages.length;
-    refsCount >= MAX_REFERENCE_IMAGES && (void 0);
-    refsCount < MAX_REFERENCE_IMAGES && (() => {
-      const newIdx = refsCount + 1;
+    imageRefCount >= maxRefImages && (void 0);
+    imageRefCount < maxRefImages && (() => {
       setReferenceImages((prev) => [...prev, {
         url: preset.asset_uri,
         name: preset.name,
+        refType: 'image' as RefType,
         previewUrl: preset.preview_url,
       }]);
       // Auto-switch to reference_images mode when adding a virtual human in image_to_video mode
       videoMode === 'image_to_video' && setVideoMode('reference_images');
-      inputRef.current?.insertTag(newIdx, preset.name);
-      refsCount + 1 >= MAX_REFERENCE_IMAGES && setShowVhPicker(false);
+      inputRef.current?.insertTag(imageRefCount + 1, preset.name);
+      imageRefCount + 1 >= maxRefImages && setShowVhPicker(false);
     })();
   };
 
   // Ref to the rich input for inserting tags programmatically
   const inputRef = useRef<RefTagInputRef>(null);
 
-  // Remove a reference image and clean up <IMAGE_N> tags in prompt
+  // Remove a reference and clean up <IMAGE_N> tags in prompt (only for image refs)
   const handleRemoveRefImage = (removeIdx: number) => {
+    const removedRef = referenceImages[removeIdx];
     const newRefs = referenceImages.filter((_, i) => i !== removeIdx);
     setReferenceImages(newRefs);
-    // Renumber: replace old tags with new sequential numbers
-    let updated = prompt;
-    // First, remove the deleted image's tag
-    updated = updated.replace(new RegExp(`<IMAGE_${removeIdx + 1}>`, 'g'), '');
-    // Renumber remaining tags (shift down indices above the removed one)
-    for (let i = referenceImages.length; i > removeIdx + 1; i--) {
-      updated = updated.replace(new RegExp(`<IMAGE_${i}>`, 'g'), `<IMAGE_${i - 1}>`);
-    }
-    // Clean up double spaces left by removal
-    updated = updated.replace(/  +/g, ' ').trim();
-    setPrompt(updated);
+    // Only renumber IMAGE tags when removing an image ref
+    removedRef.refType === 'image' && (() => {
+      const imageOnlyIdx = referenceImages.slice(0, removeIdx).filter(r => r.refType === 'image').length + 1;
+      const totalImages = referenceImages.filter(r => r.refType === 'image').length;
+      let updated = prompt;
+      updated = updated.replace(new RegExp(`<IMAGE_${imageOnlyIdx}>`, 'g'), '');
+      for (let i = totalImages; i > imageOnlyIdx; i--) {
+        updated = updated.replace(new RegExp(`<IMAGE_${i}>`, 'g'), `<IMAGE_${i - 1}>`);
+      }
+      updated = updated.replace(/  +/g, ' ').trim();
+      setPrompt(updated);
+    })();
   };
 
   const handleSelectNode = (node: CanvasNode) => {
@@ -319,15 +354,35 @@ export default function VideoGeneratePanel({
       url && setImageUrl(url);
       setShowNodePicker(false);
     })();
-    // multi_image: append to referenceImages (up to MAX) and insert visual tag
-    pickerMode === 'multi_image' && (() => {
+    // first_last_frame: fill first frame first, then last frame
+    pickerMode === 'first_last_frame' && (() => {
       const url = getImageNodeUrl(node);
-      url && referenceImages.length < MAX_REFERENCE_IMAGES && (() => {
-        const newIdx = referenceImages.length + 1;
-        setReferenceImages((prev) => [...prev, { url, name: nodeName }]);
-        inputRef.current?.insertTag(newIdx, nodeName);
+      url && (!imageUrl
+        ? setImageUrl(url)
+        : (setLastFrameImageUrl(url), setShowNodePicker(false)));
+    })();
+    // multi_image: append to referenceImages — supports image/video/audio node types
+    pickerMode === 'multi_image' && (() => {
+      const nt = node.type as string;
+      const urlMap: Record<string, () => string | null> = {
+        image: () => getImageNodeUrl(node),
+        video: () => getVideoNodeUrl(node),
+        audio: () => getAudioNodeUrl(node),
+      };
+      const limitMap: Record<string, [number, number]> = {
+        image: [imageRefCount, maxRefImages],
+        video: [videoRefCount, maxRefVideos],
+        audio: [audioRefCount, maxRefAudios],
+      };
+      const refType = (nt === 'video' ? 'video' : nt === 'audio' ? 'audio' : 'image') as RefType;
+      const url = urlMap[nt]?.() ?? getImageNodeUrl(node);
+      const [count, max] = limitMap[nt] ?? [imageRefCount, maxRefImages];
+      url && count < max && (() => {
+        setReferenceImages((prev) => [...prev, { url, name: nodeName, refType }]);
+        // Only insert <IMAGE_N> prompt tag for image refs
+        refType === 'image' && inputRef.current?.insertTag(imageRefCount + 1, nodeName);
       })();
-      referenceImages.length + 1 >= MAX_REFERENCE_IMAGES && setShowNodePicker(false);
+      referenceImages.length + 1 >= maxTotalRefs && setShowNodePicker(false);
     })();
     // video: set extensionVideoUrl
     pickerMode === 'video' && (() => {
@@ -352,6 +407,10 @@ export default function VideoGeneratePanel({
 
   const handleSubmit = () => {
     const m = selectedModel;
+    const isRef = videoMode === 'reference_images';
+    const imgRefs = referenceImages.filter(r => r.refType === 'image');
+    const vidRefs = referenceImages.filter(r => r.refType === 'video');
+    const audRefs = referenceImages.filter(r => r.refType === 'audio');
     m &&
       onSubmit({
         provider_id: m.provider_id,
@@ -360,8 +419,14 @@ export default function VideoGeneratePanel({
         prompt: prompt.trim(),
         image_url: visibility.showFirstFrame ? imageUrl || undefined : undefined,
         last_frame_image: visibility.showLastFrame ? lastFrameImageUrl || undefined : undefined,
-        reference_images: videoMode === 'reference_images' && referenceImages.length > 0
-          ? referenceImages.map((ref) => ({ url: ref.url }))
+        reference_images: isRef && imgRefs.length > 0
+          ? imgRefs.map((ref) => ({ url: ref.url }))
+          : undefined,
+        reference_videos: isRef && vidRefs.length > 0
+          ? vidRefs.map((ref) => ({ url: ref.url }))
+          : undefined,
+        reference_audios: isRef && audRefs.length > 0
+          ? audRefs.map((ref) => ({ url: ref.url }))
           : undefined,
         extension_video_url: (videoMode === 'edit' || videoMode === 'video_extension') && extensionVideoUrl
           ? extensionVideoUrl
@@ -383,6 +448,7 @@ export default function VideoGeneratePanel({
       {/* Main input container — MessageInput style */}
       <div className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col">
         {/* Attachment previews — image(s) or video */}
+        {/* Single image (non-first_last_frame modes) */}
         {pickerMode === 'single_image' && imageUrl && (
           <div className="px-3 pt-2.5 pb-0">
             <div className="relative inline-block group/imgpreview">
@@ -397,27 +463,92 @@ export default function VideoGeneratePanel({
           </div>
         )}
 
-        {pickerMode === 'multi_image' && referenceImages.length > 0 && (
-          <div className="px-3 pt-2.5 pb-0 flex gap-1.5 flex-wrap">
-            {referenceImages.map((ref, idx) => (
-              <div key={idx} className="relative inline-block group/imgpreview">
-                {(ref.previewUrl || ref.url) && !(ref.url.startsWith('asset://') && !ref.previewUrl) ? (
-                  <img src={ref.previewUrl || ref.url} alt={ref.name} className="h-14 w-14 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
-                ) : null}
-                <div className={cn('h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center', (ref.previewUrl || (!ref.url.startsWith('asset://') && ref.url)) ? 'hidden absolute inset-0' : '')}>
-                  <UserRound className="w-6 h-6 text-muted-foreground/50" />
-                </div>
-                <button type="button" onClick={() => handleRemoveRefImage(idx)} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+        {/* First + Last frame preview for image_to_video */}
+        {pickerMode === 'first_last_frame' && imageUrl && (
+          <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
+            {/* First frame */}
+            <div className="relative inline-block group/firstframe">
+              <img src={imageUrl} alt="First frame" className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <button type="button" onClick={() => { setImageUrl(''); setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/firstframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+                <X className="h-2.5 w-2.5" />
+              </button>
+              <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-emerald-600/80 text-white backdrop-blur-sm">
+                {t('canvas.node.video.firstFrame')}
+              </div>
+            </div>
+            {/* Arrow connector */}
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
+            {/* Last frame or placeholder */}
+            {lastFrameImageUrl ? (
+              <div className="relative inline-block group/lastframe">
+                <img src={lastFrameImageUrl} alt="Last frame" className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                <button type="button" onClick={() => setLastFrameImageUrl('')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/lastframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                   <X className="h-2.5 w-2.5" />
                 </button>
-                <div className="absolute bottom-0 left-0 right-0 px-0.5 py-0.5 rounded-b-lg text-[7px] font-semibold bg-black/70 text-white backdrop-blur-sm text-center leading-tight truncate">
-                  <span className="text-blue-300">&lt;IMAGE_{idx + 1}&gt;</span>
-                  <br />
-                  <span className="opacity-80">{ref.name}</span>
+                <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-amber-600/80 text-white backdrop-blur-sm">
+                  {t('canvas.node.video.lastFrame')}
                 </div>
               </div>
-            ))}
-            <span className="text-[9px] text-muted-foreground self-end pb-1">{referenceImages.length}/{MAX_REFERENCE_IMAGES}</span>
+            ) : visibility.showLastFrame ? (
+              <button
+                type="button"
+                onClick={() => setShowNodePicker(true)}
+                className="h-16 w-16 rounded-lg border-2 border-dashed border-border/60 hover:border-primary/40 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer group/addlast"
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50 group-hover/addlast:text-primary/60 transition-colors" />
+                <span className="text-[8px] text-muted-foreground/60 group-hover/addlast:text-primary/60 transition-colors">{t('canvas.node.video.addLastFrame')}</span>
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {pickerMode === 'multi_image' && referenceImages.length > 0 && (
+          <div className="px-3 pt-2.5 pb-0 flex gap-1.5 flex-wrap">
+            {referenceImages.map((ref, idx) => {
+              const isImg = ref.refType === 'image';
+              const isVid = ref.refType === 'video';
+              const isAud = ref.refType === 'audio';
+              // Image-only index for <IMAGE_N> tag
+              const imgIdx = isImg ? referenceImages.slice(0, idx).filter(r => r.refType === 'image').length + 1 : 0;
+              const tagColor = isVid ? 'text-amber-300' : isAud ? 'text-teal-300' : 'text-blue-300';
+              const tagLabel = isVid ? `VIDEO_${referenceImages.slice(0, idx).filter(r => r.refType === 'video').length + 1}`
+                : isAud ? `AUDIO_${referenceImages.slice(0, idx).filter(r => r.refType === 'audio').length + 1}`
+                : `IMAGE_${imgIdx}`;
+              const TypeIcon = isVid ? Film : isAud ? Music : ImageIcon;
+              return (
+                <div key={idx} className="relative inline-block group/imgpreview">
+                  {isVid ? (
+                    <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted overflow-hidden">
+                      <video src={ref.url} className="w-full h-full object-cover" preload="metadata" muted />
+                    </div>
+                  ) : isAud ? (
+                    <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center">
+                      <Music className="w-6 h-6 text-teal-400/60" />
+                    </div>
+                  ) : (ref.previewUrl || ref.url) && !(ref.url.startsWith('asset://') && !ref.previewUrl) ? (
+                    <img src={ref.previewUrl || ref.url} alt={ref.name} className="h-14 w-14 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
+                  ) : null}
+                  {isImg && (
+                    <div className={cn('h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center', (ref.previewUrl || (!ref.url.startsWith('asset://') && ref.url)) ? 'hidden absolute inset-0' : '')}>
+                      <UserRound className="w-6 h-6 text-muted-foreground/50" />
+                    </div>
+                  )}
+                  <button type="button" onClick={() => handleRemoveRefImage(idx)} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                  <div className="absolute bottom-0 left-0 right-0 px-0.5 py-0.5 rounded-b-lg text-[7px] font-semibold bg-black/70 text-white backdrop-blur-sm text-center leading-tight truncate">
+                    <span className={tagColor}>&lt;{tagLabel}&gt;</span>
+                    <br />
+                    <span className="opacity-80">{ref.name}</span>
+                  </div>
+                  {/* Type badge */}
+                  <div className="absolute top-0.5 left-0.5">
+                    <TypeIcon className={cn('w-3 h-3', isVid ? 'text-amber-400' : isAud ? 'text-teal-400' : 'text-emerald-400')} />
+                  </div>
+                </div>
+              );
+            })}
+            <span className="text-[9px] text-muted-foreground self-end pb-1">{referenceImages.length}/{maxTotalRefs}</span>
           </div>
         )}
 
@@ -486,7 +617,7 @@ export default function VideoGeneratePanel({
                 <button
                   type="button"
                   onClick={() => setShowVhPicker((v) => !v)}
-                  disabled={taskActive || vhPresets.length === 0 || referenceImages.length >= MAX_REFERENCE_IMAGES}
+                  disabled={taskActive || vhPresets.length === 0 || imageRefCount >= maxRefImages}
                   className={cn(
                     'h-8 w-8 rounded-lg flex items-center justify-center',
                     'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
@@ -542,7 +673,7 @@ export default function VideoGeneratePanel({
             )}
 
             {/* Node picker — shown when mode needs node input */}
-            {pickerMode !== 'none' && (
+            {(pickerMode !== 'none' && pickerMode !== 'first_last_frame') && (
               <div className="relative" ref={nodePickerRef}>
                 <button
                   type="button"
@@ -567,24 +698,38 @@ export default function VideoGeneratePanel({
                       {pickerMode === 'video'
                         ? t('canvas.node.video.selectVideoNode')
                         : pickerMode === 'multi_image'
-                          ? t('canvas.node.video.selectRefImages', { max: MAX_REFERENCE_IMAGES })
+                          ? t('canvas.node.video.selectRefImages', { max: maxTotalRefs })
                           : t('canvas.node.video.selectImageNode')}
                     </div>
                     {pickerNodes.map((node) => {
-                      const isVideo = pickerMode === 'video';
+                      const nt = node.type as string;
+                      const isVideo = pickerMode === 'video' || nt === 'video';
+                      const isAudio = nt === 'audio';
                       const data = node.data as Record<string, unknown>;
                       const label = ((data.name || node.id.slice(0, 8)) as string);
-                      const thumbUrl = isVideo ? getVideoNodeUrl(node) : getImageNodeUrl(node);
-                      const NodeIcon = isVideo ? Film : ImageIcon;
-                      const iconColor = isVideo ? 'text-node-yellow' : 'text-node-green';
+                      const thumbUrl = isVideo ? getVideoNodeUrl(node) : isAudio ? null : getImageNodeUrl(node);
+                      const NodeIcon = isVideo ? Film : isAudio ? Music : ImageIcon;
+                      const iconColor = isVideo ? 'text-amber-400' : isAudio ? 'text-teal-400' : 'text-node-green';
+                      // Check per-type limit
+                      const atLimit = isVideo ? videoRefCount >= maxRefVideos
+                        : isAudio ? audioRefCount >= maxRefAudios
+                        : imageRefCount >= maxRefImages;
                       return (
                         <button
                           key={node.id}
                           type="button"
                           onClick={() => handleSelectNode(node)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer"
+                          disabled={pickerMode === 'multi_image' && atLimit}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer',
+                            pickerMode === 'multi_image' && atLimit && 'opacity-40 cursor-not-allowed',
+                          )}
                         >
-                          {thumbUrl && (
+                          {isAudio ? (
+                            <div className="h-8 w-8 rounded bg-muted border border-border/30 shrink-0 flex items-center justify-center">
+                              <Music className="w-4 h-4 text-teal-400/60" />
+                            </div>
+                          ) : thumbUrl && (
                             isVideo
                               ? <div className="h-8 w-12 rounded bg-muted border border-border/30 shrink-0 overflow-hidden"><video src={thumbUrl} className="w-full h-full object-cover" preload="metadata" muted /></div>
                               : <img src={thumbUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0 border border-border/30" />
@@ -599,6 +744,61 @@ export default function VideoGeneratePanel({
                     {pickerNodes.length === 0 && (
                       <div className="p-3 text-[10px] text-muted-foreground text-center">
                         {pickerMode === 'video' ? t('canvas.node.video.noVideoNodes') : t('canvas.node.video.noImageNodes')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Node picker — first_last_frame mode */}
+            {pickerMode === 'first_last_frame' && (
+              <div className="relative" ref={nodePickerRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowNodePicker((v) => !v)}
+                  disabled={taskActive || imageNodes.length === 0}
+                  className={cn(
+                    'h-8 w-8 rounded-lg flex items-center justify-center',
+                    'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                    showNodePicker && 'bg-accent text-foreground',
+                    imageUrl && 'text-primary',
+                  )}
+                  title={!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
+                >
+                  <Paperclip className="w-4 h-4" />
+                </button>
+
+                {showNodePicker && (
+                  <div className="absolute bottom-full right-0 mb-1 w-56 max-h-60 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
+                      {!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
+                    </div>
+                    {imageNodes.map((node) => {
+                      const data = node.data as Record<string, unknown>;
+                      const label = ((data.name || node.id.slice(0, 8)) as string);
+                      const thumbUrl = getImageNodeUrl(node);
+                      return (
+                        <button
+                          key={node.id}
+                          type="button"
+                          onClick={() => handleSelectNode(node)}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer"
+                        >
+                          {thumbUrl && (
+                            <img src={thumbUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0 border border-border/30" />
+                          )}
+                          <div className="flex flex-col min-w-0 flex-1 text-left">
+                            <span className="font-medium truncate text-foreground">{label}</span>
+                          </div>
+                          <ImageIcon className={cn('w-3 h-3 shrink-0 text-node-green')} />
+                        </button>
+                      );
+                    })}
+                    {imageNodes.length === 0 && (
+                      <div className="p-3 text-[10px] text-muted-foreground text-center">
+                        {t('canvas.node.video.noImageNodes')}
                       </div>
                     )}
                   </div>
@@ -745,33 +945,7 @@ export default function VideoGeneratePanel({
             </div>
           </div>
 
-          {/* First frame image */}
-          {visibility.showFirstFrame && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">
-                {t('canvas.node.video.firstFrameImage')} <span className="text-destructive">*</span>
-              </label>
-              <Input
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder={t('canvas.node.video.firstFrameImagePlaceholder')}
-                className="h-7 text-[11px]"
-              />
-            </div>
-          )}
-
-          {/* Last frame image */}
-          {visibility.showLastFrame && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.lastFrameImage')}</label>
-              <Input
-                value={lastFrameImageUrl}
-                onChange={(e) => setLastFrameImageUrl(e.target.value)}
-                placeholder={t('canvas.node.video.lastFrameImagePlaceholder')}
-                className="h-7 text-[11px]"
-              />
-            </div>
-          )}
+          {/* First/Last frame hint — URL inputs removed, use node picker + preview instead */}
 
           {/* Advanced toggles */}
           {(visibility.showPromptOptimizer || visibility.showFastPretreatment) && (

@@ -154,14 +154,17 @@ class ArkSeedanceAdapter(VideoProviderAdapter):
         ])
 
         # 参考音频 (最多 3 个, Seedance 2.0 系列)
-        (ctx.reference_audios and is_v2) and content.extend([
-            {
-                "type": "audio_url",
-                "audio_url": {"url": a.get("url", "")},
-                "role": "reference_audio",
-            }
-            for a in ctx.reference_audios[:3]
-        ])
+        (ctx.reference_audios and is_v2) and (
+            logger.info(f"Seedance ref audios: {[a.get('url', '')[:60] for a in ctx.reference_audios[:3]]}"),
+            content.extend([
+                {
+                    "type": "audio_url",
+                    "audio_url": {"url": a.get("url", "")},
+                    "role": "reference_audio",
+                }
+                for a in ctx.reference_audios[:3]
+            ]),
+        )
 
         payload: dict = {
             "model": ctx.model,
