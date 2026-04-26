@@ -3,7 +3,7 @@ import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote, Plus, FolderOpen, Loader2, X } from 'lucide-react';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, Maximize, Minimize, Film, Quote, Plus, FolderOpen, Loader2, X, Pin, PinOff } from 'lucide-react';
 import { useCanvasStore, VideoNodeData, VideoGenHistoryEntry, CanvasNode } from '@/store/useCanvasStore';
 import { cn } from '@/lib/utils';
 import { useResourceStore } from '@/store/useResourceStore';
@@ -255,6 +255,10 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     const currentFitMode = data.fitMode || 'contain';
     updateNodeData(id, { fitMode: currentFitMode === 'contain' ? 'cover' : 'contain' });
   };
+
+  const handleTogglePinPanel = useCallback(() => {
+    updateNodeData(id, { pinPanel: !data.pinPanel } as Partial<VideoNodeData>);
+  }, [id, data.pinPanel, updateNodeData]);
 
   const handleReference = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -765,11 +769,26 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         </button>
       )}
 
-      {/* AI 视频生成内联面板 — 卡片下方，仅选中或任务进行中时显示，用 CSS 隐藏保留状态 */}
+      {/* AI 视频生成内联面板 — 卡片下方，选中/固定/任务进行中时显示，用 CSS 隐藏保留状态 */}
       <div className={cn(
         'absolute top-full left-0 right-0 mt-1.5 nodrag z-20 transition-opacity duration-150',
-        (selected || taskActive || taskDone || taskFailed) ? 'opacity-100' : 'opacity-0 pointer-events-none invisible',
+        (selected || data.pinPanel || taskActive || taskDone || taskFailed) ? 'opacity-100' : 'opacity-0 pointer-events-none invisible',
       )}>
+        {/* Pin toggle — top right of panel */}
+        <button
+          type="button"
+          onClick={handleTogglePinPanel}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={cn(
+            'absolute -top-1 right-1 z-30 h-6 w-6 rounded-md flex items-center justify-center transition-all duration-200',
+            data.pinPanel
+              ? 'text-primary hover:text-primary/80'
+              : 'text-muted-foreground/40 hover:text-muted-foreground/70',
+          )}
+          title={data.pinPanel ? t('canvas.node.video.unpinPanel') : t('canvas.node.video.pinPanel')}
+        >
+          {data.pinPanel ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}
+        </button>
           <VideoGeneratePanel
             onSubmit={handleVideoSubmit}
             onStop={() => videoTask.reset()}
