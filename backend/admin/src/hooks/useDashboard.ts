@@ -9,22 +9,24 @@ const fetcher = (url: string) => api.get(url).then((r) => r.data);
 
 export interface OverviewData {
   total_users: number;
-  active_users: number;
-  total_theaters: number;
-  total_assets: number;
-  total_video_tasks: number;
-  total_music_tasks: number;
-  total_credits_consumed: number;
-  paid_users: number;
-  paid_conversion_rate: number;
-  api_error_rate: number;
-  tool_total_calls: number;
-  tool_errors: number;
+  today_active_users: number;
+  today_revenue: number;
+  total_revenue: number;
 }
 
 export interface RegistrationTrendData {
   buckets: Record<string, number>;
   daily: Array<{ date: string; count: number }>;
+  period: string;
+}
+
+export interface ActiveTrendData {
+  daily: Array<{ date: string; count: number }>;
+  period: string;
+}
+
+export interface ConversionTrendData {
+  daily: Array<{ date: string; new_subscriptions: number; total_users_that_day: number }>;
   period: string;
 }
 
@@ -37,6 +39,7 @@ export interface TokenLeaderboardEntry {
   output_tokens: number;
   total_tokens: number;
   credits: number;
+  credits_consumed: number;
 }
 
 export interface PlanBreakdown {
@@ -61,6 +64,13 @@ export interface ContentStatsData {
   tool_execution: { total: number; errors: number; error_rate: number; avg_duration_ms: number | null };
 }
 
+export interface OperationalMetricsData {
+  pur: number;
+  retention_rate: number;
+  mrr: number;
+  churn_rate: number;
+}
+
 // ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
@@ -72,6 +82,16 @@ export function useDashboardOverview() {
 
 export function useRegistrationTrend(period: string = 'month') {
   const { data, error, isLoading } = useSWR<RegistrationTrendData>(`/admin/dashboard/registration-trend?period=${period}`, fetcher);
+  return { trend: data, error, isLoading };
+}
+
+export function useActiveTrend(period: string = 'month') {
+  const { data, error, isLoading } = useSWR<ActiveTrendData>(`/admin/dashboard/active-trend?period=${period}`, fetcher);
+  return { trend: data, error, isLoading };
+}
+
+export function useConversionTrend(period: string = 'month') {
+  const { data, error, isLoading } = useSWR<ConversionTrendData>(`/admin/dashboard/conversion-trend?period=${period}`, fetcher);
   return { trend: data, error, isLoading };
 }
 
@@ -88,4 +108,9 @@ export function useSubscriptionAnalysis() {
 export function useContentStats() {
   const { data, error, isLoading } = useSWR<ContentStatsData>('/admin/dashboard/content-stats', fetcher);
   return { content: data, error, isLoading };
+}
+
+export function useOperationalMetrics() {
+  const { data, error, isLoading } = useSWR<OperationalMetricsData>('/admin/dashboard/operational-metrics', fetcher);
+  return { metrics: data, error, isLoading };
 }

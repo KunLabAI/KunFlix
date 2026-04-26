@@ -142,7 +142,9 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             {items.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive = item.href === '/admin'
+                ? pathname === item.href
+                : pathname.startsWith(item.href);
               return (
                 <Link
                   key={item.href}

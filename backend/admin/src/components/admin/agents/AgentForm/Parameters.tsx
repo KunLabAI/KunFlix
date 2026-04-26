@@ -95,7 +95,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
 
   // 格式化显示 context_window (如 128K)
   const formatContextWindow = (value: number) => {
-    return value >= 1000 ? `${Math.round(value / 1024)}K` : value.toString();
+    return value >= 1048576 ? `${(value / 1048576).toFixed(1)}M` : value >= 1024 ? `${Math.round(value / 1024)}K` : value.toString();
   };
 
   return (
@@ -142,8 +142,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                     <div className="flex items-center gap-4">
                       <Slider
                         min={4096}
-                        max={262144}
-                        step={1024}
+                        max={1048576}
+                        step={4096}
                         value={[field.value ?? 4096]}
                         onValueChange={(vals) => field.onChange(vals[0])}
                         disabled={disabled}
@@ -156,9 +156,9 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                           const val = e.target.value;
                           field.onChange(val === '' ? 4096 : Number(val));
                         }}
-                        step={1024}
+                        step={4096}
                         min={4096}
-                        max={262144}
+                        max={1048576}
                         className="w-24 font-mono"
                         disabled={disabled}
                       />
@@ -170,7 +170,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             />
            <div className="flex justify-between text-xs text-muted-foreground mt-2">
              <span>4K</span>
-             <span>256K</span>
+             <span>1M</span>
            </div>
          </div>
       </div>

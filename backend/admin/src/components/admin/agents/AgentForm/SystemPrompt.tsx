@@ -69,7 +69,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
         render={({ field }) => (
           <FormItem>
             <div className="flex items-center justify-between mb-1">
-              <FormLabel>系统提示词 (System Prompt)</FormLabel>
+              <FormLabel>系统提示词 <span className="text-destructive">*</span></FormLabel>
               <Button
                 type="button"
                 variant="outline"

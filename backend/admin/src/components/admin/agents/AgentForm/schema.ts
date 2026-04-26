@@ -53,7 +53,7 @@ export const agentFormSchema = z.object({
   agent_type: z.enum(["text", "image", "multimodal", "video"]).default("text"),
   system_prompt: z.string().min(1, "请输入系统提示词").max(5000, "最大长度5000字符"),
   temperature: z.number().min(0).max(1),
-  context_window: z.number().min(4096, "最小值为4096").max(262144, "最大值为262144"),
+  context_window: z.number().min(4096, "最小值为4096").max(1048576, "最大值为1048576"),
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
