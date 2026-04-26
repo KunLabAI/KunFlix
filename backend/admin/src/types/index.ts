@@ -128,6 +128,9 @@ export interface User {
   last_device_type?: string | null;
   last_os?: string | null;
   last_browser?: string | null;
+  // 注册来源
+  google_id?: string | null;
+  github_id?: string | null;
   created_at: string | null;
   updated_at: string | null;
 }

@@ -10,7 +10,7 @@ from typing import Optional
 import logging
 
 from database import get_db
-from models import LLMProvider, VideoTask, ChatMessage, Asset, generate_uuid
+from models import LLMProvider, VideoTask, ChatMessage, Asset, User, generate_uuid
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
 from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
@@ -288,6 +288,12 @@ async def _register_video_asset(local_url: str, user_id: str, db: AsyncSession) 
             size=size,
         )
         db.add(asset)
+        # 增量更新用户存储用量
+        (size or 0) and await db.execute(
+            User.__table__.update()
+            .where(User.id == user_id)
+            .values(storage_used_bytes=func.coalesce(User.storage_used_bytes, 0) + size)
+        )
         await db.flush()
         logger.info("Registered video as asset: %s (user=%s)", filename, user_id)
     except Exception as e:

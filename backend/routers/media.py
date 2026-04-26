@@ -357,6 +357,25 @@ async def storage_usage(
 
 
 # ---------------------------------------------------------------------------
+# 虚拟人像预览图子目录
+# ---------------------------------------------------------------------------
+
+@router.get("/virtual-humans/{filename}")
+async def serve_virtual_human_preview(filename: str):
+    """提供虚拟人像预览图文件"""
+    matched = _SAFE_FILENAME.match(filename)
+    matched or (_ for _ in ()).throw(HTTPException(status_code=400, detail="Invalid filename"))
+    filepath = MEDIA_DIR / "virtual-humans" / filename
+    filepath.is_file() or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
+    ext = filename.rsplit(".", 1)[-1]
+    return FileResponse(
+        filepath,
+        media_type=_EXT_MIME.get(ext, "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=31536000"},
+    )
+
+
+# ---------------------------------------------------------------------------
 # 通配符路由 — 必须放在所有具体路径之后，否则会拦截 /assets 等路径
 # ---------------------------------------------------------------------------
 

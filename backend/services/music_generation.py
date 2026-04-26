@@ -19,7 +19,8 @@ from services.music_providers import (
     extract_music_provider_type,
 )
 from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT, MEDIA_DIR, get_relative_path
-from models import Asset, generate_uuid
+from models import Asset, User, generate_uuid
+from sqlalchemy import func
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,6 +82,12 @@ async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str,
             size=size,
         )
         db.add(asset)
+        # 增量更新用户存储用量
+        (size or 0) and await db.execute(
+            User.__table__.update()
+            .where(User.id == user_id)
+            .values(storage_used_bytes=func.coalesce(User.storage_used_bytes, 0) + size)
+        )
         await db.flush()
         logger.info("Registered music as asset: %s (user=%s)", filename, user_id)
     except Exception as e:

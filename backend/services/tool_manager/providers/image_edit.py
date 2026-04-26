@@ -11,10 +11,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, generate_uuid
+from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, User, generate_uuid
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.media_utils import MEDIA_DIR, get_relative_path, resolve_media_filepath
 
@@ -515,6 +515,12 @@ async def _register_edited_image_asset(edited_url: str, ctx: "ToolContext") -> N
             size=size,
         )
         db.add(asset)
+        # 增量更新用户存储用量
+        (size or 0) and await db.execute(
+            User.__table__.update()
+            .where(User.id == user_id)
+            .values(storage_used_bytes=func.coalesce(User.storage_used_bytes, 0) + size)
+        )
         await db.flush()
         logger.info("Registered edited image as asset: %s (user=%s)", filename, user_id)
     except Exception as e:

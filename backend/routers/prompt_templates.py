@@ -307,16 +307,5 @@ async def get_template_types(
         .order_by(PromptTemplate.template_type)
     )
     types = result.scalars().all()
-    return [{"value": t, "label": _get_template_type_label(t)} for t in types if t]
+    return [{"value": t, "label": t} for t in types if t]
 
-
-def _get_template_type_label(template_type: str) -> str:
-    """获取模板类型的中文标签"""
-    labels = {
-        "story_basic": "故事基础设定",
-        "character": "角色设定",
-        "scene": "场景描述",
-        "storyboard": "分镜脚本",
-        "custom": "自定义",
-    }
-    return labels.get(template_type, template_type)

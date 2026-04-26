@@ -623,7 +623,7 @@ class PromptTemplateVariable(BaseModel):
 class PromptTemplateBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
-    template_type: str = Field(..., min_length=1, max_length=50)  # story_basic | character | scene | storyboard | custom
+    template_type: str = Field(..., min_length=1, max_length=12)
     agent_type: Literal["text", "image", "multimodal", "video"] = Field(default="text")
     system_prompt_template: str = Field(..., min_length=1)
     user_prompt_template: Optional[str] = None
@@ -641,7 +641,7 @@ class PromptTemplateCreate(PromptTemplateBase):
 class PromptTemplateUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
-    template_type: Optional[str] = Field(None, min_length=1, max_length=50)
+    template_type: Optional[str] = Field(None, min_length=1, max_length=12)
     agent_type: Optional[Literal["text", "image", "multimodal", "video"]] = None
     system_prompt_template: Optional[str] = None
     user_prompt_template: Optional[str] = None

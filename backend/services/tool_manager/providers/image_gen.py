@@ -14,10 +14,10 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import LLMProvider, Agent, ToolConfig, Asset, generate_uuid
+from models import LLMProvider, Agent, ToolConfig, Asset, User, generate_uuid
 from services.xai_image_gen import (
     batch_generate_xai_images,
     XAIBatchImageConfig,
@@ -242,6 +242,12 @@ async def _register_generated_image_assets(image_urls: list[str], user_id: str |
                 size=size,
             )
             db.add(asset)
+            # 增量更新用户存储用量
+            (size or 0) and await db.execute(
+                User.__table__.update()
+                .where(User.id == user_id)
+                .values(storage_used_bytes=func.coalesce(User.storage_used_bytes, 0) + size)
+            )
             logger.info("Registered generated image as asset: %s (user=%s)", filename, user_id)
         except Exception as e:
             logger.warning("Failed to register generated image asset: %s", e, exc_info=True)

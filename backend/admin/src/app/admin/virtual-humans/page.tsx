@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   useVirtualHumanPresets,
   useCreateVirtualHumanPreset,
@@ -8,17 +8,13 @@ import {
   useDeleteVirtualHumanPreset,
 } from '@/hooks/useVirtualHumanPresets';
 import { VirtualHumanPreset, VirtualHumanPresetCreate } from '@/types';
+import api from '@/lib/axios';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import {
-  Card,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -45,7 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Pencil, Trash2, UserRound, Loader2, ImageOff, ArrowUpDown } from 'lucide-react';
+import { Plus, Trash2, UserRound, Loader2, ImageOff, ArrowRight, Upload, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -77,6 +73,34 @@ const EMPTY_FORM: VirtualHumanPresetCreate & { description: string } = {
   is_active: true,
   sort_order: 0,
 };
+
+// ---------------------------------------------------------------------------
+// 图片压缩
+// ---------------------------------------------------------------------------
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+async function compressImage(file: File, maxWidth = 800, quality = 0.85): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('Compression failed'))),
+        'image/webp',
+        quality,
+      );
+    };
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 // ---------------------------------------------------------------------------
 // 图片带 fallback
@@ -119,10 +143,14 @@ export default function VirtualHumansPage() {
   const [editingPreset, setEditingPreset] = useState<VirtualHumanPreset | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // delete state
   const [deleteTarget, setDeleteTarget] = useState<VirtualHumanPreset | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // file input ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ---- filtered list ----
   const filteredPresets = useMemo(() => {
@@ -158,13 +186,53 @@ export default function VirtualHumansPage() {
     setDialogOpen(true);
   };
 
+  // ---- image upload ----
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset input
+    if (!file) return;
+
+    // validate size
+    if (file.size > MAX_FILE_SIZE) {
+      toast({ variant: 'destructive', title: '文件过大', description: '图片大小不能超过 5MB' });
+      return;
+    }
+
+    // validate type
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast({ variant: 'destructive', title: '格式不支持', description: '仅支持 PNG、JPG、WEBP 格式' });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // compress
+      const compressed = await compressImage(file);
+      const formData = new FormData();
+      formData.append('file', compressed, `preview.webp`);
+
+      const res = await api.post('/admin/virtual-human-presets/upload-preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setField('preview_url', res.data.url);
+      toast({ title: '上传成功' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || '上传失败';
+      toast({ variant: 'destructive', title: '上传失败', description: msg });
+    } finally {
+      setUploading(false);
+    }
+  }, [toast]);
+
   const handleSubmit = async () => {
     const { asset_id, name, style, preview_url } = form;
     const missing = [
       !asset_id.trim() && 'Asset ID',
       !name.trim() && '名称',
       !style.trim() && '风格',
-      !preview_url.trim() && '预览图 URL',
+      !preview_url.trim() && '预览图',
     ].filter(Boolean);
 
     if (missing.length) {
@@ -222,7 +290,7 @@ export default function VirtualHumansPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">虚拟人像库</h2>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground mt-1">
             管理火山方舟预制虚拟人像，用于 Seedance 2.0 真人视频生成
           </p>
         </div>
@@ -233,7 +301,6 @@ export default function VirtualHumansPage() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        {/* Gender button group */}
         <div className="flex items-center rounded-lg border bg-background p-1 shadow-sm">
           {GENDER_FILTERS.map((g) => (
             <Button
@@ -268,22 +335,28 @@ export default function VirtualHumansPage() {
             <p className="text-sm">暂无虚拟人像</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-6">
             {filteredPresets.map((preset) => {
               const gender = GENDER_MAP[preset.gender] ?? GENDER_MAP.male;
               return (
-                <Card
+                <div
                   key={preset.id}
-                  className="group relative flex flex-col overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
+                  className="group relative flex flex-col rounded-xl bg-background border border-border cursor-pointer overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-primary/50"
+                  onClick={() => openEditDialog(preset)}
+                  role="button"
+                  tabIndex={0}
                 >
-                  {/* Image */}
+                  {/* 顶部强调线 */}
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                  {/* 头像预览 */}
                   <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted">
                     <PresetImage
                       src={preset.preview_url}
                       alt={preset.name}
-                      className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+                      className="h-full w-full transition-transform duration-500 group-hover:scale-105"
                     />
-                    {/* Status dot */}
+                    {/* 状态角标 */}
                     <div className="absolute left-2.5 top-2.5 flex items-center gap-1.5 rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium shadow backdrop-blur-sm">
                       <span
                         className={cn(
@@ -293,48 +366,42 @@ export default function VirtualHumansPage() {
                       />
                       {preset.is_active ? '启用' : '停用'}
                     </div>
-
-                    {/* Hover actions */}
-                    <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-gradient-to-t from-black/60 to-transparent p-3 pt-10 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 gap-1 text-xs shadow"
-                        onClick={() => openEditDialog(preset)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" /> 编辑
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="h-8 gap-1 text-xs shadow"
-                        onClick={() => setDeleteTarget(preset)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> 删除
-                      </Button>
-                    </div>
                   </div>
 
-                  {/* Info */}
-                  <CardContent className="flex-1 space-y-2 p-4">
-                    <h3 className="truncate text-base font-semibold leading-tight">{preset.name}</h3>
-                    <div className="flex flex-wrap items-center gap-1.5">
+                  {/* 卡片主体 */}
+                  <div className="p-4 flex-1 flex flex-col justify-center">
+                    <h3 className="font-semibold text-base leading-tight text-foreground mb-2 truncate" title={preset.name}>
+                      {preset.name}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
                       <Badge variant={gender.variant} className="text-[10px]">{gender.label}</Badge>
                       <Badge variant="outline" className="text-[10px] font-normal">{preset.style}</Badge>
                     </div>
                     <p className="truncate font-mono text-[11px] text-muted-foreground" title={preset.asset_id}>
                       {preset.asset_id}
                     </p>
-                  </CardContent>
+                  </div>
 
-                  <CardFooter className="flex items-center justify-between border-t bg-muted/20 px-4 py-2.5 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <ArrowUpDown className="h-3 w-3" />
-                      <span>排序 {preset.sort_order}</span>
+                  {/* 底部操作区 */}
+                  <div className="px-4 py-3 border-t border-border/50 flex items-center justify-between transition-colors duration-300 group-hover:bg-muted/30">
+                    <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
+                      编辑配置
+                      <ArrowRight className="w-3 h-3 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+                    </span>
+
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
+                        onClick={() => setDeleteTarget(preset)}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        删除
+                      </Button>
                     </div>
-                    <span>{new Date(preset.created_at).toLocaleDateString()}</span>
-                  </CardFooter>
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -408,24 +475,64 @@ export default function VirtualHumansPage() {
               </div>
             </div>
 
-            {/* preview_url + live preview */}
+            {/* 预览图上传 */}
             <div className="grid gap-1.5">
-              <Label htmlFor="preview_url">
-                预览图 URL <span className="text-destructive">*</span>
+              <Label>
+                预览图 <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="preview_url"
-                placeholder="https://..."
-                value={form.preview_url}
-                onChange={(e) => setField('preview_url', e.target.value)}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleImageUpload}
               />
-              {form.preview_url.trim() && (
-                <div className="mt-1 flex justify-center rounded-md border bg-muted/30 p-2">
-                  <PresetImage
+              {form.preview_url ? (
+                <div className="relative rounded-lg border bg-muted/20 overflow-hidden">
+                  <img
                     src={form.preview_url}
                     alt="预览"
-                    className="h-28 w-auto max-w-full rounded"
+                    className="w-full h-48 object-contain"
                   />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2 h-7 w-7 rounded-full"
+                    onClick={() => setField('preview_url', '')}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="absolute bottom-2 right-2 h-7 text-xs"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                  >
+                    {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
+                    更换
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className={cn(
+                    'flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 cursor-pointer transition-colors',
+                    'hover:border-primary/50 hover:bg-muted/30',
+                    uploading && 'pointer-events-none opacity-60',
+                  )}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
+                  ) : (
+                    <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                  )}
+                  <p className="text-sm text-muted-foreground">
+                    {uploading ? '上传中…' : '点击上传预览图'}
+                  </p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">
+                    支持 PNG、JPG、WEBP，最大 5MB，上传后自动压缩
+                  </p>
                 </div>
               )}
             </div>
@@ -470,7 +577,7 @@ export default function VirtualHumansPage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>
               取消
             </Button>
-            <Button onClick={handleSubmit} disabled={submitting}>
+            <Button onClick={handleSubmit} disabled={submitting || uploading}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingPreset ? '保存修改' : '创建'}
             </Button>

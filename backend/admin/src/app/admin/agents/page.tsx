@@ -33,22 +33,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Pencil, Trash2, Search, LayoutGrid, List, Bot, Cpu, Zap } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Plus, Pencil, Trash2, Search, Bot } from 'lucide-react';
 
 export default function AgentsPage() {
   const router = useRouter();
   const [searchText, setSearchText] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { toast } = useToast();
   
@@ -72,76 +62,6 @@ export default function AgentsPage() {
     }
   };
 
-  const renderGridView = () => (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      {agents?.map((agent) => {
-        const provider = providers?.find((p) => p.id === agent.provider_id);
-        return (
-          <Card 
-            key={agent.id} 
-            className="group relative cursor-pointer transition-all hover:border-primary hover:shadow-lg"
-            onClick={() => router.push(`/admin/agents/${agent.id}`)}
-          >
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-transform group-hover:scale-110">
-                  <Bot className="h-6 w-6" />
-                </div>
-              </div>
-              <div onClick={e => e.stopPropagation()}>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        此操作不可撤销。
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>取消</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => agent.id && handleDelete(agent.id)}>确认删除</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <CardTitle className="mb-1 text-lg group-hover:text-primary transition-colors">{agent.name}</CardTitle>
-              <CardDescription className="line-clamp-2 h-10 text-xs">
-                {agent.description || '暂无描述'}
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="flex flex-col items-start gap-3 border-t bg-muted/20 p-4">
-              <div className="flex w-full items-center justify-between text-xs">
-                <Badge variant="secondary" className="font-normal">{provider?.name || 'Unknown'}</Badge>
-                <span className="font-medium text-muted-foreground">{agent.model}</span>
-              </div>
-              <div className="flex w-full flex-wrap gap-1">
-                {agent.tools && agent.tools.length > 0 ? (
-                  agent.tools.slice(0, 3).map(t => (
-                    <Badge key={t} variant="outline" className="text-[10px] bg-blue-50/50 text-blue-600 border-blue-100">
-                      {t}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">无工具</span>
-                )}
-                {agent.tools && agent.tools.length > 3 && (
-                  <span className="text-[10px] text-muted-foreground">+{agent.tools.length - 3}</span>
-                )}
-              </div>
-            </CardFooter>
-          </Card>
-        );
-      })}
-    </div>
-  );
-
   return (
     <div className="max-w-[1200px] mx-auto w-full space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -160,25 +80,7 @@ export default function AgentsPage() {
              />
            </div>
 
-           <div className="hidden md:flex items-center rounded-lg border bg-background p-1 shadow-sm">
-             <Button 
-               variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
-               size="sm"
-               onClick={() => setViewMode('list')}
-               className="h-8 w-8 p-0"
-             >
-               <List className="h-4 w-4" />
-             </Button>
-             <Button 
-               variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
-               size="sm"
-               onClick={() => setViewMode('grid')}
-               className="h-8 w-8 p-0"
-             >
-               <LayoutGrid className="h-4 w-4" />
-             </Button>
-           </div>
-           
+                      
            <Button onClick={() => router.push('/admin/agents/new')}>
              <Plus className="mr-2 h-4 w-4" /> 创建智能体
            </Button>
@@ -186,8 +88,7 @@ export default function AgentsPage() {
       </div>
 
       <div className="min-h-[400px]">
-        {viewMode === 'list' ? (
-          <div className="rounded-md border bg-card">
+        <div className="rounded-md border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -304,10 +205,7 @@ export default function AgentsPage() {
                 })}
               </TableBody>
             </Table>
-          </div>
-        ) : (
-          renderGridView()
-        )}
+        </div>
       </div>
     </div>
   );

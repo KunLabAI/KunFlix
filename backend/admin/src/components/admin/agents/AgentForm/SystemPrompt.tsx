@@ -28,14 +28,6 @@ import { Input } from '@/components/ui/input';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { PromptTemplate } from '@/types';
 
-const TEMPLATE_TYPE_LABELS: Record<string, string> = {
-  story_basic: '故事基础设定',
-  character: '角色设定',
-  scene: '场景描述',
-  storyboard: '分镜脚本',
-  custom: '自定义',
-};
-
 interface SystemPromptProps {
   disabled?: boolean;
 }
@@ -120,7 +112,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
                 <SelectItem value="__all__">全部分类</SelectItem>
                 {templateTypes.map((t) => (
                   <SelectItem key={t} value={t}>
-                    {TEMPLATE_TYPE_LABELS[t] || t}
+                    {t}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -137,28 +129,22 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
                   key={t.id}
                   type="button"
                   onClick={() => handleApply(t)}
-                  className="w-full text-left p-4 rounded-lg border hover:bg-accent hover:border-primary transition-colors group"
+                  className="w-full text-left px-4 py-3 rounded-lg border hover:bg-accent hover:border-primary transition-colors group relative"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">{t.name}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                          {TEMPLATE_TYPE_LABELS[t.template_type] || t.template_type}
-                        </span>
-                        {t.is_default && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">默认</span>
-                        )}
-                      </div>
-                      {t.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">{t.description}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-sm truncate">{t.name}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {t.is_default && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">默认</span>
                       )}
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {t.template_type}
+                      </span>
                     </div>
-                    <span className="text-xs text-primary opacity-0 group-hover:opacity-100 shrink-0 pt-0.5">点击应用</span>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground font-mono line-clamp-2 bg-muted/50 rounded p-2">
-                    {t.system_prompt_template.slice(0, 120)}{t.system_prompt_template.length > 120 ? '...' : ''}
-                  </p>
+                  {t.description && (
+                    <p className="text-xs text-muted-foreground line-clamp-1 mt-1">{t.description}</p>
+                  )}
                 </button>
               ))}
             </div>
