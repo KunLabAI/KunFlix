@@ -19,7 +19,7 @@ export interface RefImage {
 }
 
 export interface RefTagInputRef {
-  insertTag: (refIdx: number, name: string) => void;
+  insertTag: (refIdx: number, name: string, refType?: RefType) => void;
   focus: () => void;
 }
 
@@ -43,30 +43,71 @@ function esc(s: string) {
 const IMG_SVG =
   '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>';
 
-const TAG_STYLE = [
-  'display:inline-flex', 'align-items:center', 'gap:3px',
-  'padding:0 6px', 'margin:0 1px', 'border-radius:4px',
-  'background:color-mix(in srgb, var(--primary) 12%, transparent)',
-  'color:var(--primary)',
-  'font-size:11px', 'font-weight:500', 'vertical-align:baseline',
-  'cursor:grab', 'user-select:none', 'white-space:nowrap',
-  'border:1px solid color-mix(in srgb, var(--primary) 20%, transparent)',
-  'line-height:1.6',
-].join(';');
+const VIDEO_SVG =
+  '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>';
 
-function tagHtml(idx: number, name: string) {
-  return `<span contenteditable="false" draggable="true" data-ref-idx="${idx}" style="${TAG_STYLE}">${IMG_SVG}<span style="max-width:72px;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span></span>`;
+const AUDIO_SVG =
+  '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+
+const TYPE_SVG: Record<RefType, string> = { image: IMG_SVG, video: VIDEO_SVG, audio: AUDIO_SVG };
+const TYPE_TAG_PREFIX: Record<RefType, string> = { image: 'IMAGE', video: 'VIDEO', audio: 'AUDIO' };
+const TAG_PREFIX_TO_TYPE: Record<string, RefType> = { IMAGE: 'image', VIDEO: 'video', AUDIO: 'audio' };
+
+const TAG_COLORS: Record<RefType, { bg: string; border: string; color: string }> = {
+  image: { bg: 'var(--primary) 12%', border: 'var(--primary) 20%', color: 'var(--primary)' },
+  video: { bg: '#f59e0b 15%', border: '#f59e0b 25%', color: '#d97706' },
+  audio: { bg: '#14b8a6 15%', border: '#14b8a6 25%', color: '#0d9488' },
+};
+
+function tagStyle(refType: RefType) {
+  const c = TAG_COLORS[refType];
+  return [
+    'display:inline-flex', 'align-items:center', 'gap:3px',
+    'padding:0 6px', 'margin:0 1px', 'border-radius:4px',
+    `background:color-mix(in srgb, ${c.bg}, transparent)`,
+    `color:${c.color}`,
+    'font-size:11px', 'font-weight:500', 'vertical-align:baseline',
+    'cursor:grab', 'user-select:none', 'white-space:nowrap',
+    `border:1px solid color-mix(in srgb, ${c.border}, transparent)`,
+    'line-height:1.6',
+  ].join(';');
 }
 
-/** Plain text with <IMAGE_N> markers → HTML with visual tag spans */
+function tagHtml(idx: number, name: string, refType: RefType = 'image') {
+  const svg = TYPE_SVG[refType];
+  const style = tagStyle(refType);
+  return `<span contenteditable="false" draggable="true" data-ref-idx="${idx}" data-ref-type="${refType}" style="${style}">${svg}<span style="max-width:72px;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span></span>`;
+}
+
+/** Compute type-specific index for a ref at array position `pos` */
+function typeIndex(refs: RefImage[], pos: number): number {
+  const targetType = refs[pos]?.refType || 'image';
+  let count = 0;
+  for (let i = 0; i <= pos; i++) {
+    refs[i].refType === targetType && count++;
+  }
+  return count;
+}
+
+/** Plain text with <IMAGE_N>/<VIDEO_N>/<AUDIO_N> markers → HTML with visual tag spans */
 function toHtml(text: string, refs: RefImage[]) {
-  return esc(text).replace(/&lt;IMAGE_(\d+)&gt;/g, (_, n) => {
-    const r = refs[parseInt(n) - 1];
-    return r ? tagHtml(parseInt(n), r.name) : `&lt;IMAGE_${n}&gt;`;
+  // Build per-type lookup: type → [ref0, ref1, ...]
+  const byType: Record<string, RefImage[]> = { image: [], video: [], audio: [] };
+  refs.forEach(r => byType[r.refType]?.push(r));
+
+  let html = esc(text);
+  // Replace all three patterns: <IMAGE_N>, <VIDEO_N>, <AUDIO_N>
+  html = html.replace(/&lt;(IMAGE|VIDEO|AUDIO)_(\d+)&gt;/g, (_, prefix, n) => {
+    const refType = TAG_PREFIX_TO_TYPE[prefix] || 'image';
+    const idx = parseInt(n);
+    const list = byType[refType];
+    const r = list?.[idx - 1];
+    return r ? tagHtml(idx, r.name, refType) : `&lt;${prefix}_${n}&gt;`;
   });
+  return html;
 }
 
-/** contentEditable DOM → plain text with <IMAGE_N> markers */
+/** contentEditable DOM → plain text with <IMAGE_N>/<VIDEO_N>/<AUDIO_N> markers */
 function serialize(el: HTMLElement): string {
   let r = '';
   el.childNodes.forEach((n) => {
@@ -74,7 +115,9 @@ function serialize(el: HTMLElement): string {
     n.nodeType === Node.ELEMENT_NODE && (() => {
       const e = n as HTMLElement;
       const idx = e.getAttribute('data-ref-idx');
-      r += idx ? `<IMAGE_${idx}>` : e.tagName === 'BR' ? '\n' : serialize(e);
+      const refType = (e.getAttribute('data-ref-type') || 'image') as RefType;
+      const prefix = TYPE_TAG_PREFIX[refType] || 'IMAGE';
+      r += idx ? `<${prefix}_${idx}>` : e.tagName === 'BR' ? '\n' : serialize(e);
     })();
   });
   return r;
@@ -105,16 +148,15 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
     const lastVal = useRef(value);
     const [atMenu, setAtMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    const dragIdxRef = useRef<number | null>(null);
 
     // -- expose API --
     useImperativeHandle(ref, () => ({
-      insertTag(idx: number, name: string) {
+      insertTag(idx: number, name: string, refType: RefType = 'image') {
         const el = edRef.current;
         el || (void 0);
         if (!el) return;
         const tmp = document.createElement('div');
-        tmp.innerHTML = tagHtml(idx, name);
+        tmp.innerHTML = tagHtml(idx, name, refType);
         insertNodeAtCursor(el, tmp.firstElementChild!);
         const txt = serialize(el);
         lastVal.current = txt;
@@ -173,9 +215,12 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
     };
 
     // -- tag drag & drop within editor --
+    const dragIdxRef = useRef<number | null>(null);
+    const dragTypeRef = useRef<RefType>('image');
+
     const handleDragStart = useCallback((e: React.DragEvent) => {
       const target = (e.target as HTMLElement).closest?.('[data-ref-idx]') as HTMLElement | null;
-      target && (dragIdxRef.current = Number(target.getAttribute('data-ref-idx')));
+      target && (dragIdxRef.current = Number(target.getAttribute('data-ref-idx')), dragTypeRef.current = (target.getAttribute('data-ref-type') || 'image') as RefType);
       !target && e.preventDefault();
     }, []);
 
@@ -185,13 +230,14 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
 
     const handleDrop = useCallback((e: React.DragEvent) => {
       const idx = dragIdxRef.current;
+      const refType = dragTypeRef.current;
       dragIdxRef.current = null;
       const el = edRef.current;
       (idx === null || !el) && (void 0);
       idx !== null && el && (() => {
         e.preventDefault();
         // Remove the original tag span from DOM
-        const orig = el.querySelector(`[data-ref-idx="${idx}"]`);
+        const orig = el.querySelector(`[data-ref-idx="${idx}"][data-ref-type="${refType}"]`) || el.querySelector(`[data-ref-idx="${idx}"]`);
         orig?.remove();
 
         // Place caret at drop point
@@ -207,11 +253,12 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
           ? (sel.removeAllRanges(), sel.addRange(range))
           : (void 0);
 
-        // Re-create and insert tag at new position
-        const refs = referenceImages[idx - 1];
-        refs && (() => {
+        // Re-create and insert tag at new position — find ref by type+idx
+        const byType = referenceImages.filter(r => r.refType === refType);
+        const ref = byType[idx - 1];
+        ref && (() => {
           const tmp = document.createElement('div');
-          tmp.innerHTML = tagHtml(idx, refs.name);
+          tmp.innerHTML = tagHtml(idx, ref.name, refType);
           insertNodeAtCursor(el, tmp.firstElementChild!);
         })();
 
@@ -222,12 +269,14 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
       })();
     }, [referenceImages, onChange]);
 
-    // -- @ select: remove '@', insert tag --
-    const handleAtSelect = (idx: number) => {
+    // -- @ select: remove '@', insert tag with type-specific index --
+    const handleAtSelect = (arrayPos: number) => {
       const el = edRef.current;
       if (!el) return;
-      const r = referenceImages[idx - 1];
+      const r = referenceImages[arrayPos];
       if (!r) return;
+      const refType = r.refType;
+      const idx = typeIndex(referenceImages, arrayPos);
 
       // remove the '@' char before cursor
       const sel = window.getSelection();
@@ -243,7 +292,7 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
 
       // insert tag
       const tmp = document.createElement('div');
-      tmp.innerHTML = tagHtml(idx, r.name);
+      tmp.innerHTML = tagHtml(idx, r.name, refType);
       insertNodeAtCursor(el, tmp.firstElementChild!);
       handleInput();
       setAtMenu(false);
@@ -298,23 +347,42 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
             <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
               {t('canvas.node.video.insertRefImage')}
             </div>
-            {referenceImages.map((r, i) => (
+            {referenceImages.map((r, i) => {
+              const tIdx = typeIndex(referenceImages, i);
+              const prefix = TYPE_TAG_PREFIX[r.refType];
+              const isAud = r.refType === 'audio';
+              const isVid = r.refType === 'video';
+              return (
               <button
                 key={i}
                 type="button"
-                onMouseDown={(e) => { e.preventDefault(); handleAtSelect(i + 1); }}
+                onMouseDown={(e) => { e.preventDefault(); handleAtSelect(i); }}
                 className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer"
               >
-                <div className="h-6 w-6 shrink-0 relative">
-                  <img src={r.previewUrl || r.url} alt="" className="h-6 w-6 rounded object-cover border border-border/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
-                  <div className="hidden h-6 w-6 rounded border border-border/30 bg-muted flex items-center justify-center absolute inset-0">
-                    <UserRound className="w-3 h-3 text-muted-foreground/50" />
+                {isAud ? (
+                  <div className="h-6 w-6 shrink-0 rounded border border-border/30 bg-muted flex items-center justify-center">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-teal-400"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                   </div>
-                </div>
+                ) : isVid ? (
+                  <div className="h-6 w-6 shrink-0 rounded border border-border/30 bg-muted flex items-center justify-center">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/></svg>
+                  </div>
+                ) : (
+                  <div className="h-6 w-6 shrink-0 relative">
+                    <img src={r.previewUrl || r.url} alt="" className="h-6 w-6 rounded object-cover border border-border/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
+                    <div className="hidden h-6 w-6 rounded border border-border/30 bg-muted flex items-center justify-center absolute inset-0">
+                      <UserRound className="w-3 h-3 text-muted-foreground/50" />
+                    </div>
+                  </div>
+                )}
                 <span className="font-medium truncate text-foreground">{r.name}</span>
-                <span className="text-[10px] text-muted-foreground ml-auto whitespace-nowrap">{`IMAGE_${i + 1}`}</span>
+                <span className={cn(
+                  'text-[10px] ml-auto whitespace-nowrap',
+                  isAud ? 'text-teal-500' : isVid ? 'text-amber-500' : 'text-muted-foreground',
+                )}>{`${prefix}_${tIdx}`}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

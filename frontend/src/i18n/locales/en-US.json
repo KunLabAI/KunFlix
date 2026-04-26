@@ -329,6 +329,8 @@
                 "noVirtualHumans": "No virtual humans available",
                 "virtualHumanHint": "Seedance models support using preset virtual humans as reference images",
                 "stopGenerate": "Stop",
+                "pinPanel": "Pin Panel",
+                "unpinPanel": "Unpin Panel",
         "singleModeHint": "This model only supports {{mode}} mode",
         "creditCost": "Cost: {{cost}} credits"
       },

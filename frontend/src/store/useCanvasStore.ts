@@ -74,6 +74,8 @@ export type VideoNodeData = {
   generatedVideos?: VideoGenHistoryEntry[];
   /** Pre-fill VideoGeneratePanel when node is created from history drag */
   initialGenConfig?: Partial<VideoGenHistoryEntry>;
+  /** When true, keep VideoGeneratePanel always visible regardless of selection */
+  pinPanel?: boolean;
 };
 
 export type AudioNodeData = {

@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Settings2, Send, Sparkles, Zap, ChevronDown, Square, XCircle, ArrowRight, Paperclip, ImageIcon, Film, Music, X, UserRound } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Settings2, Send, Sparkles, Zap, ChevronDown, Square, XCircle, ArrowRight, Paperclip, ImageIcon, Film, Music, X, UserRound, Check } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -11,6 +10,7 @@ import {
   useVideoModelCapabilities,
   useVideoFormVisibility,
   useVirtualHumanPresets,
+  useVideoProviders,
   VIDEO_MODE_LABELS,
   RESOLUTION_LABELS,
   ASPECT_RATIO_LABELS,
@@ -18,6 +18,28 @@ import {
 } from '@/hooks/useVideoGeneration';
 import type { CanvasNode, CharacterNodeData, VideoNodeData, AudioNodeData, VideoGenHistoryEntry } from '@/store/useCanvasStore';
 import RefTagInput, { type RefTagInputRef, type RefImage, type RefType } from './RefTagInput';
+
+// ---------------------------------------------------------------------------
+// Provider logo mapping
+// ---------------------------------------------------------------------------
+
+const PROVIDER_ICONS: Record<string, string> = {
+  openai: '/provider/openai.svg',
+  azure: '/provider/azureai-color.svg',
+  dashscope: '/provider/qwen-color.svg',
+  anthropic: '/provider/claude-color.svg',
+  gemini: '/provider/gemini-color.svg',
+  deepseek: '/provider/deepseek-color.svg',
+  minimax: '/provider/minimax-color.svg',
+  xai: '/provider/grok.svg',
+  doubao: '/provider/doubao-color.svg',
+  kling: '/provider/kling-color.svg',
+  meta: '/provider/meta-color.svg',
+  microsoft: '/provider/microsoft-color.svg',
+  openrouter: '/provider/openrouter.svg',
+  sora: '/provider/sora-color.svg',
+  ark: '/provider/volcengine-color.svg',
+};
 
 // ---------------------------------------------------------------------------
 // Props — parent (VideoNode) owns task state
@@ -155,6 +177,11 @@ export default function VideoGeneratePanel({
 
   // Data
   const { models, isLoading: modelsLoading } = useVideoModels();
+  const { providers } = useVideoProviders();
+
+  // Model dropdown state
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
 
   // Form state
   const [selectedModelKey, setSelectedModelKey] = useState('');
@@ -326,23 +353,23 @@ export default function VideoGeneratePanel({
   // Ref to the rich input for inserting tags programmatically
   const inputRef = useRef<RefTagInputRef>(null);
 
-  // Remove a reference and clean up <IMAGE_N> tags in prompt (only for image refs)
+  // Remove a reference and clean up type-specific tags in prompt, then renumber
+  const TAG_PREFIX_MAP: Record<RefType, string> = { image: 'IMAGE', video: 'VIDEO', audio: 'AUDIO' };
   const handleRemoveRefImage = (removeIdx: number) => {
     const removedRef = referenceImages[removeIdx];
     const newRefs = referenceImages.filter((_, i) => i !== removeIdx);
     setReferenceImages(newRefs);
-    // Only renumber IMAGE tags when removing an image ref
-    removedRef.refType === 'image' && (() => {
-      const imageOnlyIdx = referenceImages.slice(0, removeIdx).filter(r => r.refType === 'image').length + 1;
-      const totalImages = referenceImages.filter(r => r.refType === 'image').length;
-      let updated = prompt;
-      updated = updated.replace(new RegExp(`<IMAGE_${imageOnlyIdx}>`, 'g'), '');
-      for (let i = totalImages; i > imageOnlyIdx; i--) {
-        updated = updated.replace(new RegExp(`<IMAGE_${i}>`, 'g'), `<IMAGE_${i - 1}>`);
-      }
-      updated = updated.replace(/  +/g, ' ').trim();
-      setPrompt(updated);
-    })();
+    const removedType = removedRef.refType;
+    const prefix = TAG_PREFIX_MAP[removedType];
+    const typeIdx = referenceImages.slice(0, removeIdx).filter(r => r.refType === removedType).length + 1;
+    const totalOfType = referenceImages.filter(r => r.refType === removedType).length;
+    let updated = prompt;
+    updated = updated.replace(new RegExp(`<${prefix}_${typeIdx}>`, 'g'), '');
+    for (let i = totalOfType; i > typeIdx; i--) {
+      updated = updated.replace(new RegExp(`<${prefix}_${i}>`, 'g'), `<${prefix}_${i - 1}>`);
+    }
+    updated = updated.replace(/  +/g, ' ').trim();
+    setPrompt(updated);
   };
 
   const handleSelectNode = (node: CanvasNode) => {
@@ -379,8 +406,8 @@ export default function VideoGeneratePanel({
       const [count, max] = limitMap[nt] ?? [imageRefCount, maxRefImages];
       url && count < max && (() => {
         setReferenceImages((prev) => [...prev, { url, name: nodeName, refType }]);
-        // Only insert <IMAGE_N> prompt tag for image refs
-        refType === 'image' && inputRef.current?.insertTag(imageRefCount + 1, nodeName);
+        // Insert type-specific tag: <IMAGE_N>, <VIDEO_N>, or <AUDIO_N>
+        inputRef.current?.insertTag(count + 1, nodeName, refType);
       })();
       referenceImages.length + 1 >= maxTotalRefs && setShowNodePicker(false);
     })();
@@ -440,6 +467,41 @@ export default function VideoGeneratePanel({
         },
       });
   };
+
+  // Click outside closes model dropdown
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as HTMLElement) && setShowModelDropdown(false);
+    };
+    showModelDropdown && document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showModelDropdown]);
+
+  // Group models by provider for the dropdown
+  const groupedModels = useMemo(() => {
+    const groups: { providerName: string; providerId: string; providerType: string; models: typeof models }[] = [];
+    for (const p of providers) {
+      const pModels = models.filter(m => m.provider_id === p.id);
+      pModels.length > 0 && groups.push({ providerName: p.name, providerId: p.id, providerType: p.provider_type, models: pModels });
+    }
+    // Include any models not matched to a provider
+    const coveredIds = new Set(providers.map(p => p.id));
+    const orphans = models.filter(m => !coveredIds.has(m.provider_id));
+    orphans.length > 0 && groups.push({ providerName: 'Other', providerId: '__other__', providerType: '', models: orphans });
+    return groups;
+  }, [models, providers]);
+
+  const handleModelSelect = useCallback((key: string) => {
+    handleModelChange(key);
+    setShowModelDropdown(false);
+  }, []);
+
+  // Resolve current provider logo for the trigger button
+  const selectedProviderType = useMemo(() => {
+    const group = groupedModels.find(g => g.models.some(m => `${m.provider_id}::${m.model_name}` === selectedModelKey));
+    return group?.providerType || '';
+  }, [groupedModels, selectedModelKey]);
+  const selectedProviderLogo = PROVIDER_ICONS[selectedProviderType] || '';
 
 
 
@@ -583,29 +645,67 @@ export default function VideoGeneratePanel({
         <div className="flex items-center justify-between px-2 pb-2 pt-0.5">
           {/* Left: model selector */}
           <div className="flex items-center gap-1">
-            <div className="relative">
-              <select
-                value={selectedModelKey}
-                onChange={(e) => handleModelChange(e.target.value)}
+            <div className="relative" ref={modelDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowModelDropdown(v => !v)}
                 disabled={modelsLoading || taskActive}
                 className={cn(
-                  'h-8 pl-2 pr-6 rounded-lg bg-transparent text-sm font-medium cursor-pointer',
-                  'hover:bg-primary/10 transition-colors appearance-none',
-                  'focus:outline-none focus:ring-0',
+                  'h-8 pl-2 pr-6 rounded-lg bg-transparent text-sm font-medium cursor-pointer inline-flex items-center gap-1.5',
+                  'hover:bg-primary/10 transition-colors',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
                   selectedModelKey ? 'text-foreground' : 'text-muted-foreground',
                 )}
               >
-                <option value="" disabled>
-                  {modelsLoading ? '...' : t('canvas.node.video.selectModel')}
-                </option>
-                {models.map((m) => (
-                  <option key={`${m.provider_id}::${m.model_name}`} value={`${m.provider_id}::${m.model_name}`}>
-                    {m.display_name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                {selectedProviderLogo && <img src={selectedProviderLogo} alt="" className="w-4 h-4 object-contain" />}
+                {modelsLoading ? '...' : (selectedModel?.display_name || t('canvas.node.video.selectModel'))}
+                <ChevronDown className={cn(
+                  'absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-transform duration-150',
+                  showModelDropdown && 'rotate-180',
+                )} />
+              </button>
+
+              {/* Custom model dropdown */}
+              {showModelDropdown && (
+                <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
+                  {groupedModels.map((group) => {
+                    const logoSrc = PROVIDER_ICONS[group.providerType];
+                    return (
+                      <div key={group.providerId}>
+                        <div className="px-2.5 py-1.5 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider bg-muted/30 sticky top-0 border-b border-border/30 flex items-center gap-1.5">
+                          {logoSrc && <img src={logoSrc} alt="" className="w-3.5 h-3.5 object-contain" />}
+                          {group.providerName}
+                        </div>
+                        {group.models.map((m) => {
+                          const key = `${m.provider_id}::${m.model_name}`;
+                          const isSelected = key === selectedModelKey;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => handleModelSelect(key)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors cursor-pointer',
+                                isSelected
+                                  ? 'bg-primary/10 text-primary'
+                                  : 'text-foreground hover:bg-accent',
+                              )}
+                            >
+                              <span className="flex-1 text-left font-medium truncate">{m.display_name}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                  {models.length === 0 && !modelsLoading && (
+                    <div className="p-3 text-[10px] text-muted-foreground text-center">
+                      {t('canvas.node.video.noVideoProviders')}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
