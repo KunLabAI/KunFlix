@@ -51,7 +51,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Trash2, Coins, CreditCard, History, HardDrive, Monitor, Eye, Mail, Shield, Clock, Globe, Smartphone, Laptop, Tablet } from 'lucide-react';
+import { Trash2, Coins, CreditCard, History, HardDrive, Monitor, Eye, Globe, Smartphone, Laptop, Tablet, CircleUser, Mail, RefreshCw } from 'lucide-react';
+import { formatDateTime, formatShortDateTime, formatRelativeTime } from '@/lib/date-utils';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { useToast } from '@/components/ui/use-toast';
@@ -64,6 +65,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
@@ -99,6 +101,44 @@ const SUBSCRIPTION_STATUS_MAP: Record<string, { label: string; variant: 'default
   inactive: { label: '未订阅', variant: 'secondary' },
   expired: { label: '已过期', variant: 'destructive' },
 };
+
+// 详情行组件
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between items-center">
+      <span className="text-muted-foreground">{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+// 注册来源标识组件
+function AuthSourceBadge({ user }: { user: User }) {
+  const sources: { icon: string; label: string }[] = [];
+  if (user.google_id) sources.push({ icon: '/provider/gemini-color.svg', label: 'Google' });
+  if (user.github_id) sources.push({ icon: '/provider/meta-color.svg', label: 'GitHub' });
+  
+  return (
+    <div className="flex items-center gap-1.5">
+      {sources.length === 0 ? (
+        <span className="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted">local</span>
+      ) : (
+        sources.map((s) => (
+          <TooltipProvider key={s.label}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted">
+                  <img src={s.icon} alt={s.label} width={14} height={14} />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>{s.label}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ))
+      )}
+    </div>
+  );
+}
 
 export default function UsersPage() {
   const { data: users, error, isLoading } = useSWR<User[]>('/admin/users', fetcher);
@@ -230,28 +270,48 @@ export default function UsersPage() {
     }
   };
 
+  const [recalcingAll, setRecalcingAll] = useState(false);
+
+  const handleRecalcAll = async () => {
+    setRecalcingAll(true);
+    try {
+      await api.post('/admin/users/recalc-all-storage');
+      toast({ title: '存储用量重算完成' });
+      mutate('/admin/users');
+    } catch {
+      toast({ variant: 'destructive', title: '重算失败' });
+    } finally {
+      setRecalcingAll(false);
+    }
+  };
+
   return (
     <div className="max-w-[1200px] mx-auto w-full space-y-4">
-      <h2 className="text-3xl font-bold tracking-tight">用户管理</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">用户管理</h2>
+        <Button variant="outline" size="sm" onClick={handleRecalcAll} disabled={recalcingAll}>
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${recalcingAll ? 'animate-spin' : ''}`} />
+          {recalcingAll ? '重算中...' : '重算存储用量'}
+        </Button>
+      </div>
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>邮箱</TableHead>
-              <TableHead>昵称</TableHead>
+              <TableHead>用户</TableHead>
               <TableHead className="text-right">积分</TableHead>
+              <TableHead className="text-right">Token (输入/输出)</TableHead>
               <TableHead>订阅状态</TableHead>
               <TableHead>存储用量</TableHead>
-              <TableHead className="text-right">Token (输入/输出)</TableHead>
-              <TableHead>设备/IP</TableHead>
-              <TableHead>最后登录</TableHead>
+              <TableHead>注册来源</TableHead>
+              <TableHead>时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="h-24 text-center">
+                <TableCell colSpan={8} className="h-24 text-center">
                   加载中...
                 </TableCell>
               </TableRow>
@@ -262,10 +322,20 @@ export default function UsersPage() {
               const usagePercent = Math.min(100, Math.round(usedBytes / quotaBytes * 100));
               return (
                 <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.email}</TableCell>
-                  <TableCell>{user.nickname}</TableCell>
-                  <TableCell className="text-right tabular-nums font-mono">
-                    {Number(user.credits || 0).toFixed(2)}
+                  <TableCell>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-medium truncate">{user.email}</span>
+                      <span className="text-xs text-muted-foreground truncate">{user.nickname}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="tabular-nums font-mono text-sm">{Number(user.credits || 0).toFixed(2)}</span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex flex-col items-end">
+                      <span className="tabular-nums font-mono text-xs">{(user.total_input_tokens || 0).toLocaleString()}</span>
+                      <span className="tabular-nums font-mono text-xs text-muted-foreground">{(user.total_output_tokens || 0).toLocaleString()}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
@@ -288,31 +358,14 @@ export default function UsersPage() {
                       </Tooltip>
                     </TooltipProvider>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {(user.total_input_tokens || 0).toLocaleString()} / {(user.total_output_tokens || 0).toLocaleString()}
+                  <TableCell>
+                    <AuthSourceBadge user={user} />
                   </TableCell>
                   <TableCell>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground cursor-default">
-                            <Monitor className="h-3 w-3" />
-                            <span>{user.last_device_type || '-'}</span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <div className="space-y-1 text-xs">
-                            <p>操作系统: {user.last_os || '-'}</p>
-                            <p>浏览器: {user.last_browser || '-'}</p>
-                            <p>注册IP: {user.register_ip || '-'}</p>
-                            <p>登录IP: {user.last_login_ip || '-'}</p>
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </TableCell>
-                  <TableCell>
-                    {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '-'}
+                    <div className="flex flex-col text-xs">
+                      <span className="text-muted-foreground">{formatShortDateTime(user.created_at)}</span>
+                      <span>{formatRelativeTime(user.last_login_at)}</span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -360,13 +413,8 @@ export default function UsersPage() {
 
       {/* 用户详情 Dialog */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>用户详情</DialogTitle>
-            <DialogDescription>
-              {selectedUser?.nickname} ({selectedUser?.email})
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
+          <VisuallyHidden><DialogTitle>用户详情</DialogTitle></VisuallyHidden>
           {selectedUser && (() => {
             const u = selectedUser;
             const statusInfo = SUBSCRIPTION_STATUS_MAP[u.subscription_status] || SUBSCRIPTION_STATUS_MAP.inactive;
@@ -377,74 +425,92 @@ export default function UsersPage() {
             const DEVICE_ICON_MAP: Record<string, React.ElementType> = { mobile: Smartphone, tablet: Tablet, desktop: Laptop };
             const DeviceIcon = DEVICE_ICON_MAP[u.last_device_type || ''] || Monitor;
             return (
-              <div className="space-y-6">
-                {/* 基本信息 */}
-                <section>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />基本信息</h4>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">用户ID</span><span className="font-mono text-xs">{u.id}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">邮箱</span><span>{u.email}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">昵称</span><span>{u.nickname}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">状态</span><Badge variant={u.is_active ? 'default' : 'destructive'}>{u.is_active ? '活跃' : '禁用'}</Badge></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">余额冻结</span><Badge variant={u.is_balance_frozen ? 'destructive' : 'secondary'}>{u.is_balance_frozen ? '已冻结' : '正常'}</Badge></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">注册时间</span><span>{u.created_at ? new Date(u.created_at).toLocaleString() : '-'}</span></div>
-                  </div>
-                </section>
-
-                <div className="border-t" />
-
-                {/* 账户数据 */}
-                <section>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Coins className="h-3.5 w-3.5" />账户数据</h4>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">积分余额</span><span className="font-mono">{Number(u.credits || 0).toFixed(2)}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">输入Token</span><span className="font-mono">{(u.total_input_tokens || 0).toLocaleString()}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">输出Token</span><span className="font-mono">{(u.total_output_tokens || 0).toLocaleString()}</span></div>
-                  </div>
-                </section>
-
-                <div className="border-t" />
-
-                {/* 存储空间 */}
-                <section>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5" />存储空间</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">使用量</span>
-                      <span>{formatBytes(usedBytes)} / {formatBytes(quotaBytes)} ({usagePercent}%)</span>
+              <>
+                {/* 头部信息卡片 */}
+                <div className="px-6 pt-6 pb-5 border-b bg-muted/30">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                      <CircleUser className="h-7 w-7" />
                     </div>
-                    <Progress value={usagePercent} className="h-2" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-semibold truncate">{u.nickname}</h3>
+                        <Badge variant={u.is_active ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">{u.is_active ? '活跃' : '禁用'}</Badge>
+                        {u.is_balance_frozen && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">余额冻结</Badge>}
+                      </div>
+                      <p className="text-sm text-muted-foreground">{u.email}</p>
+                      <p className="text-xs text-muted-foreground mt-1 font-mono">{u.id}</p>
+                    </div>
+                    <AuthSourceBadge user={u} />
                   </div>
-                </section>
+                </div>
 
-                <div className="border-t" />
-
-                {/* 订阅信息 */}
-                <section>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5" />订阅信息</h4>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">订阅状态</span><Badge variant={statusInfo.variant}>{statusInfo.label}</Badge></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">当前套餐</span><span>{planName || '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">开始时间</span><span>{u.subscription_start_at ? new Date(u.subscription_start_at).toLocaleString() : '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">到期时间</span><span>{u.subscription_end_at ? new Date(u.subscription_end_at).toLocaleString() : '-'}</span></div>
+                <div className="px-6 py-5 space-y-5">
+                  {/* 注册来源 */}
+                  <div className="rounded-lg border p-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />注册来源</h4>
+                    <div className="flex items-center gap-2">
+                      <AuthSourceBadge user={u} />
+                      <span className="text-sm text-muted-foreground">
+                        {u.google_id && u.github_id ? 'Google + GitHub 联合登录'
+                          : u.google_id ? 'Google 联合登录'
+                          : u.github_id ? 'GitHub 联合登录'
+                          : '本地注册'}
+                      </span>
+                    </div>
                   </div>
-                </section>
 
-                <div className="border-t" />
-
-                {/* 登录与设备 */}
-                <section>
-                  <h4 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" />登录与设备</h4>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">注册IP</span><span className="font-mono text-xs">{u.register_ip || '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">最近登录IP</span><span className="font-mono text-xs">{u.last_login_ip || '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">最后登录</span><span>{u.last_login_at ? new Date(u.last_login_at).toLocaleString() : '-'}</span></div>
-                    <div className="flex justify-between items-center"><span className="text-muted-foreground">设备类型</span><span className="flex items-center gap-1"><DeviceIcon className="h-3.5 w-3.5" />{u.last_device_type || '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">操作系统</span><span>{u.last_os || '-'}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">浏览器</span><span>{u.last_browser || '-'}</span></div>
+                  {/* 账户数据统计卡片 */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border p-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">积分余额</p>
+                      <p className="text-lg font-semibold font-mono">{Number(u.credits || 0).toFixed(2)}</p>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">输入 Token</p>
+                      <p className="text-lg font-semibold font-mono">{(u.total_input_tokens || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border p-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-1">输出 Token</p>
+                      <p className="text-lg font-semibold font-mono">{(u.total_output_tokens || 0).toLocaleString()}</p>
+                    </div>
                   </div>
-                </section>
-              </div>
+
+                  {/* 存储空间 */}
+                  <div className="rounded-lg border p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" />存储空间</span>
+                      <span className="text-xs text-muted-foreground">{formatBytes(usedBytes)} / {formatBytes(quotaBytes)} ({usagePercent}%)</span>
+                    </div>
+                    <Progress value={usagePercent} className="h-1.5" />
+                  </div>
+
+                  {/* 订阅信息 */}
+                  <div className="rounded-lg border p-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-muted-foreground" />订阅信息</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <DetailRow label="订阅状态" value={<Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>} />
+                      <DetailRow label="当前套餐" value={planName || '-'} />
+                      <DetailRow label="开始时间" value={formatDateTime(u.subscription_start_at)} />
+                      <DetailRow label="到期时间" value={formatDateTime(u.subscription_end_at)} />
+                    </div>
+                  </div>
+
+                  {/* 登录与设备 */}
+                  <div className="rounded-lg border p-4">
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-muted-foreground" />登录与设备</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <DetailRow label="注册时间" value={formatDateTime(u.created_at)} />
+                      <DetailRow label="最后登录" value={formatDateTime(u.last_login_at)} />
+                      <DetailRow label="注册IP" value={<span className="font-mono text-xs">{u.register_ip || '-'}</span>} />
+                      <DetailRow label="登录IP" value={<span className="font-mono text-xs">{u.last_login_ip || '-'}</span>} />
+                      <DetailRow label="设备类型" value={<span className="flex items-center gap-1"><DeviceIcon className="h-3.5 w-3.5" />{u.last_device_type || '-'}</span>} />
+                      <DetailRow label="操作系统" value={u.last_os || '-'} />
+                      <DetailRow label="浏览器" value={u.last_browser || '-'} />
+                    </div>
+                  </div>
+                </div>
+              </>
             );
           })()}
         </DialogContent>

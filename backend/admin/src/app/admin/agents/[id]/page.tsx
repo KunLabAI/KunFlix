@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Save, MessageSquare, Settings } from 'lucide-react';
+import { ArrowLeft, Save, Settings } from 'lucide-react';
 import AgentForm from '@/components/admin/agents/AgentForm';
 import { useAgent, useCreateAgent, useUpdateAgent } from '@/hooks/useAgents';
 import { Agent } from '@/types';

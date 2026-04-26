@@ -88,6 +88,8 @@ async def get_users(
             "last_os": u.last_os,
             "last_browser": u.last_browser,
             "created_at": u.created_at,
+            "google_id": u.google_id,
+            "github_id": u.github_id,
         }
         for u in users
     ]
@@ -128,7 +130,59 @@ async def get_user_detail(
         "last_os": user.last_os,
         "last_browser": user.last_browser,
         "created_at": user.created_at,
+        "google_id": user.google_id,
+        "github_id": user.github_id,
     }
+
+
+@router.post("/users/{user_id}/recalc-storage")
+async def recalc_user_storage(
+    user_id: str,
+    _current_admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recalculate a single user's storage_used_bytes from Asset table (admin only)."""
+    result = await db.execute(select(User).filter(User.id == user_id))
+    user = result.scalars().first()
+    user or (_ for _ in ()).throw(HTTPException(status_code=404, detail="User not found"))
+
+    total = await db.execute(
+        select(func.coalesce(func.sum(Asset.size), 0)).where(Asset.user_id == user_id)
+    )
+    new_used = total.scalar() or 0
+    old_used = user.storage_used_bytes or 0
+    user.storage_used_bytes = new_used
+    await db.commit()
+
+    return {"user_id": user_id, "old_bytes": old_used, "new_bytes": new_used}
+
+
+@router.post("/users/recalc-all-storage")
+async def recalc_all_storage(
+    _current_admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recalculate storage_used_bytes for ALL users from Asset table (single SQL, admin only)."""
+    # 子查询: 每个用户的 Asset 总大小
+    subq = (
+        select(Asset.user_id, func.coalesce(func.sum(Asset.size), 0).label("total"))
+        .group_by(Asset.user_id)
+        .subquery()
+    )
+    # 更新有 Asset 的用户
+    await db.execute(
+        User.__table__.update()
+        .where(User.id == subq.c.user_id)
+        .values(storage_used_bytes=subq.c.total)
+    )
+    # 没有 Asset 的用户归零
+    await db.execute(
+        User.__table__.update()
+        .where(User.id.notin_(select(subq.c.user_id)))
+        .values(storage_used_bytes=0)
+    )
+    await db.commit()
+    return {"detail": "All users storage recalculated"}
 
 
 @router.delete("/users/{user_id}")

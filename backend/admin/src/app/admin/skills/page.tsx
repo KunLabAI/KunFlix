@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useRouter } from 'next/navigation';
 import { Badge } from "@/components/ui/badge";
-import { RefreshCw, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import {
@@ -18,7 +18,6 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import api from '@/lib/axios';
-import SkillDialog from './SkillDialog';
 
 interface SkillInfo {
   id: string;
@@ -35,11 +34,10 @@ const STATUS_CONFIG = {
 };
 
 export default function SkillsPage() {
+  const router = useRouter();
   const { toast } = useToast();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingSkill, setEditingSkill] = useState<SkillInfo | null>(null);
 
   const fetchSkills = async () => {
     try {
@@ -75,22 +73,6 @@ export default function SkillsPage() {
     }
   };
 
-  const openCreate = () => {
-    setEditingSkill(null);
-    setDialogOpen(true);
-  };
-
-  const openEdit = (skill: SkillInfo) => {
-    setEditingSkill(skill);
-    setDialogOpen(true);
-  };
-
-  const handleDialogClose = (refresh?: boolean) => {
-    setDialogOpen(false);
-    setEditingSkill(null);
-    refresh && fetchSkills();
-  };
-
   return (
     <div className="max-w-[1200px] mx-auto w-full space-y-6">
       <div className="flex justify-between items-center">
@@ -100,50 +82,60 @@ export default function SkillsPage() {
             管理 Agent 的扩展能力。技能是声明式的工具包，支持热插拔和版本控制。
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchSkills} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> 刷新
-          </Button>
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> 创建技能
-          </Button>
-        </div>
+        <Button onClick={() => router.push('/admin/skills/new')}>
+          <Plus className="mr-2 h-4 w-4" /> 创建技能
+        </Button>
       </div>
 
       {loading && skills.length === 0 ? (
         <div className="flex justify-center items-center h-64">
-          <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {skills.map(skill => {
             const cfg = STATUS_CONFIG[skill.status];
             return (
-              <Card key={skill.id} className="relative group">
-                <CardHeader className="pb-3">
-                  <div className="flex justify-between items-start">
-                    <CardTitle className="text-xl font-bold">{skill.name}</CardTitle>
-                    <Badge variant={cfg.variant} className="ml-2">{cfg.label}</Badge>
-                  </div>
-                  <CardDescription className="pt-2">{skill.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center space-x-4 text-sm text-muted-foreground mb-4">
-                    <span className="flex items-center">
-                      <Badge variant="outline" className="mr-2">{skill.source}</Badge>
-                      v{skill.version}
-                    </span>
-                  </div>
-                  <div className="flex justify-end space-x-2">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(skill)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+              <div
+                key={skill.id}
+                className="group relative flex flex-col rounded-xl bg-background border border-border cursor-pointer overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md hover:border-primary/50"
+                onClick={() => router.push(`/admin/skills/${skill.name}`)}
+                role="button"
+                tabIndex={0}
+              >
+                {/* 顶部强调线 */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
+                {/* 卡片主体 */}
+                <div className="p-5 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="overflow-hidden">
+                      <h3 className="font-semibold text-lg leading-tight text-foreground mb-2 truncate" title={skill.name}>
+                        {skill.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{skill.description}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">{skill.source}</Badge>
+                        <span className="font-mono text-xs text-muted-foreground">v{skill.version}</span>
+                      </div>
+                    </div>
+                    <Badge variant={cfg.variant} className="shrink-0">{cfg.label}</Badge>
+                  </div>
+                </div>
+
+                {/* 底部操作区 */}
+                <div className="px-5 py-3 border-t border-border/50 flex items-center justify-between transition-colors duration-300 group-hover:bg-muted/30">
+                  <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
+                    编辑配置
+                    <ArrowRight className="w-3 h-3 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+                  </span>
+
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     {skill.source === 'customized' && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
-                            <Trash2 className="h-4 w-4" />
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-all duration-300">
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -166,19 +158,19 @@ export default function SkillsPage() {
                     <Button
                       variant={skill.status === 'active' ? 'destructive' : 'default'}
                       size="sm"
+                      className="h-7 px-2.5 text-xs opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
                       onClick={() => handleToggle(skill)}
                     >
                       {skill.status === 'active' ? '停用' : '启用'}
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>
       )}
 
-      <SkillDialog open={dialogOpen} skill={editingSkill} onClose={handleDialogClose} />
     </div>
   );
 }

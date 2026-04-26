@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -17,6 +19,7 @@ from schemas import (
     VirtualHumanPresetUpdate,
     VirtualHumanPresetResponse,
 )
+from services.media_utils import MEDIA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +105,10 @@ async def update_virtual_human_preset(
 
     update_data = body.model_dump(exclude_unset=True)
 
+    # 若更换了预览图，清理旧文件
+    new_preview = update_data.get("preview_url")
+    (new_preview and new_preview != preset.preview_url) and _cleanup_preview_file(preset.preview_url)
+
     # 若修改了 asset_id，检查唯一性
     new_asset_id = update_data.get("asset_id")
     if new_asset_id and new_asset_id != preset.asset_id:
@@ -129,7 +136,7 @@ async def delete_virtual_human_preset(
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除虚拟人像预制条目。"""
+    """删除虚拟人像预制条目，同时清理预览图文件。"""
     result = await db.execute(
         select(VirtualHumanPreset).where(VirtualHumanPreset.id == preset_id)
     )
@@ -138,6 +145,62 @@ async def delete_virtual_human_preset(
         HTTPException(status_code=404, detail="Preset not found")
     )
 
+    # 清理预览图文件
+    _cleanup_preview_file(preset.preview_url)
+
     await db.delete(preset)
     await db.commit()
     return {"message": "Preset deleted successfully"}
+
+
+# ---------------------------------------------------------------------------
+# UPLOAD PREVIEW IMAGE
+# ---------------------------------------------------------------------------
+def _cleanup_preview_file(preview_url: str | None):
+    """根据 preview_url 删除本地预览图文件（仅处理 /api/media/virtual-humans/ 路径）。"""
+    prefix = "/api/media/virtual-humans/"
+    try:
+        (preview_url and preview_url.startswith(prefix)) or (_ for _ in ()).throw(ValueError)
+        filename = preview_url[len(prefix):]
+        filepath = MEDIA_DIR / "virtual-humans" / filename
+        filepath.is_file() and filepath.unlink()
+        logger.info(f"Cleaned up preview file: {filepath}")
+    except Exception:
+        logger.debug(f"Skip preview cleanup for: {preview_url}")
+
+
+_ALLOWED_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
+_MAX_PREVIEW_SIZE = 5 * 1024 * 1024  # 5MB
+
+
+@router.post("/upload-preview")
+async def upload_preview_image(
+    file: UploadFile = File(...),
+    _admin: Admin = Depends(require_admin),
+):
+    """上传虚拟人像预览图（限 5MB，仅限图片格式）。"""
+    filename = file.filename or ""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ext in _ALLOWED_IMAGE_EXTS or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"不支持的文件格式: {ext}，仅支持 png/jpg/jpeg/webp")
+    )
+
+    contents = await file.read()
+    len(contents) <= _MAX_PREVIEW_SIZE or (_ for _ in ()).throw(
+        HTTPException(status_code=413, detail=f"文件大小超出限制（最大 5MB），当前 {len(contents) / 1024 / 1024:.1f}MB")
+    )
+
+    # 存储到公共 media 目录（无用户隔离）
+    new_filename = f"{uuid.uuid4()}.{ext}"
+    vh_dir = MEDIA_DIR / "virtual-humans"
+    vh_dir.mkdir(parents=True, exist_ok=True)
+    filepath = vh_dir / new_filename
+
+    try:
+        filepath.write_bytes(contents)
+        logger.info(f"Virtual human preview uploaded: {new_filename} ({len(contents)} bytes)")
+    except Exception as e:
+        logger.error(f"Failed to save preview image: {e}")
+        raise HTTPException(status_code=500, detail="保存文件失败")
+
+    return {"url": f"/api/media/virtual-humans/{new_filename}"}

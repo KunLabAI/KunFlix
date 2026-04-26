@@ -119,7 +119,6 @@ The tool returns the edited/generated image URL in markdown format.
 | "Generate a three-view sheet based on this image" | `edit_image` | Reference image provides the character to replicate |
 | "Change only the background to sunset" (has image) | `edit_image` | Inpainting — partial edit |
 | "Regenerate with a better prompt" (starting over) | `generate_image` | Discarding previous result, fresh generation |
-| "Change this image to portrait/vertical" (1 ref) | `generate_image` | Single-image edit cannot change aspect ratio; describe the scene and set `aspect_ratio` |
 | "Make this image anime style" | `edit_image` | Style transfer on existing image |
 | "Put dress from image A on person from image B" | `edit_image` + `image_urls` | Multi-image composition |
 | "Add this logo to her t-shirt" (2 images) | `edit_image` + `image_urls` | High-fidelity detail merging |
@@ -247,6 +246,6 @@ Generate a character reference sheet from a single image.
 - For `edit_image`, use the file path from canvas nodes or previous generations — never paste base64 data.
 - When multiple images are needed from the same prompt, set `n` parameter on `generate_image` instead of calling multiple times.
 - **Multi-image editing**: When the user references multiple images (e.g. "refer to the two character images I sent earlier"), use `image_urls` array. Up to 5 images supported.
-- **⚠️ Single-image edit CANNOT change aspect ratio**: The output always follows the input image's aspect ratio — the `aspect_ratio` parameter is ignored. If the user wants a different aspect ratio from a single reference image, use `generate_image` with a detailed prompt describing the same content, plus the desired `aspect_ratio`. Multi-image edit CAN override aspect ratio via the `aspect_ratio` parameter.
+- **Single vs multi aspect ratio**: Single-image edit always follows the input image's aspect ratio (cannot be overridden). Multi-image edit defaults to the first image but can be overridden with `aspect_ratio`.
 - **Iterative refinement**: Use each edit output as the input for the next edit to progressively refine — describe only the incremental changes needed.
 - **Accurate text in images**: To render text in generated images, put the desired text in quotes and describe its placement clearly (e.g. 'the word "HELLO" in bold serif font centered on the banner').

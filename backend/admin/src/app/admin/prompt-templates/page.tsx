@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePromptTemplates, useDeletePromptTemplate } from '@/hooks/usePromptTemplates';
-import { PromptTemplate } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -34,37 +34,26 @@ import {
 } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { Plus, Pencil, Trash2, Search, FileText } from 'lucide-react';
-import PromptTemplateDialog from './PromptTemplateDialog';
-
-
-
-const TEMPLATE_TYPE_LABELS: Record<string, string> = {
-  story_basic: '故事基础设定',
-  character: '角色设定',
-  scene: '场景描述',
-  storyboard: '分镜脚本',
-  custom: '自定义',
-};
-
-// 预设分类选项
-const PRESET_CATEGORIES = [
-  { value: 'story_basic', label: '故事基础设定' },
-  { value: 'character', label: '角色设定' },
-  { value: 'scene', label: '场景描述' },
-  { value: 'storyboard', label: '分镜脚本' },
-];
+import api from '@/lib/axios';
 
 export default function PromptTemplatesPage() {
+  const router = useRouter();
   const [searchText, setSearchText] = useState('');
   const [filterTemplateType, setFilterTemplateType] = useState<string>('');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<PromptTemplate | null>(null);
+  const [categoryOptions, setCategoryOptions] = useState<{ value: string; label: string }[]>([]);
   const { toast } = useToast();
 
   const { templates, isLoading, mutate } = usePromptTemplates({
     template_type: filterTemplateType || undefined,
   });
   const { deleteTemplate } = useDeletePromptTemplate();
+
+  // 从 API 动态加载分类列表
+  useEffect(() => {
+    api.get('/prompt-templates/types/list')
+      .then((res) => setCategoryOptions(res.data || []))
+      .catch(() => {});
+  }, [templates]);
 
   const filteredTemplates = templates?.filter((t) =>
     searchText
@@ -85,28 +74,8 @@ export default function PromptTemplatesPage() {
         : Array.isArray(detail)
           ? detail.map((e: any) => e.msg).join('; ')
           : '未知错误';
-      toast({
-        variant: 'destructive',
-        title: '删除失败',
-        description: message,
-      });
+      toast({ variant: 'destructive', title: '删除失败', description: message });
     }
-  };
-
-  const handleEdit = (template: PromptTemplate) => {
-    setEditingTemplate(template);
-    setDialogOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditingTemplate(null);
-    setDialogOpen(true);
-  };
-
-  const handleDialogClose = (refresh?: boolean) => {
-    setDialogOpen(false);
-    setEditingTemplate(null);
-    if (refresh) mutate();
   };
 
   return (
@@ -116,7 +85,7 @@ export default function PromptTemplatesPage() {
           <h2 className="text-3xl font-bold tracking-tight">提示词模板</h2>
           <p className="text-muted-foreground">管理 AI 生成使用的提示词模板</p>
         </div>
-        <Button onClick={handleCreate}>
+        <Button onClick={() => router.push('/admin/prompt-templates/new')}>
           <Plus className="mr-2 h-4 w-4" /> 创建模板
         </Button>
       </div>
@@ -138,7 +107,7 @@ export default function PromptTemplatesPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全部分类</SelectItem>
-            {PRESET_CATEGORIES.map((cat) => (
+            {categoryOptions.map((cat) => (
               <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
             ))}
           </SelectContent>
@@ -171,87 +140,75 @@ export default function PromptTemplatesPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredTemplates?.map((template) => {
-                return (
-                  <TableRow key={template.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <FileText className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="font-medium">{template.name}</div>
-                          <div className="text-xs text-muted-foreground line-clamp-1 max-w-[220px]">
-                            {template.description || '暂无描述'}
-                          </div>
+              filteredTemplates?.map((template) => (
+                <TableRow key={template.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-medium">{template.name}</div>
+                        <div className="text-xs text-muted-foreground line-clamp-1 max-w-[220px]">
+                          {template.description || '暂无描述'}
                         </div>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {template.template_type ? (
-                        <Badge variant="outline">
-                          {TEMPLATE_TYPE_LABELS[template.template_type] || template.template_type}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {template.template_type ? (
+                      <Badge variant="outline">{template.template_type}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{template.variables_schema?.length || 0} 个</span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      {template.is_default && (
+                        <Badge variant="secondary" className="text-xs">默认</Badge>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm">{template.variables_schema?.length || 0} 个</span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        {template.is_default && (
-                          <Badge variant="secondary" className="text-xs">默认</Badge>
-                        )}
-                        <Badge variant={template.is_active ? 'default' : 'outline'} className="text-xs">
-                          {template.is_active ? '启用' : '禁用'}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(template)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                此操作不可撤销，将永久删除「{template.name}」模板。
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>取消</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => template.id && handleDelete(template.id)}>
-                                确认删除
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
+                      <Badge variant={template.is_active ? 'default' : 'outline'} className="text-xs">
+                        {template.is_active ? '启用' : '禁用'}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => router.push(`/admin/prompt-templates/${template.id}`)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              此操作不可撤销，将永久删除「{template.name}」模板。
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => template.id && handleDelete(template.id)}>
+                              确认删除
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </div>
-
-      {dialogOpen && (
-        <PromptTemplateDialog
-          open={dialogOpen}
-          template={editingTemplate}
-          onClose={handleDialogClose}
-        />
-      )}
     </div>
   );
 }
