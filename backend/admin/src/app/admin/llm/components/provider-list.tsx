@@ -91,8 +91,6 @@ export function ProviderList() {
               <TableHead className="w-[120px]">品牌</TableHead>
               <TableHead>标签</TableHead>
               <TableHead>模型</TableHead>
-              <TableHead className="w-[100px]">状态</TableHead>
-              <TableHead className="w-[80px]">默认</TableHead>
               <TableHead className="w-[120px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -146,15 +144,6 @@ export function ProviderList() {
                       <Badge variant="outline" className="text-xs bg-muted/50 px-1.5 py-0">+{provider.models.length - 2}</Badge>
                     )}
                   </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${provider.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <span className="text-sm text-muted-foreground">{provider.is_active ? '启用' : '禁用'}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {provider.is_default && <Badge variant="secondary">默认</Badge>}
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">

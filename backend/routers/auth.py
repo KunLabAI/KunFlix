@@ -140,6 +140,10 @@ async def refresh(
             detail="User not found or disabled",
         )
 
+    # 刷新 token 时也更新活跃时间，确保已登录用户被统计为活跃
+    user.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
+
     access_token = create_access_token(user.id, user.role)
     return AccessTokenResponse(
         access_token=access_token,

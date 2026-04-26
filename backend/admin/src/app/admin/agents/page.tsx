@@ -151,6 +151,15 @@ export default function AgentsPage() {
         </div>
         
         <div className="flex items-center gap-2">
+           <div className="relative">
+             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+             <Input 
+               placeholder="搜索智能体..." 
+               className="pl-9 w-[200px]"
+               onChange={(e) => setSearchText(e.target.value)}
+             />
+           </div>
+
            <div className="hidden md:flex items-center rounded-lg border bg-background p-1 shadow-sm">
              <Button 
                variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
@@ -174,15 +183,6 @@ export default function AgentsPage() {
              <Plus className="mr-2 h-4 w-4" /> 创建智能体
            </Button>
         </div>
-      </div>
-
-      <div className="relative">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input 
-          placeholder="搜索智能体名称、描述或模型..." 
-          className="pl-9 max-w-md"
-          onChange={(e) => setSearchText(e.target.value)}
-        />
       </div>
 
       <div className="min-h-[400px]">

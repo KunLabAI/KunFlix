@@ -312,7 +312,7 @@ export default function AgentForm({
             </Section>
           </div>
           <div className="lg:col-span-6 xl:col-span-5">
-            <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto space-y-6 pb-4">
+            <div className="space-y-6 pb-4">
               <Section title="参数设置">
                 <Parameters disabled={loading} providers={activeProviders || []} />
               </Section>

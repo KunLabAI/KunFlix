@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
+import Image from 'next/image';
 import {
   FormControl,
   FormField,
@@ -18,6 +19,25 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { LLMProvider } from '@/types';
 import { parseProviderModelsWithMeta } from '@/lib/api-utils';
+
+// 供应商品牌 Logo 映射（与 LLM schema 保持一致）
+const PROVIDER_ICONS: Record<string, string> = {
+  openai: '/provider/openai.svg',
+  azure: '/provider/azureai-color.svg',
+  dashscope: '/provider/qwen-color.svg',
+  anthropic: '/provider/claude-color.svg',
+  gemini: '/provider/gemini-color.svg',
+  deepseek: '/provider/deepseek-color.svg',
+  minimax: '/provider/minimax-color.svg',
+  xai: '/provider/grok.svg',
+  doubao: '/provider/doubao-color.svg',
+  kling: '/provider/kling-color.svg',
+  meta: '/provider/meta-color.svg',
+  microsoft: '/provider/microsoft-color.svg',
+  openrouter: '/provider/openrouter.svg',
+  sora: '/provider/sora-color.svg',
+  ark: '/provider/volcengine-color.svg',
+};
 
 interface BasicInfoProps {
   providers: LLMProvider[];
@@ -47,7 +67,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>名称</FormLabel>
+            <FormLabel>名称 <span className="text-destructive">*</span></FormLabel>
             <FormControl>
               <Input placeholder="给智能体起个名字，例如: 故事导演" disabled={loading} {...field} />
             </FormControl>
@@ -61,7 +81,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>描述</FormLabel>
+            <FormLabel>描述 <span className="text-destructive">*</span></FormLabel>
             <FormControl>
               <Textarea 
                 placeholder="简要描述智能体的职责和功能..." 
@@ -76,30 +96,6 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         )}
       />
 
-      <FormField
-        control={control}
-        name="agent_type"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>智能体类型</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value} disabled={loading}>
-              <FormControl>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择类型" />
-                </SelectTrigger>
-              </FormControl>
-              <SelectContent>
-                <SelectItem value="text">📝 文本处理（故事、角色、分镜脚本）</SelectItem>
-                <SelectItem value="image">🎨 图像处理（角色立绘、场景图）</SelectItem>
-                <SelectItem value="multimodal">✨ 多模态（文本 + 图像）</SelectItem>
-                <SelectItem value="video">🎬 视频生成（xAI Video）</SelectItem>
-              </SelectContent>
-            </Select>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
       <div className="p-4 bg-muted/50 rounded-xl border">
         <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">模型配置</div>
         <div className="grid grid-cols-2 gap-4">
@@ -108,7 +104,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
             name="provider_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">供应商</FormLabel>
+                <FormLabel className="text-xs">供应商 <span className="text-destructive">*</span></FormLabel>
                 <Select 
                   onValueChange={(value) => {
                     field.onChange(value);
@@ -126,11 +122,21 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {providers.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
+                    {providers.map((p) => {
+                      const icon = PROVIDER_ICONS[p.provider_type?.toLowerCase()];
+                      return (
+                        <SelectItem key={p.id} value={p.id}>
+                          <div className="flex items-center gap-2">
+                            {icon && (
+                              <div className="relative h-5 w-5 shrink-0 overflow-hidden rounded-sm">
+                                <Image src={icon} alt={p.name} fill className="object-contain" />
+                              </div>
+                            )}
+                            <span>{p.name}</span>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -143,7 +149,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
             name="model"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">模型</FormLabel>
+                <FormLabel className="text-xs">模型 <span className="text-destructive">*</span></FormLabel>
                 <Select 
                   onValueChange={(value) => {
                     // 防止意外清空：只有当新值非空或用户主动选择时才更新

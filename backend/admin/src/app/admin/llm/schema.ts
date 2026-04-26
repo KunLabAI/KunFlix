@@ -60,7 +60,6 @@ export const PROVIDER_OPTIONS = [
   { value: 'deepseek', label: 'DeepSeek', icon: PROVIDER_ICONS.deepseek }, // Fallback to openai icon or generic for now as deepseek icon is missing
   { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax },
   { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
-  { value: 'doubao', label: 'Doubao (ByteDance)', icon: PROVIDER_ICONS.doubao },
   { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
   // { value: 'kling', label: 'Kling', icon: PROVIDER_ICONS.kling },
   // { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
@@ -77,7 +76,7 @@ export const formSchema = z.object({
     display_name: z.string().optional(),
   })).min(1, "至少需要一个模型"),
   base_url: z.string().optional(),
-  api_key: z.string().optional(),
+  api_key: z.string().min(1, "请输入 API 密钥"),
   config_json: z.string().refine((val) => {
     if (!val) return true;
     try {
@@ -87,8 +86,6 @@ export const formSchema = z.object({
       return false;
     }
   }, "请输入有效的 JSON 格式").optional(),
-  is_active: z.boolean().optional(),
-  is_default: z.boolean().optional(),
 });
 
 export type LLMProvider = {

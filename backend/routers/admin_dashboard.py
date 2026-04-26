@@ -49,57 +49,39 @@ async def dashboard_overview(
     db: AsyncSession = Depends(get_db),
 ):
     """返回仪表盘核心统计指标。"""
-    now = datetime.now(timezone.utc)
-    thirty_days_ago = now - timedelta(days=30)
+    bounds = _time_boundaries()
+    today_start = bounds["today"]
 
-    # 并行查询所有计数
     total_users = await db.scalar(select(func.count(User.id))) or 0
-    active_users = await db.scalar(
-        select(func.count(User.id)).where(User.last_login_at >= thirty_days_ago)
-    ) or 0
-    total_theaters = await db.scalar(select(func.count(Theater.id))) or 0
-    total_assets = await db.scalar(select(func.count(Asset.id))) or 0
-    total_video_tasks = await db.scalar(select(func.count(VideoTask.id))) or 0
-    total_music_tasks = await db.scalar(select(func.count(MusicTask.id))) or 0
 
-    # 积分消耗总量（负数交易的绝对值之和）
-    total_credits_consumed = await db.scalar(
-        select(func.coalesce(func.sum(func.abs(CreditTransaction.amount)), 0))
-        .where(CreditTransaction.amount < 0)
+    # 今日活跃用户（今日有登录记录）
+    today_active_users = await db.scalar(
+        select(func.count(User.id)).where(User.last_login_at >= today_start)
     ) or 0
 
-    # 付费转化率
-    paid_users = await db.scalar(
-        select(func.count(User.id)).where(User.subscription_status == "active")
+    # 今日营收（仅统计用户付费交易：subscription / purchase）
+    _paid_types = ["subscription", "purchase"]
+    _revenue_filter = and_(
+        CreditTransaction.amount > 0,
+        CreditTransaction.transaction_type.in_(_paid_types),
+        CreditTransaction.user_id.isnot(None),
+    )
+    today_revenue = await db.scalar(
+        select(func.coalesce(func.sum(CreditTransaction.amount), 0)).where(
+            and_(_revenue_filter, CreditTransaction.created_at >= today_start)
+        )
     ) or 0
-    paid_conversion_rate = round(paid_users / total_users * 100, 2) if total_users else 0
 
-    # API 错误率
-    tool_total = await db.scalar(select(func.count(ToolExecution.id))) or 0
-    tool_errors = await db.scalar(
-        select(func.count(ToolExecution.id)).where(ToolExecution.status == "error")
-    ) or 0
-    api_error_rate = round(tool_errors / tool_total * 100, 2) if tool_total else 0
-
-    # 全平台存储总量
-    total_storage_used = await db.scalar(
-        select(func.coalesce(func.sum(User.storage_used_bytes), 0))
+    # 总营收（仅统计用户付费交易）
+    total_revenue = await db.scalar(
+        select(func.coalesce(func.sum(CreditTransaction.amount), 0)).where(_revenue_filter)
     ) or 0
 
     return {
         "total_users": total_users,
-        "active_users": active_users,
-        "total_theaters": total_theaters,
-        "total_assets": total_assets,
-        "total_video_tasks": total_video_tasks,
-        "total_music_tasks": total_music_tasks,
-        "total_credits_consumed": round(float(total_credits_consumed), 2),
-        "paid_users": paid_users,
-        "paid_conversion_rate": paid_conversion_rate,
-        "api_error_rate": api_error_rate,
-        "tool_total_calls": tool_total,
-        "tool_errors": tool_errors,
-        "total_storage_used": total_storage_used,
+        "today_active_users": today_active_users,
+        "today_revenue": round(float(today_revenue), 2),
+        "total_revenue": round(float(total_revenue), 2),
     }
 
 
@@ -165,6 +147,96 @@ async def registration_trend(
 
 
 # ---------------------------------------------------------------------------
+# 2b. 活跃趋势
+# ---------------------------------------------------------------------------
+
+@router.get("/active-trend")
+async def active_trend(
+    period: str = Query(default="month", description="筛选周期: today/yesterday/week/month/quarter/all"),
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """按日统计每天有多少不同用户登录过。"""
+    days = PERIOD_DAYS.get(period, 30)
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+
+    daily_result = await db.execute(
+        select(
+            func.date(User.last_login_at).label("day"),
+            func.count(func.distinct(User.id)).label("count"),
+        )
+        .where(User.last_login_at >= start_date)
+        .group_by(func.date(User.last_login_at))
+        .order_by(literal_column("day"))
+    )
+    daily = [{"date": str(r.day), "count": r.count} for r in daily_result.all()]
+    return {"daily": daily, "period": period}
+
+
+# ---------------------------------------------------------------------------
+# 2c. 订阅转化趋势
+# ---------------------------------------------------------------------------
+
+@router.get("/conversion-trend")
+async def conversion_trend(
+    period: str = Query(default="month", description="筛选周期: today/yesterday/week/month/quarter/all"),
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """按日统计新增订阅数与当天累计用户总数。"""
+    days = PERIOD_DAYS.get(period, 30)
+    now = datetime.now(timezone.utc)
+    start_date = now - timedelta(days=days)
+
+    # 新增订阅数（按 subscription_start_at 分组）
+    sub_result = await db.execute(
+        select(
+            func.date(User.subscription_start_at).label("day"),
+            func.count(User.id).label("new_subscriptions"),
+        )
+        .where(
+            and_(
+                User.subscription_start_at >= start_date,
+                User.subscription_status.in_(["active", "expired"]),
+            )
+        )
+        .group_by(func.date(User.subscription_start_at))
+        .order_by(literal_column("day"))
+    )
+    sub_map: dict[str, int] = {str(r.day): r.new_subscriptions for r in sub_result.all()}
+
+    # 每日注册累计用户（用于计算转化基数）
+    reg_result = await db.execute(
+        select(
+            func.date(User.created_at).label("day"),
+            func.count(User.id).label("count"),
+        )
+        .where(User.created_at >= start_date)
+        .group_by(func.date(User.created_at))
+        .order_by(literal_column("day"))
+    )
+
+    # 获取 start_date 之前的用户总数作为基数
+    base_users = await db.scalar(
+        select(func.count(User.id)).where(User.created_at < start_date)
+    ) or 0
+
+    daily: list[dict] = []
+    cumulative = base_users
+    for r in reg_result.all():
+        day_str = str(r.day)
+        cumulative += r.count
+        daily.append({
+            "date": day_str,
+            "new_subscriptions": sub_map.get(day_str, 0),
+            "total_users_that_day": cumulative,
+        })
+
+    return {"daily": daily, "period": period}
+
+
+# ---------------------------------------------------------------------------
 # 3. Token 消耗排行榜
 # ---------------------------------------------------------------------------
 
@@ -174,11 +246,23 @@ async def token_leaderboard(
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """返回 Token 消耗 Top N 用户。"""
+    """返回 Token 消耗 Top N 用户（含消耗积分）。"""
     total_expr = (
         func.coalesce(User.total_input_tokens, 0)
         + func.coalesce(User.total_output_tokens, 0)
     )
+
+    # 子查询：每用户消耗积分
+    consumed_sub = (
+        select(
+            CreditTransaction.user_id,
+            func.coalesce(func.sum(func.abs(CreditTransaction.amount)), 0).label("consumed"),
+        )
+        .where(CreditTransaction.amount < 0)
+        .group_by(CreditTransaction.user_id)
+        .subquery()
+    )
+
     result = await db.execute(
         select(
             User.id,
@@ -188,7 +272,9 @@ async def token_leaderboard(
             User.total_output_tokens,
             total_expr.label("total_tokens"),
             User.credits,
+            func.coalesce(consumed_sub.c.consumed, 0).label("credits_consumed"),
         )
+        .outerjoin(consumed_sub, User.id == consumed_sub.c.user_id)
         .order_by(desc(total_expr))
         .limit(limit)
     )
@@ -203,6 +289,7 @@ async def token_leaderboard(
             "output_tokens": r.total_output_tokens or 0,
             "total_tokens": r.total_tokens or 0,
             "credits": round(float(r.credits or 0), 2),
+            "credits_consumed": round(float(r.credits_consumed or 0), 2),
         }
         for idx, r in enumerate(rows)
     ]
@@ -383,4 +470,74 @@ async def content_stats(
             "error_rate": round(tool_errors / tool_total * 100, 2) if tool_total else 0,
             "avg_duration_ms": round(tool_avg_ms, 1) if tool_avg_ms else None,
         },
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. 运营指标（PUR / 留存率 / MRR / 退订率）
+# ---------------------------------------------------------------------------
+
+@router.get("/operational-metrics")
+async def operational_metrics(
+    _admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """返回核心运营指标。"""
+    now = datetime.now(timezone.utc)
+    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
+
+    total_users = await db.scalar(select(func.count(User.id))) or 0
+    paid_users = await db.scalar(
+        select(func.count(User.id)).where(User.subscription_status == "active")
+    ) or 0
+
+    # PUR — 付费用户占比
+    pur = round(paid_users / total_users * 100, 2) if total_users else 0
+
+    # 留存率 — 7天内登录用户中，30天前也登录过的比例
+    recent_active = await db.scalar(
+        select(func.count(User.id)).where(User.last_login_at >= seven_days_ago)
+    ) or 0
+    retained = await db.scalar(
+        select(func.count(User.id)).where(
+            and_(
+                User.last_login_at >= seven_days_ago,
+                User.created_at < seven_days_ago,
+            )
+        )
+    ) or 0
+    retention_rate = round(retained / recent_active * 100, 2) if recent_active else 0
+
+    # MRR — 月经常性收入
+    mrr_result = await db.execute(
+        select(
+            SubscriptionPlan.price_usd,
+            SubscriptionPlan.billing_period,
+            func.count(User.id).label("cnt"),
+        )
+        .join(User, and_(
+            User.subscription_plan_id == SubscriptionPlan.id,
+            User.subscription_status == "active",
+        ))
+        .group_by(SubscriptionPlan.id, SubscriptionPlan.price_usd, SubscriptionPlan.billing_period)
+    )
+    mrr = 0.0
+    for r in mrr_result.all():
+        monthly_price = r.price_usd / 12 if r.billing_period == "yearly" else r.price_usd
+        mrr += monthly_price * r.cnt
+    mrr = round(mrr, 2)
+
+    # 退订率 — expired / (expired + active)
+    expired_users = await db.scalar(
+        select(func.count(User.id)).where(User.subscription_status == "expired")
+    ) or 0
+    churn_base = expired_users + paid_users
+    churn_rate = round(expired_users / churn_base * 100, 2) if churn_base else 0
+
+    return {
+        "pur": pur,
+        "retention_rate": retention_rate,
+        "mrr": mrr,
+        "churn_rate": churn_rate,
     }
