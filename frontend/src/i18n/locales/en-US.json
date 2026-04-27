@@ -316,7 +316,6 @@
         "applyToNextNode": "Apply to Next Node",
         "aiGenerated": "AI Generated",
                 "historyToggle": "Generation History",
-        "retryGenerate": "Retry",
                 "selectImageNode": "Select image from canvas",
                 "selectVideoNode": "Select video from canvas",
                 "selectRefImages": "Select references (max {{max}})",

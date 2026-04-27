@@ -42,6 +42,31 @@ const PROVIDER_ICONS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// Aspect ratio SVG icon — proportional rectangle
+// ---------------------------------------------------------------------------
+
+function AspectRatioIcon({ ratio, className }: { ratio: string; className?: string }) {
+  // Parse ratio like '16:9' → w=16, h=9
+  const [w, h] = ratio.split(':').map(Number);
+  const isAuto = !w || !h;
+  const maxDim = 14;
+  const scale = maxDim / Math.max(w || 1, h || 1);
+  const rw = isAuto ? 10 : Math.round(w * scale);
+  const rh = isAuto ? 10 : Math.round(h * scale);
+  const ox = (16 - rw) / 2;
+  const oy = (16 - rh) / 2;
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={className}>
+      {isAuto ? (
+        <text x="8" y="11" textAnchor="middle" fontSize="9" fontWeight="600" fill="currentColor">A</text>
+      ) : (
+        <rect x={ox} y={oy} width={rw} height={rh} rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+      )}
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Props — parent (VideoNode) owns task state
 // ---------------------------------------------------------------------------
 
@@ -60,6 +85,12 @@ export interface VideoGeneratePanelProps {
   canvasNodes?: CanvasNode[];
   /** Pre-fill form from history entry (e.g. drag from history) */
   initialConfig?: Partial<VideoGenHistoryEntry> | null;
+  /** Current video node ID — used for auto-linking source nodes */
+  nodeId?: string;
+  /** Called when a source node is selected as material — parent should create edge */
+  onLinkNode?: (sourceNodeId: string) => void;
+  /** Called when a source node material is removed — parent should remove edge */
+  onUnlinkNode?: (sourceNodeId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +203,9 @@ export default function VideoGeneratePanel({
   onApplyToNextNode,
   canvasNodes = [],
   initialConfig,
+  nodeId,
+  onLinkNode,
+  onUnlinkNode,
 }: VideoGeneratePanelProps) {
   const { t } = useTranslation();
 
@@ -191,6 +225,12 @@ export default function VideoGeneratePanel({
 
   // Config state
   const [videoMode, setVideoMode] = useState('text_to_video');
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const modeDropdownRef = useRef<HTMLDivElement>(null);
+  const [showQualityDropdown, setShowQualityDropdown] = useState(false);
+  const qualityDropdownRef = useRef<HTMLDivElement>(null);
+  const [showAspectDropdown, setShowAspectDropdown] = useState(false);
+  const aspectDropdownRef = useRef<HTMLDivElement>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [lastFrameImageUrl, setLastFrameImageUrl] = useState('');
   const [referenceImages, setReferenceImages] = useState<RefImage[]>([]);
@@ -200,6 +240,31 @@ export default function VideoGeneratePanel({
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [promptOptimizer, setPromptOptimizer] = useState(true);
   const [fastPretreatment, setFastPretreatment] = useState(false);
+
+  // Track source node IDs for single-attachment slots (imageUrl / lastFrame / extensionVideo)
+  const imageNodeIdRef = useRef<string | null>(null);
+  const lastFrameNodeIdRef = useRef<string | null>(null);
+  const extensionVideoNodeIdRef = useRef<string | null>(null);
+
+  // Link / unlink helpers
+  const linkNode = useCallback((sourceId: string) => {
+    onLinkNode?.(sourceId);
+  }, [onLinkNode]);
+
+  const unlinkNode = useCallback((sourceId: string | null) => {
+    sourceId && onUnlinkNode?.(sourceId);
+  }, [onUnlinkNode]);
+
+  // Unlink all currently linked nodes (used on mode switch / model change)
+  const unlinkAll = useCallback(() => {
+    unlinkNode(imageNodeIdRef.current);
+    unlinkNode(lastFrameNodeIdRef.current);
+    unlinkNode(extensionVideoNodeIdRef.current);
+    referenceImages.forEach(r => r.sourceNodeId && unlinkNode(r.sourceNodeId));
+    imageNodeIdRef.current = null;
+    lastFrameNodeIdRef.current = null;
+    extensionVideoNodeIdRef.current = null;
+  }, [unlinkNode, referenceImages]);
 
   // Derived
   const selectedModel = models.find((m) => `${m.provider_id}::${m.model_name}` === selectedModelKey) || null;
@@ -220,6 +285,7 @@ export default function VideoGeneratePanel({
 
   // Clear attachments when switching modes
   useEffect(() => {
+    unlinkAll();
     videoMode === 'text_to_video' && (setImageUrl(''), setLastFrameImageUrl(''), setReferenceImages([]), setExtensionVideoUrl(''));
     videoMode === 'image_to_video' && (setReferenceImages([]), setExtensionVideoUrl(''));
     videoMode === 'reference_images' && (setImageUrl(''), setLastFrameImageUrl(''), setExtensionVideoUrl(''));
@@ -234,6 +300,33 @@ export default function VideoGeneratePanel({
     showConfig && document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [showConfig]);
+
+  // Click outside closes mode dropdown
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as HTMLElement) && setShowModeDropdown(false);
+    };
+    showModeDropdown && document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showModeDropdown]);
+
+  // Click outside closes quality dropdown
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      qualityDropdownRef.current && !qualityDropdownRef.current.contains(e.target as HTMLElement) && setShowQualityDropdown(false);
+    };
+    showQualityDropdown && document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showQualityDropdown]);
+
+  // Click outside closes aspect ratio dropdown
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      aspectDropdownRef.current && !aspectDropdownRef.current.contains(e.target as HTMLElement) && setShowAspectDropdown(false);
+    };
+    showAspectDropdown && document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showAspectDropdown]);
 
   // Apply initialConfig once when models are available
   const appliedInitRef = useRef(false);
@@ -345,7 +438,7 @@ export default function VideoGeneratePanel({
       }]);
       // Auto-switch to reference_images mode when adding a virtual human in image_to_video mode
       videoMode === 'image_to_video' && setVideoMode('reference_images');
-      inputRef.current?.insertTag(imageRefCount + 1, preset.name);
+      inputRef.current?.insertTag(imageRefCount + 1, preset.name, 'image', true);
       imageRefCount + 1 >= maxRefImages && setShowVhPicker(false);
     })();
   };
@@ -357,6 +450,7 @@ export default function VideoGeneratePanel({
   const TAG_PREFIX_MAP: Record<RefType, string> = { image: 'IMAGE', video: 'VIDEO', audio: 'AUDIO' };
   const handleRemoveRefImage = (removeIdx: number) => {
     const removedRef = referenceImages[removeIdx];
+    removedRef.sourceNodeId && unlinkNode(removedRef.sourceNodeId);
     const newRefs = referenceImages.filter((_, i) => i !== removeIdx);
     setReferenceImages(newRefs);
     const removedType = removedRef.refType;
@@ -378,15 +472,15 @@ export default function VideoGeneratePanel({
     // single_image: set imageUrl
     pickerMode === 'single_image' && (() => {
       const url = getImageNodeUrl(node);
-      url && setImageUrl(url);
+      url && (unlinkNode(imageNodeIdRef.current), setImageUrl(url), imageNodeIdRef.current = node.id, linkNode(node.id));
       setShowNodePicker(false);
     })();
     // first_last_frame: fill first frame first, then last frame
     pickerMode === 'first_last_frame' && (() => {
       const url = getImageNodeUrl(node);
       url && (!imageUrl
-        ? setImageUrl(url)
-        : (setLastFrameImageUrl(url), setShowNodePicker(false)));
+        ? (setImageUrl(url), imageNodeIdRef.current = node.id, linkNode(node.id))
+        : (setLastFrameImageUrl(url), lastFrameNodeIdRef.current = node.id, linkNode(node.id), setShowNodePicker(false)));
     })();
     // multi_image: append to referenceImages — supports image/video/audio node types
     pickerMode === 'multi_image' && (() => {
@@ -405,7 +499,8 @@ export default function VideoGeneratePanel({
       const url = urlMap[nt]?.() ?? getImageNodeUrl(node);
       const [count, max] = limitMap[nt] ?? [imageRefCount, maxRefImages];
       url && count < max && (() => {
-        setReferenceImages((prev) => [...prev, { url, name: nodeName, refType }]);
+        setReferenceImages((prev) => [...prev, { url, name: nodeName, refType, sourceNodeId: node.id }]);
+        linkNode(node.id);
         // Insert type-specific tag: <IMAGE_N>, <VIDEO_N>, or <AUDIO_N>
         inputRef.current?.insertTag(count + 1, nodeName, refType);
       })();
@@ -414,7 +509,7 @@ export default function VideoGeneratePanel({
     // video: set extensionVideoUrl
     pickerMode === 'video' && (() => {
       const url = getVideoNodeUrl(node);
-      url && setExtensionVideoUrl(url);
+      url && (unlinkNode(extensionVideoNodeIdRef.current), setExtensionVideoUrl(url), extensionVideoNodeIdRef.current = node.id, linkNode(node.id));
       setShowNodePicker(false);
     })();
   };
@@ -422,6 +517,7 @@ export default function VideoGeneratePanel({
   const canSubmit = !!selectedModel && prompt.trim().length > 0 && !isSubmitting && !taskActive;
 
   const handleModelChange = (key: string) => {
+    unlinkAll();
     setSelectedModelKey(key);
     setVideoMode('text_to_video');
     setDuration(6);
@@ -477,18 +573,61 @@ export default function VideoGeneratePanel({
     return () => document.removeEventListener('mousedown', handle);
   }, [showModelDropdown]);
 
-  // Group models by provider for the dropdown
-  const groupedModels = useMemo(() => {
-    const groups: { providerName: string; providerId: string; providerType: string; models: typeof models }[] = [];
+  // Resize handle for input container
+  const [inputMaxHeight, setInputMaxHeight] = useState<number | null>(null);
+  const resizingRef = useRef(false);
+  const resizeStartY = useRef(0);
+  const resizeStartH = useRef(0);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
+
+  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingRef.current = true;
+    resizeStartY.current = e.clientY;
+    const edEl = inputContainerRef.current?.querySelector('[role="textbox"]') as HTMLElement | null;
+    resizeStartH.current = edEl?.offsetHeight ?? 44;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleResizePointerMove = useCallback((e: React.PointerEvent) => {
+    resizingRef.current && (() => {
+      const delta = e.clientY - resizeStartY.current;
+      const newH = Math.max(44, Math.min(400, resizeStartH.current + delta));
+      setInputMaxHeight(newH);
+    })();
+  }, []);
+
+  const handleResizePointerUp = useCallback((e: React.PointerEvent) => {
+    resizingRef.current = false;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, []);
+
+  // Flatten models with provider info — logo shown per-item, no grouping headers
+  const flatModels = useMemo(() => {
+    const list: { key: string; model: typeof models[number]; providerType: string; providerName: string }[] = [];
+    const covered = new Set<string>();
     for (const p of providers) {
-      const pModels = models.filter(m => m.provider_id === p.id);
-      pModels.length > 0 && groups.push({ providerName: p.name, providerId: p.id, providerType: p.provider_type, models: pModels });
+      covered.add(p.id);
+      for (const m of models.filter(mm => mm.provider_id === p.id)) {
+        list.push({
+          key: `${m.provider_id}::${m.model_name}`,
+          model: m,
+          providerType: p.provider_type,
+          providerName: p.name,
+        });
+      }
     }
     // Include any models not matched to a provider
-    const coveredIds = new Set(providers.map(p => p.id));
-    const orphans = models.filter(m => !coveredIds.has(m.provider_id));
-    orphans.length > 0 && groups.push({ providerName: 'Other', providerId: '__other__', providerType: '', models: orphans });
-    return groups;
+    for (const m of models.filter(mm => !covered.has(mm.provider_id))) {
+      list.push({
+        key: `${m.provider_id}::${m.model_name}`,
+        model: m,
+        providerType: '',
+        providerName: 'Other',
+      });
+    }
+    return list;
   }, [models, providers]);
 
   const handleModelSelect = useCallback((key: string) => {
@@ -498,9 +637,8 @@ export default function VideoGeneratePanel({
 
   // Resolve current provider logo for the trigger button
   const selectedProviderType = useMemo(() => {
-    const group = groupedModels.find(g => g.models.some(m => `${m.provider_id}::${m.model_name}` === selectedModelKey));
-    return group?.providerType || '';
-  }, [groupedModels, selectedModelKey]);
+    return flatModels.find(f => f.key === selectedModelKey)?.providerType || '';
+  }, [flatModels, selectedModelKey]);
   const selectedProviderLogo = PROVIDER_ICONS[selectedProviderType] || '';
 
 
@@ -508,14 +646,14 @@ export default function VideoGeneratePanel({
   return (
     <div className="w-full space-y-1.5" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       {/* Main input container — MessageInput style */}
-      <div className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col">
+      <div ref={inputContainerRef} className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col relative">
         {/* Attachment previews — image(s) or video */}
         {/* Single image (non-first_last_frame modes) */}
         {pickerMode === 'single_image' && imageUrl && (
           <div className="px-3 pt-2.5 pb-0">
             <div className="relative inline-block group/imgpreview">
-              <img src={imageUrl} alt="Reference" className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              <button type="button" onClick={() => setImageUrl('')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+              <img src={imageUrl} alt="Reference" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); imageNodeIdRef.current = null; setImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                 <X className="h-2.5 w-2.5" />
               </button>
               <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-black/60 text-white backdrop-blur-sm">
@@ -530,8 +668,8 @@ export default function VideoGeneratePanel({
           <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
             {/* First frame */}
             <div className="relative inline-block group/firstframe">
-              <img src={imageUrl} alt="First frame" className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              <button type="button" onClick={() => { setImageUrl(''); setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/firstframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+              <img src={imageUrl} alt="First frame" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); unlinkNode(lastFrameNodeIdRef.current); imageNodeIdRef.current = null; lastFrameNodeIdRef.current = null; setImageUrl(''); setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/firstframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                 <X className="h-2.5 w-2.5" />
               </button>
               <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-emerald-600/80 text-white backdrop-blur-sm">
@@ -543,8 +681,8 @@ export default function VideoGeneratePanel({
             {/* Last frame or placeholder */}
             {lastFrameImageUrl ? (
               <div className="relative inline-block group/lastframe">
-                <img src={lastFrameImageUrl} alt="Last frame" className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                <button type="button" onClick={() => setLastFrameImageUrl('')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/lastframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+                <img src={lastFrameImageUrl} alt="Last frame" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                <button type="button" onClick={() => { unlinkNode(lastFrameNodeIdRef.current); lastFrameNodeIdRef.current = null; setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/lastframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                   <X className="h-2.5 w-2.5" />
                 </button>
                 <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-amber-600/80 text-white backdrop-blur-sm">
@@ -564,31 +702,56 @@ export default function VideoGeneratePanel({
           </div>
         )}
 
+        {/* Empty first+last frame placeholders when no image loaded yet */}
+        {pickerMode === 'first_last_frame' && !imageUrl && (
+          <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setShowNodePicker(true)}
+              className="h-16 w-16 rounded-lg border-2 border-dashed border-border/60 hover:border-emerald-500/40 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer group/addfirst"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50 group-hover/addfirst:text-emerald-500/60 transition-colors" />
+              <span className="text-[8px] text-muted-foreground/60 group-hover/addfirst:text-emerald-500/60 transition-colors">{t('canvas.node.video.firstFrame')}</span>
+            </button>
+            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />
+            <button
+              type="button"
+              onClick={() => setShowNodePicker(true)}
+              disabled
+              className="h-16 w-16 rounded-lg border-2 border-dashed border-border/40 flex flex-col items-center justify-center gap-0.5 opacity-40 cursor-not-allowed"
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
+              <span className="text-[8px] text-muted-foreground/60">{t('canvas.node.video.lastFrame')}</span>
+            </button>
+          </div>
+        )}
+
         {pickerMode === 'multi_image' && referenceImages.length > 0 && (
           <div className="px-3 pt-2.5 pb-0 flex gap-1.5 flex-wrap">
             {referenceImages.map((ref, idx) => {
               const isImg = ref.refType === 'image';
               const isVid = ref.refType === 'video';
               const isAud = ref.refType === 'audio';
+              const isVirtualHuman = isImg && ref.url.startsWith('asset://');
               // Image-only index for <IMAGE_N> tag
               const imgIdx = isImg ? referenceImages.slice(0, idx).filter(r => r.refType === 'image').length + 1 : 0;
-              const tagColor = isVid ? 'text-amber-300' : isAud ? 'text-teal-300' : 'text-blue-300';
+              const tagColor = isVid ? 'text-amber-300' : isAud ? 'text-teal-300' : isVirtualHuman ? 'text-purple-300' : 'text-blue-300';
               const tagLabel = isVid ? `VIDEO_${referenceImages.slice(0, idx).filter(r => r.refType === 'video').length + 1}`
                 : isAud ? `AUDIO_${referenceImages.slice(0, idx).filter(r => r.refType === 'audio').length + 1}`
                 : `IMAGE_${imgIdx}`;
-              const TypeIcon = isVid ? Film : isAud ? Music : ImageIcon;
+              const TypeIcon = isVid ? Film : isAud ? Music : isVirtualHuman ? UserRound : ImageIcon;
               return (
                 <div key={idx} className="relative inline-block group/imgpreview">
                   {isVid ? (
                     <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted overflow-hidden">
-                      <video src={ref.url} className="w-full h-full object-cover" preload="metadata" muted />
+                      <video src={ref.url} draggable={false} className="w-full h-full object-cover" preload="metadata" muted />
                     </div>
                   ) : isAud ? (
                     <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center">
                       <Music className="w-6 h-6 text-teal-400/60" />
                     </div>
                   ) : (ref.previewUrl || ref.url) && !(ref.url.startsWith('asset://') && !ref.previewUrl) ? (
-                    <img src={ref.previewUrl || ref.url} alt={ref.name} className="h-14 w-14 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
+                    <img src={ref.previewUrl || ref.url} alt={ref.name} draggable={false} className="h-14 w-14 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
                   ) : null}
                   {isImg && (
                     <div className={cn('h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center', (ref.previewUrl || (!ref.url.startsWith('asset://') && ref.url)) ? 'hidden absolute inset-0' : '')}>
@@ -605,7 +768,7 @@ export default function VideoGeneratePanel({
                   </div>
                   {/* Type badge */}
                   <div className="absolute top-0.5 left-0.5">
-                    <TypeIcon className={cn('w-3 h-3', isVid ? 'text-amber-400' : isAud ? 'text-teal-400' : 'text-emerald-400')} />
+                    <TypeIcon className={cn('w-3 h-3', isVid ? 'text-amber-400' : isAud ? 'text-teal-400' : isVirtualHuman ? 'text-purple-400' : 'text-emerald-400')} />
                   </div>
                 </div>
               );
@@ -618,9 +781,9 @@ export default function VideoGeneratePanel({
           <div className="px-3 pt-2.5 pb-0">
             <div className="relative inline-block group/vidpreview">
               <div className="h-16 w-24 rounded-lg bg-muted border border-border/50 flex items-center justify-center overflow-hidden">
-                <video src={extensionVideoUrl} className="w-full h-full object-cover" preload="metadata" muted />
+                <video src={extensionVideoUrl} draggable={false} className="w-full h-full object-cover" preload="metadata" muted />
               </div>
-              <button type="button" onClick={() => setExtensionVideoUrl('')} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/vidpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
+              <button type="button" onClick={() => { unlinkNode(extensionVideoNodeIdRef.current); extensionVideoNodeIdRef.current = null; setExtensionVideoUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/vidpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                 <X className="h-2.5 w-2.5" />
               </button>
               <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-black/60 text-white backdrop-blur-sm">
@@ -639,6 +802,7 @@ export default function VideoGeneratePanel({
           placeholder={t('canvas.node.video.promptPlaceholder')}
           disabled={taskActive}
           onSubmit={() => canSubmit && handleSubmit()}
+          maxHeight={inputMaxHeight ?? undefined}
         />
 
         {/* Bottom toolbar */}
@@ -665,38 +829,31 @@ export default function VideoGeneratePanel({
                 )} />
               </button>
 
-              {/* Custom model dropdown */}
+              {/* Custom model dropdown — flat list with per-item provider logo */}
               {showModelDropdown && (
                 <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
-                  {groupedModels.map((group) => {
-                    const logoSrc = PROVIDER_ICONS[group.providerType];
+                  {flatModels.map(({ key, model: m, providerType, providerName }) => {
+                    const logoSrc = PROVIDER_ICONS[providerType];
+                    const isSelected = key === selectedModelKey;
                     return (
-                      <div key={group.providerId}>
-                        <div className="px-2.5 py-1.5 text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider bg-muted/30 sticky top-0 border-b border-border/30 flex items-center gap-1.5">
-                          {logoSrc && <img src={logoSrc} alt="" className="w-3.5 h-3.5 object-contain" />}
-                          {group.providerName}
-                        </div>
-                        {group.models.map((m) => {
-                          const key = `${m.provider_id}::${m.model_name}`;
-                          const isSelected = key === selectedModelKey;
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => handleModelSelect(key)}
-                              className={cn(
-                                'w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors cursor-pointer',
-                                isSelected
-                                  ? 'bg-primary/10 text-primary'
-                                  : 'text-foreground hover:bg-accent',
-                              )}
-                            >
-                              <span className="flex-1 text-left font-medium truncate">{m.display_name}</span>
-                              {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleModelSelect(key)}
+                        title={providerName}
+                        className={cn(
+                          'w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors cursor-pointer',
+                          isSelected
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-foreground hover:bg-accent',
+                        )}
+                      >
+                        {logoSrc
+                          ? <img src={logoSrc} alt="" className="w-4 h-4 object-contain shrink-0" />
+                          : <span className="w-4 h-4 shrink-0" />}
+                        <span className="flex-1 text-left font-medium truncate">{m.display_name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
+                      </button>
                     );
                   })}
                   {models.length === 0 && !modelsLoading && (
@@ -950,6 +1107,16 @@ export default function VideoGeneratePanel({
             )}
           </div>
         </div>
+
+        {/* Resize handle — at bottom edge of the input container */}
+        <div
+          className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center justify-center h-3 w-12 cursor-ns-resize group/resize select-none z-10"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+        >
+          <div className="w-8 h-[3px] rounded-full bg-border/40 group-hover/resize:bg-border/80 group-active/resize:bg-primary/60 transition-colors" />
+        </div>
       </div>
 
       {/* "Apply to Node" / "Apply to Next Node" button — shown when task done */}
@@ -976,13 +1143,39 @@ export default function VideoGeneratePanel({
           {visibility.showModeSelect && (
             <div className="space-y-1">
               <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.mode')}</label>
-              <select value={videoMode} onChange={(e) => setVideoMode(e.target.value)} className={SELECT_CLS} style={SELECT_ARROW_STYLE}>
-                {capabilities?.modes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {VIDEO_MODE_LABELS[mode] || mode}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={modeDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowModeDropdown(v => !v)}
+                  className={cn(SELECT_CLS, 'flex items-center justify-between')}
+                  style={SELECT_ARROW_STYLE}
+                >
+                  {VIDEO_MODE_LABELS[videoMode] || videoMode}
+                </button>
+                {showModeDropdown && (
+                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                    {capabilities?.modes.map((mode) => {
+                      const isSelected = mode === videoMode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => { setVideoMode(mode); setShowModeDropdown(false); }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
+                            isSelected
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-foreground hover:bg-accent',
+                          )}
+                        >
+                          <span className="flex-1 text-left">{VIDEO_MODE_LABELS[mode] || mode}</span>
+                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1025,23 +1218,77 @@ export default function VideoGeneratePanel({
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
               <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.quality')}</label>
-              <select value={quality} onChange={(e) => setQuality(e.target.value)} className={SELECT_CLS} style={SELECT_ARROW_STYLE}>
-                {visibility.resolutionOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {RESOLUTION_LABELS[r] || r}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={qualityDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowQualityDropdown(v => !v)}
+                  className={cn(SELECT_CLS, 'flex items-center justify-between')}
+                  style={SELECT_ARROW_STYLE}
+                >
+                  {RESOLUTION_LABELS[quality] || quality}
+                </button>
+                {showQualityDropdown && (
+                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                    {visibility.resolutionOptions.map((r) => {
+                      const isSelected = r === quality;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => { setQuality(r); setShowQualityDropdown(false); }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
+                            isSelected
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-foreground hover:bg-accent',
+                          )}
+                        >
+                          <span className="flex-1 text-left">{RESOLUTION_LABELS[r] || r}</span>
+                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.aspectRatio')}</label>
-              <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className={SELECT_CLS} style={SELECT_ARROW_STYLE}>
-                {visibility.aspectRatioOptions.map((ar) => (
-                  <option key={ar} value={ar}>
-                    {ASPECT_RATIO_LABELS[ar] || ar}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={aspectDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowAspectDropdown(v => !v)}
+                  className={cn(SELECT_CLS, 'flex items-center gap-1.5')}
+                  style={SELECT_ARROW_STYLE}
+                >
+                  <AspectRatioIcon ratio={aspectRatio} className="w-4 h-4 text-muted-foreground shrink-0" />
+                  {ASPECT_RATIO_LABELS[aspectRatio] || aspectRatio}
+                </button>
+                {showAspectDropdown && (
+                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                    {visibility.aspectRatioOptions.map((ar) => {
+                      const isSelected = ar === aspectRatio;
+                      return (
+                        <button
+                          key={ar}
+                          type="button"
+                          onClick={() => { setAspectRatio(ar); setShowAspectDropdown(false); }}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
+                            isSelected
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-foreground hover:bg-accent',
+                          )}
+                        >
+                          <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                          <span className="flex-1 text-left">{ASPECT_RATIO_LABELS[ar] || ar}</span>
+                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
