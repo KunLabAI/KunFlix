@@ -39,7 +39,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, engine, Base, AsyncSessionLocal
 from models import User
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, theaters, skills_api, admin_debug, admin_tools, music, admin_dashboard, admin_virtual_humans
+from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, images, theaters, skills_api, admin_debug, admin_tools, music, admin_dashboard, admin_virtual_humans
 from routers import auth as auth_router
 import uvicorn
 from agents import narrative_engine
@@ -162,6 +162,7 @@ app.include_router(media.router)
 app.include_router(subscriptions.router)
 app.include_router(prompt_templates.router)
 app.include_router(videos.router)
+app.include_router(images.router)
 app.include_router(theaters.router)
 app.include_router(skills_api.router)
 app.include_router(admin_debug.router)

@@ -19,9 +19,18 @@ _QUALITY_MAP: dict[str, dict[str, str]] = {
 # Batch count: field name + max per provider
 # ---------------------------------------------------------------------------
 _BATCH_MAP: dict[str, dict[str, Any]] = {
-    "gemini": {"field": "batch_count", "max": 8},
-    "xai":    {"field": "n",           "max": 10},
+    "gemini": {"field": "batch_count", "max": 4},
+    "xai":    {"field": "n",           "max": 4},
     "ark":    {"field": "n",           "max": 4},
+}
+
+# ---------------------------------------------------------------------------
+# Supported modes per provider (text_to_image / edit / reference_images)
+# ---------------------------------------------------------------------------
+_SUPPORTED_MODES: dict[str, list[str]] = {
+    "gemini": ["text_to_image", "edit", "reference_images"],
+    "xai":    ["text_to_image", "edit", "reference_images"],
+    "ark":    ["text_to_image"],
 }
 
 # ---------------------------------------------------------------------------
@@ -59,18 +68,21 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
         "qualities": ["standard", "hd", "ultra"],
         "output_formats": sorted(_OUTPUT_FORMAT_SUPPORTED["gemini"]),
         "batch_count": {"min": 1, "max": _BATCH_MAP["gemini"]["max"]},
+        "supported_modes": _SUPPORTED_MODES["gemini"],
     },
     "xai": {
         "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["xai"]),
         "qualities": ["standard", "hd"],
         "output_formats": [],
         "batch_count": {"min": 1, "max": _BATCH_MAP["xai"]["max"]},
+        "supported_modes": _SUPPORTED_MODES["xai"],
     },
     "ark": {
         "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["ark"]),
         "qualities": ["standard", "hd", "ultra"],
         "output_formats": [],
         "batch_count": {"min": 1, "max": _BATCH_MAP["ark"]["max"]},
+        "supported_modes": _SUPPORTED_MODES["ark"],
     },
 }
 

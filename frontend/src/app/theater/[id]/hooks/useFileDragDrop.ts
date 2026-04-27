@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, AudioNodeData, StoryboardNodeData } from '@/store/useCanvasStore';
 import * as XLSX from 'xlsx';
 import { useResourceStore } from '@/store/useResourceStore';
+import api from '@/lib/api';
 
 // File type detection matchers
 const FILE_TYPE_MATCHERS: Array<{ type: FileType; mimes: string[]; exts: string[] }> = [
@@ -57,27 +58,28 @@ function readTextFile(file: File): Promise<string> {
   });
 }
 
-function uploadFile(file: File, t: (key: string, opts?: Record<string, unknown>) => string): Promise<{ url?: string; error?: string; asset?: Record<string, unknown> }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/media/upload');
-    const token = localStorage.getItem('access_token');
-    token && xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-    const formData = new FormData();
-    formData.append('file', file);
-    xhr.onload = () => {
-      try {
-        const res = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-        xhr.status >= 200 && xhr.status < 300
-          ? resolve(res)
-          : resolve({ error: res?.detail || res?.error || t('canvas.uploadFailedHttp', { status: xhr.status }) });
-      } catch {
-        resolve({ error: t('canvas.parseResponseFailed', { status: xhr.status, statusText: xhr.statusText }) });
-      }
-    };
-    xhr.onerror = () => reject(new Error(t('canvas.networkError')));
-    xhr.send(formData);
-  });
+async function uploadFile(
+  file: File,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): Promise<{ url?: string; error?: string; asset?: Record<string, unknown> }> {
+  // 走 axios 实例以复用 401 自动刷新 token 的拦截器；
+  // 传入 FormData 时显式指定 multipart，axios 会自动补充 boundary。
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const { data } = await api.post<{ url?: string; asset?: Record<string, unknown> }>(
+      '/media/upload',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+    return data || {};
+  } catch (e: any) {
+    const status = e?.response?.status;
+    const detail = e?.response?.data?.detail || e?.response?.data?.error;
+    // 网络层错误（无 response）：抛出统一的网络错误，让上层 handleMediaUpload 的 catch 捕获
+    !e?.response && (() => { throw new Error(t('canvas.networkError')); })();
+    return { error: detail || t('canvas.uploadFailedHttp', { status: status ?? 'unknown' }) };
+  }
 }
 
 // Media upload handler (shared by image/video/audio)

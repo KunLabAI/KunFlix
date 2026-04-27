@@ -1,11 +1,11 @@
 
-import React, { memo, useState, useRef, useCallback, useMemo } from 'react';
+import React, { memo, useState, useRef, useCallback, useMemo, useEffect, type DragEvent } from 'react';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Copy, Trash2, Upload, AlertCircle, RefreshCw, X, ZoomIn, ZoomOut, Quote, Image as ImageIcon, Plus, FolderOpen, Loader2, ImageDown } from 'lucide-react';
-import { useCanvasStore, CharacterNodeData, CanvasNode } from '@/store/useCanvasStore';
+import { Copy, Trash2, Upload, AlertCircle, RefreshCw, X, ZoomIn, ZoomOut, Quote, Image as ImageIcon, Plus, FolderOpen, Loader2, ImageDown, Pin, PinOff } from 'lucide-react';
+import { useCanvasStore, CharacterNodeData, CanvasNode, ImageGenHistoryEntry } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
@@ -14,6 +14,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toPng } from 'html-to-image';
+import { cn } from '@/lib/utils';
+import ImageGeneratePanel from './ImageGeneratePanel';
+import { useImageGenerationTask, type ImageCreateParams } from '@/hooks/useImageGeneration';
 
 const MAX_IMAGES = 9;
 
@@ -34,7 +37,46 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   const deleteNode = useCanvasStore((state) => state.deleteNode);
   const addNode = useCanvasStore((state) => state.addNode);
   const onConnect = useCanvasStore((state) => state.onConnect);
-  const { getNode } = useReactFlow();
+  const canvasNodes = useCanvasStore((state) => state.nodes);
+  const { getNode, getEdges, screenToFlowPosition } = useReactFlow();
+
+  // ── AI 图像生成任务（同步，无轮询） ──
+  const imageTask = useImageGenerationTask();
+  const taskActive = imageTask.isSubmitting;
+  const taskDone = imageTask.isCompleted;
+  const taskFailed = imageTask.isFailed;
+
+  // 生成中实时计时（每 100ms 刷新）
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const start = imageTask.startedAt;
+    !start && setElapsedMs(0);
+    const tick = () => start && setElapsedMs(Date.now() - start);
+    tick();
+    const id = start ? setInterval(tick, 100) : null;
+    return () => { id && clearInterval(id); };
+  }, [imageTask.startedAt]);
+
+  const prevImagesRef = useRef<string[]>([]);
+  const lastSubmitParamsRef = useRef<ImageCreateParams | null>(null);
+
+  // ── 自动连线：将被选为参考图的源节点连到当前图像节点 ──
+  const handleLinkNode = useCallback((sourceNodeId: string) => {
+    const edges = getEdges();
+    const alreadyLinked = edges.some((e) => e.source === sourceNodeId && e.target === id);
+    alreadyLinked || useCanvasStore.getState().onConnect({
+      source: sourceNodeId,
+      sourceHandle: 'right-source',
+      target: id,
+      targetHandle: 'left-target',
+    });
+  }, [id, getEdges]);
+
+  const handleUnlinkNode = useCallback((sourceNodeId: string) => {
+    const edges = getEdges();
+    const edge = edges.find((e) => e.source === sourceNodeId && e.target === id);
+    edge && useCanvasStore.getState().deleteEdge(edge.id);
+  }, [id, getEdges]);
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -155,6 +197,172 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
       addNode(newNode);
     }
   };
+
+  // ── 自动应用生成结果到当前节点，并累计到 generatedImages 历史 ──
+  useEffect(() => {
+    const res = imageTask.result;
+    (res && imageTask.isCompleted) && (() => {
+      const sp = lastSubmitParamsRef.current;
+      const urls = res.images || [];
+      urls.length === 0 || (() => {
+        const createdAt = new Date().toISOString();
+        const newEntries: ImageGenHistoryEntry[] = urls.map((url) => ({
+          url,
+          prompt: res.prompt || sp?.prompt,
+          model: res.model || sp?.model,
+          provider_id: res.provider_id || sp?.provider_id,
+          aspect_ratio: sp?.config?.aspect_ratio,
+          quality: sp?.config?.quality,
+          batch_count: sp?.config?.batch_count,
+          output_format: sp?.config?.output_format,
+          createdAt,
+        }));
+        // 累计历史（去重）
+        const prevHist = data.generatedImages || [];
+        const existing = new Set(prevHist.map(e => e.url));
+        const merged = [...newEntries.filter(e => !existing.has(e.url)), ...prevHist];
+
+        // 自动替换当前节点的图像（受 MAX_IMAGES=9 约束；多次生成采用替换而非追加）
+        const nextImages = urls.slice(0, MAX_IMAGES);
+
+        updateNodeData(id, {
+          generatedImages: merged,
+          images: nextImages,
+          imageUrl: nextImages[0] || null,
+          uploading: false,
+        } as Partial<CharacterNodeData>);
+      })();
+    })();
+  }, [imageTask.isCompleted, imageTask.result]);
+
+  const handleImageSubmit = useCallback((params: ImageCreateParams) => {
+    // 保存生成前的完整图像数组，便于“应用到下一节点”时恢复本节点
+    prevImagesRef.current = data.images || (data.imageUrl ? [data.imageUrl] : []);
+    lastSubmitParamsRef.current = params;
+    imageTask.submit(params).catch(() => { /* error handled via hook */ });
+  }, [data.images, data.imageUrl, imageTask]);
+
+  const handleApplyToNode = useCallback(() => {
+    // 已在 effect 中自动合并，这里仅 reset
+    imageTask.reset();
+  }, [imageTask]);
+
+  // 生成结果应用到下一个节点（已连接的下游 image 节点或新建）
+  const handleApplyToNextNode = useCallback(() => {
+    const urls = imageTask.result?.images || [];
+    urls.length === 0 && imageTask.reset();
+    urls.length > 0 && (() => {
+      // 从当前节点回滚刚刚自动替换的生成图，恢复到生成前的完整图像数组
+      const restored = prevImagesRef.current;
+      updateNodeData(id, {
+        images: restored,
+        imageUrl: restored[0] || null,
+      } as Partial<CharacterNodeData>);
+
+      // 查找已连接的下游节点
+      const edges = getEdges();
+      const outEdge = edges.find((e) => e.source === id);
+      const targetNode = outEdge ? getNode(outEdge.target) : null;
+      const isCharTarget = targetNode?.type === 'image';
+
+      const targetId = isCharTarget ? targetNode!.id : `image-${uuidv4()}`;
+      const existingImgs = (isCharTarget ? (targetNode!.data as CharacterNodeData)?.images : []) || [];
+      const slotsAvailable = MAX_IMAGES - existingImgs.length;
+      const urlsToApply = urls.slice(0, Math.max(0, slotsAvailable));
+      const nextImages = [...existingImgs, ...urlsToApply];
+
+      isCharTarget && updateNodeData(targetId, {
+        images: nextImages,
+        imageUrl: nextImages[0] || null,
+      } as Partial<CharacterNodeData>);
+
+      isCharTarget || (() => {
+        const currentNode = getNode(id);
+        const posX = (currentNode?.position.x ?? 0) + (currentNode?.measured?.width ?? 300) + 80;
+        const posY = currentNode?.position.y ?? 0;
+        const newNode: CanvasNode = {
+          id: targetId,
+          type: 'image',
+          position: { x: posX, y: posY },
+          width: 512,
+          height: 384,
+          data: {
+            name: t('canvas.node.image.aiGenerated', 'AI 生成图像'),
+            description: '',
+            images: urlsToApply,
+            imageUrl: urlsToApply[0] || null,
+            uploading: false,
+          } as CharacterNodeData,
+        };
+        addNode(newNode);
+        onConnect({
+          source: id,
+          sourceHandle: 'right-source',
+          target: targetId,
+          targetHandle: 'left-target',
+        });
+      })();
+
+      imageTask.reset();
+    })();
+  }, [imageTask, data.images, data.imageUrl, id, getEdges, getNode, updateNodeData, addNode, onConnect, t]);
+
+  const handleTogglePinPanel = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    updateNodeData(id, { pinPanel: !data.pinPanel } as Partial<CharacterNodeData>);
+  }, [id, data.pinPanel, updateNodeData]);
+
+  // ── 历史侧栏 ──
+  const [showHistory, setShowHistory] = useState(false);
+  const historyImages = data.generatedImages || [];
+
+  const handleHistoryDragStart = useCallback((e: DragEvent<HTMLDivElement>, entry: ImageGenHistoryEntry) => {
+    e.dataTransfer.setData('application/image-history', JSON.stringify(entry));
+    e.dataTransfer.effectAllowed = 'copy';
+  }, []);
+
+  const handleHistoryDragEnd = useCallback((e: DragEvent<HTMLDivElement>, entry: ImageGenHistoryEntry) => {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const droppedOnSelf = nodeRef.current?.contains(el);
+    droppedOnSelf || (() => {
+      const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const newNode: CanvasNode = {
+        id: `image-${uuidv4()}`,
+        type: 'image',
+        position: { x: pos.x - 128, y: pos.y - 96 },
+        width: 512,
+        height: 384,
+        data: {
+          name: t('canvas.node.image.aiGenerated', 'AI 生成图像'),
+          description: entry.prompt || '',
+          images: [entry.url],
+          imageUrl: entry.url,
+          uploading: false,
+          initialGenConfig: {
+            prompt: entry.prompt,
+            model: entry.model,
+            provider_id: entry.provider_id,
+            aspect_ratio: entry.aspect_ratio,
+            quality: entry.quality,
+            batch_count: entry.batch_count,
+            output_format: entry.output_format,
+          },
+        } as CharacterNodeData,
+      };
+      addNode(newNode);
+    })();
+  }, [screenToFlowPosition, addNode, t]);
+
+  const handleHistoryClick = useCallback((url: string) => {
+    const currentImages = data.images || (data.imageUrl ? [data.imageUrl] : []);
+    currentImages.includes(url) || (() => {
+      const slotsAvailable = MAX_IMAGES - currentImages.length;
+      slotsAvailable > 0 && (() => {
+        const next = [...currentImages, url];
+        updateNodeData(id, { images: next, imageUrl: next[0] } as Partial<CharacterNodeData>);
+      })();
+    })();
+  }, [data.images, data.imageUrl, id, updateNodeData]);
 
   const handleReference = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -709,6 +917,15 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               {imageList.length}/{MAX_IMAGES}
             </div>
           )}
+          {/* 最近一次 AI 生成耗时 */}
+          {!taskActive && imageTask.lastDurationMs !== null && (
+            <div
+              className="text-xs font-mono text-blue-400/80 flex-shrink-0 select-none tabular-nums ml-1"
+              title={t('canvas.node.image.lastDuration', '本次生成耗时')}
+            >
+              {(imageTask.lastDurationMs / 1000).toFixed(1)}s
+            </div>
+          )}
         </div>
 
         <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
@@ -725,6 +942,28 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               <div ref={gridContainerRef} className="w-full h-full">
                 {renderGridImages()}
               </div>
+            )}
+
+            {/* AI 生成中脚动覆盖层 — 对齐 VideoNode 规范 */}
+            {taskActive && (
+              <>
+                <div
+                  className="absolute inset-[-3px] rounded-xl border-blue-400 border-[3px] pointer-events-none z-[20]"
+                  style={{
+                    animation: 'nodeEffectPulse 1.5s ease-in-out infinite',
+                    boxShadow: '0 0 12px 2px rgba(59,130,246,0.5), inset 0 0 12px 2px rgba(59,130,246,0.5)',
+                  }}
+                />
+                <div
+                  className="absolute inset-0 rounded-xl pointer-events-none z-[19]"
+                  style={{ backgroundColor: 'rgba(59,130,246,0.08)' }}
+                />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 z-[21] pointer-events-none">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+                  <span className="text-sm font-medium text-blue-400">{t('canvas.node.image.generatingHint', '图像生成中…')}</span>
+                  <span className="text-xs font-mono text-blue-300/90 tabular-nums">{(elapsedMs / 1000).toFixed(1)}s</span>
+                </div>
+              </>
             )}
 
             {isUploading && (
@@ -768,9 +1007,12 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </CardContent>
         </Card>
 
-        {/* 工具条 */}
+        {/* 工具条 — 顶部定位，对齐 VideoNode 规范 */}
         <NodeToolbar
-          className={(showAddMenu || showExportDialog || isExporting) ? '!opacity-100 !pointer-events-auto !translate-y-0' : undefined}
+          className={cn(
+            '!bottom-auto !-top-[64px] !-translate-y-1 group-hover:!translate-y-0',
+            (showAddMenu || showExportDialog || isExporting) && '!opacity-100 !pointer-events-auto !translate-y-0',
+          )}
           actions={[
             {
               icon: <Quote className="h-3.5 w-3.5" />,
@@ -804,12 +1046,11 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           ] as ToolbarAction[]}
         />
 
-        {/* 添加图片级联按钮 */}
+        {/* 添加图片级联按钮 — 置于工具条上方 */}
         {showAddMenu && !isFull && (
           <div
             ref={addMenuRef}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
-            style={{ bottom: '-100px' }}
+            className="absolute left-1/2 -translate-x-1/2 -top-[108px] flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
           >
             <button
               className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
@@ -829,12 +1070,11 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           </div>
         )}
 
-        {/* 导出清晰度级联按钮 */}
+        {/* 导出清晰度级联按钮 — 置于工具条上方 */}
         {showExportDialog && !isExporting && imageList.length >= 2 && (
           <div
             ref={exportCascadeRef}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
-            style={{ bottom: '-100px' }}
+            className="absolute left-1/2 -translate-x-1/2 -top-[108px] flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
           >
             <button
               className="px-3 py-1 text-xs font-bold rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
@@ -875,6 +1115,101 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         </div>
       </div>
 
+      {/* 生成历史侧边栏 — 节点左侧 */}
+      {historyImages.length > 0 && (
+        <div
+          className={cn(
+            'absolute right-full top-0 bottom-0 mr-3 flex flex-col nodrag nopan z-10 transition-all duration-200',
+            showHistory ? 'w-[72px] opacity-100' : 'w-0 opacity-0 pointer-events-none',
+          )}
+        >
+          <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1.5 py-1">
+            {historyImages.map((entry, i) => (
+              <div
+                key={`${entry.url}-${i}`}
+                draggable
+                onDragStart={(e) => handleHistoryDragStart(e, entry)}
+                onDragEnd={(e) => handleHistoryDragEnd(e, entry)}
+                onClick={() => handleHistoryClick(entry.url)}
+                className={cn(
+                  'w-[68px] h-[68px] rounded-md border overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
+                  imageList.includes(entry.url)
+                    ? 'border-primary ring-1 ring-primary/30'
+                    : 'border-border/50 hover:border-primary/50',
+                )}
+                title={entry.prompt || entry.quality || t('canvas.node.image.aiGenerated', 'AI 生成图像')}
+              >
+                <img
+                  src={entry.url}
+                  alt=""
+                  className="w-full h-full object-cover pointer-events-none"
+                  draggable={false}
+                />
+                {entry.quality && (
+                  <span className="absolute bottom-0 right-0 px-1 py-px text-[8px] font-medium bg-black/70 text-white rounded-tl">
+                    {entry.quality}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 历史侧栏切换按钮 */}
+      {historyImages.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowHistory(p => !p)}
+          className={cn(
+            'absolute right-full top-1/2 -translate-y-1/2 w-5 h-10 flex items-center justify-center rounded-l-md border border-r-0 bg-background/90 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-all nodrag z-10',
+            showHistory ? 'mr-[76px]' : 'mr-1',
+          )}
+          title={t('canvas.node.image.historyToggle', '生成历史')}
+        >
+          <span className="text-[10px] font-bold">{historyImages.length}</span>
+        </button>
+      )}
+
+      {/* AI 图像生成内联面板 — 卡片下方，选中/固定/任务进行中时显示 */}
+      <div className={cn(
+        'absolute top-full left-0 right-0 mt-1.5 nodrag z-20 transition-opacity duration-150',
+        (selected || data.pinPanel || taskActive || taskDone || taskFailed) ? 'opacity-100' : 'opacity-0 pointer-events-none invisible',
+      )}>
+        {/* Pin toggle */}
+        <button
+          type="button"
+          onClick={handleTogglePinPanel}
+          onPointerDown={(e) => e.stopPropagation()}
+          className={cn(
+            'absolute -top-1 right-1 z-30 h-6 w-6 rounded-md flex items-center justify-center transition-all duration-200',
+            data.pinPanel
+              ? 'text-primary hover:text-primary/80'
+              : 'text-muted-foreground/40 hover:text-muted-foreground/70',
+          )}
+          title={data.pinPanel ? t('canvas.node.image.unpinPanel', '取消固定面板') : t('canvas.node.image.pinPanel', '固定面板')}
+        >
+          {data.pinPanel ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}
+        </button>
+        <ImageGeneratePanel
+          onSubmit={handleImageSubmit}
+          onStop={() => imageTask.reset()}
+          isSubmitting={imageTask.isSubmitting}
+          taskActive={taskActive}
+          taskDone={taskDone}
+          taskFailed={taskFailed}
+          taskError={imageTask.error || t('canvas.node.image.failedDefault', '图像生成失败')}
+          submitError={imageTask.error}
+          hasExistingImage={prevImagesRef.current.length > 0}
+          onApplyToNode={handleApplyToNode}
+          onApplyToNextNode={handleApplyToNextNode}
+          initialConfig={data.initialGenConfig || null}
+          nodeId={id}
+          canvasNodes={canvasNodes}
+          onLinkNode={handleLinkNode}
+          onUnlinkNode={handleUnlinkNode}
+        />
+      </div>
 
       {/* 资产库选择弹窗 */}
       {showAssetPicker && typeof document !== 'undefined' && createPortal(

@@ -1048,3 +1048,41 @@ class MusicTaskResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+# ---------------------------------------------------------------------------
+# Image Generation (同步 REST 接口)
+# ---------------------------------------------------------------------------
+class ImageGenParams(BaseModel):
+    """图像生成参数（供应商无关）"""
+    aspect_ratio: Optional[str] = None           # 1:1 / 16:9 / 9:16 / 4:3 / 3:4 等
+    quality: Optional[Literal["standard", "hd", "ultra"]] = None
+    batch_count: int = Field(default=1, ge=1, le=4)
+    output_format: Optional[Literal["png", "jpeg", "webp"]] = None
+
+
+class ImageReference(BaseModel):
+    """图像生成的参考图结构"""
+    url: str
+
+
+class ImageGenerateRequest(BaseModel):
+    """同步图像生成请求"""
+    provider_id: str
+    model: str
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    session_id: Optional[str] = None
+    config: Optional[ImageGenParams] = None
+    mode: Literal["text_to_image", "edit", "reference_images"] = "text_to_image"
+    reference_images: Optional[List[ImageReference]] = None
+
+
+class ImageGenerateResponse(BaseModel):
+    """同步图像生成响应（一次请求可返回多张图）"""
+    images: List[str]                 # 本地 /api/media/... URL 列表
+    prompt: str
+    model: str
+    provider_id: str
+    provider_name: Optional[str] = None
+    credit_cost: float = 0.0
+    created_at: Any
+

@@ -1,4 +1,5 @@
 import { useEditor, EditorContent, EditorContext, JSONContent } from '@tiptap/react';
+import { Fragment, Slice, Node as PMNode } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
@@ -58,6 +59,26 @@ function markdownToTiptapJson(markdown: string): JSONContent {
   content.length === 0 && content.push({ type: 'paragraph' });
 
   return { type: 'doc', content };
+}
+
+/**
+ * Marks to strip from pasted content.
+ * Keeps semantic structure (headings/lists/links/bold...) while removing
+ * color/background color pollution brought by external sources (Word, web pages, Notion...).
+ */
+const PASTE_STRIP_MARKS = new Set(['textStyle', 'highlight', 'color']);
+
+/**
+ * Recursively walk pasted Fragment and drop color-related marks on every node.
+ */
+function sanitizePastedFragment(fragment: Fragment): Fragment {
+  const nodes: PMNode[] = [];
+  fragment.forEach((node) => {
+    const filteredMarks = node.marks.filter((m) => !PASTE_STRIP_MARKS.has(m.type.name));
+    const sanitizedChildren = node.content.size > 0 ? sanitizePastedFragment(node.content) : node.content;
+    nodes.push(node.copy(sanitizedChildren).mark(filteredMarks));
+  });
+  return Fragment.fromArray(nodes);
 }
 
 /**
@@ -181,6 +202,9 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
       attributes: {
         class: 'tiptap',
       },
+      // Strip color/highlight marks from pasted content while preserving structure.
+      transformPasted: (slice) =>
+        new Slice(sanitizePastedFragment(slice.content), slice.openStart, slice.openEnd),
     },
   });
 
