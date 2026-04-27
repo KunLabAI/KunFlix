@@ -316,7 +316,6 @@
         "applyToNextNode": "应用到下一个节点",
         "aiGenerated": "AI 生成",
                 "historyToggle": "生成历史",
-        "retryGenerate": "重新生成",
                 "selectImageNode": "从画布选择图片",
                 "selectVideoNode": "从画布选择视频",
                 "selectRefImages": "选择参考素材（最多{{max}}个）",

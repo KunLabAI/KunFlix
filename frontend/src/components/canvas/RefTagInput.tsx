@@ -16,10 +16,11 @@ export interface RefImage {
   name: string;
   refType: RefType; // 参考类型：image / video / audio
   previewUrl?: string; // 虚拟人像用：展示缩略图（preview_url），提交时用 url（asset://...）
+  sourceNodeId?: string; // 来源画布节点 ID，用于自动连线
 }
 
 export interface RefTagInputRef {
-  insertTag: (refIdx: number, name: string, refType?: RefType) => void;
+  insertTag: (refIdx: number, name: string, refType?: RefType, isVirtualHuman?: boolean) => void;
   focus: () => void;
 }
 
@@ -30,6 +31,8 @@ interface RefTagInputProps {
   placeholder?: string;
   disabled?: boolean;
   onSubmit?: () => void;
+  /** Override max-height for the editor (e.g. when user drags resize handle) */
+  maxHeight?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,24 +62,40 @@ const TAG_COLORS: Record<RefType, { bg: string; border: string; color: string }>
   audio: { bg: '#14b8a6 15%', border: '#14b8a6 25%', color: '#0d9488' },
 };
 
-function tagStyle(refType: RefType) {
-  const c = TAG_COLORS[refType];
+const VH_TAG_COLORS = { bg: '#a855f7 15%', border: '#a855f7 25%', color: '#9333ea' };
+
+function tagStyle(refType: RefType, isVirtualHuman = false) {
+  const c = isVirtualHuman ? VH_TAG_COLORS : TAG_COLORS[refType];
   return [
     'display:inline-flex', 'align-items:center', 'gap:3px',
     'padding:0 6px', 'margin:0 1px', 'border-radius:4px',
+    'position:relative',
     `background:color-mix(in srgb, ${c.bg}, transparent)`,
     `color:${c.color}`,
     'font-size:11px', 'font-weight:500', 'vertical-align:baseline',
-    'cursor:grab', 'user-select:none', 'white-space:nowrap',
+    'cursor:grab', 'user-select:all', 'white-space:nowrap',
     `border:1px solid color-mix(in srgb, ${c.border}, transparent)`,
     'line-height:1.6',
   ].join(';');
 }
 
-function tagHtml(idx: number, name: string, refType: RefType = 'image') {
-  const svg = TYPE_SVG[refType];
-  const style = tagStyle(refType);
-  return `<span contenteditable="false" draggable="true" data-ref-idx="${idx}" data-ref-type="${refType}" style="${style}">${svg}<span style="max-width:72px;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span></span>`;
+const VH_SVG =
+  '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>';
+
+function tagHtml(idx: number, name: string, refType: RefType = 'image', isVirtualHuman = false) {
+  const svg = isVirtualHuman ? VH_SVG : TYPE_SVG[refType];
+  const style = tagStyle(refType, isVirtualHuman);
+  const delBtnStyle = [
+    'position:absolute', 'top:-5px', 'right:-5px',
+    'display:flex', 'align-items:center', 'justify-content:center',
+    'width:12px', 'height:12px', 'border-radius:50%',
+    'background:var(--background)', 'border:1px solid var(--border)',
+    'cursor:pointer', 'flex-shrink:0', 'padding:0',
+    'color:var(--muted-foreground)', 'font-size:9px', 'line-height:1',
+    'opacity:0', 'transition:opacity 0.15s', 'pointer-events:auto',
+    'box-shadow:0 1px 2px rgba(0,0,0,0.1)',
+  ].join(';');
+  return `<span contenteditable="false" draggable="true" data-ref-idx="${idx}" data-ref-type="${refType}"${isVirtualHuman ? ' data-vh="1"' : ''} style="${style}" onmouseover="this.querySelector('[data-ref-delete]').style.opacity='1'" onmouseout="this.querySelector('[data-ref-delete]').style.opacity='0'">${svg}<span style="max-width:72px;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span><span data-ref-delete="1" style="${delBtnStyle}">×</span></span>`;
 }
 
 /** Compute type-specific index for a ref at array position `pos` */
@@ -102,7 +121,8 @@ function toHtml(text: string, refs: RefImage[]) {
     const idx = parseInt(n);
     const list = byType[refType];
     const r = list?.[idx - 1];
-    return r ? tagHtml(idx, r.name, refType) : `&lt;${prefix}_${n}&gt;`;
+    const isVh = r ? r.url.startsWith('asset://') : false;
+    return r ? tagHtml(idx, r.name, refType, isVh) : `&lt;${prefix}_${n}&gt;`;
   });
   return html;
 }
@@ -142,21 +162,24 @@ function insertNodeAtCursor(el: HTMLElement, node: Node) {
 // ---------------------------------------------------------------------------
 
 const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
-  function RefTagInput({ value, onChange, referenceImages, placeholder, disabled, onSubmit }, ref) {
+  function RefTagInput({ value, onChange, referenceImages, placeholder, disabled, onSubmit, maxHeight }, ref) {
     const { t } = useTranslation();
     const edRef = useRef<HTMLDivElement>(null);
     const lastVal = useRef(value);
     const [atMenu, setAtMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
+    // Default max-height: 12 lines (~252px). Can be overridden via prop.
+    const effectiveMaxH = maxHeight ?? 252;
+
     // -- expose API --
     useImperativeHandle(ref, () => ({
-      insertTag(idx: number, name: string, refType: RefType = 'image') {
+      insertTag(idx: number, name: string, refType: RefType = 'image', isVirtualHuman = false) {
         const el = edRef.current;
         el || (void 0);
         if (!el) return;
         const tmp = document.createElement('div');
-        tmp.innerHTML = tagHtml(idx, name, refType);
+        tmp.innerHTML = tagHtml(idx, name, refType, isVirtualHuman);
         insertNodeAtCursor(el, tmp.firstElementChild!);
         const txt = serialize(el);
         lastVal.current = txt;
@@ -214,60 +237,149 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
       document.execCommand('insertText', false, txt);
     };
 
+    // -- click delegation: delete button on tags --
+    const handleClick = useCallback((e: React.MouseEvent) => {
+      const delBtn = (e.target as HTMLElement).closest?.('[data-ref-delete]');
+      delBtn && (() => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tagSpan = delBtn.closest('[data-ref-idx]') as HTMLElement | null;
+        const el = edRef.current;
+        tagSpan && el && (() => {
+          // Remove the tag span from DOM
+          tagSpan.remove();
+          // Re-serialize and sync
+          const txt = serialize(el);
+          lastVal.current = txt;
+          onChange(txt);
+        })();
+      })();
+    }, [onChange]);
+
     // -- tag drag & drop within editor --
+    // 使用系统原生 caret 显示拖放位置，不再渲染自定义指示条
     const dragIdxRef = useRef<number | null>(null);
     const dragTypeRef = useRef<RefType>('image');
 
+    // 根据鼠标坐标解析出一个 collapsed Range；避免副作用，仅计算
+    const rangeFromPoint = useCallback((x: number, y: number): Range | null => {
+      const caretPos = document.caretPositionFromPoint?.(x, y);
+      const viaPos = caretPos
+        ? (() => { const r = document.createRange(); r.setStart(caretPos.offsetNode, caretPos.offset); r.collapse(true); return r; })()
+        : null;
+      const viaRange = !viaPos && (document as any).caretRangeFromPoint
+        ? ((document as any).caretRangeFromPoint(x, y) as Range | null)
+        : null;
+      return viaPos ?? viaRange ?? null;
+    }, []);
+
     const handleDragStart = useCallback((e: React.DragEvent) => {
       const target = (e.target as HTMLElement).closest?.('[data-ref-idx]') as HTMLElement | null;
-      target && (dragIdxRef.current = Number(target.getAttribute('data-ref-idx')), dragTypeRef.current = (target.getAttribute('data-ref-type') || 'image') as RefType);
-      !target && e.preventDefault();
+      !target && (e.preventDefault(), void 0);
+      target && (() => {
+        dragIdxRef.current = Number(target.getAttribute('data-ref-idx'));
+        dragTypeRef.current = (target.getAttribute('data-ref-type') || 'image') as RefType;
+        // 必须写入 dataTransfer，否则 Firefox 等浏览器无法触发 drop
+        e.dataTransfer.setData('text/plain', '');
+        e.dataTransfer.effectAllowed = 'move';
+      })();
     }, []);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
-      dragIdxRef.current !== null && e.preventDefault();
-    }, []);
+      dragIdxRef.current !== null && (() => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const el = edRef.current;
+        // 在 dragover 时把真实 selection 同步到落点，让浏览器显示原生 caret
+        el && (() => {
+          const range = rangeFromPoint(e.clientX, e.clientY);
+          range && el.contains(range.startContainer) && (() => {
+            const sel = window.getSelection();
+            sel && (sel.removeAllRanges(), sel.addRange(range));
+          })();
+        })();
+      })();
+    }, [rangeFromPoint]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
       const idx = dragIdxRef.current;
       const refType = dragTypeRef.current;
       dragIdxRef.current = null;
       const el = edRef.current;
-      (idx === null || !el) && (void 0);
-      idx !== null && el && (() => {
+      (idx !== null && el) && (() => {
         e.preventDefault();
-        // Remove the original tag span from DOM
-        const orig = el.querySelector(`[data-ref-idx="${idx}"][data-ref-type="${refType}"]`) || el.querySelector(`[data-ref-idx="${idx}"]`);
-        orig?.remove();
 
-        // Place caret at drop point
-        const caretPos = document.caretPositionFromPoint?.(e.clientX, e.clientY);
-        const caretRange = (document as any).caretRangeFromPoint?.(e.clientX, e.clientY) as Range | null;
+        // 1) 必须先基于当前 DOM 计算落点 Range，在原标签被移除前拿到稳定坐标
+        const dropRange = rangeFromPoint(e.clientX, e.clientY);
 
-        const sel = window.getSelection();
-        const range = caretPos
-          ? (() => { const r = document.createRange(); r.setStart(caretPos.offsetNode, caretPos.offset); r.collapse(true); return r; })()
-          : caretRange;
+        // 2) 定位原标签
+        const orig = (el.querySelector(`[data-ref-idx="${idx}"][data-ref-type="${refType}"]`)
+          || el.querySelector(`[data-ref-idx="${idx}"]`)) as HTMLElement | null;
 
-        range && sel && el.contains(range.startContainer)
-          ? (sel.removeAllRanges(), sel.addRange(range))
-          : (void 0);
-
-        // Re-create and insert tag at new position — find ref by type+idx
-        const byType = referenceImages.filter(r => r.refType === refType);
-        const ref = byType[idx - 1];
-        ref && (() => {
-          const tmp = document.createElement('div');
-          tmp.innerHTML = tagHtml(idx, ref.name, refType);
-          insertNodeAtCursor(el, tmp.firstElementChild!);
+        // 3) 如果落点就在原标签内部，视为原地拖放，不做任何处理
+        const dropInsideOrig = !!(dropRange && orig && orig.contains(dropRange.startContainer));
+        dropInsideOrig && (() => {
+          const txt = serialize(el);
+          lastVal.current = txt;
+          onChange(txt);
         })();
 
-        // Serialize and sync
-        const txt = serialize(el);
-        lastVal.current = txt;
-        onChange(txt);
+        !dropInsideOrig && (() => {
+          // 4) 捕获 dropRange 指向的文本节点与偏移（后续 DOM 变动可能影响 Range 引用）
+          const anchorNode = dropRange?.startContainer ?? null;
+          const anchorOffset = dropRange?.startOffset ?? 0;
+          const anchorValid = !!(anchorNode && el.contains(anchorNode) && (!orig || !orig.contains(anchorNode)));
+
+          // 5) 移除原标签
+          orig?.remove();
+
+          // 6) 将光标精确放置到落点（锚点节点在标签外部，不会因移除而失效）
+          const sel = window.getSelection();
+          anchorValid && sel && (() => {
+            const r = document.createRange();
+            // 防御：若 anchorNode 是文本节点，按字符偏移；否则按子节点偏移
+            const maxOff = anchorNode!.nodeType === Node.TEXT_NODE
+              ? (anchorNode!.textContent?.length ?? 0)
+              : anchorNode!.childNodes.length;
+            r.setStart(anchorNode!, Math.min(anchorOffset, maxOff));
+            r.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          })();
+
+          // 7) 光标定位失败则回退到末尾
+          !anchorValid && sel && (() => {
+            const r = document.createRange();
+            r.selectNodeContents(el);
+            r.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          })();
+
+          // 8) 在当前光标位置插入新标签（insertNodeAtCursor 内部会把 caret 移到标签之后）
+          const byType = referenceImages.filter(r => r.refType === refType);
+          const ref = byType[idx! - 1];
+          ref && (() => {
+            const tmp = document.createElement('div');
+            const isVh = ref.url.startsWith('asset://');
+            tmp.innerHTML = tagHtml(idx!, ref.name, refType, isVh);
+            insertNodeAtCursor(el, tmp.firstElementChild!);
+          })();
+
+          const txt = serialize(el);
+          lastVal.current = txt;
+          onChange(txt);
+        })();
       })();
-    }, [referenceImages, onChange]);
+    }, [referenceImages, onChange, rangeFromPoint]);
+
+    const handleDragLeave = useCallback(() => {
+      // 交给浏览器原生 caret，无需额外处理
+    }, []);
+
+    const handleDragEnd = useCallback(() => {
+      dragIdxRef.current = null;
+    }, []);
 
     // -- @ select: remove '@', insert tag with type-specific index --
     const handleAtSelect = (arrayPos: number) => {
@@ -292,7 +404,8 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
 
       // insert tag
       const tmp = document.createElement('div');
-      tmp.innerHTML = tagHtml(idx, r.name, refType);
+      const isVh = r.url.startsWith('asset://');
+      tmp.innerHTML = tagHtml(idx, r.name, refType, isVh);
       insertNodeAtCursor(el, tmp.firstElementChild!);
       handleInput();
       setAtMenu(false);
@@ -325,15 +438,19 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onClick={handleClick}
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDragEnd={handleDragEnd}
           onDrop={handleDrop}
           className={cn(
             'w-full bg-transparent border-0 outline-none text-sm text-foreground cursor-text',
-            'min-h-[44px] max-h-[400px] overflow-y-auto py-2.5 px-3 pb-1',
+            'overflow-y-auto py-2.5 px-3 pb-1',
             'focus:ring-0 focus:outline-none whitespace-pre-wrap break-words',
             disabled && 'opacity-50 pointer-events-none',
           )}
+          style={{ minHeight: '44px', maxHeight: `${effectiveMaxH}px` }}
           role="textbox"
           aria-multiline="true"
         />
@@ -352,6 +469,7 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
               const prefix = TYPE_TAG_PREFIX[r.refType];
               const isAud = r.refType === 'audio';
               const isVid = r.refType === 'video';
+              const isVh = r.refType === 'image' && r.url.startsWith('asset://');
               return (
               <button
                 key={i}
@@ -367,6 +485,13 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
                   <div className="h-6 w-6 shrink-0 rounded border border-border/30 bg-muted flex items-center justify-center">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-400"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/></svg>
                   </div>
+                ) : isVh ? (
+                  <div className="h-6 w-6 shrink-0 relative">
+                    <img src={r.previewUrl || r.url} alt="" className="h-6 w-6 rounded object-cover border border-purple-400/40" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
+                    <div className="hidden h-6 w-6 rounded border border-purple-400/40 bg-muted flex items-center justify-center absolute inset-0">
+                      <UserRound className="w-3 h-3 text-purple-400" />
+                    </div>
+                  </div>
                 ) : (
                   <div className="h-6 w-6 shrink-0 relative">
                     <img src={r.previewUrl || r.url} alt="" className="h-6 w-6 rounded object-cover border border-border/30" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
@@ -378,7 +503,7 @@ const RefTagInput = React.forwardRef<RefTagInputRef, RefTagInputProps>(
                 <span className="font-medium truncate text-foreground">{r.name}</span>
                 <span className={cn(
                   'text-[10px] ml-auto whitespace-nowrap',
-                  isAud ? 'text-teal-500' : isVid ? 'text-amber-500' : 'text-muted-foreground',
+                  isAud ? 'text-teal-500' : isVid ? 'text-amber-500' : isVh ? 'text-purple-500' : 'text-muted-foreground',
                 )}>{`${prefix}_${tIdx}`}</span>
               </button>
               );

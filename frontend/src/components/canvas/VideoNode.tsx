@@ -123,12 +123,23 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     videoTask.reset();
   }, [videoTask.status?.video_url, videoTask.reset, id, getEdges, getNode, updateNodeData, addNode, t]);
 
-  const handleRetryGenerate = useCallback(() => {
-    // Restore original video and reset task
-    const prevUrl = prevVideoUrlRef.current;
-    prevUrl && updateNodeData(id, { videoUrl: prevUrl } as Partial<VideoNodeData>);
-    videoTask.reset();
-  }, [videoTask.reset, updateNodeData, id]);
+  // ── Auto-linking: connect source material nodes to this video node ──
+  const handleLinkNode = useCallback((sourceNodeId: string) => {
+    const edges = getEdges();
+    const alreadyLinked = edges.some(e => e.source === sourceNodeId && e.target === id);
+    alreadyLinked || useCanvasStore.getState().onConnect({
+      source: sourceNodeId,
+      sourceHandle: 'right-source',
+      target: id,
+      targetHandle: 'left-target',
+    });
+  }, [id, getEdges]);
+
+  const handleUnlinkNode = useCallback((sourceNodeId: string) => {
+    const edges = getEdges();
+    const edge = edges.find(e => e.source === sourceNodeId && e.target === id);
+    edge && useCanvasStore.getState().deleteEdge(edge.id);
+  }, [id, getEdges]);
 
   const [showHistory, setShowHistory] = useState(false);
   const historyVideos = data.generatedVideos || [];
@@ -568,23 +579,12 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
                   title={t('canvas.node.video.dragToMove')}
                 />
 
-                {/* Hover overlay: refresh + resolution badge — top-right */}
+                {/* Hover overlay: resolution badge — top-right */}
                 <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover/video:opacity-100 transition-opacity duration-200 z-[15] nodrag">
                   {videoTask.status?.quality && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/60 text-white backdrop-blur-sm">
                       {videoTask.status.quality}
                     </span>
-                  )}
-                  {taskDone && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleRetryGenerate(); }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className="w-7 h-7 rounded-lg bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 flex items-center justify-center transition-colors"
-                      title={t('canvas.node.video.retryGenerate')}
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                    </button>
                   )}
                 </div>
               </div>
@@ -803,6 +803,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
             onApplyToNextNode={handleApplyToNextNode}
             canvasNodes={canvasNodes}
             initialConfig={data.initialGenConfig || null}
+            nodeId={id}
+            onLinkNode={handleLinkNode}
+            onUnlinkNode={handleUnlinkNode}
           />
         </div>
 
