@@ -32,6 +32,18 @@ export type ScriptNodeData = {
   scenes?: string;
 };
 
+export type ImageGenHistoryEntry = {
+  url: string;
+  prompt?: string;
+  model?: string;
+  provider_id?: string;
+  aspect_ratio?: string;
+  quality?: string;
+  batch_count?: number;
+  output_format?: string;
+  createdAt?: string;
+};
+
 export type CharacterNodeData = {
   name: string;
   description: string;
@@ -39,6 +51,12 @@ export type CharacterNodeData = {
   imageUrl?: string | null;       // 保留向后兼容（单图场景）
   images?: string[];              // 多图数组，最多9张
   uploading?: boolean;
+  /** 生成的图像历史（面板侧栏用） */
+  generatedImages?: ImageGenHistoryEntry[];
+  /** 从历史拖出新节点时用于预填 ImageGeneratePanel */
+  initialGenConfig?: Partial<ImageGenHistoryEntry>;
+  /** 为 true 时 ImageGeneratePanel 始终显示 */
+  pinPanel?: boolean;
 };
 
 export type StoryboardNodeData = {

@@ -169,8 +169,8 @@ def _build_image_edit_tool_def(provider_type: str = "") -> dict:
                         "type": "array",
                         "items": {"type": "string"},
                         "minItems": 1,
-                        "maxItems": 5,
-                        "description": "Multiple reference image URLs/paths (up to 5).",
+                        "maxItems": 10,
+                        "description": "Multiple reference image URLs/paths (up to 10).",
                     },
                     "prompt": {
                         "type": "string",
