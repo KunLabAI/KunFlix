@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import {
   FormControl,
@@ -51,6 +52,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
   isFormInitialized
 }) => {
   const { control, watch, setValue } = useFormContext();
+  const { t } = useTranslation();
   const selectedProviderId = watch('provider_id');
   const selectedModel = watch('model');
 
@@ -67,9 +69,9 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>名称 <span className="text-destructive">*</span></FormLabel>
+            <FormLabel>{t('agents.form.fieldLabels.name')} <span className="text-destructive">*</span></FormLabel>
             <FormControl>
-              <Input placeholder="给智能体起个名字，例如: 故事导演" disabled={loading} {...field} />
+              <Input placeholder={t('agents.form.basicInfo.namePlaceholder')} disabled={loading} {...field} />
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -81,10 +83,10 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
         name="description"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>描述 <span className="text-destructive">*</span></FormLabel>
+            <FormLabel>{t('agents.form.fieldLabels.description')} <span className="text-destructive">*</span></FormLabel>
             <FormControl>
               <Textarea 
-                placeholder="简要描述智能体的职责和功能..." 
+                placeholder={t('agents.form.basicInfo.descPlaceholder')} 
                 disabled={loading} 
                 className="resize-none" 
                 rows={3}
@@ -97,14 +99,14 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
       />
 
       <div className="p-4 bg-muted/50 rounded-xl border">
-        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">模型配置</div>
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">{t('agents.form.basicInfo.modelConfig')}</div>
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={control}
             name="provider_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">供应商 <span className="text-destructive">*</span></FormLabel>
+                <FormLabel className="text-xs">{t('agents.form.fieldLabels.provider_id')} <span className="text-destructive">*</span></FormLabel>
                 <Select 
                   onValueChange={(value) => {
                     field.onChange(value);
@@ -118,7 +120,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 >
                   <FormControl>
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="选择供应商" />
+                      <SelectValue placeholder={t('agents.form.basicInfo.selectProvider')} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
@@ -149,7 +151,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
             name="model"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs">模型 <span className="text-destructive">*</span></FormLabel>
+                <FormLabel className="text-xs">{t('agents.form.fieldLabels.model')} <span className="text-destructive">*</span></FormLabel>
                 <Select 
                   onValueChange={(value) => {
                     // 防止意外清空：只有当新值非空或用户主动选择时才更新
@@ -162,7 +164,7 @@ const BasicInfo: React.FC<BasicInfoProps> = ({
                 >
                   <FormControl>
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder={selectedProviderId ? "选择模型" : "先选择供应商"} />
+                      <SelectValue placeholder={selectedProviderId ? t('agents.form.basicInfo.selectModel') : t('agents.form.basicInfo.selectProviderFirst')} />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>

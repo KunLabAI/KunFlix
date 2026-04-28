@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
 import { Agent } from '@/types';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
 import { useAgents } from '@/hooks/useAgents';
-import { agentFormSchema, AgentFormValues } from './schema';
+import { createAgentFormSchema, AgentFormValues } from './schema';
 import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
 import Parameters from './Parameters';
@@ -74,7 +75,10 @@ export default function AgentForm({
   const { activeProviders, isLoading: providersLoading } = useLLMProviders();
   const { agents: availableAgents } = useAgents();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const isFormInitialized = useRef(false);
+
+  const agentFormSchema = useMemo(() => createAgentFormSchema(t), [t]);
 
   const form = useForm<AgentFormValues>({
     resolver: zodResolver(agentFormSchema) as unknown as any,
@@ -208,11 +212,18 @@ export default function AgentForm({
 
   const agentType = form.watch('agent_type') as 'text' | 'image' | 'multimodal' | 'video';
 
-  // 字段名映射表（避免 if-else，直接查表显示中文名）
+  // 字段名映射表（避免 if-else，直接查表显示字段名）
   const FIELD_LABELS: Record<string, string> = {
-    name: '名称', description: '描述', provider_id: '供应商', model: '模型',
-    system_prompt: '系统提示词', temperature: '温度', context_window: '上下文窗口',
-    tools: '工具', coordination_modes: '协作方式', gemini_config: 'Gemini 配置',
+    name: t('agents.form.fieldLabels.name'),
+    description: t('agents.form.fieldLabels.description'),
+    provider_id: t('agents.form.fieldLabels.provider_id'),
+    model: t('agents.form.fieldLabels.model'),
+    system_prompt: t('agents.form.fieldLabels.system_prompt'),
+    temperature: t('agents.form.fieldLabels.temperature'),
+    context_window: t('agents.form.fieldLabels.context_window'),
+    tools: t('agents.form.fieldLabels.tools'),
+    coordination_modes: t('agents.form.fieldLabels.coordination_modes'),
+    gemini_config: t('agents.form.fieldLabels.gemini_config'),
   };
 
   const handleInvalid = (errors: Record<string, any>) => {
@@ -220,8 +231,8 @@ export default function AgentForm({
     const fields = Object.keys(errors).map(k => FIELD_LABELS[k] || k);
     toast({
       variant: "destructive",
-      title: "请检查以下字段",
-      description: fields.join('、'),
+      title: t('agents.form.invalidToastTitle'),
+      description: fields.join(t('agents.form.invalidToastJoiner')),
     });
   };
 
@@ -288,8 +299,8 @@ export default function AgentForm({
       }
       toast({
         variant: "destructive",
-        title: "提交失败",
-        description: error.response?.data?.detail ? JSON.stringify(error.response.data.detail) : "请重试",
+        title: t('agents.form.submitFailedTitle'),
+        description: error.response?.data?.detail ? JSON.stringify(error.response.data.detail) : t('agents.form.submitFailedDesc'),
       });
     }
   };
@@ -299,7 +310,7 @@ export default function AgentForm({
       {twoColumn ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-6 xl:col-span-7">
-            <Section title="基础信息">
+            <Section title={t('agents.form.sections.basic')}>
               <BasicInfo 
                 providers={activeProviders || []} 
                 loading={providersLoading || loading}
@@ -307,19 +318,19 @@ export default function AgentForm({
               />
             </Section>
             <div className="h-px bg-border my-8"></div>
-            <Section title="系统设定">
+            <Section title={t('agents.form.sections.system')}>
                <SystemPrompt disabled={loading} />
             </Section>
           </div>
           <div className="lg:col-span-6 xl:col-span-5">
             <div className="space-y-6 pb-4">
-              <Section title="参数设置">
+              <Section title={t('agents.form.sections.params')}>
                 <Parameters disabled={loading} providers={activeProviders || []} />
               </Section>
-              <Section title="能力">
+              <Section title={t('agents.form.sections.capabilities')}>
                 <Tools disabled={loading} />
               </Section>
-              <Section title="协作配置" className="mb-0">
+              <Section title={t('agents.form.sections.leader')} className="mb-0">
                 <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
               </Section>
             </div>

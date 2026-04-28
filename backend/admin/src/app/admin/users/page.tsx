@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -69,23 +70,6 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
-// 积分调整表单 Schema
-const creditAdjustSchema = z.object({
-  amount: z.number().refine(v => v !== 0, { message: '金额不能为 0' }),
-  description: z.string().min(1, '请输入操作说明'),
-});
-
-// 订阅设置表单 Schema
-const subscriptionSchema = z.object({
-  plan_id: z.string().min(1, '请选择套餐'),
-  start_at: z.string().min(1, '请选择开始时间'),
-  end_at: z.string().min(1, '请选择结束时间'),
-  auto_grant_credits: z.boolean(),
-});
-
-type CreditAdjustValues = z.infer<typeof creditAdjustSchema>;
-type SubscriptionValues = z.infer<typeof subscriptionSchema>;
-
 // 存储大小格式化
 const STORAGE_UNITS = ["B", "KB", "MB", "GB", "TB"];
 function formatBytes(bytes: number): string {
@@ -95,11 +79,10 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(i > 0 ? 1 : 0)} ${STORAGE_UNITS[i]}`;
 }
 
-// 订阅状态映射表
-const SUBSCRIPTION_STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' }> = {
-  active: { label: '生效中', variant: 'default' },
-  inactive: { label: '未订阅', variant: 'secondary' },
-  expired: { label: '已过期', variant: 'destructive' },
+const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive'> = {
+  active: 'default',
+  inactive: 'secondary',
+  expired: 'destructive',
 };
 
 // 详情行组件
@@ -115,9 +98,9 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 // 注册来源标识组件
 function AuthSourceBadge({ user }: { user: User }) {
   const sources: { icon: string; label: string }[] = [];
-  if (user.google_id) sources.push({ icon: '/provider/gemini-color.svg', label: 'Google' });
-  if (user.github_id) sources.push({ icon: '/provider/meta-color.svg', label: 'GitHub' });
-  
+  user.google_id && sources.push({ icon: '/provider/gemini-color.svg', label: 'Google' });
+  user.github_id && sources.push({ icon: '/provider/meta-color.svg', label: 'GitHub' });
+
   return (
     <div className="flex items-center gap-1.5">
       {sources.length === 0 ? (
@@ -141,7 +124,8 @@ function AuthSourceBadge({ user }: { user: User }) {
 }
 
 export default function UsersPage() {
-  const { data: users, error, isLoading } = useSWR<User[]>('/admin/users', fetcher);
+  const { t } = useTranslation();
+  const { data: users, isLoading } = useSWR<User[]>('/admin/users', fetcher);
   const { data: plans } = useSWR<SubscriptionPlan[]>('/admin/subscriptions', fetcher);
   const { toast } = useToast();
 
@@ -150,6 +134,22 @@ export default function UsersPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [recalcingAll, setRecalcingAll] = useState(false);
+
+  const creditAdjustSchema = useMemo(() => z.object({
+    amount: z.number().refine(v => v !== 0, { message: t('users.credit.validation.nonZero') }),
+    description: z.string().min(1, t('users.credit.validation.reasonRequired')),
+  }), [t]);
+
+  const subscriptionSchema = useMemo(() => z.object({
+    plan_id: z.string().min(1, t('users.subscription.validation.planRequired')),
+    start_at: z.string().min(1, t('users.subscription.validation.startRequired')),
+    end_at: z.string().min(1, t('users.subscription.validation.endRequired')),
+    auto_grant_credits: z.boolean(),
+  }), [t]);
+
+  type CreditAdjustValues = z.infer<typeof creditAdjustSchema>;
+  type SubscriptionValues = z.infer<typeof subscriptionSchema>;
 
   const creditForm = useForm<CreditAdjustValues>({
     resolver: zodResolver(creditAdjustSchema),
@@ -158,28 +158,24 @@ export default function UsersPage() {
 
   const subscriptionForm = useForm<SubscriptionValues>({
     resolver: zodResolver(subscriptionSchema),
-    defaultValues: { 
-      plan_id: '', 
+    defaultValues: {
+      plan_id: '',
       start_at: new Date().toISOString().slice(0, 16),
       end_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
       auto_grant_credits: true,
     },
   });
 
+  const getStatusLabel = (status: string) => t(`users.subscriptionStatus.${status in STATUS_VARIANT ? status : 'inactive'}`);
+  const getStatusVariant = (status: string) => STATUS_VARIANT[status] ?? STATUS_VARIANT.inactive;
+
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/admin/users/${id}`);
-      toast({
-        title: "用户删除成功",
-        description: "用户已从系统中移除",
-      });
+      toast({ title: t('users.toast.deleteSuccess'), description: t('users.toast.deleteSuccessDesc') });
       mutate('/admin/users');
-    } catch (err) {
-      toast({
-        variant: "destructive",
-        title: "删除用户失败",
-        description: "请稍后重试",
-      });
+    } catch {
+      toast({ variant: 'destructive', title: t('users.toast.deleteFailed'), description: t('users.toast.retryLater') });
     }
   };
 
@@ -215,18 +211,17 @@ export default function UsersPage() {
         amount: values.amount,
         description: values.description,
       });
-      toast({ 
-        title: values.amount > 0 ? '充值成功' : '扣除成功',
-        description: `已${values.amount > 0 ? '充值' : '扣除'} ${Math.abs(values.amount)} 积分`,
+      const isRecharge = values.amount > 0;
+      toast({
+        title: isRecharge ? t('users.toast.rechargeSuccess') : t('users.toast.deductSuccess'),
+        description: isRecharge
+          ? t('users.toast.rechargeDesc', { amount: Math.abs(values.amount) })
+          : t('users.toast.deductDesc', { amount: Math.abs(values.amount) }),
       });
       setCreditDialogOpen(false);
       mutate('/admin/users');
     } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: '操作失败',
-        description: err?.response?.data?.detail || '请稍后重试',
-      });
+      toast({ variant: 'destructive', title: t('users.toast.operationFailed'), description: err?.response?.data?.detail || t('users.toast.retryLater') });
     } finally {
       setSubmitting(false);
     }
@@ -242,15 +237,11 @@ export default function UsersPage() {
         end_at: new Date(values.end_at).toISOString(),
         auto_grant_credits: values.auto_grant_credits,
       });
-      toast({ title: '订阅设置成功' });
+      toast({ title: t('users.toast.subscriptionSetSuccess') });
       setSubscriptionDialogOpen(false);
       mutate('/admin/users');
     } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: '设置失败',
-        description: err?.response?.data?.detail || '请稍后重试',
-      });
+      toast({ variant: 'destructive', title: t('users.toast.subscriptionSetFailed'), description: err?.response?.data?.detail || t('users.toast.retryLater') });
     } finally {
       setSubmitting(false);
     }
@@ -259,64 +250,64 @@ export default function UsersPage() {
   const cancelSubscription = async (userId: string) => {
     try {
       await api.delete(`/admin/users/${userId}/subscription`);
-      toast({ title: '订阅已取消' });
+      toast({ title: t('users.toast.subscriptionCanceled') });
       mutate('/admin/users');
     } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: '取消失败',
-        description: err?.response?.data?.detail || '请稍后重试',
-      });
+      toast({ variant: 'destructive', title: t('users.toast.subscriptionCancelFailed'), description: err?.response?.data?.detail || t('users.toast.retryLater') });
     }
   };
-
-  const [recalcingAll, setRecalcingAll] = useState(false);
 
   const handleRecalcAll = async () => {
     setRecalcingAll(true);
     try {
       await api.post('/admin/users/recalc-all-storage');
-      toast({ title: '存储用量重算完成' });
+      toast({ title: t('users.toast.recalcSuccess') });
       mutate('/admin/users');
     } catch {
-      toast({ variant: 'destructive', title: '重算失败' });
+      toast({ variant: 'destructive', title: t('users.toast.recalcFailed') });
     } finally {
       setRecalcingAll(false);
     }
   };
 
+  const getAuthProviderLabel = (u: User) => {
+    if (u.google_id && u.github_id) return t('users.detail.providerGoogleGitHub');
+    if (u.google_id) return t('users.detail.providerGoogle');
+    if (u.github_id) return t('users.detail.providerGitHub');
+    return t('users.detail.providerLocal');
+  };
+
   return (
     <div className="max-w-[1200px] mx-auto w-full space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">用户管理</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t('users.title')}</h2>
         <Button variant="outline" size="sm" onClick={handleRecalcAll} disabled={recalcingAll}>
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${recalcingAll ? 'animate-spin' : ''}`} />
-          {recalcingAll ? '重算中...' : '重算存储用量'}
+          {recalcingAll ? t('users.actions.recalcing') : t('users.actions.recalcStorage')}
         </Button>
       </div>
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>用户</TableHead>
-              <TableHead className="text-right">积分</TableHead>
-              <TableHead className="text-right">Token (输入/输出)</TableHead>
-              <TableHead>订阅状态</TableHead>
-              <TableHead>存储用量</TableHead>
-              <TableHead>注册来源</TableHead>
-              <TableHead>时间</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t('users.table.user')}</TableHead>
+              <TableHead className="text-right">{t('users.table.credits')}</TableHead>
+              <TableHead className="text-right">{t('users.table.tokenIO')}</TableHead>
+              <TableHead>{t('users.table.subscriptionStatus')}</TableHead>
+              <TableHead>{t('users.table.storage')}</TableHead>
+              <TableHead>{t('users.table.authSource')}</TableHead>
+              <TableHead>{t('users.table.time')}</TableHead>
+              <TableHead className="text-right">{t('users.table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={8} className="h-24 text-center">
-                  加载中...
+                  {t('users.table.loading')}
                 </TableCell>
               </TableRow>
             ) : users?.map((user) => {
-              const statusInfo = SUBSCRIPTION_STATUS_MAP[user.subscription_status] || SUBSCRIPTION_STATUS_MAP.inactive;
               const usedBytes = user.storage_used_bytes || 0;
               const quotaBytes = user.storage_quota_bytes || 2147483648;
               const usagePercent = Math.min(100, Math.round(usedBytes / quotaBytes * 100));
@@ -338,7 +329,7 @@ export default function UsersPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                    <Badge variant={getStatusVariant(user.subscription_status)}>{getStatusLabel(user.subscription_status)}</Badge>
                   </TableCell>
                   <TableCell>
                     <TooltipProvider>
@@ -353,7 +344,7 @@ export default function UsersPage() {
                           </div>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>使用率: {usagePercent}%</p>
+                          <p>{t('users.tooltip.usageRate', { percent: usagePercent })}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -369,17 +360,17 @@ export default function UsersPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="查看详情" onClick={() => openDetailDialog(user)}>
+                      <Button variant="ghost" size="icon" title={t('users.tooltip.viewDetail')} onClick={() => openDetailDialog(user)}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" title="积分管理" onClick={() => openCreditDialog(user)}>
+                      <Button variant="ghost" size="icon" title={t('users.tooltip.manageCredits')} onClick={() => openCreditDialog(user)}>
                         <Coins className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" title="订阅管理" onClick={() => openSubscriptionDialog(user)}>
+                      <Button variant="ghost" size="icon" title={t('users.tooltip.manageSubscription')} onClick={() => openSubscriptionDialog(user)}>
                         <CreditCard className="h-4 w-4" />
                       </Button>
                       <Link href={`/admin/users/${user.id}/credits`}>
-                        <Button variant="ghost" size="icon" title="积分历史">
+                        <Button variant="ghost" size="icon" title={t('users.tooltip.creditHistory')}>
                           <History className="h-4 w-4" />
                         </Button>
                       </Link>
@@ -391,14 +382,12 @@ export default function UsersPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除？</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              此操作不可撤销。这将永久删除该用户及其相关数据。
-                            </AlertDialogDescription>
+                            <AlertDialogTitle>{t('users.delete.title')}</AlertDialogTitle>
+                            <AlertDialogDescription>{t('users.delete.description')}</AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(user.id)}>确认删除</AlertDialogAction>
+                            <AlertDialogCancel>{t('users.delete.cancel')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(user.id)}>{t('users.delete.confirm')}</AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -414,10 +403,9 @@ export default function UsersPage() {
       {/* 用户详情 Dialog */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0">
-          <VisuallyHidden><DialogTitle>用户详情</DialogTitle></VisuallyHidden>
+          <VisuallyHidden><DialogTitle>{t('users.detail.title')}</DialogTitle></VisuallyHidden>
           {selectedUser && (() => {
             const u = selectedUser;
-            const statusInfo = SUBSCRIPTION_STATUS_MAP[u.subscription_status] || SUBSCRIPTION_STATUS_MAP.inactive;
             const usedBytes = u.storage_used_bytes || 0;
             const quotaBytes = u.storage_quota_bytes || 2147483648;
             const usagePercent = Math.min(100, Math.round(usedBytes / quotaBytes * 100));
@@ -435,8 +423,8 @@ export default function UsersPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="text-lg font-semibold truncate">{u.nickname}</h3>
-                        <Badge variant={u.is_active ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">{u.is_active ? '活跃' : '禁用'}</Badge>
-                        {u.is_balance_frozen && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">余额冻结</Badge>}
+                        <Badge variant={u.is_active ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">{u.is_active ? t('users.detail.active') : t('users.detail.disabled')}</Badge>
+                        {u.is_balance_frozen && <Badge variant="destructive" className="text-[10px] px-1.5 py-0">{t('users.detail.frozen')}</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{u.email}</p>
                       <p className="text-xs text-muted-foreground mt-1 font-mono">{u.id}</p>
@@ -448,30 +436,25 @@ export default function UsersPage() {
                 <div className="px-6 py-5 space-y-5">
                   {/* 注册来源 */}
                   <div className="rounded-lg border p-4">
-                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />注册来源</h4>
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-muted-foreground" />{t('users.detail.authSource')}</h4>
                     <div className="flex items-center gap-2">
                       <AuthSourceBadge user={u} />
-                      <span className="text-sm text-muted-foreground">
-                        {u.google_id && u.github_id ? 'Google + GitHub 联合登录'
-                          : u.google_id ? 'Google 联合登录'
-                          : u.github_id ? 'GitHub 联合登录'
-                          : '本地注册'}
-                      </span>
+                      <span className="text-sm text-muted-foreground">{getAuthProviderLabel(u)}</span>
                     </div>
                   </div>
 
                   {/* 账户数据统计卡片 */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className="rounded-lg border p-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">积分余额</p>
+                      <p className="text-xs text-muted-foreground mb-1">{t('users.detail.stats.creditBalance')}</p>
                       <p className="text-lg font-semibold font-mono">{Number(u.credits || 0).toFixed(2)}</p>
                     </div>
                     <div className="rounded-lg border p-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">输入 Token</p>
+                      <p className="text-xs text-muted-foreground mb-1">{t('users.detail.stats.inputToken')}</p>
                       <p className="text-lg font-semibold font-mono">{(u.total_input_tokens || 0).toLocaleString()}</p>
                     </div>
                     <div className="rounded-lg border p-3 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">输出 Token</p>
+                      <p className="text-xs text-muted-foreground mb-1">{t('users.detail.stats.outputToken')}</p>
                       <p className="text-lg font-semibold font-mono">{(u.total_output_tokens || 0).toLocaleString()}</p>
                     </div>
                   </div>
@@ -479,7 +462,7 @@ export default function UsersPage() {
                   {/* 存储空间 */}
                   <div className="rounded-lg border p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" />存储空间</span>
+                      <span className="text-sm font-medium flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5 text-muted-foreground" />{t('users.detail.storage.title')}</span>
                       <span className="text-xs text-muted-foreground">{formatBytes(usedBytes)} / {formatBytes(quotaBytes)} ({usagePercent}%)</span>
                     </div>
                     <Progress value={usagePercent} className="h-1.5" />
@@ -487,26 +470,26 @@ export default function UsersPage() {
 
                   {/* 订阅信息 */}
                   <div className="rounded-lg border p-4">
-                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-muted-foreground" />订阅信息</h4>
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5 text-muted-foreground" />{t('users.detail.subscription.title')}</h4>
                     <div className="grid grid-cols-2 gap-3 text-sm">
-                      <DetailRow label="订阅状态" value={<Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>} />
-                      <DetailRow label="当前套餐" value={planName || '-'} />
-                      <DetailRow label="开始时间" value={formatDateTime(u.subscription_start_at)} />
-                      <DetailRow label="到期时间" value={formatDateTime(u.subscription_end_at)} />
+                      <DetailRow label={t('users.detail.subscription.status')} value={<Badge variant={getStatusVariant(u.subscription_status)}>{getStatusLabel(u.subscription_status)}</Badge>} />
+                      <DetailRow label={t('users.detail.subscription.plan')} value={planName || t('users.detail.subscription.empty')} />
+                      <DetailRow label={t('users.detail.subscription.startTime')} value={formatDateTime(u.subscription_start_at)} />
+                      <DetailRow label={t('users.detail.subscription.endTime')} value={formatDateTime(u.subscription_end_at)} />
                     </div>
                   </div>
 
                   {/* 登录与设备 */}
                   <div className="rounded-lg border p-4">
-                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-muted-foreground" />登录与设备</h4>
+                    <h4 className="text-sm font-medium mb-3 flex items-center gap-1.5"><Globe className="h-3.5 w-3.5 text-muted-foreground" />{t('users.detail.login.title')}</h4>
                     <div className="grid grid-cols-2 gap-3 text-sm">
-                      <DetailRow label="注册时间" value={formatDateTime(u.created_at)} />
-                      <DetailRow label="最后登录" value={formatDateTime(u.last_login_at)} />
-                      <DetailRow label="注册IP" value={<span className="font-mono text-xs">{u.register_ip || '-'}</span>} />
-                      <DetailRow label="登录IP" value={<span className="font-mono text-xs">{u.last_login_ip || '-'}</span>} />
-                      <DetailRow label="设备类型" value={<span className="flex items-center gap-1"><DeviceIcon className="h-3.5 w-3.5" />{u.last_device_type || '-'}</span>} />
-                      <DetailRow label="操作系统" value={u.last_os || '-'} />
-                      <DetailRow label="浏览器" value={u.last_browser || '-'} />
+                      <DetailRow label={t('users.detail.login.registerTime')} value={formatDateTime(u.created_at)} />
+                      <DetailRow label={t('users.detail.login.lastLogin')} value={formatDateTime(u.last_login_at)} />
+                      <DetailRow label={t('users.detail.login.registerIp')} value={<span className="font-mono text-xs">{u.register_ip || '-'}</span>} />
+                      <DetailRow label={t('users.detail.login.loginIp')} value={<span className="font-mono text-xs">{u.last_login_ip || '-'}</span>} />
+                      <DetailRow label={t('users.detail.login.deviceType')} value={<span className="flex items-center gap-1"><DeviceIcon className="h-3.5 w-3.5" />{u.last_device_type || '-'}</span>} />
+                      <DetailRow label={t('users.detail.login.os')} value={u.last_os || '-'} />
+                      <DetailRow label={t('users.detail.login.browser')} value={u.last_browser || '-'} />
                     </div>
                   </div>
                 </div>
@@ -520,9 +503,9 @@ export default function UsersPage() {
       <Dialog open={creditDialogOpen} onOpenChange={setCreditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>积分管理</DialogTitle>
+            <DialogTitle>{t('users.credit.dialogTitle')}</DialogTitle>
             <DialogDescription>
-              为用户 {selectedUser?.nickname} 调整积分（当前余额: {Number(selectedUser?.credits || 0).toFixed(2)}）
+              {t('users.credit.description', { nickname: selectedUser?.nickname ?? '', balance: Number(selectedUser?.credits || 0).toFixed(2) })}
             </DialogDescription>
           </DialogHeader>
           <Form {...creditForm}>
@@ -532,12 +515,12 @@ export default function UsersPage() {
                 name="amount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>调整金额</FormLabel>
+                    <FormLabel>{t('users.credit.amount')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         step="0.01"
-                        placeholder="正数=充值，负数=扣除"
+                        placeholder={t('users.credit.amountPlaceholder')}
                         value={field.value}
                         onChange={e => field.onChange(Number(e.target.value))}
                       />
@@ -551,18 +534,18 @@ export default function UsersPage() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>操作说明</FormLabel>
+                    <FormLabel>{t('users.credit.reason')}</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="请输入操作原因" rows={2} {...field} />
+                      <Textarea placeholder={t('users.credit.reasonPlaceholder')} rows={2} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setCreditDialogOpen(false)}>取消</Button>
+                <Button type="button" variant="outline" onClick={() => setCreditDialogOpen(false)}>{t('users.credit.cancel')}</Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? '提交中...' : '确认'}
+                  {submitting ? t('users.credit.submitting') : t('users.credit.confirm')}
                 </Button>
               </DialogFooter>
             </form>
@@ -574,9 +557,9 @@ export default function UsersPage() {
       <Dialog open={subscriptionDialogOpen} onOpenChange={setSubscriptionDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>订阅管理</DialogTitle>
+            <DialogTitle>{t('users.subscription.dialogTitle')}</DialogTitle>
             <DialogDescription>
-              为用户 {selectedUser?.nickname} 设置订阅套餐
+              {t('users.subscription.description', { nickname: selectedUser?.nickname ?? '' })}
             </DialogDescription>
           </DialogHeader>
           <Form {...subscriptionForm}>
@@ -586,16 +569,16 @@ export default function UsersPage() {
                 name="plan_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>订阅套餐</FormLabel>
+                    <FormLabel>{t('users.subscription.plan')}</FormLabel>
                     <FormControl>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <SelectTrigger>
-                          <SelectValue placeholder="选择套餐" />
+                          <SelectValue placeholder={t('users.subscription.planPlaceholder')} />
                         </SelectTrigger>
                         <SelectContent>
                           {plans?.filter(p => p.is_active).map(plan => (
                             <SelectItem key={plan.id} value={plan.id}>
-                              {plan.name} - ${plan.price_usd} ({plan.credits} 积分)
+                              {t('users.subscription.planItem', { name: plan.name, price: plan.price_usd, credits: plan.credits })}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -611,7 +594,7 @@ export default function UsersPage() {
                   name="start_at"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>开始时间</FormLabel>
+                      <FormLabel>{t('users.subscription.startTime')}</FormLabel>
                       <FormControl>
                         <Input type="datetime-local" {...field} />
                       </FormControl>
@@ -624,7 +607,7 @@ export default function UsersPage() {
                   name="end_at"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>结束时间</FormLabel>
+                      <FormLabel>{t('users.subscription.endTime')}</FormLabel>
                       <FormControl>
                         <Input type="datetime-local" {...field} />
                       </FormControl>
@@ -639,7 +622,7 @@ export default function UsersPage() {
                 render={({ field }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                      <FormLabel>自动发放套餐积分</FormLabel>
+                      <FormLabel>{t('users.subscription.autoGrant')}</FormLabel>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
@@ -658,12 +641,12 @@ export default function UsersPage() {
                       setSubscriptionDialogOpen(false);
                     }}
                   >
-                    取消订阅
+                    {t('users.subscription.cancelSub')}
                   </Button>
                 )}
-                <Button type="button" variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>取消</Button>
+                <Button type="button" variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>{t('users.subscription.cancel')}</Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? '提交中...' : '设置订阅'}
+                  {submitting ? t('users.subscription.submitting') : t('users.subscription.submit')}
                 </Button>
               </DialogFooter>
             </form>

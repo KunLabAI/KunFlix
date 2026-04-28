@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FormControl,
   FormField,
@@ -34,6 +35,7 @@ interface SystemPromptProps {
 
 const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext();
+  const { t: tr } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('__all__');
@@ -61,7 +63,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
         render={({ field }) => (
           <FormItem>
             <div className="flex items-center justify-between mb-1">
-              <FormLabel>系统提示词 <span className="text-destructive">*</span></FormLabel>
+              <FormLabel>{tr('agents.form.systemPrompt.label')} <span className="text-destructive">*</span></FormLabel>
               <Button
                 type="button"
                 variant="outline"
@@ -71,12 +73,12 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
                 disabled={disabled}
               >
                 <FileCode2 className="h-3.5 w-3.5" />
-                从模板导入
+                {tr('agents.form.systemPrompt.importTemplate')}
               </Button>
             </div>
             <FormControl>
               <Textarea
-                placeholder="你是一个专业的助手..."
+                placeholder={tr('agents.form.systemPrompt.placeholder')}
                 disabled={disabled}
                 className="font-mono text-sm min-h-[300px] resize-y"
                 {...field}
@@ -90,7 +92,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
-            <DialogTitle>选择提示词模板</DialogTitle>
+            <DialogTitle>{tr('agents.form.systemPrompt.dialogTitle')}</DialogTitle>
           </DialogHeader>
 
           {/* 搜索 & 筛选 */}
@@ -98,7 +100,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="搜索模板名称..."
+                placeholder={tr('agents.form.systemPrompt.searchPlaceholder')}
                 className="pl-8 h-9"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -109,7 +111,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__all__">全部分类</SelectItem>
+                <SelectItem value="__all__">{tr('agents.form.systemPrompt.allCategories')}</SelectItem>
                 {templateTypes.map((t) => (
                   <SelectItem key={t} value={t}>
                     {t}
@@ -122,7 +124,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
           <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
             <div className="px-6 py-4 space-y-2">
               {filtered.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">没有匹配的模板</p>
+                <p className="text-sm text-muted-foreground text-center py-8">{tr('agents.form.systemPrompt.noMatch')}</p>
               )}
               {filtered.map((t) => (
                 <button
@@ -135,7 +137,7 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
                     <span className="font-medium text-sm truncate">{t.name}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {t.is_default && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">默认</span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tr('agents.form.systemPrompt.default')}</span>
                       )}
                       <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                         {t.template_type}

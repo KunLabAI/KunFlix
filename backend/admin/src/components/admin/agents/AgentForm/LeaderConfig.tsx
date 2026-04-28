@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FormControl,
   FormField,
@@ -21,6 +22,7 @@ interface LeaderConfigProps {
 
 const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents = [] }) => {
   const { control, watch } = useFormContext();
+  const { t } = useTranslation();
   const isLeader = watch('is_leader');
   const currentAgentId = watch('id');
 
@@ -32,9 +34,9 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
       {/* Enable Leader Mode */}
       <div className="flex justify-between items-center">
         <div>
-          <span className="text-sm font-medium">Leader 模式</span>
+          <span className="text-sm font-medium">{t('agents.form.leader.leaderMode')}</span>
           <p className="text-xs text-muted-foreground mt-1">
-            启用后可智能协调其他智能体完成复杂任务，简单任务直接回复
+            {t('agents.form.leader.leaderModeDesc')}
           </p>
         </div>
         <FormField
@@ -62,8 +64,8 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
             name="member_agent_ids"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>成员智能体</FormLabel>
-                <FormDescription>选择可调度的智能体</FormDescription>
+                <FormLabel>{t('agents.form.leader.memberAgents')}</FormLabel>
+                <FormDescription>{t('agents.form.leader.memberAgentsDesc')}</FormDescription>
                 <div className="grid grid-cols-1 gap-2 mt-2 max-h-48 overflow-y-auto">
                   {memberOptions.length > 0 ? (
                     memberOptions.map((agent) => (
@@ -98,7 +100,7 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
                     ))
                   ) : (
                     <p className="text-xs text-muted-foreground p-2">
-                      暂无可用的成员智能体，请先创建其他智能体
+                      {t('agents.form.leader.noMembers')}
                     </p>
                   )}
                 </div>
@@ -114,7 +116,7 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
             render={({ field }) => (
               <FormItem>
                 <div className="flex justify-between">
-                  <FormLabel>最大子任务数</FormLabel>
+                  <FormLabel>{t('agents.form.leader.maxSubtasks')}</FormLabel>
                   <span className="text-sm text-muted-foreground">{field.value}</span>
                 </div>
                 <FormControl>
@@ -128,7 +130,7 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
                   />
                 </FormControl>
                 <FormDescription>
-                  限制单次任务可拆解的最大子任务数量
+                  {t('agents.form.leader.maxSubtasksDesc')}
                 </FormDescription>
               </FormItem>
             )}
@@ -137,9 +139,9 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
           {/* Auto Review */}
           <div className="flex justify-between items-center">
             <div>
-              <span className="text-sm font-medium">自动审查</span>
+              <span className="text-sm font-medium">{t('agents.form.leader.autoReview')}</span>
               <p className="text-xs text-muted-foreground mt-1">
-                子任务完成后由 Leader 自动审查结果
+                {t('agents.form.leader.autoReviewDesc')}
               </p>
             </div>
             <FormField

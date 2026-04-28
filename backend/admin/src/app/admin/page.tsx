@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Users,
   UserCheck,
   DollarSign,
   Wallet,
-  TrendingUp,
   Loader2,
   Crown,
   Percent,
@@ -48,58 +48,14 @@ const TOOLTIP_STYLE = {
   color: 'hsl(var(--card-foreground))',
 };
 
-const BUCKET_LABELS: Record<string, string> = {
-  today: '今日',
-  yesterday: '昨日',
-  this_week: '本周',
-  this_month: '本月',
-  older: '更早',
-};
+const BUCKET_KEYS = ['today', 'yesterday', 'this_week', 'this_month', 'older'] as const;
+
+const PERIOD_KEYS = ['today', 'yesterday', 'week', 'month', 'quarter', 'all'] as const;
+
+const LIMIT_OPTIONS = [10, 50, 100] as const;
 
 const fmt = (n?: number | null) => (n ?? 0).toLocaleString();
 const pct = (n?: number | null) => `${(n ?? 0).toFixed(2)}%`;
-
-// ---------------------------------------------------------------------------
-// Period / Limit options
-// ---------------------------------------------------------------------------
-
-const PERIOD_OPTIONS: Array<{ key: string; label: string }> = [
-  { key: 'today', label: '今日' },
-  { key: 'yesterday', label: '昨日' },
-  { key: 'week', label: '本周' },
-  { key: 'month', label: '本月' },
-  { key: 'quarter', label: '近三月' },
-  { key: 'all', label: '全部' },
-];
-
-const PERIOD_TITLE_REG: Record<string, string> = {
-  today: '注册趋势（今日）',
-  yesterday: '注册趋势（近 2 天）',
-  week: '注册趋势（本周）',
-  month: '注册趋势（近 30 天）',
-  quarter: '注册趋势（近 3 个月）',
-  all: '注册趋势（全部）',
-};
-
-const PERIOD_TITLE_ACTIVE: Record<string, string> = {
-  today: '活跃趋势（今日）',
-  yesterday: '活跃趋势（近 2 天）',
-  week: '活跃趋势（本周）',
-  month: '活跃趋势（近 30 天）',
-  quarter: '活跃趋势（近 3 个月）',
-  all: '活跃趋势（全部）',
-};
-
-const PERIOD_TITLE_CONV: Record<string, string> = {
-  today: '订阅转化（今日）',
-  yesterday: '订阅转化（近 2 天）',
-  week: '订阅转化（本周）',
-  month: '订阅转化（近 30 天）',
-  quarter: '订阅转化（近 3 个月）',
-  all: '订阅转化（全部）',
-};
-
-const LIMIT_OPTIONS = [10, 50, 100] as const;
 
 // ---------------------------------------------------------------------------
 // Stat Card config (4 cards)
@@ -107,17 +63,17 @@ const LIMIT_OPTIONS = [10, 50, 100] as const;
 
 interface StatCardDef {
   key: string;
-  label: string;
+  labelKey: string;
   icon: React.ElementType;
   color: string;
   getValue: (o: NonNullable<ReturnType<typeof useDashboardOverview>['overview']>) => string;
 }
 
 const STAT_CARDS: StatCardDef[] = [
-  { key: 'users', label: '用户总数', icon: Users, color: 'text-blue-500', getValue: (o) => fmt(o.total_users) },
-  { key: 'today_active', label: '今日活跃', icon: UserCheck, color: 'text-green-500', getValue: (o) => fmt(o.today_active_users) },
-  { key: 'today_revenue', label: '今日营收', icon: DollarSign, color: 'text-amber-500', getValue: (o) => `$${fmt(o.today_revenue)}` },
-  { key: 'total_revenue', label: '总营收', icon: Wallet, color: 'text-violet-500', getValue: (o) => `$${fmt(o.total_revenue)}` },
+  { key: 'users', labelKey: 'dashboard.stat.totalUsers', icon: Users, color: 'text-blue-500', getValue: (o) => fmt(o.total_users) },
+  { key: 'today_active', labelKey: 'dashboard.stat.todayActive', icon: UserCheck, color: 'text-green-500', getValue: (o) => fmt(o.today_active_users) },
+  { key: 'today_revenue', labelKey: 'dashboard.stat.todayRevenue', icon: DollarSign, color: 'text-amber-500', getValue: (o) => `$${fmt(o.today_revenue)}` },
+  { key: 'total_revenue', labelKey: 'dashboard.stat.totalRevenue', icon: Wallet, color: 'text-violet-500', getValue: (o) => `$${fmt(o.total_revenue)}` },
 ];
 
 // ---------------------------------------------------------------------------
@@ -133,16 +89,17 @@ function LoadingSpinner() {
 }
 
 function StatCardGrid() {
+  const { t } = useTranslation();
   const { overview, isLoading } = useDashboardOverview();
 
   if (isLoading) return <LoadingSpinner />;
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {STAT_CARDS.map(({ key, label, icon: Icon, color, getValue }) => (
+      {STAT_CARDS.map(({ key, labelKey, icon: Icon, color, getValue }) => (
         <Card key={key} className="relative overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground">{label}</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">{t(labelKey)}</CardTitle>
             <Icon className={`h-4 w-4 ${color}`} />
           </CardHeader>
           <CardContent>
@@ -159,9 +116,10 @@ function StatCardGrid() {
 // ---------------------------------------------------------------------------
 
 function PeriodSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex gap-1">
-      {PERIOD_OPTIONS.map(({ key, label }) => (
+      {PERIOD_KEYS.map((key) => (
         <button
           key={key}
           onClick={() => onChange(key)}
@@ -171,7 +129,7 @@ function PeriodSelector({ value, onChange }: { value: string; onChange: (v: stri
               : 'text-muted-foreground hover:bg-muted'
           }`}
         >
-          {label}
+          {t(`dashboard.period.${key}`)}
         </button>
       ))}
     </div>
@@ -183,23 +141,29 @@ function PeriodSelector({ value, onChange }: { value: string; onChange: (v: stri
 // ---------------------------------------------------------------------------
 
 function RegistrationTrendChart() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState('month');
   const { trend, isLoading } = useRegistrationTrend(period);
 
   const buckets = trend?.buckets ?? {};
   const daily = trend?.daily ?? [];
 
+  const title = t('dashboard.trend.titleWithRange', {
+    name: t('dashboard.trend.registration'),
+    range: t(`dashboard.period.rangeLabel.${period}`),
+  });
+
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">{PERIOD_TITLE_REG[period] ?? '注册趋势'}</CardTitle>
+          <CardTitle className="text-base">{title}</CardTitle>
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
-          {Object.entries(BUCKET_LABELS).map(([k, v]) => (
+          {BUCKET_KEYS.map((k) => (
             <Badge key={k} variant="secondary" className="text-xs font-normal">
-              {v}：{fmt(buckets[k])}
+              {t(`dashboard.bucket.${k}`)}：{fmt(buckets[k])}
             </Badge>
           ))}
         </div>
@@ -218,8 +182,8 @@ function RegistrationTrendChart() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v: string) => v.slice(5)} className="fill-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => `日期：${l}`} />
-                <Area type="monotone" dataKey="count" name="注册数" stroke="hsl(var(--primary))" fill="url(#regGrad)" strokeWidth={2} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => t('dashboard.trend.dateLabel', { date: l })} />
+                <Area type="monotone" dataKey="count" name={t('dashboard.trend.registrationSeries')} stroke="hsl(var(--primary))" fill="url(#regGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -234,16 +198,22 @@ function RegistrationTrendChart() {
 // ---------------------------------------------------------------------------
 
 function ActiveTrendChart() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState('month');
   const { trend, isLoading } = useActiveTrend(period);
 
   const daily = trend?.daily ?? [];
 
+  const title = t('dashboard.trend.titleWithRange', {
+    name: t('dashboard.trend.active'),
+    range: t(`dashboard.period.rangeLabel.${period}`),
+  });
+
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">{PERIOD_TITLE_ACTIVE[period] ?? '活跃趋势'}</CardTitle>
+          <CardTitle className="text-base">{title}</CardTitle>
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
       </CardHeader>
@@ -261,8 +231,8 @@ function ActiveTrendChart() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v: string) => v.slice(5)} className="fill-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => `日期：${l}`} />
-                <Area type="monotone" dataKey="count" name="活跃用户" stroke="hsl(var(--chart-2, 160 60% 45%))" fill="url(#activeGrad)" strokeWidth={2} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => t('dashboard.trend.dateLabel', { date: l })} />
+                <Area type="monotone" dataKey="count" name={t('dashboard.trend.activeSeries')} stroke="hsl(var(--chart-2, 160 60% 45%))" fill="url(#activeGrad)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -277,16 +247,22 @@ function ActiveTrendChart() {
 // ---------------------------------------------------------------------------
 
 function ConversionTrendChart() {
+  const { t } = useTranslation();
   const [period, setPeriod] = useState('month');
   const { trend, isLoading } = useConversionTrend(period);
 
   const daily = trend?.daily ?? [];
 
+  const title = t('dashboard.trend.titleWithRange', {
+    name: t('dashboard.trend.conversion'),
+    range: t(`dashboard.period.rangeLabel.${period}`),
+  });
+
   return (
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">{PERIOD_TITLE_CONV[period] ?? '订阅转化'}</CardTitle>
+          <CardTitle className="text-base">{title}</CardTitle>
           <PeriodSelector value={period} onChange={setPeriod} />
         </div>
       </CardHeader>
@@ -298,8 +274,8 @@ function ConversionTrendChart() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v: string) => v.slice(5)} className="fill-muted-foreground" />
                 <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" allowDecimals={false} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => `日期：${l}`} />
-                <Bar dataKey="new_subscriptions" name="新增订阅" fill="hsl(var(--chart-3, 30 80% 55%))" radius={[4, 4, 0, 0]} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(l) => t('dashboard.trend.dateLabel', { date: l })} />
+                <Bar dataKey="new_subscriptions" name={t('dashboard.trend.conversionSeries')} fill="hsl(var(--chart-3, 30 80% 55%))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -322,6 +298,7 @@ const RANK_COLORS: Record<number, string> = {
 const ROW_HEIGHT = 56;
 
 function TokenLeaderboard() {
+  const { t } = useTranslation();
   const [limit, setLimit] = useState<number>(10);
   const { leaderboard, isLoading } = useTokenLeaderboard(limit);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -339,7 +316,7 @@ function TokenLeaderboard() {
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Crown className="h-4 w-4 text-amber-500" />
-            <CardTitle className="text-base">Token 消耗排行榜</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.leaderboard.title')}</CardTitle>
           </div>
           <div className="flex gap-1">
             {LIMIT_OPTIONS.map((n) => (
@@ -352,7 +329,7 @@ function TokenLeaderboard() {
                     : 'text-muted-foreground hover:bg-muted'
                 }`}
               >
-                Top {n}
+                {t('dashboard.leaderboard.top', { n })}
               </button>
             ))}
           </div>
@@ -360,15 +337,15 @@ function TokenLeaderboard() {
       </CardHeader>
       <CardContent className="flex flex-1 flex-col pt-0">
         {isLoading ? <LoadingSpinner /> : leaderboard.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">暂无数据</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{t('dashboard.leaderboard.empty')}</p>
         ) : (
           <>
             {/* Table header */}
             <div className="grid grid-cols-[40px_1fr_100px_100px] gap-1 border-b px-1 pb-1.5 text-xs font-medium text-muted-foreground">
-              <span>#</span>
-              <span>用户</span>
-              <span className="text-right">总 Token</span>
-              <span className="text-right">积分</span>
+              <span>{t('dashboard.leaderboard.rank')}</span>
+              <span>{t('dashboard.leaderboard.user')}</span>
+              <span className="text-right">{t('dashboard.leaderboard.totalTokens')}</span>
+              <span className="text-right">{t('dashboard.leaderboard.credits')}</span>
             </div>
             {/* Virtual scroll area */}
             <div ref={scrollRef} className="flex-1 overflow-auto">
@@ -391,7 +368,7 @@ function TokenLeaderboard() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium leading-none">{entry.nickname || '—'}</p>
+                          <p className="truncate text-sm font-medium leading-none">{entry.nickname || t('dashboard.leaderboard.nicknamePlaceholder')}</p>
                           <p className="truncate text-xs text-muted-foreground">{entry.email}</p>
                         </div>
                       </div>
@@ -417,21 +394,22 @@ function TokenLeaderboard() {
 // ---------------------------------------------------------------------------
 
 function BusinessMetrics() {
+  const { t } = useTranslation();
   const { metrics, isLoading } = useOperationalMetrics();
 
   if (isLoading) return <LoadingSpinner />;
 
   const cards = [
-    { label: '付费用户占比 (PUR)', value: pct(metrics?.pur), icon: Percent, color: 'text-blue-500' },
-    { label: '活跃留存率', value: pct(metrics?.retention_rate), icon: ShieldCheck, color: 'text-green-500' },
-    { label: 'MRR (月经常性收入)', value: `$${fmt(metrics?.mrr)}`, icon: BadgeDollarSign, color: 'text-amber-500' },
-    { label: '退订率', value: pct(metrics?.churn_rate), icon: UserMinus, color: 'text-red-500' },
+    { label: t('dashboard.metrics.pur'), value: pct(metrics?.pur), icon: Percent, color: 'text-blue-500' },
+    { label: t('dashboard.metrics.retention'), value: pct(metrics?.retention_rate), icon: ShieldCheck, color: 'text-green-500' },
+    { label: t('dashboard.metrics.mrr'), value: `$${fmt(metrics?.mrr)}`, icon: BadgeDollarSign, color: 'text-amber-500' },
+    { label: t('dashboard.metrics.churn'), value: pct(metrics?.churn_rate), icon: UserMinus, color: 'text-red-500' },
   ];
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">运营指标</CardTitle>
+        <CardTitle className="text-base">{t('dashboard.metrics.title')}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -455,9 +433,10 @@ function BusinessMetrics() {
 // ---------------------------------------------------------------------------
 
 export default function AdminDashboard() {
+  const { t } = useTranslation();
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-4 p-4">
-      <h2 className="text-2xl font-bold tracking-tight">仪表盘</h2>
+      <h2 className="text-2xl font-bold tracking-tight">{t('dashboard.title')}</h2>
 
       {/* Row 1: Stat cards */}
       <StatCardGrid />

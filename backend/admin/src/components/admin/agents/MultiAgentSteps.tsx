@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, Bot, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
@@ -25,14 +26,15 @@ export interface MultiAgentData {
   creditCost: number;
 }
 
-const STATUS_CONFIG: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
-  pending: { icon: <Loader2 className="h-3 w-3 text-muted-foreground" />, label: '等待中', color: 'text-muted-foreground' },
-  running: { icon: <Loader2 className="h-3 w-3 animate-spin text-foreground" />, label: '执行中', color: 'text-foreground' },
-  completed: { icon: <CheckCircle2 className="h-3 w-3 text-emerald-600" />, label: '已完成', color: 'text-emerald-600' },
-  failed: { icon: <XCircle className="h-3 w-3 text-destructive" />, label: '失败', color: 'text-destructive' },
+const STATUS_CONFIG: Record<string, { icon: React.ReactNode; labelKey: string; color: string }> = {
+  pending: { icon: <Loader2 className="h-3 w-3 text-muted-foreground" />, labelKey: 'agents.multiAgent.status.pending', color: 'text-muted-foreground' },
+  running: { icon: <Loader2 className="h-3 w-3 animate-spin text-foreground" />, labelKey: 'agents.multiAgent.status.running', color: 'text-foreground' },
+  completed: { icon: <CheckCircle2 className="h-3 w-3 text-emerald-600" />, labelKey: 'agents.multiAgent.status.completed', color: 'text-emerald-600' },
+  failed: { icon: <XCircle className="h-3 w-3 text-destructive" />, labelKey: 'agents.multiAgent.status.failed', color: 'text-destructive' },
 };
 
 export default function MultiAgentSteps({ steps, finalResult, totalTokens, creditCost }: MultiAgentData) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const completedCount = steps.filter(s => s.status === 'completed').length;
   const totalCount = steps.length;
@@ -51,14 +53,14 @@ export default function MultiAgentSteps({ steps, finalResult, totalTokens, credi
           {isStreaming ? (
             <>
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>协作中 ({completedCount}/{totalCount} 个智能体)</span>
+              <span>{t('agents.multiAgent.collaborating')} ({completedCount}/{totalCount} {t('agents.multiAgent.agents')})</span>
             </>
           ) : (
-            <span>协作过程 ({completedCount}/{totalCount} 个智能体)</span>
+            <span>{t('agents.multiAgent.collaborationProcess')} ({completedCount}/{totalCount} {t('agents.multiAgent.agents')})</span>
           )}
           <span className="text-[10px] opacity-60">
-            {totalTokens.input + totalTokens.output > 0 && `${totalTokens.input + totalTokens.output} tokens`}
-            {creditCost > 0 && ` · ${creditCost.toFixed(2)} 积分`}
+            {totalTokens.input + totalTokens.output > 0 && `${totalTokens.input + totalTokens.output} ${t('agents.multiAgent.tokens')}`}
+            {creditCost > 0 && ` · ${creditCost.toFixed(2)} ${t('agents.multiAgent.credits')}`}
           </span>
         </CollapsibleTrigger>
 

@@ -1,4 +1,797 @@
 {
+  "common": {
+    "buttons": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "delete": "Delete",
+      "edit": "Edit",
+      "create": "Create",
+      "add": "Add",
+      "back": "Back",
+      "search": "Search",
+      "refresh": "Refresh",
+      "close": "Close",
+      "submit": "Submit",
+      "reset": "Reset",
+      "retry": "Retry",
+      "view": "View",
+      "copy": "Copy",
+      "export": "Export",
+      "import": "Import",
+      "upload": "Upload",
+      "download": "Download",
+      "more": "More",
+      "details": "Details",
+      "yes": "Yes",
+      "no": "No",
+      "enable": "Enable",
+      "disable": "Disable"
+    },
+    "status": {
+      "loading": "Loading...",
+      "submitting": "Submitting...",
+      "saving": "Saving...",
+      "deleting": "Deleting...",
+      "empty": "No data",
+      "error": "Failed to load",
+      "success": "Success",
+      "failed": "Failed",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "dialog": {
+      "confirmTitle": "Confirm Action",
+      "confirmDelete": "Confirm Deletion",
+      "deleteWarning": "This action cannot be undone. Continue?",
+      "unsavedChanges": "You have unsaved changes. Leave anyway?"
+    },
+    "table": {
+      "actions": "Actions",
+      "createdAt": "Created At",
+      "updatedAt": "Updated At",
+      "total": "{{count}} items in total",
+      "page": "Page {{page}}",
+      "prev": "Previous",
+      "next": "Next",
+      "noData": "No data",
+      "searchPlaceholder": "Search..."
+    },
+    "validation": {
+      "required": "This field is required",
+      "invalidFormat": "Invalid format",
+      "tooShort": "Too short",
+      "tooLong": "Too long"
+    },
+    "toast": {
+      "saveSuccess": "Saved successfully",
+      "saveFailed": "Failed to save",
+      "deleteSuccess": "Deleted successfully",
+      "deleteFailed": "Failed to delete",
+      "operationSuccess": "Operation successful",
+      "operationFailed": "Operation failed",
+      "networkError": "Network error, please try again later",
+      "unknownError": "Unknown error"
+    }
+  },
+  "layout": {
+    "sidebar": {
+      "dashboard": "Dashboard",
+      "llm": "AI Providers",
+      "agents": "Agents",
+      "skills": "Skills",
+      "mcp": "MCP Clients",
+      "tools": "Tools",
+      "videos": "Video Generation",
+      "virtualHumans": "Virtual Humans",
+      "promptTemplates": "Prompt Templates",
+      "users": "Users",
+      "subscriptions": "Subscriptions",
+      "admins": "Administrators",
+      "toggleMenu": "Toggle Menu"
+    },
+    "account": {
+      "admin": "Administrator",
+      "myAccount": "My Account",
+      "logout": "Sign Out"
+    },
+    "language": {
+      "label": "Language",
+      "zhCN": "简体中文",
+      "enUS": "English"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "stat": {
+      "totalUsers": "Total Users",
+      "todayActive": "Active Today",
+      "todayRevenue": "Revenue Today",
+      "totalRevenue": "Total Revenue"
+    },
+    "bucket": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "this_week": "This Week",
+      "this_month": "This Month",
+      "older": "Earlier"
+    },
+    "period": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "This Week",
+      "month": "This Month",
+      "quarter": "Last 3 Months",
+      "all": "All Time",
+      "rangeLabel": {
+        "today": "Today",
+        "yesterday": "Last 2 Days",
+        "week": "This Week",
+        "month": "Last 30 Days",
+        "quarter": "Last 3 Months",
+        "all": "All Time"
+      }
+    },
+    "trend": {
+      "registration": "Registration Trend",
+      "active": "Active Trend",
+      "conversion": "Subscription Conversion",
+      "registrationSeries": "Registrations",
+      "activeSeries": "Active Users",
+      "conversionSeries": "New Subscriptions",
+      "titleWithRange": "{{name}} ({{range}})",
+      "dateLabel": "Date: {{date}}"
+    },
+    "leaderboard": {
+      "title": "Token Consumption Leaderboard",
+      "rank": "#",
+      "user": "User",
+      "totalTokens": "Total Tokens",
+      "credits": "Credits",
+      "top": "Top {{n}}",
+      "empty": "No data",
+      "nicknamePlaceholder": "—"
+    },
+    "metrics": {
+      "title": "Operational Metrics",
+      "pur": "Paid User Ratio (PUR)",
+      "retention": "Retention Rate",
+      "mrr": "MRR (Monthly Recurring Revenue)",
+      "churn": "Churn Rate"
+    }
+  },
+  "users": {
+    "title": "Users",
+    "actions": {
+      "recalcStorage": "Recalculate Storage",
+      "recalcing": "Recalculating..."
+    },
+    "table": {
+      "user": "User",
+      "credits": "Credits",
+      "tokenIO": "Tokens (In/Out)",
+      "subscriptionStatus": "Subscription",
+      "storage": "Storage Usage",
+      "authSource": "Auth Source",
+      "time": "Time",
+      "actions": "Actions",
+      "loading": "Loading..."
+    },
+    "subscriptionStatus": {
+      "active": "Active",
+      "inactive": "Not Subscribed",
+      "expired": "Expired"
+    },
+    "tooltip": {
+      "viewDetail": "View Details",
+      "manageCredits": "Manage Credits",
+      "manageSubscription": "Manage Subscription",
+      "creditHistory": "Credit History",
+      "usageRate": "Usage: {{percent}}%"
+    },
+    "delete": {
+      "title": "Confirm deletion?",
+      "description": "This action cannot be undone. The user and related data will be permanently deleted.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "toast": {
+      "deleteSuccess": "User deleted successfully",
+      "deleteSuccessDesc": "The user has been removed from the system",
+      "deleteFailed": "Failed to delete user",
+      "retryLater": "Please try again later",
+      "rechargeSuccess": "Recharge successful",
+      "deductSuccess": "Deduction successful",
+      "rechargeDesc": "Recharged {{amount}} credits",
+      "deductDesc": "Deducted {{amount}} credits",
+      "operationFailed": "Operation failed",
+      "subscriptionSetSuccess": "Subscription set successfully",
+      "subscriptionSetFailed": "Failed to set subscription",
+      "subscriptionCanceled": "Subscription canceled",
+      "subscriptionCancelFailed": "Failed to cancel",
+      "recalcSuccess": "Storage usage recalculated",
+      "recalcFailed": "Recalculation failed"
+    },
+    "detail": {
+      "title": "User Details",
+      "active": "Active",
+      "disabled": "Disabled",
+      "frozen": "Balance Frozen",
+      "authSource": "Auth Source",
+      "providerGoogleGitHub": "Google + GitHub linked login",
+      "providerGoogle": "Google linked login",
+      "providerGitHub": "GitHub linked login",
+      "providerLocal": "Local registration",
+      "stats": {
+        "creditBalance": "Credit Balance",
+        "inputToken": "Input Tokens",
+        "outputToken": "Output Tokens"
+      },
+      "storage": {
+        "title": "Storage"
+      },
+      "subscription": {
+        "title": "Subscription",
+        "status": "Status",
+        "plan": "Current Plan",
+        "startTime": "Start Time",
+        "endTime": "End Time",
+        "empty": "-"
+      },
+      "login": {
+        "title": "Login & Device",
+        "registerTime": "Registered At",
+        "lastLogin": "Last Login",
+        "registerIp": "Register IP",
+        "loginIp": "Login IP",
+        "deviceType": "Device Type",
+        "os": "Operating System",
+        "browser": "Browser"
+      }
+    },
+    "credit": {
+      "dialogTitle": "Manage Credits",
+      "description": "Adjust credits for {{nickname}} (Current balance: {{balance}})",
+      "amount": "Adjustment Amount",
+      "amountPlaceholder": "Positive = recharge, negative = deduct",
+      "reason": "Description",
+      "reasonPlaceholder": "Enter reason",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "submitting": "Submitting...",
+      "validation": {
+        "nonZero": "Amount cannot be 0",
+        "reasonRequired": "Please enter a description"
+      }
+    },
+    "subscription": {
+      "dialogTitle": "Manage Subscription",
+      "description": "Set subscription plan for {{nickname}}",
+      "plan": "Plan",
+      "planPlaceholder": "Select a plan",
+      "planItem": "{{name}} - ${{price}} ({{credits}} credits)",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "autoGrant": "Auto-grant plan credits",
+      "cancelSub": "Cancel Subscription",
+      "cancel": "Cancel",
+      "submit": "Save Subscription",
+      "submitting": "Submitting...",
+      "validation": {
+        "planRequired": "Please select a plan",
+        "startRequired": "Please select a start time",
+        "endRequired": "Please select an end time"
+      }
+    },
+    "creditsPage": {
+      "title": "Credit History",
+      "userLabel": "User: {{nickname}}",
+      "userLoading": "Loading...",
+      "balanceLabel": "Current Balance: {{balance}}",
+      "back": "Back to Users",
+      "table": {
+        "time": "Time",
+        "type": "Type",
+        "amount": "Amount",
+        "balanceBefore": "Before",
+        "balanceAfter": "After",
+        "tokens": "Tokens",
+        "description": "Description"
+      },
+      "loading": "Loading...",
+      "empty": "No credit transactions",
+      "types": {
+        "recharge": "Recharge",
+        "deduction": "Consume",
+        "admin_adjust": "Adjust"
+      }
+    }
+  },
+  "subscriptions": {
+    "title": "Subscription Plans",
+    "subtitle": "Manage subscription plans and pricing",
+    "newPlan": "New Plan",
+    "table": {
+      "order": "Order",
+      "name": "Plan Name",
+      "billingCycle": "Billing Cycle",
+      "price": "Price (USD)",
+      "credits": "Credits",
+      "storage": "Storage",
+      "unitPrice": "Unit ($/credit)",
+      "margin": "Margin",
+      "status": "Status",
+      "actions": "Actions",
+      "loading": "Loading...",
+      "empty": "No plans"
+    },
+    "billingCycle": {
+      "monthly": "Monthly",
+      "yearly": "Yearly",
+      "lifetime": "Lifetime"
+    },
+    "dialog": {
+      "createTitle": "New Plan",
+      "editTitle": "Edit Plan",
+      "createDescription": "Create a new subscription plan",
+      "editDescription": "Modify subscription plan details"
+    },
+    "form": {
+      "name": "Plan Name",
+      "namePlaceholder": "e.g. Basic",
+      "description": "Description",
+      "descriptionPlaceholder": "Plan description (optional)",
+      "price": "Price (USD)",
+      "credits": "Credits",
+      "billingCycle": "Billing Cycle",
+      "sortOrder": "Sort Order",
+      "storageQuota": "Storage Quota (GB)",
+      "features": "Plan Features",
+      "featureAdd": "Add",
+      "featurePlaceholder": "e.g. 1000 credits per month",
+      "featuresEmpty": "No features. Click \"Add\" to create.",
+      "isActive": "Active",
+      "cancel": "Cancel",
+      "save": "Save",
+      "create": "Create",
+      "submitting": "Submitting..."
+    },
+    "metrics": {
+      "unitPrice": "Unit Price",
+      "unitPriceValue": "${{value}} / credit",
+      "baseCost": "Base Cost (1 credit = $0.01)",
+      "baseCostValue": "${{value}}",
+      "margin": "Margin"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "delete": {
+      "title": "Confirm Delete",
+      "description": "Are you sure you want to delete the plan \"{{name}}\"? This cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "toast": {
+      "createSuccess": "Created successfully",
+      "updateSuccess": "Updated successfully",
+      "createFailed": "Failed to create",
+      "updateFailed": "Failed to update",
+      "deleteSuccess": "Deleted successfully",
+      "deleteSuccessDesc": "Plan \"{{name}}\" has been deleted.",
+      "deleteFailed": "Failed to delete",
+      "retryLater": "Please try again later"
+    },
+    "validation": {
+      "nameRequired": "Please enter a plan name",
+      "pricePositive": "Price must be greater than 0",
+      "creditsPositive": "Credits must be greater than 0",
+      "storagePositive": "Storage quota must be greater than 0",
+      "featureRequired": "Please enter feature description"
+    }
+  },
+  "llm": {
+    "title": "AI Providers",
+    "subtitle": "Manage and configure AI providers and their model parameters",
+    "addProvider": "Add Provider",
+    "list": {
+      "loadFailed": "Failed to load, please refresh",
+      "empty": "No AI providers yet",
+      "emptyAction": "Add your first AI provider",
+      "defaultUrl": "Default URL",
+      "editTooltip": "Edit",
+      "deleteTooltip": "Delete",
+      "table": {
+        "name": "Name",
+        "brand": "Brand",
+        "tags": "Tags",
+        "models": "Models",
+        "actions": "Actions"
+      },
+      "toast": {
+        "deleteSuccess": "Provider deleted successfully",
+        "deleteFailed": "Failed to delete"
+      },
+      "delete": {
+        "title": "Confirm deletion?",
+        "description": "This will permanently delete the provider configuration ({{name}}). This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Confirm Delete"
+      }
+    },
+    "edit": {
+      "loading": "Loading...",
+      "loadFailed": "Failed to load, please refresh",
+      "notFound": "Provider not found"
+    },
+    "form": {
+      "createTitle": "Create Provider",
+      "editTitle": "Edit Provider",
+      "subtitle": "Configure the basic info, model parameters, and connection authentication for the LLM provider.",
+      "testConnection": "Test Connection",
+      "back": "Back",
+      "save": "Save",
+      "saving": "Saving...",
+      "idLabel": "ID: {{id}}",
+      "basic": {
+        "title": "Basic Info",
+        "description": "Configure provider name, brand, and tags.",
+        "name": "Name",
+        "namePlaceholder": "Enter a name (e.g. OpenAI)",
+        "brand": "Brand",
+        "brandPlaceholder": "Select a brand",
+        "tags": "Tags",
+        "tagsPlaceholder": "Type a tag and press Enter",
+        "tagsDescription": "Used for categorization and filtering. Multiple tags supported."
+      },
+      "connection": {
+        "title": "Connection & Authentication",
+        "description": "Configure API key and advanced options.",
+        "baseUrl": "Base URL (optional)",
+        "baseUrlPlaceholder": "e.g. https://api.openai.com/v1",
+        "baseUrlDescription": "Fill in if you use a proxy or custom endpoint.",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "sk-...",
+        "advancedConfig": "Advanced Config (JSON)",
+        "advancedConfigPlaceholder": "{\"timeout\": 30, \"max_retries\": 3}"
+      },
+      "models": {
+        "title": "Model Configuration",
+        "description": "Add supported models and their cost information.",
+        "modelNamePlaceholder": "Model name (e.g. gpt-4)",
+        "aliasPlaceholder": "Alias (optional)",
+        "typePlaceholder": "Type",
+        "addModel": "Add Model",
+        "costsTitle": "Model Cost Configuration (optional)",
+        "costsUnit": "USD / Unit",
+        "configCount": "{{count}} config(s)",
+        "customParamsTitle": "Custom Parameters",
+        "customParamName": "Param Name",
+        "customParamCost": "Cost (USD)",
+        "addCustomParam": "Add Custom Cost Parameter",
+        "customParamPrompt": "Enter a custom parameter name (English, e.g. reasoning_output)",
+        "customParamFormatError": "Invalid parameter name",
+        "customParamFormatErrorDesc": "Only lowercase letters, digits, and underscores are allowed",
+        "customParamExists": "Parameter name already exists"
+      },
+      "toast": {
+        "selectModelForTest": "Please add at least one model to test",
+        "testSuccess": "Connection successful",
+        "testSuccessDesc": "Response: {{response}}",
+        "testFailed": "Connection failed",
+        "testError": "Test failed",
+        "unknownError": "Unknown error",
+        "updateSuccess": "Provider updated successfully",
+        "createSuccess": "Provider created successfully",
+        "submitFailed": "Operation failed"
+      },
+      "validation": {
+        "nameRequired": "Please enter a name",
+        "providerRequired": "Please select a brand",
+        "modelNameRequired": "Please enter the model name",
+        "modelsRequired": "At least one model is required",
+        "apiKeyRequired": "Please enter the API key",
+        "invalidJson": "Please enter valid JSON"
+      }
+    },
+    "modelType": {
+      "language": "Language Model",
+      "image": "Image Model",
+      "video": "Video Model",
+      "audio": "Audio Model",
+      "multimodal": "Multimodal"
+    },
+    "costDimension": {
+      "input": "Input",
+      "text_output": "Text Output",
+      "image_output": "Image Output",
+      "search": "Search Query",
+      "video_input_image": "Video Input Image",
+      "video_input_second": "Video Input Duration",
+      "video_output_480p": "Video Output 480p",
+      "video_output_720p": "Video Output 720p",
+      "audio_generation": "Audio Generation"
+    }
+  },
+  "agents": {
+    "title": "Agents",
+    "subtitle": "Create, configure and manage your AI agents",
+    "create": "Create Agent",
+    "searchPlaceholder": "Search agents...",
+    "loading": "Loading...",
+    "noTools": "No Tools",
+    "header": {
+      "newAgent": "Create New Agent",
+      "config": "Configuration",
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving...",
+      "loading": "Loading...",
+      "notFound": "Agent Not Found",
+      "backHome": "Back Home"
+    },
+    "table": {
+      "name": "Name",
+      "model": "Model Config",
+      "params": "Parameters",
+      "capabilities": "Capabilities",
+      "createdAt": "Created At",
+      "actions": "Actions",
+      "provider": "Provider",
+      "modelLabel": "Model",
+      "temperature": "Temperature",
+      "contextWindow": "Context",
+      "editTooltip": "Edit"
+    },
+    "delete": {
+      "title": "Confirm deletion?",
+      "description": "This action cannot be undone. Agent \"{{name}}\" will be permanently deleted.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "toast": {
+      "deleteSuccess": "Agent deleted successfully",
+      "deleteFailed": "Delete failed",
+      "unknownError": "Unknown error",
+      "createSuccess": "Created successfully",
+      "updateSuccess": "Updated successfully",
+      "submitFailed": "Operation failed"
+    },
+    "form": {
+      "sections": {
+        "basic": "Basic Info",
+        "system": "System Prompt",
+        "params": "Parameters",
+        "capabilities": "Capabilities",
+        "leader": "Collaboration"
+      },
+      "fieldLabels": {
+        "name": "Name",
+        "description": "Description",
+        "provider_id": "Provider",
+        "model": "Model",
+        "system_prompt": "System Prompt",
+        "temperature": "Temperature",
+        "context_window": "Context Window",
+        "tools": "Tools",
+        "coordination_modes": "Coordination Modes",
+        "gemini_config": "Gemini Config"
+      },
+      "validation": {
+        "nameRequired": "Please enter the agent name",
+        "nameMax": "Max length 50 characters",
+        "descRequired": "Please enter description",
+        "descMax": "Max length 500 characters",
+        "providerRequired": "Please select a provider",
+        "modelRequired": "Please select a model",
+        "systemPromptRequired": "Please enter the system prompt",
+        "systemPromptMax": "Max length 5000 characters",
+        "contextMin": "Minimum value is 4096",
+        "contextMax": "Maximum value is 1048576",
+        "creditNonNegative": "Must be non-negative",
+        "capabilityRequired": "Enable at least one tool or function when capabilities are enabled"
+      },
+      "invalidToastTitle": "Please check the following fields",
+      "invalidToastJoiner": ", ",
+      "submitFailedTitle": "Submission failed",
+      "submitFailedDesc": "Please try again",
+      "basicInfo": {
+        "namePlaceholder": "Give the agent a name, e.g. Story Director",
+        "descPlaceholder": "Briefly describe the agent's responsibilities...",
+        "modelConfig": "Model Configuration",
+        "selectProvider": "Select provider",
+        "selectModel": "Select model",
+        "selectProviderFirst": "Select provider first"
+      },
+      "systemPrompt": {
+        "label": "System Prompt",
+        "importTemplate": "Import from template",
+        "placeholder": "You are a professional assistant...",
+        "dialogTitle": "Select a Prompt Template",
+        "searchPlaceholder": "Search template names...",
+        "allCategories": "All Categories",
+        "noMatch": "No matching templates",
+        "default": "Default"
+      },
+      "leader": {
+        "leaderMode": "Leader Mode",
+        "leaderModeDesc": "Enable intelligent coordination of multiple member agents for complex tasks",
+        "memberAgents": "Member Agents",
+        "memberAgentsDesc": "Select agents that can be dispatched",
+        "noMembers": "No member agents available, please create other agents first",
+        "maxSubtasks": "Max Subtasks",
+        "maxSubtasksDesc": "Limit the number of subtasks a single task can be split into",
+        "autoReview": "Auto Review",
+        "autoReviewDesc": "Leader automatically reviews results after subtasks complete"
+      },
+      "parameters": {
+        "thinkingMode": "Thinking Mode",
+        "thinkingModeDesc": "Enable deep reasoning (supported by some models)",
+        "on": "On",
+        "off": "Off",
+        "contextWindow": "Context Window",
+        "contextWindowTokens": "Tokens",
+        "contextWindowMin": "4K",
+        "contextWindowMax": "1M",
+        "contextWindowValue": "{{display}} ({{tokens}} tokens)",
+        "compaction": {
+          "title": "Context Compaction",
+          "desc": "Automatically summarize and compact old messages when the conversation grows too long",
+          "on": "On",
+          "off": "Off",
+          "compactionProvider": "Summary Provider",
+          "useDefault": "Use this agent's provider (default)",
+          "compactionModel": "Summary Model",
+          "selectProvider": "Select provider",
+          "selectModel": "Select model",
+          "compactRatio": "Trigger Threshold ({{percent}}%)",
+          "reserveRatio": "Reserve Ratio ({{percent}}%)",
+          "toolOldThreshold": "Old Tool Char Threshold",
+          "toolRecentN": "Recent Entries Kept",
+          "maxSummaryTokens": "Max Summary Tokens",
+          "maxSummaryTokensDesc": "max_tokens limit when the LLM generates summaries"
+        },
+        "maxToolRounds": {
+          "title": "Max Tool Rounds",
+          "desc": "Max number of tool calls per conversation round",
+          "times": "times",
+          "min": "10 times",
+          "max": "200 times"
+        },
+        "temperature": "Temperature",
+        "temperatureLow": "0 (precise)",
+        "temperatureHigh": "1 (creative)",
+        "thinkingModeDesc": "When enabled, the model performs a chain-of-thought reasoning process before answering.",
+        "pricing": {
+          "title": "Credit Pricing",
+          "markupMultiplier": "Cost Multiplier",
+          "applyAll": "Apply All Suggestions",
+          "setFree": "Set All Free",
+          "freeDesc": "Set to 0 to make it free (no credits consumed).",
+          "profitOverview": "Profit Overview",
+          "apiCost": "API cost: ${{cost}}{{unit}}",
+          "suggestion": "Suggested: {{value}} credits",
+          "credits": "credits",
+          "naLabel": "N/A"
+        },
+        "costDimensions": {
+          "input": "Input Price",
+          "text_output": "Output Price",
+          "image_output": "Image Output Price",
+          "search": "Search Query Price",
+          "image_generation": "Image Generation Price",
+          "video_input_image": "Video - Input Image",
+          "video_input_second": "Video - Input Duration",
+          "video_output_480p": "Video Output (480p)",
+          "video_output_720p": "Video Output (720p)"
+        },
+        "units": {
+          "per_1m": "credits/1M tokens",
+          "per_query": "credits/query",
+          "per_image": "credits/image",
+          "per_second": "credits/second"
+        },
+        "costUnits": {
+          "per_1m": "/1M tokens",
+          "per_query": "/query",
+          "per_image": "/image",
+          "per_second": "/second"
+        }
+      },
+      "tools": {
+        "title": "Capabilities",
+        "desc": "Enable to allow the agent to access external skills, MCP and built-in tools",
+        "noToolsEnabled": "No capabilities enabled. Enable to configure specific tools",
+        "skills": {
+          "title": "Skills",
+          "loading": "Loading skills…",
+          "empty": "No skills available. Please create one in Skills Management"
+        },
+        "mcp": {
+          "title": "MCP Clients (Model Context Protocol)",
+          "inDevelopment": "Feature in development, stay tuned"
+        },
+        "capabilities": {
+          "title": "Tool Toggles",
+          "image": {
+            "title": "Image Tools",
+            "desc": "Image generation (generate_image) and image editing (edit_image) tools.",
+            "globalDisabled": "Global config not enabled. Please enable image generation in Tools Management first",
+            "params": "Configure parameters in Tools Management"
+          },
+          "video": {
+            "title": "Video Tools",
+            "desc": "Video generation (generate_video) and video editing (edit_video) tools.",
+            "globalDisabled": "Global config not enabled. Please enable video generation in Tools Management first",
+            "params": "Configure parameters in Tools Management"
+          },
+          "canvas": {
+            "title": "Canvas Tools",
+            "desc": "When enabled, the agent can control canvas node content."
+          },
+          "nodeTypes": {
+            "script": "Text Node",
+            "scriptDesc": "Rich text content",
+            "character": "Image Node",
+            "characterDesc": "Image generation and management",
+            "video": "Video Node",
+            "videoDesc": "Video generation and management",
+            "storyboard": "Data Table",
+            "storyboardDesc": "Data tables and analysis"
+          }
+        }
+      }
+    },
+    "multiAgent": {
+      "collaborating": "Collaborating",
+      "collaborationProcess": "Collaboration Process",
+      "agents": "agents",
+      "tokens": "tokens",
+      "credits": "credits",
+      "status": {
+        "pending": "Pending",
+        "running": "Running",
+        "completed": "Completed",
+        "failed": "Failed"
+      }
+    },
+    "chat": {
+      "preview": "Preview Chat",
+      "selectConversation": "Select Conversation",
+      "noHistory": "No history",
+      "newConversation": "New Chat",
+      "startNew": "Start a new conversation",
+      "inputPlaceholder": "Type a message...",
+      "uploadImage": "Upload Image",
+      "aiNotice": "AI may generate inaccurate information. Verify important facts.",
+      "selectOrCreate": "Select or create a conversation to start",
+      "createNewSession": "Create New Conversation",
+      "loadFailed": "Failed to load messages",
+      "createFailed": "Failed to create debug session",
+      "deleteFailed": "Failed to delete debug session",
+      "collaboratingWithAgents": "Collaborating... ({{count}} agents)",
+      "collaboratingAgentGenerating": "Collaborating... ({{name}} is generating)",
+      "collaboratingProgress": "Collaborating... ({{completed}}/{{total}} done)",
+      "skill": {
+        "loading": "Loading skill: {{name}}",
+        "loaded": "Skill loaded: {{name}}"
+      },
+      "tool": {
+        "executing": "Executing: {{name}}",
+        "completed": "Completed: {{name}}"
+      },
+      "edit": {
+        "selectedTitle": "Image selected for editing",
+        "selectedDesc": "The next message will be based on this image",
+        "mode": "Edit mode: the next message will be based on the selected image",
+        "failed": "Unable to load image",
+        "continueEdit": "Continue Editing"
+      }
+    }
+  },
   "login": {
     "title": "Admin Login",
     "email": "Email",

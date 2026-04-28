@@ -4,6 +4,7 @@
 import useSWR, { mutate } from 'swr';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useTranslation } from 'react-i18next';
 import api from '@/lib/axios';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
@@ -36,19 +37,20 @@ const fetcher = (url: string) => api.get(url).then((res) => res.data);
 export function ProviderList() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { data: providers, error, isLoading } = useSWR('/admin/llm-providers/', fetcher);
 
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/admin/llm-providers/${id}`);
       toast({
-        title: "供应商删除成功",
+        title: t('llm.list.toast.deleteSuccess'),
       });
       mutate('/admin/llm-providers/');
-    } catch (err) {
+    } catch {
       toast({
         variant: "destructive",
-        title: "删除失败",
+        title: t('llm.list.toast.deleteFailed'),
       });
     }
   };
@@ -64,7 +66,7 @@ export function ProviderList() {
   if (error) {
     return (
       <div className="flex h-[400px] w-full items-center justify-center text-destructive">
-        加载失败，请刷新重试
+        {t('llm.list.loadFailed')}
       </div>
     );
   }
@@ -72,10 +74,10 @@ export function ProviderList() {
   if (!providers || providers.length === 0) {
     return (
       <div className="flex h-[400px] w-full flex-col items-center justify-center space-y-4 rounded-lg border border-dashed bg-muted/50">
-        <div className="text-xl font-medium text-muted-foreground">暂无 AI 供应商</div>
+        <div className="text-xl font-medium text-muted-foreground">{t('llm.list.empty')}</div>
         <Button onClick={() => router.push('/admin/llm/create')}>
           <Plus className="mr-2 h-4 w-4" />
-          添加第一个 AI 供应商
+          {t('llm.list.emptyAction')}
         </Button>
       </div>
     );
@@ -87,11 +89,11 @@ export function ProviderList() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">名称</TableHead>
-              <TableHead className="w-[120px]">品牌</TableHead>
-              <TableHead>标签</TableHead>
-              <TableHead>模型</TableHead>
-              <TableHead className="w-[120px] text-right">操作</TableHead>
+              <TableHead className="w-[200px]">{t('llm.list.table.name')}</TableHead>
+              <TableHead className="w-[120px]">{t('llm.list.table.brand')}</TableHead>
+              <TableHead>{t('llm.list.table.tags')}</TableHead>
+              <TableHead>{t('llm.list.table.models')}</TableHead>
+              <TableHead className="w-[120px] text-right">{t('llm.list.table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -115,7 +117,7 @@ export function ProviderList() {
                     )}
                     <div className="flex flex-col">
                       <span>{provider.name}</span>
-                      <span className="text-xs text-muted-foreground truncate max-w-[180px]">{provider.base_url || '默认URL'}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[180px]">{provider.base_url || t('llm.list.defaultUrl')}</span>
                     </div>
                   </div>
                 </TableCell>
@@ -147,31 +149,31 @@ export function ProviderList() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => router.push(`/admin/llm/${provider.id}`)}
-                      title="编辑"
+                      title={t('llm.list.editTooltip')}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" title="删除">
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" title={t('llm.list.deleteTooltip')}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>确认删除供应商？</AlertDialogTitle>
+                          <AlertDialogTitle>{t('llm.list.delete.title')}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            此操作将永久删除该供应商配置 ({provider.name})，不可撤销。
+                            {t('llm.list.delete.description', { name: provider.name })}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogCancel>{t('llm.list.delete.cancel')}</AlertDialogCancel>
                           <AlertDialogAction onClick={() => handleDelete(provider.id)} className="bg-destructive hover:bg-destructive/90">
-                            确认删除
+                            {t('llm.list.delete.confirm')}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>

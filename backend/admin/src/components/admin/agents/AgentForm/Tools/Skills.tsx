@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import { FormField, FormItem, FormMessage } from '@/components/ui/form';
 import api from '@/lib/axios';
 
@@ -10,6 +11,7 @@ interface SkillOption {
 
 const Skills: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const { control, getValues, setValue } = useFormContext();
+  const { t } = useTranslation();
   const [skills, setSkills] = useState<SkillOption[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -36,17 +38,17 @@ const Skills: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
 
   return (
     <div>
-      <h4 className="text-sm font-medium mb-3">技能 (Skills)</h4>
+      <h4 className="text-sm font-medium mb-3">{t('agents.form.tools.skills.title')}</h4>
       <FormField
         control={control}
         name="tools"
         render={({ field }) => (
           <FormItem>
             {loading ? (
-              <p className="text-xs text-muted-foreground">正在加载技能列表…</p>
+              <p className="text-xs text-muted-foreground">{t('agents.form.tools.skills.loading')}</p>
             ) : skills.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                暂无可用技能，请先在技能管理页面创建并启用技能。
+                {t('agents.form.tools.skills.empty')}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-2">
