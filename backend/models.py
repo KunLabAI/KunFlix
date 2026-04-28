@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean, BigInteger, Numeric
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean, BigInteger, Numeric, Index
 from sqlalchemy.sql import func
 from database import Base
 
@@ -91,6 +91,9 @@ class User(Base):
 class Theater(Base):
     """剧场表 - 用户创建的创意项目"""
     __tablename__ = "theaters"
+    __table_args__ = (
+        Index("ix_theaters_user_status_updated", "user_id", "status", "updated_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
@@ -109,6 +112,9 @@ class Theater(Base):
 class TheaterNode(Base):
     """剧场节点表 - 画布上的节点"""
     __tablename__ = "theater_nodes"
+    __table_args__ = (
+        Index("ix_theater_nodes_theater_type", "theater_id", "node_type"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -147,6 +153,9 @@ class TheaterEdge(Base):
 class Asset(Base):
     """用户媒体资源表 - 账号级别共享，跨剧场通用"""
     __tablename__ = "assets"
+    __table_args__ = (
+        Index("ix_assets_user_type_created", "user_id", "file_type", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
@@ -217,6 +226,9 @@ class ChatSession(Base):
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_session_created", "session_id", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), index=True)
@@ -302,6 +314,10 @@ class Agent(Base):
 
 class CreditTransaction(Base):
     __tablename__ = "credit_transactions"
+    __table_args__ = (
+        Index("ix_credit_tx_user_created", "user_id", "created_at"),
+        Index("ix_credit_tx_admin_created", "admin_id", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
@@ -326,6 +342,9 @@ class CreditTransaction(Base):
 class TaskExecution(Base):
     """Multi-agent task execution record"""
     __tablename__ = "task_executions"
+    __table_args__ = (
+        Index("ix_task_exec_user_status_created", "user_id", "status", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     leader_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False)
@@ -437,6 +456,9 @@ class SubscriptionPlan(Base):
 class VideoTask(Base):
     """异步视频生成任务追踪"""
     __tablename__ = "video_tasks"
+    __table_args__ = (
+        Index("ix_video_tasks_user_status_created", "user_id", "status", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     xai_task_id = Column(String(255), index=True)           # xAI 返回的外部任务ID
@@ -470,6 +492,9 @@ class VideoTask(Base):
 class MusicTask(Base):
     """异步音乐生成任务追踪（Lyria 3）"""
     __tablename__ = "music_tasks"
+    __table_args__ = (
+        Index("ix_music_tasks_user_status_created", "user_id", "status", "created_at"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True, index=True)
@@ -558,6 +583,10 @@ class ToolConfig(Base):
 class ToolExecution(Base):
     """工具执行日志 — 记录每次工具调用的详细信息"""
     __tablename__ = "tool_executions"
+    __table_args__ = (
+        Index("ix_tool_exec_user_created", "user_id", "created_at"),
+        Index("ix_tool_exec_tool_status", "tool_name", "status"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     tool_name = Column(String(100), nullable=False, index=True)

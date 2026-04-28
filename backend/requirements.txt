@@ -27,3 +27,5 @@ httpx>=0.27.0
 python-frontmatter>=1.0.0
 packaging>=23.0
 user-agents>=2.2.0
+cachetools>=7.0.6
+cryptography>=47.0.0

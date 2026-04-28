@@ -1,175 +1,128 @@
-import sys
+"""FastAPI application entrypoint.
+
+职责收敛：仅做日志配置、Windows 兼容、应用实例创建、中间件 & 路由注册。
+数据库连接/迁移/初始化逻辑全部迁移到 `startup.py`，便于单元测试与复用。
+"""
 import asyncio
-import logging
 import codecs
+import logging
+import sys
 
-# Fix for asyncpg on Windows
-if sys.platform == 'win32':
+import uvicorn
+from fastapi import FastAPI, Request, WebSocket
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+# ---------------------------------------------------------------------------
+# Windows 兼容：asyncpg + 控制台 UTF-8
+# ---------------------------------------------------------------------------
+if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # 修复Windows终端UTF-8编码问题（仅在buffer属性存在时）
-    if hasattr(sys.stdout, 'buffer'):
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'ignore')
-    if hasattr(sys.stderr, 'buffer'):
-        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'ignore')
+    hasattr(sys.stdout, "buffer") and setattr(
+        sys, "stdout", codecs.getwriter("utf-8")(sys.stdout.buffer, "ignore")
+    )
+    hasattr(sys.stderr, "buffer") and setattr(
+        sys, "stderr", codecs.getwriter("utf-8")(sys.stderr.buffer, "ignore")
+    )
 
-# 配置日志 - 精细化控制
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='[%(name)s] %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="[%(name)s] %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
-# 关闭 SQLAlchemy 日志
-logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
-logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
+# 日志噪音抑制策略（映射表驱动）
+_LOGGER_LEVELS = {
+    "sqlalchemy.engine": logging.WARNING,
+    "sqlalchemy.pool": logging.WARNING,
+    "uvicorn.access": logging.WARNING,
+}
+for _name, _level in _LOGGER_LEVELS.items():
+    logging.getLogger(_name).setLevel(_level)
 
-# 关闭 uvicorn access 日志（保留 error 日志）
-logging.getLogger('uvicorn.access').setLevel(logging.WARNING)
-
-# 保留应用日志
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, WebSocket, BackgroundTasks, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.exceptions import RequestValidationError
-import os
-from contextlib import asynccontextmanager
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_db, engine, Base, AsyncSessionLocal
-from models import User
-from routers import llm_config, admin as admin_router, agents, chats, orchestrate, media, subscriptions, admin_auth, prompt_templates, videos, images, theaters, skills_api, admin_debug, admin_tools, music, admin_dashboard, admin_virtual_humans
-from routers import auth as auth_router
-import uvicorn
-from agents import narrative_engine
-from fastapi.middleware.cors import CORSMiddleware
-
-from config import settings, DB_PATH
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 数据库连接重试逻辑
-    max_retries = 5
-    for i in range(max_retries):
-        try:
-            # Check connection
-            async with engine.begin() as conn:
-                pass
-            
-            # Run Alembic migrations (if enabled)
-            if settings.RUN_MIGRATIONS:
-                print("Running database migrations...")
-                import subprocess
-                try:
-                    subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
-                    print("Database migrations completed.")
-                except subprocess.CalledProcessError as e:
-                    print(f"Migration failed: {e}")
-                    print("Attempting to fix residual temp tables...")
-                    # 尝试清理残留表后重试
-                    try:
-                        import sqlite3
-                        conn = sqlite3.connect(DB_PATH)
-                        cur = conn.cursor()
-                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '_alembic_tmp_%'")
-                        temp_tables = [t[0] for t in cur.fetchall()]
-                        for table in temp_tables:
-                            print(f"  Dropping residual table: {table}")
-                            cur.execute(f'DROP TABLE IF EXISTS "{table}"')
-                        conn.commit()
-                        conn.close()
-                        # 重试迁移
-                        subprocess.check_call([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=os.path.dirname(os.path.abspath(__file__)))
-                        print("Database migrations completed after cleanup.")
-                    except Exception as cleanup_error:
-                        print(f"Migration failed even after cleanup: {cleanup_error}")
-                        raise
-            else:
-                print("Skipping database migrations (RUN_MIGRATIONS=False).")
-            
-            break
-        except Exception as e:
-            if i == max_retries - 1:
-                print(f"Failed to connect to database or run migrations after {max_retries} attempts: {e}")
-            print(f"Database connection failed, retrying in 2 seconds... ({i+1}/{max_retries})")
-            import asyncio
-            await asyncio.sleep(2)
-            
-    # Try to initialize narrative engine from DB
-    try:
-        await narrative_engine.load_config_from_db()
-    except Exception as e:
-        print(f"Failed to load LLM config on startup: {e}")
-    
-    # 确保媒体目录存在
-    from pathlib import Path
-    Path(__file__).resolve().parent.joinpath("media").mkdir(exist_ok=True)
-    
-    yield
-
-app = FastAPI(
-    title="KunFlix",
-    lifespan=lifespan,
+# ---------------------------------------------------------------------------
+# Imports that depend on logging/env set above
+# ---------------------------------------------------------------------------
+from config import settings  # noqa: E402
+from routers import (  # noqa: E402
+    admin as admin_router,
+    admin_auth,
+    admin_dashboard,
+    admin_debug,
+    admin_tools,
+    admin_virtual_humans,
+    agents,
+    auth as auth_router,
+    chats,
+    images,
+    llm_config,
+    media,
+    music,
+    orchestrate,
+    prompt_templates,
+    skills_api,
+    subscriptions,
+    theaters,
+    videos,
 )
+from startup import lifespan  # noqa: E402
 
 
+app = FastAPI(title="KunFlix", lifespan=lifespan)
+
+
+# ---------------------------------------------------------------------------
+# Exception handler
+# ---------------------------------------------------------------------------
 @app.exception_handler(RequestValidationError)
 async def _validation_error_handler(request: Request, exc: RequestValidationError):
     logger.error("[422] %s %s => %s", request.method, request.url.path, exc.errors())
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
-# DEBUG: Auth logging middleware (disabled — BaseHTTPMiddleware has significant
-# performance overhead on every request including SSE streams.  Re-enable only
-# when actively debugging authentication issues.)
-# from starlette.middleware.base import BaseHTTPMiddleware
-# from starlette.requests import Request as StarletteRequest
-#
-# class DebugAuthMiddleware(BaseHTTPMiddleware):
-#     async def dispatch(self, request: StarletteRequest, call_next):
-#         path = request.url.path
-#         auth_header = request.headers.get("authorization", "<MISSING>")
-#         origin = request.headers.get("origin", "<no-origin>")
-#         logger.info(f"[DEBUG-AUTH] {request.method} {path} | Origin: {origin} | Auth: {auth_header[:40]}...")
-#         response = await call_next(request)
-#         return response
-#
-# app.add_middleware(DebugAuthMiddleware)
-
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3666",
-        "http://127.0.0.1:3666",
-        "http://localhost:3888",
-        "http://127.0.0.1:3888",
-    ],
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register Routers
-app.include_router(auth_router.router)
-app.include_router(admin_auth.router)
-app.include_router(llm_config.router)
-app.include_router(admin_router.router)
-app.include_router(agents.router)
-app.include_router(chats.router)
-app.include_router(orchestrate.router)
-app.include_router(media.router)
-app.include_router(subscriptions.router)
-app.include_router(prompt_templates.router)
-app.include_router(videos.router)
-app.include_router(images.router)
-app.include_router(theaters.router)
-app.include_router(skills_api.router)
-app.include_router(admin_debug.router)
-app.include_router(admin_tools.router)
-app.include_router(music.router)
-app.include_router(admin_dashboard.router)
-app.include_router(admin_virtual_humans.router)
+# ---------------------------------------------------------------------------
+# Router registry（列表驱动，避免重复 app.include_router 样板）
+# ---------------------------------------------------------------------------
+_ROUTERS = (
+    auth_router.router,
+    admin_auth.router,
+    llm_config.router,
+    admin_router.router,
+    agents.router,
+    chats.router,
+    orchestrate.router,
+    media.router,
+    subscriptions.router,
+    prompt_templates.router,
+    videos.router,
+    images.router,
+    theaters.router,
+    skills_api.router,
+    admin_debug.router,
+    admin_tools.router,
+    music.router,
+    admin_dashboard.router,
+    admin_virtual_humans.router,
+)
+for _router in _ROUTERS:
+    app.include_router(_router)
 
 
 @app.get("/")
@@ -184,10 +137,11 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
         while True:
             data = await websocket.receive_text()
             await websocket.send_text(f"Message received: {data}")
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WebSocket error (user=%s): %s", user_id, exc)
     finally:
         await websocket.close()
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
