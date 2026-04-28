@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import type { TFunction } from 'i18next';
 
 const emptyStringToNull = (val: unknown) => {
   if (val === "" || val === "undefined") return null;
@@ -45,27 +46,27 @@ const compactionConfigSchema = z.object({
   max_summary_tokens: z.number().min(4096).max(131072).optional().default(4096),
 }).optional().nullable();
 
-export const agentFormSchema = z.object({
-  name: z.string().min(1, "请输入智能体名称").max(50, "最大长度50字符"),
-  description: z.string().min(1, "请输入描述").max(500, "最大长度500字符"),
-  provider_id: z.string().min(1, "请选择供应商"),
-  model: z.string().min(1, "请选择模型"),
+export const createAgentFormSchema = (t: TFunction) => z.object({
+  name: z.string().min(1, t('agents.form.validation.nameRequired')).max(50, t('agents.form.validation.nameMax')),
+  description: z.string().min(1, t('agents.form.validation.descRequired')).max(500, t('agents.form.validation.descMax')),
+  provider_id: z.string().min(1, t('agents.form.validation.providerRequired')),
+  model: z.string().min(1, t('agents.form.validation.modelRequired')),
   agent_type: z.enum(["text", "image", "multimodal", "video"]).default("text"),
-  system_prompt: z.string().min(1, "请输入系统提示词").max(5000, "最大长度5000字符"),
+  system_prompt: z.string().min(1, t('agents.form.validation.systemPromptRequired')).max(5000, t('agents.form.validation.systemPromptMax')),
   temperature: z.number().min(0).max(1),
-  context_window: z.number().min(4096, "最小值为4096").max(1048576, "最大值为1048576"),
+  context_window: z.number().min(4096, t('agents.form.validation.contextMin')).max(1048576, t('agents.form.validation.contextMax')),
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
-  input_credit_per_1m: z.number().min(0, "不能为负数").default(0),
-  output_credit_per_1m: z.number().min(0, "不能为负数").default(0),
-  image_output_credit_per_1m: z.number().min(0, "不能为负数").default(0),
-  search_credit_per_query: z.number().min(0, "不能为负数").default(0),
+  input_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  output_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  image_output_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  search_credit_per_query: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
   // Video pricing
-  video_input_image_credit: z.number().min(0, "不能为负数").default(0),
-  video_input_second_credit: z.number().min(0, "不能为负数").default(0),
-  video_output_480p_credit: z.number().min(0, "不能为负数").default(0),
-  video_output_720p_credit: z.number().min(0, "不能为负数").default(0),
+  video_input_image_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  video_input_second_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  video_output_480p_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
+  video_output_720p_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
   // 画布节点控制
   target_node_types: z.array(
     z.enum(["script", "character", "storyboard", "video"])
@@ -80,7 +81,7 @@ export const agentFormSchema = z.object({
   gemini_config: geminiConfigSchema,
   // 统一图像生成配置
   image_config: unifiedImageGenConfigSchema,
-  image_credit_per_image: z.number().min(0, "不能为负数").default(0),
+  image_credit_per_image: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
   // 视频生成配置
   video_config: videoGenConfigSchema,
   // 上下文压缩配置
@@ -95,8 +96,8 @@ export const agentFormSchema = z.object({
   const hasCanvas = (data.target_node_types?.length ?? 0) > 0;
   return !data.tools_enabled || hasSkills || hasImageGen || hasVideoGen || hasCanvas;
 }, {
-  message: "启用能力时至少开启一项工具或功能",
+  message: t('agents.form.validation.capabilityRequired'),
   path: ["tools"],
 });
 
-export type AgentFormValues = z.infer<typeof agentFormSchema>;
+export type AgentFormValues = z.infer<ReturnType<typeof createAgentFormSchema>>;

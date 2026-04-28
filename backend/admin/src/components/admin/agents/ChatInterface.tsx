@@ -1,6 +1,7 @@
-'use client';
+ 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown, ImagePlus, X, Zap, Terminal } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
@@ -68,6 +69,7 @@ function extractImageUrl(content: string): string | null {
 }
 
 export default function ChatInterface({ agentId }: ChatInterfaceProps) {
+  const { t } = useTranslation();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -98,7 +100,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
       setMessages([]);
       api.get(`/admin/debug/sessions/${selectedSessionId}/messages`)
         .then(res => setMessages(res.data))
-        .catch(err => toast({ variant: "destructive", title: "Failed to load messages" }));
+        .catch(err => toast({ variant: "destructive", title: t('agents.chat.loadFailed') }));
     }
   }, [selectedSessionId]);
 
@@ -133,7 +135,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
       mutate(`/admin/debug/sessions?agent_id=${agentId}`);
       setSelectedSessionId(res.data.id);
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to create debug session" });
+      toast({ variant: "destructive", title: t('agents.chat.createFailed') });
     }
   };
 
@@ -147,7 +149,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
         setMessages([]);
       }
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to delete debug session" });
+      toast({ variant: "destructive", title: t('agents.chat.deleteFailed') });
     }
   };
 
@@ -321,12 +323,12 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                   };
                   stepMap.set(data.subtask_id, step);
                   steps.push(step);
-                  assistantMsg.content = `正在协作... (${steps.length} 个智能体)`;
+                  assistantMsg.content = t('agents.chat.collaboratingWithAgents', { count: steps.length });
                 },
                 subtask_started: () => {
                   const step = stepMap.get(data.subtask_id);
                   step && (step.status = 'running', step.result = '');
-                  assistantMsg.content = `协作中... (${data.agent_name || ''} 正在生成)`;
+                  assistantMsg.content = t('agents.chat.collaboratingAgentGenerating', { name: data.agent_name || '' });
                 },
                 subtask_chunk: () => {
                   const step = stepMap.get(data.subtask_id);
@@ -341,7 +343,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                   target.agent_name = data.agent_name || target.agent_name;
                   target.description = data.description || target.description;
                   const completed = steps.filter(s => s.status === 'completed').length;
-                  assistantMsg.content = `协作中... (${completed}/${steps.length} 完成)`;
+                  assistantMsg.content = t('agents.chat.collaboratingProgress', { completed, total: steps.length });
                 },
                 subtask_failed: () => {
                   const step = stepMap.get(data.subtask_id);
@@ -402,20 +404,20 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
       <div className="h-12 border-b flex items-center justify-between px-4 shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
         <div className="flex items-center gap-2 font-medium text-sm text-muted-foreground">
           <MessageSquare className="h-4 w-4" />
-          <span>预览对话</span>
+          <span>{t('agents.chat.preview')}</span>
         </div>
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-8 min-w-[140px] justify-between font-normal text-xs px-3">
                 <span className="truncate max-w-[100px]">
-                  {sessions?.find((s: ChatSession) => s.id === selectedSessionId)?.title || "选择对话"}
+                  {sessions?.find((s: ChatSession) => s.id === selectedSessionId)?.title || t('agents.chat.selectConversation')}
                 </span>
                 <ChevronDown className="ml-2 h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[200px]">
-              {sessionsLoading && <div className="p-2 text-xs text-center text-muted-foreground">Loading...</div>}
+              {sessionsLoading && <div className="p-2 text-xs text-center text-muted-foreground">{t('agents.header.loading')}</div>}
               {sessions?.map((item: ChatSession) => (
                 <DropdownMenuItem 
                   key={item.id} 
@@ -435,7 +437,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                 </DropdownMenuItem>
               ))}
               {(!sessions || sessions.length === 0) && (
-                <div className="text-center text-muted-foreground text-xs py-2">无历史记录</div>
+                <div className="text-center text-muted-foreground text-xs py-2">{t('agents.chat.noHistory')}</div>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -445,7 +447,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
             size="icon" 
             onClick={handleCreateSession}
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
-            title="新对话"
+            title={t('agents.chat.newConversation')}
           >
             <Plus className="h-4 w-4" />
           </Button>
@@ -461,7 +463,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                 {messages.length === 0 && (
                   <div className="h-full flex flex-col items-center justify-center text-muted-foreground mt-20">
                     <Bot className="h-12 w-12 mb-4 opacity-20" />
-                    <p>开始一个新的对话</p>
+                    <p>{t('agents.chat.startNew')}</p>
                   </div>
                 )}
                 {messages.map((msg, index) => (
@@ -492,7 +494,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                                     ? <Loader2 className="h-3 w-3 animate-spin" />
                                     : <Zap className="h-3 w-3" />}
                                   <span>
-                                    {sc.status === 'loading' ? `正在加载技能: ${sc.skill_name}` : `已加载技能: ${sc.skill_name}`}
+                                    {sc.status === 'loading' ? t('agents.chat.skill.loading', { name: sc.skill_name }) : t('agents.chat.skill.loaded', { name: sc.skill_name })}
                                   </span>
                                 </div>
                               ))}
@@ -503,7 +505,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                                     ? <Loader2 className="h-3 w-3 animate-spin" />
                                     : <Terminal className="h-3 w-3" />}
                                   <span>
-                                    {tc.status === 'executing' ? `正在执行: ${tc.tool_name}` : `已完成: ${tc.tool_name}`}
+                                    {tc.status === 'executing' ? t('agents.chat.tool.executing', { name: tc.tool_name }) : t('agents.chat.tool.completed', { name: tc.tool_name })}
                                   </span>
                                 </div>
                               ))}
@@ -540,15 +542,15 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                                                     setEditImageUrl(dataUrl);
                                                     textareaRef.current?.focus();
                                                     toast({ 
-                                                      title: "已选择此图进行编辑", 
-                                                      description: "下一条消息将基于这张图片进行修改" 
+                                                      title: t('agents.chat.edit.selectedTitle'),
+                                                      description: t('agents.chat.edit.selectedDesc')
                                                     });
                                                   };
                                                   reader.readAsDataURL(blob);
                                                 } catch (err) {
                                                   toast({ 
                                                     variant: "destructive", 
-                                                    title: "无法加载图片" 
+                                                    title: t('agents.chat.edit.failed')
                                                   });
                                                 }
                                               }}
@@ -556,7 +558,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                                               className="h-7 text-xs shadow-lg"
                                             >
                                               <ImagePlus className="h-3 w-3 mr-1" />
-                                              继续编辑
+                                              {t('agents.chat.edit.continueEdit')}
                                             </Button>
                                           </span>
                                         )}
@@ -619,7 +621,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                  {editImageUrl && (
                    <div className="flex items-center gap-2 mb-2 p-2 bg-primary/10 text-primary text-xs rounded-lg">
                      <ImagePlus className="h-3 w-3" />
-                     <span>编辑模式：下一条消息将基于选中的图片进行修改</span>
+                     <span>{t('agents.chat.edit.mode')}</span>
                      <Button
                        variant="ghost"
                        size="sm"
@@ -663,7 +665,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                    value={inputValue}
                    onChange={(e) => setInputValue(e.target.value)}
                    onKeyDown={handleKeyDown}
-                   placeholder="输入消息..."
+                   placeholder={t('agents.chat.inputPlaceholder')}
                    rows={1}
                     className="min-h-[44px] max-h-[280px] pl-12 pr-12 resize-none rounded-xl bg-muted/30 border-muted focus:bg-background transition-colors overflow-y-auto py-3"
                   />
@@ -677,7 +679,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                      onClick={() => fileInputRef.current?.click()}
                      disabled={isStreaming}
                      className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-                     title="上传图片"
+                     title={t('agents.chat.uploadImage')}
                    >
                      <ImagePlus className="h-4 w-4" />
                    </Button>
@@ -695,7 +697,7 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
                  </div>
                </div>
                <div className="text-center mt-2">
-                 <span className="text-[10px] text-muted-foreground/60">AI 可能会生成不准确的信息，请核对重要事实。</span>
+                 <span className="text-[10px] text-muted-foreground/60">{t('agents.chat.aiNotice')}</span>
                </div>
             </div>
           </>
@@ -703,10 +705,10 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground bg-muted/5">
             <div className="flex flex-col items-center gap-2">
               <Bot className="h-12 w-12 opacity-10" />
-              <p className="text-sm">选择或创建一个对话开始</p>
+              <p className="text-sm">{t('agents.chat.selectOrCreate')}</p>
               <Button variant="outline" size="sm" onClick={handleCreateSession} className="mt-4">
                 <Plus className="mr-2 h-4 w-4" />
-                创建新对话
+                {t('agents.chat.createNewSession')}
               </Button>
             </div>
           </div>

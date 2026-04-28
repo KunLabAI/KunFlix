@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
@@ -10,7 +11,6 @@ import {
   Bot,
   Zap,
   Users,
-  BookOpen,
   CreditCard,
   Shield,
   ChevronLeft,
@@ -23,6 +23,8 @@ import {
   ServerCog,
   Wrench,
   UserCircle,
+  Languages,
+  Check,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -32,14 +34,23 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+
+const LANGUAGES = [
+  { code: 'zh-CN', labelKey: 'layout.language.zhCN' },
+  { code: 'en-US', labelKey: 'layout.language.enUS' },
+] as const;
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
   const { logout, user } = useAuth();
+  const { t, i18n } = useTranslation();
 
   // If login page, don't show layout
   if (pathname === '/admin/login') {
@@ -48,66 +59,18 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 
   const items = [
-    {
-      title: '仪表盘',
-      href: '/admin',
-      icon: LayoutDashboard,
-    },
-    {
-      title: 'AI 供应商',
-      href: '/admin/llm',
-      icon: Bot,
-    },
-    {
-      title: '智能体管理',
-      href: '/admin/agents',
-      icon: Zap,
-    },
-    {
-      title: '技能管理 (Skills)',
-      href: '/admin/skills',
-      icon: Blocks,
-    },
-    {
-      title: 'MCP 客户端',
-      href: '/admin/mcp',
-      icon: ServerCog,
-    },
-    {
-      title: '工具管理',
-      href: '/admin/tools',
-      icon: Wrench,
-    },
-    {
-      title: '视频生成',
-      href: '/admin/videos',
-      icon: Film,
-    },
-    {
-      title: '虚拟人像',
-      href: '/admin/virtual-humans',
-      icon: UserCircle,
-    },
-    {
-      title: '提示词模板',
-      href: '/admin/prompt-templates',
-      icon: FileCode2,
-    },
-    {
-      title: '用户管理',
-      href: '/admin/users',
-      icon: Users,
-    },
-    {
-      title: '订阅套餐',
-      href: '/admin/subscriptions',
-      icon: CreditCard,
-    },
-    {
-      title: '管理员',
-      href: '/admin/admins',
-      icon: Shield,
-    },
+    { title: t('layout.sidebar.dashboard'), href: '/admin', icon: LayoutDashboard },
+    { title: t('layout.sidebar.llm'), href: '/admin/llm', icon: Bot },
+    { title: t('layout.sidebar.agents'), href: '/admin/agents', icon: Zap },
+    { title: t('layout.sidebar.skills'), href: '/admin/skills', icon: Blocks },
+    { title: t('layout.sidebar.mcp'), href: '/admin/mcp', icon: ServerCog },
+    { title: t('layout.sidebar.tools'), href: '/admin/tools', icon: Wrench },
+    { title: t('layout.sidebar.videos'), href: '/admin/videos', icon: Film },
+    { title: t('layout.sidebar.virtualHumans'), href: '/admin/virtual-humans', icon: UserCircle },
+    { title: t('layout.sidebar.promptTemplates'), href: '/admin/prompt-templates', icon: FileCode2 },
+    { title: t('layout.sidebar.users'), href: '/admin/users', icon: Users },
+    { title: t('layout.sidebar.subscriptions'), href: '/admin/subscriptions', icon: CreditCard },
+    { title: t('layout.sidebar.admins'), href: '/admin/admins', icon: Shield },
   ];
 
   // 某些子页面需要全屏/无内边距布局（如：创建/编辑智能体页面有自己的滚动和分栏机制）
@@ -135,7 +98,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-            <span className="sr-only">Toggle Menu</span>
+            <span className="sr-only">{t('layout.sidebar.toggleMenu')}</span>
           </Button>
         </div>
         
@@ -175,7 +138,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                    </Avatar>
                    {!collapsed && (
                      <div className="flex flex-col items-start text-xs flex-1 min-w-0">
-                       <span className="font-medium truncate w-full text-left">{user?.nickname || '管理员'}</span>
+                       <span className="font-medium truncate w-full text-left">{user?.nickname || t('layout.account.admin')}</span>
                        <span className="text-muted-foreground truncate w-full text-left">{user?.email || 'admin@infinitetheater.com'}</span>
                      </div>
                    )}
@@ -184,11 +147,34 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side="right" className="w-56" sideOffset={10}>
-                <DropdownMenuLabel>{user?.nickname || '我的账户'}</DropdownMenuLabel>
+                <DropdownMenuLabel>{user?.nickname || t('layout.account.myAccount')}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Languages className="mr-2 h-4 w-4" />
+                    <span>{t('layout.language.label')}</span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    {LANGUAGES.map((lang) => (
+                      <DropdownMenuItem
+                        key={lang.code}
+                        onClick={() => i18n.changeLanguage(lang.code)}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            i18n.language === lang.code ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span>{t(lang.labelKey)}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
                     <LogOut className="mr-2 h-4 w-4" />
-                    <span>退出登录</span>
+                    <span>{t('layout.account.logout')}</span>
                 </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

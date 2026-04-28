@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -61,47 +62,19 @@ import {
   useDeletePlan,
 } from '@/hooks/useSubscriptions';
 
-// 计费周期映射表（避免 if-else）
-const BILLING_PERIODS: Record<string, { label: string; short: string }> = {
-  monthly: { label: '月付', short: '月' },
-  yearly: { label: '年付', short: '年' },
-  lifetime: { label: '终身', short: '终身' },
-};
-
 // 基准积分成本（1 积分 = $0.01 USD）
 const CREDIT_BASE_COST_USD = 0.01;
 
-// 存储配额选项 (GB)
-const STORAGE_QUOTA_OPTIONS: { label: string; bytes: number }[] = [
-  { label: '1 GB', bytes: 1 * 1024 ** 3 },
-  { label: '2 GB', bytes: 2 * 1024 ** 3 },
-  { label: '5 GB', bytes: 5 * 1024 ** 3 },
-  { label: '10 GB', bytes: 10 * 1024 ** 3 },
-  { label: '20 GB', bytes: 20 * 1024 ** 3 },
-  { label: '50 GB', bytes: 50 * 1024 ** 3 },
-  { label: '100 GB', bytes: 100 * 1024 ** 3 },
-];
+const BILLING_CYCLE_KEYS = ['monthly', 'yearly', 'lifetime'] as const;
+type BillingCycleKey = typeof BILLING_CYCLE_KEYS[number];
 
 function formatStorageQuota(bytes: number): string {
   const gb = bytes / (1024 ** 3);
   return gb >= 1 ? `${gb} GB` : `${(bytes / (1024 ** 2)).toFixed(0)} MB`;
 }
 
-const formSchema = z.object({
-  name: z.string().min(1, '请输入套餐名称'),
-  description: z.string().optional(),
-  price_usd: z.number().positive('价格必须大于 0'),
-  credits: z.number().positive('积分数量必须大于 0'),
-  billing_period: z.enum(['monthly', 'yearly', 'lifetime']),
-  storage_quota_gb: z.number().min(0.1, '存储配额必须大于 0'),
-  features: z.array(z.object({ value: z.string().min(1, '请输入特性描述') })),
-  is_active: z.boolean(),
-  sort_order: z.number().int().min(0),
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
 export default function SubscriptionsPage() {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const { plans, isLoading, mutate } = useSubscriptions();
   const { createPlan } = useCreatePlan();
@@ -111,6 +84,20 @@ export default function SubscriptionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SubscriptionPlan | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const formSchema = useMemo(() => z.object({
+    name: z.string().min(1, t('subscriptions.validation.nameRequired')),
+    description: z.string().optional(),
+    price_usd: z.number().positive(t('subscriptions.validation.pricePositive')),
+    credits: z.number().positive(t('subscriptions.validation.creditsPositive')),
+    billing_period: z.enum(['monthly', 'yearly', 'lifetime']),
+    storage_quota_gb: z.number().min(0.1, t('subscriptions.validation.storagePositive')),
+    features: z.array(z.object({ value: z.string().min(1, t('subscriptions.validation.featureRequired')) })),
+    is_active: z.boolean(),
+    sort_order: z.number().int().min(0),
+  }), [t]);
+
+  type FormValues = z.infer<typeof formSchema>;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -135,10 +122,12 @@ export default function SubscriptionsPage() {
   const watchPrice = form.watch('price_usd');
   const watchCredits = form.watch('credits');
 
-  // 自动计算指标
   const unitPrice = watchCredits > 0 ? watchPrice / watchCredits : 0;
   const baseCost = watchCredits * CREDIT_BASE_COST_USD;
   const profitMargin = baseCost > 0 ? ((watchPrice - baseCost) / baseCost * 100) : 0;
+
+  const getCycleLabel = (key: string) =>
+    BILLING_CYCLE_KEYS.includes(key as BillingCycleKey) ? t(`subscriptions.billingCycle.${key}`) : key;
 
   const handleAdd = () => {
     setEditing(null);
@@ -175,10 +164,10 @@ export default function SubscriptionsPage() {
   const handleDelete = async (plan: SubscriptionPlan) => {
     try {
       await deletePlan(plan.id);
-      toast({ title: '删除成功', description: `套餐 "${plan.name}" 已删除。` });
+      toast({ title: t('subscriptions.toast.deleteSuccess'), description: t('subscriptions.toast.deleteSuccessDesc', { name: plan.name }) });
       mutate();
     } catch {
-      toast({ title: '删除失败', variant: 'destructive' });
+      toast({ title: t('subscriptions.toast.deleteFailed'), variant: 'destructive' });
     }
   };
 
@@ -190,20 +179,19 @@ export default function SubscriptionsPage() {
         features: values.features.map(f => f.value),
         storage_quota_bytes: Math.round(values.storage_quota_gb * 1024 ** 3),
       };
-      // 移除临时字段
       delete (payload as any).storage_quota_gb;
 
       editing
         ? await updatePlan(editing.id, payload)
         : await createPlan(payload);
 
-      toast({ title: editing ? '更新成功' : '创建成功' });
+      toast({ title: editing ? t('subscriptions.toast.updateSuccess') : t('subscriptions.toast.createSuccess') });
       setDialogOpen(false);
       mutate();
     } catch (err: any) {
       toast({
-        title: editing ? '更新失败' : '创建失败',
-        description: err?.response?.data?.detail ?? '请稍后再试',
+        title: editing ? t('subscriptions.toast.updateFailed') : t('subscriptions.toast.createFailed'),
+        description: err?.response?.data?.detail ?? t('subscriptions.toast.retryLater'),
         variant: 'destructive',
       });
     } finally {
@@ -215,11 +203,11 @@ export default function SubscriptionsPage() {
     <div className="max-w-[1200px] mx-auto w-full space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">订阅套餐管理</h2>
-          <p className="text-muted-foreground text-sm mt-1">管理用户订阅套餐和定价策略</p>
+          <h2 className="text-2xl font-bold tracking-tight">{t('subscriptions.title')}</h2>
+          <p className="text-muted-foreground text-sm mt-1">{t('subscriptions.subtitle')}</p>
         </div>
         <Button onClick={handleAdd}>
-          <Plus className="mr-2 h-4 w-4" /> 新建套餐
+          <Plus className="mr-2 h-4 w-4" /> {t('subscriptions.newPlan')}
         </Button>
       </div>
 
@@ -227,27 +215,27 @@ export default function SubscriptionsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-12">排序</TableHead>
-              <TableHead>套餐名称</TableHead>
-              <TableHead>计费周期</TableHead>
-              <TableHead className="text-right">价格 (USD)</TableHead>
-              <TableHead className="text-right">积分</TableHead>
-              <TableHead className="text-right">存储配额</TableHead>
-              <TableHead className="text-right">单价 ($/积分)</TableHead>
-              <TableHead className="text-right">利润率</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="w-24">操作</TableHead>
+              <TableHead className="w-12">{t('subscriptions.table.order')}</TableHead>
+              <TableHead>{t('subscriptions.table.name')}</TableHead>
+              <TableHead>{t('subscriptions.table.billingCycle')}</TableHead>
+              <TableHead className="text-right">{t('subscriptions.table.price')}</TableHead>
+              <TableHead className="text-right">{t('subscriptions.table.credits')}</TableHead>
+              <TableHead className="text-right">{t('subscriptions.table.storage')}</TableHead>
+              <TableHead className="text-right">{t('subscriptions.table.unitPrice')}</TableHead>
+              <TableHead className="text-right">{t('subscriptions.table.margin')}</TableHead>
+              <TableHead>{t('subscriptions.table.status')}</TableHead>
+              <TableHead className="w-24">{t('subscriptions.table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">加载中...</TableCell>
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t('subscriptions.table.loading')}</TableCell>
               </TableRow>
             )}
             {!isLoading && (!plans || plans.length === 0) && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">暂无套餐数据</TableCell>
+                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t('subscriptions.table.empty')}</TableCell>
               </TableRow>
             )}
             {plans?.map((plan) => {
@@ -267,7 +255,7 @@ export default function SubscriptionsPage() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{BILLING_PERIODS[plan.billing_period]?.label ?? plan.billing_period}</Badge>
+                    <Badge variant="outline">{getCycleLabel(plan.billing_period)}</Badge>
                   </TableCell>
                   <TableCell className="text-right font-mono">${plan.price_usd.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-mono">{plan.credits.toLocaleString()}</TableCell>
@@ -284,7 +272,7 @@ export default function SubscriptionsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={plan.is_active ? 'default' : 'secondary'}>
-                      {plan.is_active ? '启用' : '停用'}
+                      {plan.is_active ? t('subscriptions.status.active') : t('subscriptions.status.inactive')}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -300,14 +288,14 @@ export default function SubscriptionsPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除</AlertDialogTitle>
+                            <AlertDialogTitle>{t('subscriptions.delete.title')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要删除套餐 &quot;{plan.name}&quot; 吗？此操作不可撤销。
+                              {t('subscriptions.delete.description', { name: plan.name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDelete(plan)}>确认删除</AlertDialogAction>
+                            <AlertDialogCancel>{t('subscriptions.delete.cancel')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleDelete(plan)}>{t('subscriptions.delete.confirm')}</AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -324,9 +312,9 @@ export default function SubscriptionsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? '编辑套餐' : '新建套餐'}</DialogTitle>
+            <DialogTitle>{editing ? t('subscriptions.dialog.editTitle') : t('subscriptions.dialog.createTitle')}</DialogTitle>
             <DialogDescription>
-              {editing ? '修改订阅套餐信息' : '创建新的订阅套餐'}
+              {editing ? t('subscriptions.dialog.editDescription') : t('subscriptions.dialog.createDescription')}
             </DialogDescription>
           </DialogHeader>
 
@@ -337,9 +325,9 @@ export default function SubscriptionsPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>套餐名称</FormLabel>
+                    <FormLabel>{t('subscriptions.form.name')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="例如：基础版" {...field} />
+                      <Input placeholder={t('subscriptions.form.namePlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -351,9 +339,9 @@ export default function SubscriptionsPage() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>描述</FormLabel>
+                    <FormLabel>{t('subscriptions.form.description')}</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="套餐描述（可选）" rows={2} {...field} />
+                      <Textarea placeholder={t('subscriptions.form.descriptionPlaceholder')} rows={2} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -366,7 +354,7 @@ export default function SubscriptionsPage() {
                   name="price_usd"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>价格 (USD)</FormLabel>
+                      <FormLabel>{t('subscriptions.form.price')}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -386,7 +374,7 @@ export default function SubscriptionsPage() {
                   name="credits"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>积分数量</FormLabel>
+                      <FormLabel>{t('subscriptions.form.credits')}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -405,15 +393,15 @@ export default function SubscriptionsPage() {
               {/* 自动计算指标 */}
               <div className="rounded-lg border p-3 bg-muted/50 space-y-1.5">
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">单价</span>
-                  <span className="font-mono">${unitPrice.toFixed(4)} / 积分</span>
+                  <span className="text-muted-foreground">{t('subscriptions.metrics.unitPrice')}</span>
+                  <span className="font-mono">{t('subscriptions.metrics.unitPriceValue', { value: unitPrice.toFixed(4) })}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">基准成本 (1积分=$0.01)</span>
-                  <span className="font-mono">${baseCost.toFixed(2)}</span>
+                  <span className="text-muted-foreground">{t('subscriptions.metrics.baseCost')}</span>
+                  <span className="font-mono">{t('subscriptions.metrics.baseCostValue', { value: baseCost.toFixed(2) })}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">利润率</span>
+                  <span className="text-muted-foreground">{t('subscriptions.metrics.margin')}</span>
                   <span className={
                     profitMargin > 0 ? 'text-green-600 dark:text-green-400 font-medium font-mono' :
                     profitMargin < 0 ? 'text-red-600 dark:text-red-400 font-medium font-mono' :
@@ -430,15 +418,15 @@ export default function SubscriptionsPage() {
                   name="billing_period"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>计费周期</FormLabel>
+                      <FormLabel>{t('subscriptions.form.billingCycle')}</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.entries(BILLING_PERIODS).map(([key, val]) => (
-                              <SelectItem key={key} value={key}>{val.label}</SelectItem>
+                            {BILLING_CYCLE_KEYS.map((key) => (
+                              <SelectItem key={key} value={key}>{t(`subscriptions.billingCycle.${key}`)}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -453,7 +441,7 @@ export default function SubscriptionsPage() {
                   name="sort_order"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>排序</FormLabel>
+                      <FormLabel>{t('subscriptions.form.sortOrder')}</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -474,7 +462,7 @@ export default function SubscriptionsPage() {
                 name="storage_quota_gb"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>存储配额 (GB)</FormLabel>
+                    <FormLabel>{t('subscriptions.form.storageQuota')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -492,7 +480,7 @@ export default function SubscriptionsPage() {
               {/* 特性列表 */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <FormLabel>套餐特性</FormLabel>
+                  <FormLabel>{t('subscriptions.form.features')}</FormLabel>
                   <Button
                     type="button"
                     variant="outline"
@@ -500,7 +488,7 @@ export default function SubscriptionsPage() {
                     className="text-xs h-7"
                     onClick={() => append({ value: '' })}
                   >
-                    <Plus className="mr-1 h-3 w-3" /> 添加
+                    <Plus className="mr-1 h-3 w-3" /> {t('subscriptions.form.featureAdd')}
                   </Button>
                 </div>
                 <div className="space-y-2">
@@ -513,7 +501,7 @@ export default function SubscriptionsPage() {
                         <FormItem>
                           <div className="flex items-center gap-2">
                             <FormControl>
-                              <Input placeholder="例如：每月 1000 积分" {...inputField} />
+                              <Input placeholder={t('subscriptions.form.featurePlaceholder')} {...inputField} />
                             </FormControl>
                             <Button
                               type="button"
@@ -531,7 +519,7 @@ export default function SubscriptionsPage() {
                     />
                   ))}
                   {fields.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-2">暂无特性，点击"添加"按钮</p>
+                    <p className="text-xs text-muted-foreground text-center py-2">{t('subscriptions.form.featuresEmpty')}</p>
                   )}
                 </div>
               </div>
@@ -542,7 +530,7 @@ export default function SubscriptionsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                      <FormLabel>启用</FormLabel>
+                      <FormLabel>{t('subscriptions.form.isActive')}</FormLabel>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
@@ -553,9 +541,9 @@ export default function SubscriptionsPage() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{t('subscriptions.form.cancel')}</Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? '提交中...' : (editing ? '保存' : '创建')}
+                  {submitting ? t('subscriptions.form.submitting') : (editing ? t('subscriptions.form.save') : t('subscriptions.form.create'))}
                 </Button>
               </DialogFooter>
             </form>

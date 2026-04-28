@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FormControl,
   FormField,
@@ -13,10 +14,10 @@ import { useToolConfig } from '@/hooks/useToolRegistry';
 
 // 画布节点类型选项
 const NODE_TYPE_OPTIONS = [
-  { value: 'script', label: '文本节点', description: '富文本内容', icon: FileText },
-  { value: 'character', label: '图像节点', description: '图片生成与管理', icon: Image },
-  { value: 'video', label: '视频节点', description: '视频生成与管理', icon: Video },
-  { value: 'storyboard', label: '多维表格', description: '数据表格与分析', icon: Table2 },
+  { value: 'script', labelKey: 'agents.form.tools.capabilities.nodeTypes.script', descKey: 'agents.form.tools.capabilities.nodeTypes.scriptDesc', icon: FileText },
+  { value: 'character', labelKey: 'agents.form.tools.capabilities.nodeTypes.character', descKey: 'agents.form.tools.capabilities.nodeTypes.characterDesc', icon: Image },
+  { value: 'video', labelKey: 'agents.form.tools.capabilities.nodeTypes.video', descKey: 'agents.form.tools.capabilities.nodeTypes.videoDesc', icon: Video },
+  { value: 'storyboard', labelKey: 'agents.form.tools.capabilities.nodeTypes.storyboard', descKey: 'agents.form.tools.capabilities.nodeTypes.storyboardDesc', icon: Table2 },
 ] as const;
 
 const ALL_NODE_TYPES = NODE_TYPE_OPTIONS.map(o => o.value);
@@ -27,6 +28,7 @@ interface ToolCapabilitiesProps {
 
 const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
   const { control, watch, setValue } = useFormContext();
+  const { t } = useTranslation();
 
   // 获取全局图像工具配置
   const { config: imageToolConfig } = useToolConfig('generate_image');
@@ -48,14 +50,14 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
 
   return (
     <div className="mt-4 pt-4 border-t space-y-3">
-      <h4 className="text-sm font-medium">工具开关</h4>
+      <h4 className="text-sm font-medium">{t('agents.form.tools.capabilities.title')}</h4>
 
       {/* ── 图像工具（generate_image + edit_image）── */}
       <div className="rounded-lg border p-3">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Paintbrush className="h-4 w-4 text-emerald-500" />
-            <span className="text-sm font-medium">图像工具</span>
+            <span className="text-sm font-medium">{t('agents.form.tools.capabilities.image.title')}</span>
           </div>
           <FormField
             control={control}
@@ -74,17 +76,17 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
           />
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          图像生成 (generate_image) 和图像编辑 (edit_image) 工具。
+          {t('agents.form.tools.capabilities.image.desc')}
         </p>
-        
+
         {/* 全局配置状态提示 */}
         {!globalImageEnabled && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
             <AlertCircle className="h-3 w-3" />
-            <span>全局配置未启用，请在「工具管理」中先启用图像生成</span>
+            <span>{t('agents.form.tools.capabilities.image.globalDisabled')}</span>
           </div>
         )}
-        
+
         {globalImageEnabled && agentImageEnabled && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {imageToolConfig?.config?.image_model && (
@@ -93,7 +95,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">
-              参数配置请在「工具管理」中设置
+              {t('agents.form.tools.capabilities.image.params')}
             </span>
           </div>
         )}
@@ -104,7 +106,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <Film className="h-4 w-4 text-violet-500" />
-            <span className="text-sm font-medium">视频工具</span>
+            <span className="text-sm font-medium">{t('agents.form.tools.capabilities.video.title')}</span>
           </div>
           <FormField
             control={control}
@@ -123,17 +125,17 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
           />
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          视频生成 (generate_video) 和视频编辑 (edit_video) 工具。
+          {t('agents.form.tools.capabilities.video.desc')}
         </p>
-        
+
         {/* 全局配置状态提示 */}
         {!globalVideoEnabled && (
           <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-500">
             <AlertCircle className="h-3 w-3" />
-            <span>全局配置未启用，请在「工具管理」中先启用视频生成</span>
+            <span>{t('agents.form.tools.capabilities.video.globalDisabled')}</span>
           </div>
         )}
-        
+
         {globalVideoEnabled && agentVideoEnabled && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {videoToolConfig?.config?.video_model && (
@@ -142,7 +144,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
               </Badge>
             )}
             <span className="text-xs text-muted-foreground">
-              参数配置请在「工具管理」中设置
+              {t('agents.form.tools.capabilities.video.params')}
             </span>
           </div>
         )}
@@ -153,7 +155,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">
             <LayoutGrid className="h-4 w-4 text-blue-500" />
-            <span className="text-sm font-medium">画布工具</span>
+            <span className="text-sm font-medium">{t('agents.form.tools.capabilities.canvas.title')}</span>
           </div>
           <Switch
             checked={canvasEnabled}
@@ -164,7 +166,7 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
           />
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          开启后，智能体可以控制画布节点内容。
+          {t('agents.form.tools.capabilities.canvas.desc')}
         </p>
 
         {canvasEnabled && (
@@ -195,9 +197,9 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
                           <Icon className={`h-3.5 w-3.5 ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`} />
                           <div>
                             <span className={`text-xs font-medium block ${isSelected ? 'text-foreground' : 'text-muted-foreground'}`}>
-                              {option.label}
+                              {t(option.labelKey)}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">{option.description}</span>
+                            <span className="text-[10px] text-muted-foreground">{t(option.descKey)}</span>
                           </div>
                         </div>
                       );

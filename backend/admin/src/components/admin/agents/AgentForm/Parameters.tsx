@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FormControl,
   FormField,
@@ -22,17 +23,17 @@ import {
 import { LLMProvider } from '@/types';
 import { getModelDisplayName } from '@/lib/api-utils';
 
-// 积分定价维度映射表（避免 if-else）
+// 积分定价维度映射表（避免 if-else），label/unit 改为 i18n key
 const COST_DIMENSIONS = [
-  { key: 'input', label: '输入价格', unit: '积分/1M tokens', costUnit: '/1M tokens', formField: 'input_credit_per_1m', step: 0.01, group: 'base' },
-  { key: 'text_output', label: '输出价格', unit: '积分/1M tokens', costUnit: '/1M tokens', formField: 'output_credit_per_1m', step: 0.01, group: 'base' },
-  { key: 'image_output', label: '图片输出价格', unit: '积分/1M tokens', costUnit: '/1M tokens', formField: 'image_output_credit_per_1m', step: 0.01, group: 'gemini' },
-  { key: 'search', label: '搜索查询价格', unit: '积分/次', costUnit: '/次', formField: 'search_credit_per_query', step: 0.1, group: 'gemini_search' },
-  { key: 'image_generation', label: '图片生成价格', unit: '积分/张', costUnit: '/张', formField: 'image_credit_per_image', step: 0.1, group: 'image_gen' },
-  { key: 'video_input_image', label: '视频-输入图片', unit: '积分/张', costUnit: '/张', formField: 'video_input_image_credit', step: 0.001, group: 'video' },
-  { key: 'video_input_second', label: '视频-输入时长', unit: '积分/秒', costUnit: '/秒', formField: 'video_input_second_credit', step: 0.001, group: 'video' },
-  { key: 'video_output_480p', label: '视频输出(480p)', unit: '积分/秒', costUnit: '/秒', formField: 'video_output_480p_credit', step: 0.001, group: 'video' },
-  { key: 'video_output_720p', label: '视频输出(720p)', unit: '积分/秒', costUnit: '/秒', formField: 'video_output_720p_credit', step: 0.001, group: 'video' },
+  { key: 'input', labelKey: 'agents.form.parameters.costDimensions.input', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'input_credit_per_1m', step: 0.01, group: 'base' },
+  { key: 'text_output', labelKey: 'agents.form.parameters.costDimensions.text_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'output_credit_per_1m', step: 0.01, group: 'base' },
+  { key: 'image_output', labelKey: 'agents.form.parameters.costDimensions.image_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'image_output_credit_per_1m', step: 0.01, group: 'gemini' },
+  { key: 'search', labelKey: 'agents.form.parameters.costDimensions.search', unitKey: 'agents.form.parameters.units.per_query', costUnitKey: 'agents.form.parameters.costUnits.per_query', formField: 'search_credit_per_query', step: 0.1, group: 'gemini_search' },
+  { key: 'image_generation', labelKey: 'agents.form.parameters.costDimensions.image_generation', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image', formField: 'image_credit_per_image', step: 0.1, group: 'image_gen' },
+  { key: 'video_input_image', labelKey: 'agents.form.parameters.costDimensions.video_input_image', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image', formField: 'video_input_image_credit', step: 0.001, group: 'video' },
+  { key: 'video_input_second', labelKey: 'agents.form.parameters.costDimensions.video_input_second', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_input_second_credit', step: 0.001, group: 'video' },
+  { key: 'video_output_480p', labelKey: 'agents.form.parameters.costDimensions.video_output_480p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_output_480p_credit', step: 0.001, group: 'video' },
+  { key: 'video_output_720p', labelKey: 'agents.form.parameters.costDimensions.video_output_720p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_output_720p_credit', step: 0.001, group: 'video' },
 ] as const;
 
 // 维度组可见性规则映射（避免 if-else 分支）
@@ -51,6 +52,7 @@ interface ParametersProps {
 
 const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const { control, watch, setValue } = useFormContext();
+  const { t } = useTranslation();
   const temperature = watch('temperature');
   const contextWindow = watch('context_window');
   const providerId = watch('provider_id');
@@ -102,7 +104,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
     <div className="space-y-6">
       <div className="rounded-xl border bg-card p-5">
          <div className="flex justify-between items-center mb-4">
-           <Label className="text-sm font-medium">思考模式</Label>
+           <Label className="text-sm font-medium">{t('agents.form.parameters.thinkingMode')}</Label>
            <FormField
               control={control}
               name="thinking_mode"
@@ -115,22 +117,22 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                         onCheckedChange={field.onChange}
                         disabled={disabled}
                       />
-                      <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
+                      <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.on') : t('agents.form.parameters.off')}</span>
                     </div>
                   </FormControl>
                 </FormItem>
               )}
             />
          </div>
-         <p className="text-xs text-muted-foreground">开启后，模型会在回答前进行思考过程（Chain of Thought）。</p>
+         <p className="text-xs text-muted-foreground">{t('agents.form.parameters.thinkingModeDesc')}</p>
       </div>
 
       <div className="rounded-xl border bg-card p-5">
          <div className="mb-4">
            <div className="flex justify-between items-center mb-2">
-             <Label className="text-sm font-medium">上下文窗口</Label>
+             <Label className="text-sm font-medium">{t('agents.form.parameters.contextWindow')}</Label>
              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
-               {formatContextWindow(contextWindow || 4096)} ({contextWindow || 4096} tokens)
+               {t('agents.form.parameters.contextWindowValue', { display: formatContextWindow(contextWindow || 4096), tokens: contextWindow || 4096 })}
              </span>
            </div>
            <FormField
@@ -169,8 +171,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               )}
             />
            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-             <span>4K</span>
-             <span>1M</span>
+             <span>{t('agents.form.parameters.contextWindowMin')}</span>
+             <span>{t('agents.form.parameters.contextWindowMax')}</span>
            </div>
          </div>
       </div>
@@ -179,8 +181,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
       <div className="rounded-xl border bg-card p-5">
         <div className="flex justify-between items-center mb-2">
           <div>
-            <Label className="text-sm font-medium">上下文压缩</Label>
-            <p className="text-xs text-muted-foreground mt-1">对话过长时自动摘要压缩旧消息</p>
+            <Label className="text-sm font-medium">{t('agents.form.parameters.compaction.title')}</Label>
+            <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.compaction.desc')}</p>
           </div>
           <FormField
             control={control}
@@ -194,7 +196,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                       onCheckedChange={field.onChange}
                       disabled={disabled}
                     />
-                    <span className="text-xs text-muted-foreground">{field.value ? '开启' : '关闭'}</span>
+                    <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.compaction.on') : t('agents.form.parameters.compaction.off')}</span>
                   </div>
                 </FormControl>
               </FormItem>
@@ -206,7 +208,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
           <div className="space-y-4 pt-3 border-t mt-3">
             {/* 压缩供应商 */}
             <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">摘要生成供应商</Label>
+              <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.compactionProvider')}</Label>
               <FormField
                 control={control}
                 name="compaction_config.provider_id"
@@ -222,10 +224,10 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                         disabled={disabled}
                       >
                         <SelectTrigger className="bg-background">
-                          <SelectValue placeholder="选择供应商" />
+                          <SelectValue placeholder={t('agents.form.parameters.compaction.selectProvider')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="_fallback">使用当前智能体的供应商（默认）</SelectItem>
+                          <SelectItem value="_fallback">{t('agents.form.parameters.compaction.useDefault')}</SelectItem>
                           {providers?.filter(p => p.is_active).map(p => (
                             <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
                           ))}
@@ -240,7 +242,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             {/* 压缩模型 */}
             {compactionProviderId && (
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">摘要生成模型</Label>
+                <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.compactionModel')}</Label>
                 <FormField
                   control={control}
                   name="compaction_config.model"
@@ -249,7 +251,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                       <FormControl>
                         <Select value={field.value || ''} onValueChange={field.onChange} disabled={disabled}>
                           <SelectTrigger className="bg-background">
-                            <SelectValue placeholder="选择模型" />
+                            <SelectValue placeholder={t('agents.form.parameters.compaction.selectModel')} />
                           </SelectTrigger>
                           <SelectContent>
                             {compactionModelList.map((m) => (
@@ -272,7 +274,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs text-muted-foreground">
-                      压缩触发阈值 ({Math.round((field.value ?? 0.75) * 100)}%)
+                      {t('agents.form.parameters.compaction.compactRatio', { percent: Math.round((field.value ?? 0.75) * 100) })}
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -293,7 +295,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs text-muted-foreground">
-                      保留比例 ({Math.round((field.value ?? 0.15) * 100)}%)
+                      {t('agents.form.parameters.compaction.reserveRatio', { percent: Math.round((field.value ?? 0.15) * 100) })}
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -316,7 +318,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 name="compaction_config.tool_old_threshold"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">旧工具截断字符数</FormLabel>
+                    <FormLabel className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.toolOldThreshold')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -335,7 +337,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 name="compaction_config.tool_recent_n"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs text-muted-foreground">最近完整保留条数</FormLabel>
+                    <FormLabel className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.toolRecentN')}</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -356,7 +358,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               name="compaction_config.max_summary_tokens"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-xs text-muted-foreground">最大摘要 Token 数</FormLabel>
+                  <FormLabel className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.maxSummaryTokens')}</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -367,7 +369,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                       disabled={disabled}
                     />
                   </FormControl>
-                  <p className="text-[11px] text-muted-foreground">LLM 生成摘要时的 max_tokens 限制</p>
+                  <p className="text-[11px] text-muted-foreground">{t('agents.form.parameters.compaction.maxSummaryTokensDesc')}</p>
                 </FormItem>
               )}
             />
@@ -380,11 +382,11 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
         <div className="mb-4">
           <div className="flex justify-between items-center mb-2">
             <div>
-              <Label className="text-sm font-medium">工具调用轮次限制</Label>
-              <p className="text-xs text-muted-foreground mt-1">单轮对话中最大工具调用次数</p>
+              <Label className="text-sm font-medium">{t('agents.form.parameters.maxToolRounds.title')}</Label>
+              <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.maxToolRounds.desc')}</p>
             </div>
             <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
-              {watch('max_tool_rounds') ?? 100} 次
+              {watch('max_tool_rounds') ?? 100} {t('agents.form.parameters.maxToolRounds.times')}
             </span>
           </div>
           <FormField
@@ -424,15 +426,15 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             )}
           />
           <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>10次</span>
-            <span>200次</span>
+            <span>{t('agents.form.parameters.maxToolRounds.min')}</span>
+            <span>{t('agents.form.parameters.maxToolRounds.max')}</span>
           </div>
         </div>
       </div>
 
       <div className="rounded-xl border bg-card p-5">
         <div className="flex justify-between items-center mb-4">
-          <Label className="text-sm font-medium">温度 (Temperature)</Label>
+          <Label className="text-sm font-medium">{t('agents.form.parameters.temperature')}</Label>
           <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
              {temperature}
           </span>
@@ -471,18 +473,18 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
           )}
         />
         <div className="flex justify-between text-xs text-muted-foreground mt-2">
-          <span>0 (精确)</span>
-          <span>1 (创造性)</span>
+          <span>{t('agents.form.parameters.temperatureLow')}</span>
+          <span>{t('agents.form.parameters.temperatureHigh')}</span>
         </div>
       </div>
 
       <div className="rounded-xl border bg-card p-5">
-        <Label className="text-sm font-medium mb-2 block">积分定价</Label>
+        <Label className="text-sm font-medium mb-2 block">{t('agents.form.parameters.pricing.title')}</Label>
 
         {/* 成本倍率 - 仅在有 API 成本数据时显示 */}
         {hasAnyCost && (
           <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-            <Label className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">成本倍率</Label>
+            <Label className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">{t('agents.form.parameters.pricing.markupMultiplier')}</Label>
             <Input
               type="number"
               value={markupMultiplier}
@@ -506,7 +508,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 });
               }}
             >
-              应用全部建议
+              {t('agents.form.parameters.pricing.applyAll')}
             </Button>
           </div>
         )}
@@ -524,7 +526,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 render={({ field }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                      <FormLabel className="text-xs text-muted-foreground">{dim.label} ({dim.unit})</FormLabel>
+                      <FormLabel className="text-xs text-muted-foreground">{t(dim.labelKey)} ({t(dim.unitKey)})</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -540,7 +542,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                     {apiCost != null && (
                       <div className="flex items-center justify-between mt-1 px-1">
                         <span className="text-xs text-blue-600 dark:text-blue-400">
-                          API 成本: ${apiCost}{dim.costUnit}
+                          {t('agents.form.parameters.pricing.apiCost', { cost: apiCost, unit: t(dim.costUnitKey) })}
                         </span>
                         <button
                           type="button"
@@ -548,7 +550,7 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                           onClick={() => setValue(dim.formField, suggestedCredit!)}
                           disabled={disabled}
                         >
-                          建议: {suggestedCredit} 积分
+                          {t('agents.form.parameters.pricing.suggestion', { value: suggestedCredit })}
                         </button>
                       </div>
                     )}
@@ -560,12 +562,12 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
           })}
         </div>
 
-        <p className="text-xs text-muted-foreground mt-3">设置为 0 表示免费，不消耗用户积分。</p>
+        <p className="text-xs text-muted-foreground mt-3">{t('agents.form.parameters.pricing.freeDesc')}</p>
 
         {/* 利润概览 */}
         {hasAnyCost && (
           <div className="mt-4 pt-4 border-t">
-            <Label className="text-xs font-medium mb-2 block text-muted-foreground">利润概览</Label>
+            <Label className="text-xs font-medium mb-2 block text-muted-foreground">{t('agents.form.parameters.pricing.profitOverview')}</Label>
             <div className="space-y-1.5">
               {visibleDimensions.map(dim => {
                 const apiCost = modelCosts[dim.key] as number | undefined;
@@ -574,16 +576,16 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                 const margin = apiCost && apiCost > 0 ? ((revenueUsd - apiCost) / apiCost * 100) : null;
                 return apiCost != null ? (
                   <div key={dim.key} className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">{dim.label}</span>
+                    <span className="text-muted-foreground">{t(dim.labelKey)}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground font-mono">${apiCost} → {creditRate}积分 → ${revenueUsd.toFixed(2)}</span>
+                      <span className="text-muted-foreground font-mono">${apiCost} → {creditRate}{t('agents.form.parameters.pricing.credits')} → ${revenueUsd.toFixed(2)}</span>
                       <span className={
                         margin == null ? 'text-muted-foreground' :
                         margin > 0 ? 'text-green-600 dark:text-green-400 font-medium' :
                         margin < 0 ? 'text-red-600 dark:text-red-400 font-medium' :
                         'text-yellow-600 dark:text-yellow-400'
                       }>
-                        {margin != null ? `${margin > 0 ? '+' : ''}${margin.toFixed(1)}%` : 'N/A'}
+                        {margin != null ? `${margin > 0 ? '+' : ''}${margin.toFixed(1)}%` : t('agents.form.parameters.pricing.naLabel')}
                       </span>
                     </div>
                   </div>

@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { useTranslation } from 'react-i18next';
 import api from '@/lib/axios';
 import { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
@@ -31,7 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from '@/components/ui/use-toast';
 import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PRESET_COST_DIMENSIONS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, formSchema, LLMProvider } from '../schema';
+import { PRESET_COST_DIMENSIONS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, createFormSchema, FormValues, LLMProvider } from '../schema';
 
 interface ProviderFormProps {
   initialData?: LLMProvider;
@@ -40,14 +41,17 @@ interface ProviderFormProps {
 export function ProviderForm({ initialData }: ProviderFormProps) {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>(initialData?.model_costs || {});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const formSchema = useMemo(() => createFormSchema(t), [t]);
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema) as any,
     defaultValues: {
       name: initialData?.name || "",
       provider_type: initialData?.provider_type || "",
@@ -71,19 +75,19 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
     try {
       const values = await form.trigger();
       if (!values) return;
-      
+
       const data = form.getValues();
       if (!data.models || data.models.length === 0 || !data.models[0].value) {
         toast({
           variant: "destructive",
-          title: "请至少添加一个模型进行测试",
+          title: t('llm.form.toast.selectModelForTest'),
         });
         return;
       }
-      
+
       setIsTesting(true);
       const testModel = data.models[0].value;
-      
+
       const payload = {
         provider_type: data.provider_type,
         api_key: data.api_key,
@@ -93,24 +97,24 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       };
 
       const res = await api.post('/admin/llm-providers/test-connection', payload);
-      
+
       if (res.data.success) {
         toast({
-          title: "连接成功",
-          description: `回复：${res.data.response}`,
+          title: t('llm.form.toast.testSuccess'),
+          description: t('llm.form.toast.testSuccessDesc', { response: res.data.response }),
         });
       } else {
         toast({
           variant: "destructive",
-          title: "连接失败",
+          title: t('llm.form.toast.testFailed'),
           description: res.data.message,
         });
       }
     } catch (err: any) {
       toast({
         variant: "destructive",
-        title: "测试失败",
-        description: err.message || '未知错误',
+        title: t('llm.form.toast.testError'),
+        description: err.message || t('llm.form.toast.unknownError'),
       });
     } finally {
       setIsTesting(false);
@@ -152,17 +156,17 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
 
       if (initialData) {
         await api.put(`/admin/llm-providers/${initialData.id}`, submitValues);
-        toast({ title: "供应商更新成功" });
+        toast({ title: t('llm.form.toast.updateSuccess') });
       } else {
         await api.post('/admin/llm-providers', submitValues);
-        toast({ title: "供应商创建成功" });
+        toast({ title: t('llm.form.toast.createSuccess') });
       }
       mutate('/admin/llm-providers/');
       router.push('/admin/llm');
-    } catch (err) {
+    } catch {
       toast({
         variant: "destructive",
-        title: "操作失败",
+        title: t('llm.form.toast.submitFailed'),
       });
     } finally {
       setIsSaving(false);
@@ -170,7 +174,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   };
 
   const handleSave = () => {
-    form.handleSubmit(onSubmit)();
+    form.handleSubmit(onSubmit as any)();
   };
 
   return (
@@ -178,35 +182,35 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">{initialData ? "编辑供应商" : "创建供应商"}</h2>
-          <p className="text-muted-foreground mt-1">配置 LLM 供应商的基础信息、模型参数及连接认证。</p>
+          <h2 className="text-3xl font-bold tracking-tight">{initialData ? t('llm.form.editTitle') : t('llm.form.createTitle')}</h2>
+          <p className="text-muted-foreground mt-1">{t('llm.form.subtitle')}</p>
         </div>
         <div className="flex gap-3 items-center">
-          {initialData && <span className="text-xs text-muted-foreground mr-2">ID: {initialData.id}</span>}
+          {initialData && <span className="text-xs text-muted-foreground mr-2">{t('llm.form.idLabel', { id: initialData.id })}</span>}
           <Button type="button" variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Plug className="mr-2 h-4 w-4" />}
-            测试连接
+            {t('llm.form.testConnection')}
           </Button>
           <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> 返回
+            <ArrowLeft className="mr-2 h-4 w-4" /> {t('llm.form.back')}
           </Button>
           <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? '保存中...' : <><Save className="mr-2 h-4 w-4" /> 保存</>}
+            {isSaving ? t('llm.form.saving') : <><Save className="mr-2 h-4 w-4" /> {t('llm.form.save')}</>}
           </Button>
         </div>
       </div>
 
       {/* Content: Left-Right layout */}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)}>
+        <form onSubmit={form.handleSubmit(onSubmit as any)}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* ==================== Left Column ==================== */}
             <div className="space-y-6">
               {/* 基本信息 */}
               <Card>
                 <CardHeader>
-                  <CardTitle>基本信息</CardTitle>
-                  <CardDescription>配置供应商的名称、品牌和标签。</CardDescription>
+                  <CardTitle>{t('llm.form.basic.title')}</CardTitle>
+                  <CardDescription>{t('llm.form.basic.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -215,9 +219,9 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                       name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>名称</FormLabel>
+                          <FormLabel>{t('llm.form.basic.name')}</FormLabel>
                           <FormControl>
-                            <Input placeholder="输入名称 (如 OpenAI)" {...field} />
+                            <Input placeholder={t('llm.form.basic.namePlaceholder')} {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -228,11 +232,11 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                       name="provider_type"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>品牌</FormLabel>
+                          <FormLabel>{t('llm.form.basic.brand')}</FormLabel>
                           <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="选择品牌" />
+                                <SelectValue placeholder={t('llm.form.basic.brandPlaceholder')} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
@@ -259,7 +263,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                     name="tags"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>标签</FormLabel>
+                        <FormLabel>{t('llm.form.basic.tags')}</FormLabel>
                         <FormControl>
                           <div className="flex flex-wrap items-center gap-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 min-h-[2.5rem]">
                             {field.value?.map((tag, index) => (
@@ -277,7 +281,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                             ))}
                             <input
                               className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[120px]"
-                              placeholder={field.value?.length ? "" : "输入标签后按回车添加"}
+                              placeholder={field.value?.length ? "" : t('llm.form.basic.tagsPlaceholder')}
                               value={tagInput}
                               onChange={(e) => setTagInput(e.target.value)}
                               onKeyDown={(e) => {
@@ -300,7 +304,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                             />
                           </div>
                         </FormControl>
-                        <FormDescription>用于分类和筛选，支持多个标签。</FormDescription>
+                        <FormDescription>{t('llm.form.basic.tagsDescription')}</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -311,8 +315,8 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
               {/* 连接与认证 */}
               <Card>
                 <CardHeader>
-                  <CardTitle>连接与认证</CardTitle>
-                  <CardDescription>配置 API 密钥和高级选项。</CardDescription>
+                  <CardTitle>{t('llm.form.connection.title')}</CardTitle>
+                  <CardDescription>{t('llm.form.connection.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <FormField
@@ -320,11 +324,11 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                     name="base_url"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>基础 URL (选填)</FormLabel>
+                        <FormLabel>{t('llm.form.connection.baseUrl')}</FormLabel>
                         <FormControl>
-                          <Input placeholder="例如 https://api.openai.com/v1" {...field} />
+                          <Input placeholder={t('llm.form.connection.baseUrlPlaceholder')} {...field} />
                         </FormControl>
-                        <FormDescription>如果使用代理或自定义端点，请填写此项。</FormDescription>
+                        <FormDescription>{t('llm.form.connection.baseUrlDescription')}</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -335,9 +339,9 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                     name="api_key"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>API 密钥</FormLabel>
+                        <FormLabel>{t('llm.form.connection.apiKey')}</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="sk-..." {...field} />
+                          <Input type="password" placeholder={t('llm.form.connection.apiKeyPlaceholder')} {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -349,11 +353,11 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                     name="config_json"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>高级配置 (JSON)</FormLabel>
+                        <FormLabel>{t('llm.form.connection.advancedConfig')}</FormLabel>
                         <FormControl>
                           <Textarea
                             rows={5}
-                            placeholder='{"timeout": 30, "max_retries": 3}'
+                            placeholder={t('llm.form.connection.advancedConfigPlaceholder')}
                             className="font-mono text-sm"
                             {...field}
                           />
@@ -370,8 +374,8 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>模型配置</CardTitle>
-                  <CardDescription>添加支持的模型及其成本信息。</CardDescription>
+                  <CardTitle>{t('llm.form.models.title')}</CardTitle>
+                  <CardDescription>{t('llm.form.models.description')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
@@ -383,7 +387,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                           render={({ field }) => (
                             <FormItem className="flex-1">
                               <FormControl>
-                                <Input placeholder="模型名称 (例如 gpt-4)" {...field} />
+                                <Input placeholder={t('llm.form.models.modelNamePlaceholder')} {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -395,7 +399,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                           render={({ field }) => (
                             <FormItem className="w-[140px]">
                               <FormControl>
-                                <Input placeholder="别称（选填）" {...field} />
+                                <Input placeholder={t('llm.form.models.aliasPlaceholder')} {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -409,12 +413,12 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                               <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                                 <FormControl>
                                   <SelectTrigger>
-                                    <SelectValue placeholder="类型" />
+                                    <SelectValue placeholder={t('llm.form.models.typePlaceholder')} />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
                                   {MODEL_TYPE_OPTIONS.map((opt) => (
-                                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                    <SelectItem key={opt.value} value={opt.value}>{t(opt.labelKey)}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -434,7 +438,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                         </Button>
                       </div>
                     ))}
-                    
+
                     <Button
                       type="button"
                       variant="outline"
@@ -442,7 +446,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                       onClick={() => append({ value: "", type: "", display_name: "" })}
                       className="w-full border-dashed"
                     >
-                      <Plus className="mr-2 h-4 w-4" /> 添加模型
+                      <Plus className="mr-2 h-4 w-4" /> {t('llm.form.models.addModel')}
                     </Button>
                     {form.formState.errors.models?.message && (
                       <p className="text-sm font-medium text-destructive">{String(form.formState.errors.models.message)}</p>
@@ -453,10 +457,10 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                   {fields.length > 0 && fields.some(f => form.getValues(`models.${fields.indexOf(f)}.value`)) && (
                     <div className="space-y-4 pt-4 border-t">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-medium">模型成本配置 (选填)</h4>
-                        <span className="text-xs text-muted-foreground">USD / Unit</span>
+                        <h4 className="text-sm font-medium">{t('llm.form.models.costsTitle')}</h4>
+                        <span className="text-xs text-muted-foreground">{t('llm.form.models.costsUnit')}</span>
                       </div>
-                      
+
                       <div className="space-y-3">
                         {fields.map((field, index) => {
                           const modelName = form.watch(`models.${index}.value`);
@@ -476,18 +480,18 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                                 <span className="font-mono text-sm font-medium">{modelName}</span>
                                 {Object.keys(costs).length > 0 && (
                                   <Badge variant="secondary" className="ml-auto text-xs font-normal">
-                                    {Object.keys(costs).length} 项配置
+                                    {t('llm.form.models.configCount', { count: Object.keys(costs).length })}
                                   </Badge>
                                 )}
                               </button>
-                              
+
                               {isExpanded && (
                                 <div className="p-4 pt-0 space-y-4 border-t bg-muted/10">
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                                     {Object.entries(PRESET_COST_DIMENSIONS).map(([dimKey, dimConfig]) => (
                                       <div key={dimKey} className="space-y-1.5">
                                         <label className="text-xs font-medium text-muted-foreground flex justify-between">
-                                          {dimConfig.label}
+                                          {t(dimConfig.labelKey)}
                                           <span className="opacity-70">{dimConfig.unit}</span>
                                         </label>
                                         <Input
@@ -519,15 +523,15 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                                   {/* 自定义参数 */}
                                   {customKeys.length > 0 && (
                                     <div className="space-y-3 pt-2">
-                                      <h5 className="text-xs font-semibold text-muted-foreground">自定义参数</h5>
+                                      <h5 className="text-xs font-semibold text-muted-foreground">{t('llm.form.models.customParamsTitle')}</h5>
                                       {customKeys.map((customKey) => (
                                         <div key={customKey} className="flex gap-3 items-end p-2 bg-background rounded-md border">
                                           <div className="flex-1 space-y-1">
-                                            <label className="text-xs text-muted-foreground">参数名</label>
+                                            <label className="text-xs text-muted-foreground">{t('llm.form.models.customParamName')}</label>
                                             <div className="font-mono text-sm px-2 py-1 bg-muted rounded">{customKey}</div>
                                           </div>
                                           <div className="flex-1 space-y-1">
-                                            <label className="text-xs text-muted-foreground">成本 (USD)</label>
+                                            <label className="text-xs text-muted-foreground">{t('llm.form.models.customParamCost')}</label>
                                             <Input
                                               type="number"
                                               step="0.000001"
@@ -578,14 +582,14 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                                     size="sm"
                                     className="w-full border-dashed text-xs"
                                     onClick={() => {
-                                      const name = prompt('输入自定义参数名 (英文, 如 reasoning_output)');
+                                      const name = prompt(t('llm.form.models.customParamPrompt'));
                                       if (!name) return;
                                       if (!name.match(/^[a-z_][a-z0-9_]*$/)) {
-                                        toast({ variant: "destructive", title: "参数名格式错误", description: "仅支持小写字母、数字和下划线" });
+                                        toast({ variant: "destructive", title: t('llm.form.models.customParamFormatError'), description: t('llm.form.models.customParamFormatErrorDesc') });
                                         return;
                                       }
                                       if (name in PRESET_COST_DIMENSIONS || (costs[name] !== undefined)) {
-                                        toast({ variant: "destructive", title: "参数名已存在" });
+                                        toast({ variant: "destructive", title: t('llm.form.models.customParamExists') });
                                         return;
                                       }
                                       setModelCosts(prev => {
@@ -595,7 +599,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                                       });
                                     }}
                                   >
-                                    <Plus className="mr-1 h-3 w-3" /> 添加自定义成本参数
+                                    <Plus className="mr-1 h-3 w-3" /> {t('llm.form.models.addCustomParam')}
                                   </Button>
                                 </div>
                               )}

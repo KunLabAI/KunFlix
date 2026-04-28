@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFormContext } from 'react-hook-form';
+import { useTranslation } from 'react-i18next';
 import {
   FormControl,
   FormField,
@@ -12,15 +13,16 @@ import ToolCapabilities from './ToolCapabilities';
 
 const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const { control, watch } = useFormContext();
+  const { t } = useTranslation();
   const toolsEnabled = watch('tools_enabled');
 
   return (
     <div className="rounded-xl border bg-card p-5">
       <div className="flex justify-between items-center mb-4">
         <div>
-          <span className="text-sm font-medium">能力</span>
+          <span className="text-sm font-medium">{t('agents.form.tools.title')}</span>
           <p className="text-xs text-muted-foreground mt-1">
-            启用以允许智能体访问外部技能、工具或连接 MCP 客户端。
+            {t('agents.form.tools.desc')}
           </p>
         </div>
         <FormField
@@ -48,7 +50,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
         </div>
       ) : (
         <p className="text-xs text-muted-foreground border-t pt-4">
-          当前未启用能力。启用能力以允许智能体访问外部数据或执行操作。
+          {t('agents.form.tools.noToolsEnabled')}
         </p>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useAgents, useDeleteAgent } from '@/hooks/useAgents';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
 import { Agent } from '@/types';
@@ -38,6 +39,7 @@ import { Plus, Pencil, Trash2, Search, Bot } from 'lucide-react';
 
 export default function AgentsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [searchText, setSearchText] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const { toast } = useToast();
@@ -50,14 +52,14 @@ export default function AgentsPage() {
     try {
       await deleteAgent(id);
       toast({
-        title: "智能体删除成功",
+        title: t('agents.toast.deleteSuccess'),
       });
       mutate();
     } catch (err: any) {
       toast({
         variant: "destructive",
-        title: "删除失败",
-        description: err.response?.data?.detail || '未知错误',
+        title: t('agents.toast.deleteFailed'),
+        description: err.response?.data?.detail || t('agents.toast.unknownError'),
       });
     }
   };
@@ -66,15 +68,15 @@ export default function AgentsPage() {
     <div className="max-w-[1200px] mx-auto w-full space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">智能体管理</h2>
-          <p className="text-muted-foreground">创建、配置和管理您的 AI 智能体</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('agents.title')}</h2>
+          <p className="text-muted-foreground">{t('agents.subtitle')}</p>
         </div>
         
         <div className="flex items-center gap-2">
            <div className="relative">
              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
              <Input 
-               placeholder="搜索智能体..." 
+               placeholder={t('agents.searchPlaceholder')}
                className="pl-9 w-[200px]"
                onChange={(e) => setSearchText(e.target.value)}
              />
@@ -82,7 +84,7 @@ export default function AgentsPage() {
 
                       
            <Button onClick={() => router.push('/admin/agents/new')}>
-             <Plus className="mr-2 h-4 w-4" /> 创建智能体
+             <Plus className="mr-2 h-4 w-4" /> {t('agents.create')}
            </Button>
         </div>
       </div>
@@ -92,19 +94,19 @@ export default function AgentsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>模型配置</TableHead>
-                  <TableHead>参数</TableHead>
-                  <TableHead>能力</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t('agents.table.name')}</TableHead>
+                  <TableHead>{t('agents.table.model')}</TableHead>
+                  <TableHead>{t('agents.table.params')}</TableHead>
+                  <TableHead>{t('agents.table.capabilities')}</TableHead>
+                  <TableHead>{t('agents.table.createdAt')}</TableHead>
+                  <TableHead className="text-right">{t('agents.table.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center">
-                      加载中...
+                      {t('agents.loading')}
                     </TableCell>
                   </TableRow>
                 ) : agents?.map((agent: Agent) => {
@@ -129,11 +131,11 @@ export default function AgentsPage() {
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">供应商</span>
+                            <span className="text-xs text-muted-foreground">{t('agents.table.provider')}</span>
                             <Badge variant="outline" className="font-normal">{provider?.name || 'Unknown'}</Badge>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">模型</span>
+                            <span className="text-xs text-muted-foreground">{t('agents.table.modelLabel')}</span>
                             <span className="text-sm font-medium">{agent.model}</span>
                           </div>
                         </div>
@@ -141,11 +143,11 @@ export default function AgentsPage() {
                       <TableCell>
                         <div className="space-y-1">
                            <div className="flex justify-between text-xs w-32">
-                             <span className="text-muted-foreground">温度</span>
+                             <span className="text-muted-foreground">{t('agents.table.temperature')}</span>
                              <span className="font-mono">{agent.temperature}</span>
                            </div>
                            <div className="flex justify-between text-xs w-32">
-                             <span className="text-muted-foreground">上下文</span>
+                             <span className="text-muted-foreground">{t('agents.table.contextWindow')}</span>
                              <span className="font-mono">{agent.context_window / 1024}k</span>
                            </div>
                         </div>
@@ -153,13 +155,13 @@ export default function AgentsPage() {
                       <TableCell>
                         <div className="flex flex-wrap gap-1 max-w-[200px]">
                           {agent.tools && agent.tools.length > 0 ? (
-                             agent.tools.map(t => (
-                              <Badge key={t} variant="secondary" className="text-xs">
-                                 {t}
+                             agent.tools.map(tn => (
+                              <Badge key={tn} variant="secondary" className="text-xs">
+                                 {tn}
                                </Badge>
                              ))
                           ) : (
-                             <span className="text-muted-foreground text-xs">无工具</span>
+                             <span className="text-muted-foreground text-xs">{t('agents.noTools')}</span>
                           )}
                         </div>
                       </TableCell>
@@ -175,7 +177,7 @@ export default function AgentsPage() {
                                   <Pencil className="h-4 w-4" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>编辑</TooltipContent>
+                              <TooltipContent>{t('agents.table.editTooltip')}</TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
                           
@@ -187,14 +189,14 @@ export default function AgentsPage() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                                <AlertDialogTitle>{t('agents.delete.title')}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  此操作不可撤销。
+                                  {t('agents.delete.description', { name: agent.name })}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>取消</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => agent.id && handleDelete(agent.id)}>确认删除</AlertDialogAction>
+                                <AlertDialogCancel>{t('agents.delete.cancel')}</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => agent.id && handleDelete(agent.id)}>{t('agents.delete.confirm')}</AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
