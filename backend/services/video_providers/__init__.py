@@ -6,17 +6,19 @@
 - MiniMax (Hailuo)
 - Gemini (Veo)
 - Ark (Seedance)
+- DashScope (HappyHorse)
 """
 from .base import VideoProviderAdapter, VideoContext, VideoResult
 from .xai_provider import XAIVideoAdapter
 from .minimax_provider import MiniMaxVideoAdapter
 from .gemini_provider import GeminiVeoAdapter
 from .ark_provider import ArkSeedanceAdapter
+from .dashscope_provider import DashScopeVideoAdapter
 
 # ---------------------------------------------------------------------------
 # 已注册的视频供应商类型 (代码级注册表，与 _PROVIDER_REGISTRY 对应)
 # ---------------------------------------------------------------------------
-VIDEO_PROVIDER_TYPES = frozenset({"xai", "minimax", "gemini", "ark"})
+VIDEO_PROVIDER_TYPES = frozenset({"xai", "minimax", "gemini", "ark", "dashscope"})
 
 
 def extract_video_provider_type(provider_type: str) -> str | None:
@@ -24,7 +26,7 @@ def extract_video_provider_type(provider_type: str) -> str | None:
     从 LLMProvider.provider_type 提取视频供应商类型
     
     支持的格式:
-      - 直接匹配: "xai", "minimax", "gemini", "ark"
+      - 直接匹配: "xai", "minimax", "gemini", "ark", "dashscope"
       - 前缀匹配: "xai_video", "gemini_chat" -> 提取 "xai", "gemini"
     
     Args:
@@ -50,6 +52,7 @@ __all__ = [
     "MiniMaxVideoAdapter",
     "GeminiVeoAdapter",
     "ArkSeedanceAdapter",
+    "DashScopeVideoAdapter",
     "VIDEO_PROVIDER_TYPES",
     "extract_video_provider_type",
 ]

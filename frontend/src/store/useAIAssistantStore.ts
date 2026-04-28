@@ -118,7 +118,14 @@ export interface NodeAttachment {
   excerpt: string;        // 文本摘要或描述
   thumbnailUrl: string | null;  // 图片/视频缩略图URL
   meta: Record<string, unknown>; // 额外元数据
+  updatedAt?: string;     // 源节点修改时间（用于排序）
 }
+
+// 按 updatedAt 倒序（最新在前）并裁剪到最多 5 条
+const sortAttachmentsByUpdatedDesc = (attachments: NodeAttachment[]): NodeAttachment[] =>
+  [...attachments]
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+    .slice(0, 5);
 
 // 用户上传的文件
 export interface UploadedFile {
@@ -425,12 +432,17 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       clearImageEditContext: () => set({ imageEditContext: null }),
 
       // Node attachments (多图支持，最多5个，互斥：清除 imageEditContext)
-      setNodeAttachments: (nodeAttachments: NodeAttachment[]) => set({ nodeAttachments: nodeAttachments.slice(0, 5), imageEditContext: null }),
+      setNodeAttachments: (nodeAttachments: NodeAttachment[]) => set({
+        nodeAttachments: sortAttachmentsByUpdatedDesc(nodeAttachments),
+        imageEditContext: null,
+      }),
       addNodeAttachment: (attachment: NodeAttachment) => set((state) => {
         const exists = state.nodeAttachments.some(a => a.nodeId === attachment.nodeId);
         if (exists) return state;
-        const newAttachments = [...state.nodeAttachments, attachment].slice(0, 5);
-        return { nodeAttachments: newAttachments, imageEditContext: null };
+        return {
+          nodeAttachments: sortAttachmentsByUpdatedDesc([...state.nodeAttachments, attachment]),
+          imageEditContext: null,
+        };
       }),
       removeNodeAttachment: (nodeId: string) => set((state) => ({
         nodeAttachments: state.nodeAttachments.filter(a => a.nodeId !== nodeId)

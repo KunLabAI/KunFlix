@@ -18,6 +18,8 @@ import {
   type ImageMode,
 } from '@/hooks/useImageGeneration';
 import type { ImageGenHistoryEntry, CanvasNode, CharacterNodeData } from '@/store/useCanvasStore';
+import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
+import { NodePickerDropdown, type NodePickerItem } from './NodePickerDropdown';
 
 // ---------------------------------------------------------------------------
 // Provider logo mapping（与 VideoGeneratePanel 对齐）
@@ -216,12 +218,12 @@ export default function ImageGeneratePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // 可用作参考图的画布节点（带 URL 且未被选择）
+  // 可用作参考图的画布节点（带 URL 且未被选择，按 updatedAt 倒序）
   const pickableNodes = useMemo(() => {
     const selectedIds = new Set(referenceImages.map((r) => r.sourceNodeId));
-    return (canvasNodes || [])
-      .map((n) => ({ node: n, url: getImageNodeUrl(n) }))
-      .filter((x) => !!x.url && !selectedIds.has(x.node.id));
+    const filtered = (canvasNodes || [])
+      .filter((n) => !selectedIds.has(n.id) && !!getImageNodeUrl(n));
+    return selectNodesByUpdatedDesc(filtered).map((n) => ({ node: n, url: getImageNodeUrl(n) }));
   }, [canvasNodes, referenceImages]);
 
   const maxRefs = IMAGE_MODE_MAX_REFS[mode] || 0;
@@ -415,7 +417,7 @@ export default function ImageGeneratePanel({
                   src={r.url}
                   alt={r.name}
                   draggable={false}
-                  className="h-14 w-14 rounded-lg object-cover border border-border/50"
+                  className="h-14 w-14 rounded-lg object-cover"
                 />
                 <button
                   type="button"
@@ -430,9 +432,6 @@ export default function ImageGeneratePanel({
                   <span className="text-blue-300">&lt;IMAGE_{i + 1}&gt;</span>
                   <br />
                   <span className="opacity-80">{r.name}</span>
-                </div>
-                <div className="absolute top-0.5 left-0.5">
-                  <ImageIcon className="w-3 h-3 text-emerald-400" />
                 </div>
               </div>
             ))}
@@ -537,46 +536,24 @@ export default function ImageGeneratePanel({
                   <Paperclip className="w-4 h-4" />
                 </button>
                 {showNodePicker && (
-                  <div className="absolute bottom-full right-0 mb-1 w-56 max-h-60 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
-                      {t('canvas.node.image.pickRefNodeHint', '已选 {{c}}/{{m}}', { c: referenceImages.length, m: maxRefs })}
-                    </div>
-                    {pickableNodes.length === 0 ? (
-                      <div className="p-3 text-[10px] text-muted-foreground text-center">
-                        {t('canvas.node.image.noPickableNodes', '画布中没有可用的图像节点')}
-                      </div>
-                    ) : (
-                      pickableNodes.map(({ node, url }) => {
-                        const data = node.data as CharacterNodeData;
-                        const nm = data.name || node.id.slice(0, 8);
-                        const atLimit = referenceImages.length >= maxRefs;
-                        return (
-                          <button
-                            key={node.id}
-                            type="button"
-                            onClick={() => handleSelectNode(node)}
-                            disabled={atLimit}
-                            className={cn(
-                              'w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer',
-                              atLimit && 'opacity-40 cursor-not-allowed',
-                            )}
-                          >
-                            {url ? (
-                              <img src={url} alt="" className="h-8 w-8 rounded object-cover shrink-0 border border-border/30" />
-                            ) : (
-                              <div className="h-8 w-8 rounded bg-muted border border-border/30 shrink-0 flex items-center justify-center">
-                                <ImageIcon className="w-4 h-4 text-muted-foreground/50" />
-                              </div>
-                            )}
-                            <div className="flex flex-col min-w-0 flex-1 text-left">
-                              <span className="font-medium truncate text-foreground">{nm}</span>
-                            </div>
-                            <ImageIcon className="w-3 h-3 shrink-0 text-node-green" />
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
+                  <NodePickerDropdown
+                    open={showNodePicker}
+                    anchor="bottom"
+                    align="right"
+                    title={t('canvas.node.image.pickRefNodeHint', '已选 {{c}}/{{m}}', { c: referenceImages.length, m: maxRefs })}
+                    emptyText={t('canvas.node.image.noPickableNodes', '画布中没有可用的图像节点')}
+                    items={pickableNodes.map<NodePickerItem>(({ node, url }) => {
+                      const data = node.data as CharacterNodeData;
+                      const atLimit = referenceImages.length >= maxRefs;
+                      return {
+                        node,
+                        label: data.name || node.id.slice(0, 8),
+                        thumbUrl: url,
+                        disabled: atLimit,
+                      };
+                    })}
+                    onSelect={handleSelectNode}
+                  />
                 )}
               </div>
             )}

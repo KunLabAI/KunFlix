@@ -30,6 +30,8 @@ export type ScriptNodeData = {
   tags: string[];
   characters?: string[];
   scenes?: string;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
 };
 
 export type ImageGenHistoryEntry = {
@@ -57,6 +59,8 @@ export type CharacterNodeData = {
   initialGenConfig?: Partial<ImageGenHistoryEntry>;
   /** 为 true 时 ImageGeneratePanel 始终显示 */
   pinPanel?: boolean;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
 };
 
 export type StoryboardNodeData = {
@@ -69,6 +73,8 @@ export type StoryboardNodeData = {
   tableData?: Record<string, unknown>[]; // Raw table rows provided by Agent
   tableColumns?: { key: string; label: string; type?: 'text' | 'number' | 'image' | 'video' | 'audio' }[]; // Column definitions from Agent
   _streaming?: boolean; // Transient flag: node is being streamed from LLM deltas
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
 };
 
 export type VideoGenHistoryEntry = {
@@ -94,6 +100,8 @@ export type VideoNodeData = {
   initialGenConfig?: Partial<VideoGenHistoryEntry>;
   /** When true, keep VideoGeneratePanel always visible regardless of selection */
   pinPanel?: boolean;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
 };
 
 export type AudioNodeData = {
@@ -102,6 +110,8 @@ export type AudioNodeData = {
   audioUrl?: string | null;
   uploading?: boolean;
   lyrics?: string;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
 };
 
 export type GhostNodeData = {
@@ -332,7 +342,12 @@ export const useCanvasStore = create<CanvasState>()(
         if (nodes.some((n) => n.id === node.id)) {
           return;
         }
-        set({ nodes: [...nodes, node], isDirty: true });
+        // 自动写入 updatedAt（若未提供）
+        const existingUpdatedAt = (node.data as { updatedAt?: string })?.updatedAt;
+        const stamped: CanvasNode = existingUpdatedAt
+          ? node
+          : { ...node, data: { ...node.data, updatedAt: new Date().toISOString() } };
+        set({ nodes: [...nodes, stamped], isDirty: true });
         get().takeSnapshot();
       },
 
@@ -381,9 +396,10 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => {
+        const now = new Date().toISOString();
         set({
           nodes: get().nodes.map((node) =>
-            node.id === id ? { ...node, data: { ...node.data, ...data } } : node
+            node.id === id ? { ...node, data: { ...node.data, ...data, updatedAt: now } } : node
           ),
           isDirty: true,
         });
@@ -797,3 +813,15 @@ export const useCanvasStore = create<CanvasState>()(
     }
   )
 );
+
+// ─── Helpers ──────────────────────────────────────────────────────────────
+/**
+ * 按 node.data.updatedAt 倒序排序（最新修改的在前）。
+ * 缺失 updatedAt 的节点会排到最后。
+ */
+export const selectNodesByUpdatedDesc = <T extends CanvasNode>(nodes: T[]): T[] =>
+  [...nodes].sort((a, b) => {
+    const ta = (a.data as { updatedAt?: string })?.updatedAt ?? '';
+    const tb = (b.data as { updatedAt?: string })?.updatedAt ?? '';
+    return tb.localeCompare(ta);
+  });

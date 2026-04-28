@@ -15,9 +15,6 @@ import {
   AlertCircle,
   Copy,
   UploadCloud,
-  ScrollText,
-  Film,
-  Clapperboard,
   Paperclip,
   Square,
   Toolbox
@@ -34,8 +31,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { AgentInfo, NodeAttachment, UploadedFile, PastedContent } from '@/store/useAIAssistantStore';
 import { NodePreviewCard } from './NodePreviewCard';
 import type { CanvasNode } from '@/store/useCanvasStore';
-import type { LucideIcon } from 'lucide-react';
+import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
 import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
+import { NodePickerDropdown, type NodePickerItem } from '@/components/canvas/NodePickerDropdown';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_FILES = 10;
@@ -254,16 +252,6 @@ const FilePreviewCard: React.FC<{ file: UploadedFile; onRemove: (id: string) => 
       : <GenericFileCard file={file} onRemove={onRemove} />;
 };
 
-// ─── Node type icons ─────────────────────────────────────────────────────────
-const NODE_TYPE_ICONS: Record<string, { icon: LucideIcon; color: string; label: string }> = {
-  text:       { icon: ScrollText,   color: 'text-node-blue',   label: '文本' },
-  image:      { icon: ImageIcon,    color: 'text-node-green',  label: '图片' },
-  video:      { icon: Film,         color: 'text-node-yellow', label: '视频' },
-  storyboard: { icon: Clapperboard, color: 'text-node-purple', label: '分镜' },
-};
-
-const DEFAULT_NODE_ICON = { icon: FileText, color: 'text-muted-foreground', label: '节点' };
-
 // ─── Props ───────────────────────────────────────────────────────────────────
 interface MessageInputProps {
   onSend: (content: string, files: UploadedFile[], pastedContents: PastedContent[]) => void;
@@ -339,6 +327,19 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 节点选择下拉状态
+  const [showNodePicker, setShowNodePicker] = useState(false);
+  const nodePickerRef = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭节点选择下拉
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      nodePickerRef.current && !nodePickerRef.current.contains(e.target as HTMLElement) && setShowNodePicker(false);
+    };
+    showNodePicker && document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [showNodePicker]);
+
   // ── 撤销历史栈 ──
   const [undoHistory, setUndoHistory] = useState<string[]>(['']);
   const [undoIndex, setUndoIndex] = useState(0);
@@ -386,9 +387,12 @@ export function MessageInput({
     })();
   }, [undoIndex, undoHistory]);
 
-  // 过滤已附加的节点，生成可选节点列表
+  // 过滤已附加的节点，生成可选节点列表（按 updatedAt 倒序）
   const attachedNodeIds = useMemo(() => new Set(nodeAttachments.map(a => a.nodeId)), [nodeAttachments]);
-  const availableNodes = useMemo(() => canvasNodes.filter(n => !attachedNodeIds.has(n.id)), [canvasNodes, attachedNodeIds]);
+  const availableNodes = useMemo(
+    () => selectNodesByUpdatedDesc(canvasNodes.filter(n => !attachedNodeIds.has(n.id))),
+    [canvasNodes, attachedNodeIds],
+  );
 
   // 清理撤销历史定时器
   useEffect(() => {
@@ -717,57 +721,37 @@ export function MessageInput({
             {/* 右侧：节点附件 + 发送按钮 */}
             <div className="flex items-center gap-1">
               {/* 节点选择器 */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent flex-shrink-0"
-                    disabled={isDisabled || availableNodes.length === 0}
-                    title={t('ai.addNode')}
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-64 max-h-72 overflow-y-auto">
-                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground border-b border-border/50 mb-1">
-                    {t('ai.selectNode')}
-                  </div>
-                  {availableNodes.length === 0 && (
-                    <div className="p-3 text-xs text-muted-foreground text-center">
-                      {t('ai.noAvailableNodes')}
-                    </div>
+              <div className="relative" ref={nodePickerRef}>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setShowNodePicker(v => !v)}
+                  className={cn(
+                    'h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent flex-shrink-0',
+                    showNodePicker && 'bg-accent text-foreground',
                   )}
-                  {availableNodes.map((node) => {
-                    const cfg = NODE_TYPE_ICONS[node.type || ''] ?? DEFAULT_NODE_ICON;
-                    const Icon = cfg.icon;
-                    const nodeData = node.data as Record<string, unknown>;
-                    const label = (nodeData.title || nodeData.name || nodeData.description || `${cfg.label} ${node.id.slice(0, 6)}`) as string;
-                    const excerpt = ((nodeData.description || '') as string).slice(0, 60);
-                    return (
-                      <DropdownMenuItem
-                        key={node.id}
-                        className="text-xs cursor-pointer py-2"
-                        onClick={() => {
-                          onAddNodeAttachment?.(extractNodeAttachment(node));
-                        }}
-                      >
-                        <div className="flex items-center gap-2 w-full min-w-0">
-                          <Icon className={cn('h-4 w-4 shrink-0', cfg.color)} />
-                          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                            <span className="font-medium truncate">{label}</span>
-                            {excerpt && (
-                              <span className="text-[10px] text-muted-foreground line-clamp-1">{excerpt}</span>
-                            )}
-                          </div>
-                          <span className="text-[9px] text-muted-foreground/70 shrink-0">{cfg.label}</span>
-                        </div>
-                      </DropdownMenuItem>
-                    );
+                  disabled={isDisabled || availableNodes.length === 0}
+                  title={t('ai.addNode')}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <NodePickerDropdown
+                  open={showNodePicker}
+                  anchor="bottom"
+                  align="right"
+                  title={t('ai.selectNode')}
+                  emptyText={t('ai.noAvailableNodes')}
+                  items={availableNodes.map<NodePickerItem>((node) => {
+                    const attachment = extractNodeAttachment(node);
+                    return { node, label: attachment.label, thumbUrl: attachment.thumbnailUrl };
                   })}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  onSelect={(node) => {
+                    onAddNodeAttachment?.(extractNodeAttachment(node));
+                    setShowNodePicker(false);
+                  }}
+                />
+              </div>
 
               {/* 发送 / 停止生成 按钮 */}
               {isLoading ? (

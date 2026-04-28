@@ -232,7 +232,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           </div>
         </div>
 
-      <Card className={`w-full h-full flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2]`}>
+      <Card className={`w-full h-full flex flex-col bg-card ${selected && !isEditing ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
         <CardContent className="script-node__content p-0 flex-1 flex flex-col">
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor

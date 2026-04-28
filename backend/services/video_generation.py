@@ -6,6 +6,7 @@
   - MiniMax (Hailuo)
   - Gemini (Veo)
   - Ark (Seedance)
+  - DashScope (HappyHorse)
 
 使用方式:
   from services.video_generation import submit_video_task, poll_video_task, VideoContext
@@ -13,16 +14,17 @@
 架构:
   video_generation.py (工厂 + 兼容层)
   └── video_providers/
-      ├── base.py              (抽象基类)
-      ├── model_capabilities.py (模型能力配置)
-      ├── xai_provider.py      (xAI 适配器)
-      ├── minimax_provider.py  (MiniMax 适配器)
-      ├── gemini_provider.py   (Gemini 适配器)
-      └── ark_provider.py      (Ark Seedance 适配器)
+      ├── base.py                (抽象基类)
+      ├── model_capabilities.py  (模型能力配置)
+      ├── xai_provider.py        (xAI 适配器)
+      ├── minimax_provider.py    (MiniMax 适配器)
+      ├── gemini_provider.py     (Gemini 适配器)
+      ├── ark_provider.py        (Ark Seedance 适配器)
+      └── dashscope_provider.py  (DashScope HappyHorse 适配器)
 """
 from __future__ import annotations
 
-from typing import Dict, Type
+from typing import Dict, Optional, Type
 import logging
 
 # 从适配器模块导入核心类型
@@ -34,6 +36,7 @@ from .video_providers import (
     MiniMaxVideoAdapter,
     GeminiVeoAdapter,
     ArkSeedanceAdapter,
+    DashScopeVideoAdapter,
     extract_video_provider_type,
 )
 
@@ -54,6 +57,7 @@ _PROVIDER_REGISTRY: Dict[str, Type[VideoProviderAdapter]] = {
     "minimax": MiniMaxVideoAdapter,
     "gemini": GeminiVeoAdapter,
     "ark": ArkSeedanceAdapter,
+    "dashscope": DashScopeVideoAdapter,
 }
 
 
@@ -100,7 +104,12 @@ async def submit_video_task(ctx: VideoContext) -> VideoResult:
     return await adapter.submit(ctx)
 
 
-async def poll_video_task(api_key: str, task_id: str, provider_type: str = "xai") -> VideoResult:
+async def poll_video_task(
+    api_key: str,
+    task_id: str,
+    provider_type: str = "xai",
+    base_url: Optional[str] = None,
+) -> VideoResult:
     """
     轮询视频任务状态 (统一入口)
     
@@ -108,14 +117,18 @@ async def poll_video_task(api_key: str, task_id: str, provider_type: str = "xai"
         api_key: API 密钥
         task_id: 任务 ID
         provider_type: 供应商类型 (默认 xai)
+        base_url: 供应商 Endpoint 覆盖 (DashScope 支持地域切换)
         
     Returns:
         VideoResult: 轮询结果
     """
     adapter = get_provider_adapter(provider_type)
     
-    # 使用带 key 的轮询方法
-    result = await adapter.poll_with_key(api_key, task_id)
+    # DashScope 支持 base_url 参数; 其他供应商保持兼容签名
+    if provider_type == "dashscope":
+        result = await adapter.poll_with_key(api_key, task_id, base_url=base_url)
+    else:
+        result = await adapter.poll_with_key(api_key, task_id)
     
     # MiniMax 需要额外获取视频 URL
     (provider_type == "minimax" and result.status == "completed" and result.file_id) and (
@@ -134,6 +147,7 @@ _MODEL_PREFIX_PROVIDER_MAP = [
     (["veo-"], "gemini"),
     (["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"], "minimax"),
     (["seedance", "doubao-seedance"], "ark"),
+    (["happyhorse"], "dashscope"),
 ]
 
 
