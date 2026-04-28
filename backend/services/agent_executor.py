@@ -1,19 +1,35 @@
 """
-AgentExecutor - Unified wrapper for DialogAgent execution with token tracking
+AgentExecutor - Unified wrapper for DialogAgent execution with token tracking.
+
+缓存策略：
+- 使用 cachetools.TTLCache 替代裸 dict，提供 LRU + TTL 自动淘汰
+- 每个 cache_key 挂一把 asyncio.Lock，防止缓存击穿下的重复构造
+- 容量与 TTL 从 Settings 注入，生产可通过 .env 调优
 """
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator, TYPE_CHECKING
 from dataclasses import dataclass
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from collections import defaultdict
+import asyncio
 import json
 import logging
 
+from cachetools import TTLCache
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from config import settings
 from models import Agent, LLMProvider
 from agents import DialogAgent
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel, OllamaChatModel
+from agentscope.model import (
+    OpenAIChatModel,
+    DashScopeChatModel,
+    AnthropicChatModel,
+    GeminiChatModel,
+    OllamaChatModel,
+)
 import agentscope
-from services.llm_stream import stream_completion, StreamResult
+from services.llm_stream import stream_completion, StreamResult, DEFAULT_BASE_URLS
 
 if TYPE_CHECKING:
     from services.tool_manager import ToolManager
@@ -67,22 +83,66 @@ class ExecutionResult:
         self.metadata = self.metadata or {}
 
 
-# Provider type to model class mapping
-MODEL_CREATORS = {
-    "dashscope": lambda model_name, api_key, **_: DashScopeChatModel(model_name=model_name, api_key=api_key),
-    "gemini": lambda model_name, api_key, **_: GeminiChatModel(model_name=model_name, api_key=api_key),
-    "ollama": lambda model_name, base_url=None, **_: OllamaChatModel(model_name=model_name, host=base_url),
+# ---------------------------------------------------------------------------
+# Model factory — 映射表驱动，避免多层 if-else
+# ---------------------------------------------------------------------------
+# 直接匹配的 provider_type -> 模型工厂
+_DIRECT_MODEL_CREATORS = {
+    "dashscope": lambda model_name, api_key, base_url=None: DashScopeChatModel(
+        model_name=model_name, api_key=api_key,
+    ),
+    "gemini": lambda model_name, api_key, base_url=None: GeminiChatModel(
+        model_name=model_name, api_key=api_key,
+    ),
+    "ollama": lambda model_name, api_key, base_url=None: OllamaChatModel(
+        model_name=model_name, host=base_url,
+    ),
 }
 
-OPENAI_COMPATIBLE = ["openai", "azure", "deepseek", "vllm", "xai"]
-ANTHROPIC_COMPATIBLE = ["anthropic", "minimax"]
-
-DEFAULT_BASE_URLS = {
-    "deepseek": "https://api.deepseek.com",
-    "minimax": "https://api.minimax.io/anthropic",
-    "xai": "https://api.x.ai/v1",
-    "ark": "https://ark.cn-beijing.volces.com/api/v3",
+# 家族类型 -> 模型工厂（OpenAI/Anthropic 使用 client_kwargs 注入 base_url）
+_FAMILY_MODEL_CREATORS = {
+    "anthropic": lambda model_name, api_key, base_url=None: AnthropicChatModel(
+        model_name=model_name,
+        api_key=api_key,
+        client_kwargs={"base_url": base_url} if base_url else None,
+    ),
+    "openai": lambda model_name, api_key, base_url=None: OpenAIChatModel(
+        model_name=model_name,
+        api_key=api_key,
+        client_kwargs={"base_url": base_url} if base_url else None,
+    ),
 }
+
+# 家族识别关键字（子串包含即匹配）
+_ANTHROPIC_FAMILY_KEYWORDS = ("anthropic", "minimax")
+
+
+def _resolve_model_family(provider_type: str) -> str:
+    """Pick the model family key for factory lookup.
+
+    Priority:
+    1. Direct match on _DIRECT_MODEL_CREATORS (dashscope/gemini/ollama)
+    2. Anthropic family (provider_type 包含 anthropic 或 minimax)
+    3. OpenAI 兜底（含 openai/azure/deepseek/vllm/xai 等）
+    """
+    pt = provider_type.lower()
+    probes = [
+        (pt in _DIRECT_MODEL_CREATORS, pt),
+        (any(k in pt for k in _ANTHROPIC_FAMILY_KEYWORDS), "anthropic"),
+    ]
+    return next((key for matched, key in probes if matched), "openai")
+
+
+def _create_llm_model(provider: LLMProvider, model_name: str):
+    """Create an LLM model instance from a provider config using the family registry."""
+    provider_type = provider.provider_type.lower()
+    api_key = provider.api_key
+    base_url = provider.base_url or DEFAULT_BASE_URLS.get(provider_type)
+
+    family = _resolve_model_family(provider_type)
+    factories = {**_DIRECT_MODEL_CREATORS, **_FAMILY_MODEL_CREATORS}
+    factory = factories[family]
+    return factory(model_name=model_name, api_key=api_key, base_url=base_url)
 
 
 class AgentExecutor:
@@ -93,48 +153,41 @@ class AgentExecutor:
 
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
-        self._model_cache: Dict[str, Any] = {}
-        self._agent_cache: Dict[str, DialogAgent] = {}
+        # TTL + LRU 缓存，容量/TTL 来自 Settings，便于生产调优
+        self._model_cache: TTLCache = TTLCache(
+            maxsize=settings.MODEL_CACHE_MAX_SIZE,
+            ttl=settings.MODEL_CACHE_TTL_SECONDS,
+        )
+        self._agent_cache: TTLCache = TTLCache(
+            maxsize=settings.AGENT_CACHE_MAX_SIZE,
+            ttl=settings.AGENT_CACHE_TTL_SECONDS,
+        )
+        # per-key 锁：防止同一 key 并发构造时缓存击穿
+        self._cache_locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     async def execute(
         self,
         agent_id: str,
         messages: List[Dict[str, str]],
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
     ) -> ExecutionResult:
-        """
-        Execute an agent with given messages.
-        
-        Args:
-            agent_id: The agent's UUID
-            messages: List of message dicts with 'role' and 'content'
-            context: Optional context data
-            
-        Returns:
-            ExecutionResult with content and token usage
-        """
-        # Load agent config
+        """Execute an agent with given messages."""
         agent_config = await self._load_agent(agent_id)
         provider = await self._load_provider(agent_config.provider_id)
-        
-        # Build or get cached DialogAgent
+
         dialog_agent = await self._get_dialog_agent(agent_config, provider)
-        
-        # Prepare input message
+
         input_content = messages[-1]["content"] if messages else ""
         input_msg = Msg(name="User", content=input_content, role="user")
-        
-        # Calculate input chars
+
         input_chars = sum(len(m.get("content", "")) for m in messages)
-        
-        # Execute
+
         logger.info(f"Executing agent '{agent_config.name}' (ID: {agent_id})")
         response_msg = await dialog_agent.reply(input_msg)
         content_str = _normalize_content(response_msg.content)
-        
-        # Extract usage from metadata
+
         metadata = getattr(response_msg, "metadata", {}) or {}
-        
+
         return ExecutionResult(
             content=content_str,
             input_tokens=metadata.get("input_tokens", 0),
@@ -146,7 +199,7 @@ class AgentExecutor:
                 "agent_name": agent_config.name,
                 "model": agent_config.model,
                 "context": context,
-            }
+            },
         )
 
     async def execute_streaming(
@@ -158,17 +211,10 @@ class AgentExecutor:
         tools: Optional[List[Dict[str, Any]]] = None,
         user_id: str | None = None,
     ) -> AsyncGenerator[Tuple[str, StreamResult], None]:
-        """
-        Execute an agent with streaming output, bypassing DialogAgent.reply().
-        Directly calls stream_completion for real-time chunk delivery.
-
-        Yields:
-            tuple[str, StreamResult]: (chunk_text, running_result)
-        """
+        """Execute an agent with streaming output, bypassing DialogAgent.reply()."""
         agent_config = await self._load_agent(agent_id)
         provider = await self._load_provider(agent_config.provider_id)
 
-        # Build full message list with system prompt (override takes precedence)
         effective_prompt = system_prompt_override if system_prompt_override is not None else agent_config.system_prompt
         full_messages: List[Dict[str, str]] = []
         effective_prompt and full_messages.append({"role": "system", "content": effective_prompt})
@@ -202,22 +248,13 @@ class AgentExecutor:
         system_prompt_override: Optional[str] = None,
         user_id: str | None = None,
     ) -> AsyncGenerator[Tuple[str, Any], None]:
-        """
-        Execute an agent with streaming + tool-call loop.
-        Simplified version of chat_generation's tool loop for multi-agent subtasks.
-
-        Yields:
-            ("chunk", chunk_text, StreamResult)   — text chunk
-            ("tool_call", {tool_name, arguments}, None)  — tool call started
-            ("tool_result", {tool_name, success}, None)   — tool call finished
-        """
+        """Execute an agent with streaming + tool-call loop."""
         from services.chat_tool_dispatch import append_tool_round_with_errors
 
         agent_config = await self._load_agent(agent_id)
         provider = await self._load_provider(agent_config.provider_id)
         is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
 
-        # Build full message list with system prompt
         effective_prompt = system_prompt_override if system_prompt_override is not None else agent_config.system_prompt
         full_messages: List[Dict[str, str]] = []
         effective_prompt and full_messages.append({"role": "system", "content": effective_prompt})
@@ -250,12 +287,10 @@ class AgentExecutor:
                 last_result = result
                 yield ("chunk", chunk, result)
 
-            # No tool_calls -> done
             has_tool_calls = last_result and last_result.tool_calls
             if not has_tool_calls:
                 break
 
-            # Parse tool calls: split valid / error
             tool_calls_valid = []
             tool_calls_with_error = []
             for tc in last_result.tool_calls:
@@ -266,65 +301,63 @@ class AgentExecutor:
                     logger.error(f"Failed to parse tool arguments for {tc.name}: {e}")
                     tool_calls_with_error.append((tc, f"Error: Invalid JSON in tool arguments: {e}"))
 
-            # Yield tool_call events
             for tc, args in tool_calls_valid:
                 yield ("tool_call", {"tool_name": tc.name, "arguments": args}, None)
             for tc, _ in tool_calls_with_error:
                 yield ("tool_call", {"tool_name": tc.name, "arguments": {"error": "JSON parse failed"}}, None)
 
-            # Execute tools and append results to messages
             total = len(tool_calls_valid) + len(tool_calls_with_error)
-            logger.info(f"[Subtask Tool Round {_round + 1}] {total} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
+            logger.info(
+                f"[Subtask Tool Round {_round + 1}] {total} tool call(s) "
+                f"({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)"
+            )
             msg_count_before = len(full_messages)
             await append_tool_round_with_errors(
                 full_messages, last_result, tool_manager, tool_context,
                 is_anthropic, tool_calls_valid, tool_calls_with_error,
             )
 
-            # Extract tool results from appended messages
             tool_results = _extract_tool_results(full_messages[msg_count_before:], is_anthropic)
 
-            # Yield tool_result events with result data
             for tc, args in tool_calls_valid:
-                yield ("tool_result", {"tool_name": tc.name, "success": True, "result": tool_results.get(tc.id, "")}, None)
+                yield (
+                    "tool_result",
+                    {"tool_name": tc.name, "success": True, "result": tool_results.get(tc.id, "")},
+                    None,
+                )
             for tc, _ in tool_calls_with_error:
                 yield ("tool_result", {"tool_name": tc.name, "success": False}, None)
 
-            # Rebuild tool defs after round
             current_tools = tool_manager.rebuild_after_round(tool_context) or tools
 
     async def execute_with_system_prompt(
         self,
         agent_id: str,
         user_content: str,
-        system_prompt_override: Optional[str] = None
+        system_prompt_override: Optional[str] = None,
     ) -> ExecutionResult:
-        """
-        Execute agent with optional system prompt override.
-        Useful for task decomposition where leader needs special instructions.
-        """
+        """Execute agent with optional system prompt override."""
         agent_config = await self._load_agent(agent_id)
         provider = await self._load_provider(agent_config.provider_id)
-        
-        # Use override or original system prompt
+
         effective_prompt = system_prompt_override or agent_config.system_prompt
-        
-        # Create fresh DialogAgent with potentially different prompt
-        model = self._create_model(provider, agent_config.model)
+
+        # Fresh DialogAgent with potentially different prompt — do NOT cache this path
+        model = _create_llm_model(provider, agent_config.model)
         dialog_agent = DialogAgent(
             name=agent_config.name,
             sys_prompt=effective_prompt,
             model=model,
             skill_names=agent_config.tools or None,
         )
-        
+
         input_msg = Msg(name="User", content=user_content, role="user")
         input_chars = len(user_content)
-        
+
         response_msg = await dialog_agent.reply(input_msg)
         content_str = _normalize_content(response_msg.content)
         metadata = getattr(response_msg, "metadata", {}) or {}
-        
+
         return ExecutionResult(
             content=content_str,
             input_tokens=metadata.get("input_tokens", 0),
@@ -336,7 +369,7 @@ class AgentExecutor:
                 "agent_name": agent_config.name,
                 "model": agent_config.model,
                 "system_prompt_override": system_prompt_override is not None,
-            }
+            },
         )
 
     async def _load_agent(self, agent_id: str) -> Agent:
@@ -356,63 +389,45 @@ class AgentExecutor:
         return provider
 
     async def _get_dialog_agent(self, agent_config: Agent, provider: LLMProvider) -> DialogAgent:
-        """Get or create cached DialogAgent instance"""
+        """Get-or-create cached DialogAgent under per-key lock (防缓存击穿)."""
         cache_key = f"{agent_config.id}_{provider.id}"
-        
+
         cached = self._agent_cache.get(cache_key)
-        if cached:
+        if cached is not None:
             return cached
-        
-        model = self._create_model(provider, agent_config.model)
-        dialog_agent = DialogAgent(
-            name=agent_config.name,
-            sys_prompt=agent_config.system_prompt,
-            model=model,
-            skill_names=agent_config.tools or None,
-        )
-        
-        self._agent_cache[cache_key] = dialog_agent
-        return dialog_agent
+
+        async with self._cache_locks[cache_key]:
+            # double-check after acquiring lock
+            cached = self._agent_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            model = _create_llm_model(provider, agent_config.model)
+            dialog_agent = DialogAgent(
+                name=agent_config.name,
+                sys_prompt=agent_config.system_prompt,
+                model=model,
+                skill_names=agent_config.tools or None,
+            )
+            self._agent_cache[cache_key] = dialog_agent
+            return dialog_agent
 
     def _create_model(self, provider: LLMProvider, model_name: str):
-        """Create LLM model instance based on provider type"""
-        provider_type = provider.provider_type.lower()
-        api_key = provider.api_key
-        base_url = provider.base_url or DEFAULT_BASE_URLS.get(provider_type)
-        client_kwargs = {"base_url": base_url} if base_url else None
-        
-        # Check direct creator first
-        creator = MODEL_CREATORS.get(provider_type)
-        if creator:
-            return creator(model_name=model_name, api_key=api_key, base_url=base_url)
-        
-        # Check Anthropic compatible
-        is_anthropic = any(t in provider_type for t in ANTHROPIC_COMPATIBLE)
-        if is_anthropic:
-            return AnthropicChatModel(
-                model_name=model_name,
-                api_key=api_key,
-                client_kwargs=client_kwargs
-            )
-        
-        # Default to OpenAI compatible
-        return OpenAIChatModel(
-            model_name=model_name,
-            api_key=api_key,
-            client_kwargs=client_kwargs
-        )
+        """Backward-compat instance method; delegates to module-level factory."""
+        return _create_llm_model(provider, model_name)
 
     def clear_cache(self):
-        """Clear agent and model caches"""
+        """Clear agent and model caches (admin endpoint)."""
         self._model_cache.clear()
         self._agent_cache.clear()
+        self._cache_locks.clear()
 
 
 def calculate_credit_cost(
     input_tokens: int,
     output_tokens: int,
     input_rate: float,
-    output_rate: float
+    output_rate: float,
 ) -> float:
-    """Calculate credit cost based on token usage and rates"""
+    """Calculate credit cost based on token usage and rates."""
     return (input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate)
