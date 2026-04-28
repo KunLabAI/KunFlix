@@ -108,17 +108,19 @@ async def create_video_task(
     provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(request.model, provider.provider_type)
     
     # ── 本地 /api/media/ 路径转 base64 data URL（供应商需要 HTTPS 或 base64） ──
-    image_url = _resolve_local_media_to_data_url(request.image_url)
-    last_frame_image = _resolve_local_media_to_data_url(request.last_frame_image)
-    extension_video_url = _resolve_local_media_to_data_url(request.extension_video_url)
+    # DashScope HappyHorse 不支持 data URL, 由适配器内部通过上传策略处理本地文件
+    _prep = lambda u: _prepare_media_url(provider_type, u)
+    image_url = _prep(request.image_url)
+    last_frame_image = _prep(request.last_frame_image)
+    extension_video_url = _prep(request.extension_video_url)
     reference_images = [
-        {**img, "url": _resolve_local_media_to_data_url(img.get("url"))} for img in (request.reference_images or [])
+        {**img, "url": _prep(img.get("url"))} for img in (request.reference_images or [])
     ]
     reference_videos = [
-        {**v, "url": _resolve_local_media_to_data_url(v.get("url"))} for v in (request.reference_videos or [])
+        {**v, "url": _prep(v.get("url"))} for v in (request.reference_videos or [])
     ]
     reference_audios = [
-        {**a, "url": _resolve_local_media_to_data_url(a.get("url"))} for a in (request.reference_audios or [])
+        {**a, "url": _prep(a.get("url"))} for a in (request.reference_audios or [])
     ]
 
     # 构建视频上下文
@@ -141,6 +143,7 @@ async def create_video_task(
         reference_videos=reference_videos,
         reference_audios=reference_audios,
         return_last_frame=request.return_last_frame,
+        base_url=provider.base_url,
     )
 
     # 提交到供应商 (根据 provider_type 自动路由)
@@ -205,7 +208,7 @@ async def get_video_task_status(
 
     # 轮询供应商 (根据 provider_type 自动选择适配器)
     provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(task.model or "", provider.provider_type)
-    poll_result = await poll_video_task(provider.api_key, task.xai_task_id, provider_type)
+    poll_result = await poll_video_task(provider.api_key, task.xai_task_id, provider_type, base_url=provider.base_url)
 
     # 超时保护：pending 且有错误超过 5 分钟 → 判定失败
     poll_has_error = poll_result.error and poll_result.status == "pending"
@@ -480,3 +483,18 @@ def _resolve_local_media_to_data_url(url: str | None) -> str | None:
     raw = filepath.read_bytes()
     b64 = base64.b64encode(raw).decode("ascii")
     return f"data:{mime_type};base64,{b64}"
+
+
+# 不需要 base64 转换的供应商 (由适配器自行处理媒体 URL)
+_BYPASS_BASE64_PROVIDERS = {"dashscope"}
+
+
+def _prepare_media_url(provider_type: str, url: str | None) -> str | None:
+    """根据供应商选择媒体 URL 预处理策略
+    
+    - dashscope (HappyHorse): 原样透传, 由适配器内部通过 OSS 上传策略处理本地文件
+    - 其他供应商: 保持原有 base64 data URL 转换逻辑
+    """
+    if provider_type in _BYPASS_BASE64_PROVIDERS:
+        return url
+    return _resolve_local_media_to_data_url(url)

@@ -46,6 +46,8 @@ class VideoContext:
     return_last_frame: bool = False
     # 联网搜索工具 (Seedance 2.0 支持)
     enable_web_search: bool = False
+    # 供应商 Endpoint 覆盖 (DashScope HappyHorse 支持北京/新加坡切换)
+    base_url: Optional[str] = None
 
 
 @dataclass

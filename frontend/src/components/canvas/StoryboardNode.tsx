@@ -198,7 +198,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
           </div>
         </div>
 
-        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : 'border border-border/50'} overflow-hidden relative z-[2] shadow-sm hover:shadow-md transition-all`}>
+        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2] transition-all`}>
           <CardContent className={`p-0 flex-1 flex flex-col bg-background/50 overflow-hidden ${isEditing ? 'nowheel' : ''}`}>
               {hasData ? (
                 <div

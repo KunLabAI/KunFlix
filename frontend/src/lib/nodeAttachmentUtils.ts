@@ -21,6 +21,10 @@ export function extractPlainTextFromTiptap(json: unknown, maxLength = 150): stri
   return text.length > maxLength ? text.slice(0, maxLength) + '...' : text;
 }
 
+/** 读取节点 data.updatedAt（源自 useCanvasStore 的 addNode/updateNodeData 注入） */
+const readUpdatedAt = (node: CanvasNode): string | undefined =>
+  (node.data as { updatedAt?: string })?.updatedAt;
+
 /**
  * 节点 → 附件数据映射表（按节点类型提取）
  */
@@ -36,6 +40,7 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
       excerpt: raw.length > 150 ? raw.slice(0, 150) + '...' : raw,
       thumbnailUrl: null,
       meta: { tags: data.tags, fullText },
+      updatedAt: readUpdatedAt(node),
     };
   },
   image: (node) => {
@@ -52,6 +57,7 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
       excerpt: data.description || '',
       thumbnailUrl,
       meta: { uploading: data.uploading },
+      updatedAt: readUpdatedAt(node),
     };
   },
   video: (node) => {
@@ -69,6 +75,7 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
       excerpt: data.description || '',
       thumbnailUrl,
       meta: { fitMode: data.fitMode, uploading: data.uploading },
+      updatedAt: readUpdatedAt(node),
     };
   },
   storyboard: (node) => {
@@ -145,6 +152,7 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
         tableColumns,
         tableData,
       },
+      updatedAt: readUpdatedAt(node),
     };
   },
 };
@@ -161,5 +169,6 @@ export function extractNodeAttachment(node: CanvasNode): NodeAttachment {
     excerpt: '',
     thumbnailUrl: null,
     meta: {},
+    updatedAt: readUpdatedAt(node),
   };
 }

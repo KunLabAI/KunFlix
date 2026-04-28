@@ -17,7 +17,9 @@ import {
   type VideoCreateParams,
 } from '@/hooks/useVideoGeneration';
 import type { CanvasNode, CharacterNodeData, VideoNodeData, AudioNodeData, VideoGenHistoryEntry } from '@/store/useCanvasStore';
+import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
 import RefTagInput, { type RefTagInputRef, type RefImage, type RefType } from './RefTagInput';
+import { NodePickerDropdown, type NodePickerItem } from './NodePickerDropdown';
 
 // ---------------------------------------------------------------------------
 // Provider logo mapping
@@ -363,17 +365,17 @@ export default function VideoGeneratePanel({
   // Picker mode based on current video mode
   const pickerMode: PickerMode = PICKER_MODE_MAP[videoMode] || 'none';
 
-  // Available nodes from canvas
+  // Available nodes from canvas（按 updatedAt 倒序）
   const imageNodes = useMemo(
-    () => canvasNodes.filter((n) => n.type === 'image' && getImageNodeUrl(n)),
+    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'image' && getImageNodeUrl(n))),
     [canvasNodes],
   );
   const videoNodes = useMemo(
-    () => canvasNodes.filter((n) => n.type === 'video' && getVideoNodeUrl(n)),
+    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'video' && getVideoNodeUrl(n))),
     [canvasNodes],
   );
   const audioNodes = useMemo(
-    () => canvasNodes.filter((n) => n.type === 'audio' && getAudioNodeUrl(n)),
+    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'audio' && getAudioNodeUrl(n))),
     [canvasNodes],
   );
 
@@ -390,7 +392,7 @@ export default function VideoGeneratePanel({
   const videoRefCount = referenceImages.filter(r => r.refType === 'video').length;
   const audioRefCount = referenceImages.filter(r => r.refType === 'audio').length;
 
-  // Nodes to show in picker — multi_image shows mixed types for Seedance
+  // Nodes to show in picker — multi_image shows mixed types for Seedance（按 updatedAt 统一倒序）
   const pickerNodes = useMemo(() => {
     const isMulti = pickerMode === 'multi_image';
     const isVid = pickerMode === 'video';
@@ -399,7 +401,7 @@ export default function VideoGeneratePanel({
       ...(supportsRefVideos ? videoNodes : []),
       ...(supportsRefAudios ? audioNodes : []),
     ] : imageNodes;
-    return nodes;
+    return isMulti ? selectNodesByUpdatedDesc(nodes) : nodes;
   }, [pickerMode, imageNodes, videoNodes, audioNodes, supportsRefVideos, supportsRefAudios]);
 
   const hasPickerSelection =
@@ -652,7 +654,7 @@ export default function VideoGeneratePanel({
         {pickerMode === 'single_image' && imageUrl && (
           <div className="px-3 pt-2.5 pb-0">
             <div className="relative inline-block group/imgpreview">
-              <img src={imageUrl} alt="Reference" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <img src={imageUrl} alt="Reference" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); imageNodeIdRef.current = null; setImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                 <X className="h-2.5 w-2.5" />
               </button>
@@ -668,7 +670,7 @@ export default function VideoGeneratePanel({
           <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
             {/* First frame */}
             <div className="relative inline-block group/firstframe">
-              <img src={imageUrl} alt="First frame" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <img src={imageUrl} alt="First frame" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); unlinkNode(lastFrameNodeIdRef.current); imageNodeIdRef.current = null; lastFrameNodeIdRef.current = null; setImageUrl(''); setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/firstframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                 <X className="h-2.5 w-2.5" />
               </button>
@@ -681,7 +683,7 @@ export default function VideoGeneratePanel({
             {/* Last frame or placeholder */}
             {lastFrameImageUrl ? (
               <div className="relative inline-block group/lastframe">
-                <img src={lastFrameImageUrl} alt="Last frame" draggable={false} className="h-16 w-16 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                <img src={lastFrameImageUrl} alt="Last frame" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 <button type="button" onClick={() => { unlinkNode(lastFrameNodeIdRef.current); lastFrameNodeIdRef.current = null; setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/lastframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
                   <X className="h-2.5 w-2.5" />
                 </button>
@@ -751,7 +753,7 @@ export default function VideoGeneratePanel({
                       <Music className="w-6 h-6 text-teal-400/60" />
                     </div>
                   ) : (ref.previewUrl || ref.url) && !(ref.url.startsWith('asset://') && !ref.previewUrl) ? (
-                    <img src={ref.previewUrl || ref.url} alt={ref.name} draggable={false} className="h-14 w-14 rounded-lg object-cover border border-border/50" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
+                    <img src={ref.previewUrl || ref.url} alt={ref.name} draggable={false} className="h-14 w-14 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
                   ) : null}
                   {isImg && (
                     <div className={cn('h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center', (ref.previewUrl || (!ref.url.startsWith('asset://') && ref.url)) ? 'hidden absolute inset-0' : '')}>
@@ -950,60 +952,35 @@ export default function VideoGeneratePanel({
 
                 {/* Dropdown */}
                 {showNodePicker && (
-                  <div className="absolute bottom-full right-0 mb-1 w-56 max-h-60 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
-                      {pickerMode === 'video'
-                        ? t('canvas.node.video.selectVideoNode')
-                        : pickerMode === 'multi_image'
-                          ? t('canvas.node.video.selectRefImages', { max: maxTotalRefs })
-                          : t('canvas.node.video.selectImageNode')}
-                    </div>
-                    {pickerNodes.map((node) => {
+                  <NodePickerDropdown
+                    open={showNodePicker}
+                    anchor="bottom"
+                    align="right"
+                    title={pickerMode === 'video'
+                      ? t('canvas.node.video.selectVideoNode')
+                      : pickerMode === 'multi_image'
+                        ? t('canvas.node.video.selectRefImages', { max: maxTotalRefs })
+                        : t('canvas.node.video.selectImageNode')}
+                    emptyText={pickerMode === 'video' ? t('canvas.node.video.noVideoNodes') : t('canvas.node.video.noImageNodes')}
+                    items={pickerNodes.map<NodePickerItem>((node) => {
                       const nt = node.type as string;
                       const isVideo = pickerMode === 'video' || nt === 'video';
                       const isAudio = nt === 'audio';
                       const data = node.data as Record<string, unknown>;
                       const label = ((data.name || node.id.slice(0, 8)) as string);
                       const thumbUrl = isVideo ? getVideoNodeUrl(node) : isAudio ? null : getImageNodeUrl(node);
-                      const NodeIcon = isVideo ? Film : isAudio ? Music : ImageIcon;
-                      const iconColor = isVideo ? 'text-amber-400' : isAudio ? 'text-teal-400' : 'text-node-green';
-                      // Check per-type limit
                       const atLimit = isVideo ? videoRefCount >= maxRefVideos
                         : isAudio ? audioRefCount >= maxRefAudios
                         : imageRefCount >= maxRefImages;
-                      return (
-                        <button
-                          key={node.id}
-                          type="button"
-                          onClick={() => handleSelectNode(node)}
-                          disabled={pickerMode === 'multi_image' && atLimit}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer',
-                            pickerMode === 'multi_image' && atLimit && 'opacity-40 cursor-not-allowed',
-                          )}
-                        >
-                          {isAudio ? (
-                            <div className="h-8 w-8 rounded bg-muted border border-border/30 shrink-0 flex items-center justify-center">
-                              <Music className="w-4 h-4 text-teal-400/60" />
-                            </div>
-                          ) : thumbUrl && (
-                            isVideo
-                              ? <div className="h-8 w-12 rounded bg-muted border border-border/30 shrink-0 overflow-hidden"><video src={thumbUrl} className="w-full h-full object-cover" preload="metadata" muted /></div>
-                              : <img src={thumbUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0 border border-border/30" />
-                          )}
-                          <div className="flex flex-col min-w-0 flex-1 text-left">
-                            <span className="font-medium truncate text-foreground">{label}</span>
-                          </div>
-                          <NodeIcon className={cn('w-3 h-3 shrink-0', iconColor)} />
-                        </button>
-                      );
+                      return {
+                        node,
+                        label,
+                        thumbUrl,
+                        disabled: pickerMode === 'multi_image' && atLimit,
+                      };
                     })}
-                    {pickerNodes.length === 0 && (
-                      <div className="p-3 text-[10px] text-muted-foreground text-center">
-                        {pickerMode === 'video' ? t('canvas.node.video.noVideoNodes') : t('canvas.node.video.noImageNodes')}
-                      </div>
-                    )}
-                  </div>
+                    onSelect={handleSelectNode}
+                  />
                 )}
               </div>
             )}
@@ -1028,37 +1005,22 @@ export default function VideoGeneratePanel({
                 </button>
 
                 {showNodePicker && (
-                  <div className="absolute bottom-full right-0 mb-1 w-56 max-h-60 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
-                      {!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
-                    </div>
-                    {imageNodes.map((node) => {
+                  <NodePickerDropdown
+                    open={showNodePicker}
+                    anchor="bottom"
+                    align="right"
+                    title={!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
+                    emptyText={t('canvas.node.video.noImageNodes')}
+                    items={imageNodes.map<NodePickerItem>((node) => {
                       const data = node.data as Record<string, unknown>;
-                      const label = ((data.name || node.id.slice(0, 8)) as string);
-                      const thumbUrl = getImageNodeUrl(node);
-                      return (
-                        <button
-                          key={node.id}
-                          type="button"
-                          onClick={() => handleSelectNode(node)}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer"
-                        >
-                          {thumbUrl && (
-                            <img src={thumbUrl} alt="" className="h-8 w-8 rounded object-cover shrink-0 border border-border/30" />
-                          )}
-                          <div className="flex flex-col min-w-0 flex-1 text-left">
-                            <span className="font-medium truncate text-foreground">{label}</span>
-                          </div>
-                          <ImageIcon className={cn('w-3 h-3 shrink-0 text-node-green')} />
-                        </button>
-                      );
+                      return {
+                        node,
+                        label: ((data.name || node.id.slice(0, 8)) as string),
+                        thumbUrl: getImageNodeUrl(node),
+                      };
                     })}
-                    {imageNodes.length === 0 && (
-                      <div className="p-3 text-[10px] text-muted-foreground text-center">
-                        {t('canvas.node.video.noImageNodes')}
-                      </div>
-                    )}
-                  </div>
+                    onSelect={handleSelectNode}
+                  />
                 )}
               </div>
             )}

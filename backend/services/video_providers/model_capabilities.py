@@ -469,6 +469,84 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "supports_fast_pretreatment": False,
         "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"],
     },
+
+    # =========================================================================
+    # 阿里云 DashScope 百炼 HappyHorse 模型
+    # =========================================================================
+
+    # HappyHorse 1.0 T2V: 文生视频
+    "happyhorse-1.0-t2v": {
+        "provider": "dashscope",
+        "modes": ["text_to_video"],
+        "durations": list(range(3, 16)),  # 3-15 秒
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": False,
+        "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    },
+
+    # HappyHorse 1.0 I2V: 图生视频 (首帧)
+    "happyhorse-1.0-i2v": {
+        "provider": "dashscope",
+        "modes": ["image_to_video"],
+        "durations": list(range(3, 16)),
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": False,
+        "supports_reference_images": False,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 0,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        # 宽高比跟随首帧图像, 此处声明为 adaptive
+        "aspect_ratios": ["adaptive"],
+    },
+
+    # HappyHorse 1.0 R2V: 参考生视频 (1-9 张参考图)
+    "happyhorse-1.0-r2v": {
+        "provider": "dashscope",
+        "modes": ["reference_images"],
+        "durations": list(range(3, 16)),
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": False,
+        "supports_last_frame": False,
+        "supports_reference_images": True,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": False,
+        "max_reference_images": 9,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4"],
+    },
+
+    # HappyHorse 1.0 Video Edit: 视频编辑 (视频 + 0-5 张参考图)
+    "happyhorse-1.0-video-edit": {
+        "provider": "dashscope",
+        "modes": ["edit"],
+        "durations": list(range(3, 16)),  # 输出跟随输入视频长度
+        "resolutions": ["720p", "1080p"],
+        "supports_first_frame": False,
+        "supports_last_frame": False,
+        "supports_reference_images": True,
+        "supports_video_extension": False,
+        "supports_video_edit": True,
+        "supports_audio": True,
+        "max_reference_images": 5,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        # 宽高比跟随输入视频
+        "aspect_ratios": ["adaptive"],
+    },
 }
 
 
