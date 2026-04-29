@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   useVirtualHumanPresets,
   useCreateVirtualHumanPreset,
@@ -45,20 +46,15 @@ import { Plus, Trash2, UserRound, Loader2, ImageOff, ArrowRight, Upload, X } fro
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
-// 映射表
+// 性别变体
 // ---------------------------------------------------------------------------
-const GENDER_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
-  male:   { label: '男', variant: 'default' },
-  female: { label: '女', variant: 'secondary' },
+const GENDER_VARIANT: Record<string, 'default' | 'secondary' | 'outline'> = {
+  male: 'default',
+  female: 'secondary',
 };
 
-const GENDER_FILTERS = [
-  { key: 'all',    label: '全部' },
-  { key: 'male',   label: '男' },
-  { key: 'female', label: '女' },
-] as const;
-
-type GenderFilter = typeof GENDER_FILTERS[number]['key'];
+const GENDER_FILTER_KEYS = ['all', 'male', 'female'] as const;
+type GenderFilter = typeof GENDER_FILTER_KEYS[number];
 
 // ---------------------------------------------------------------------------
 // 默认表单值
@@ -126,6 +122,7 @@ function PresetImage({ src, alt, className }: { src: string; alt: string; classN
 // Page
 // ---------------------------------------------------------------------------
 export default function VirtualHumansPage() {
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   // data
@@ -194,14 +191,22 @@ export default function VirtualHumansPage() {
 
     // validate size
     if (file.size > MAX_FILE_SIZE) {
-      toast({ variant: 'destructive', title: '文件过大', description: '图片大小不能超过 5MB' });
+      toast({
+        variant: 'destructive',
+        title: t('virtualHumans.toast.fileTooBigTitle'),
+        description: t('virtualHumans.toast.fileTooBigDesc'),
+      });
       return;
     }
 
     // validate type
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      toast({ variant: 'destructive', title: '格式不支持', description: '仅支持 PNG、JPG、WEBP 格式' });
+      toast({
+        variant: 'destructive',
+        title: t('virtualHumans.toast.formatUnsupportedTitle'),
+        description: t('virtualHumans.toast.formatUnsupportedDesc'),
+      });
       return;
     }
 
@@ -217,26 +222,34 @@ export default function VirtualHumansPage() {
       });
 
       setField('preview_url', res.data.url);
-      toast({ title: '上传成功' });
+      toast({ title: t('virtualHumans.toast.uploadSuccess') });
     } catch (err: any) {
-      const msg = err?.response?.data?.detail || err?.message || '上传失败';
-      toast({ variant: 'destructive', title: '上传失败', description: msg });
+      const msg = err?.response?.data?.detail || err?.message || t('virtualHumans.toast.uploadFailedFallback');
+      toast({
+        variant: 'destructive',
+        title: t('virtualHumans.toast.uploadFailed'),
+        description: msg,
+      });
     } finally {
       setUploading(false);
     }
-  }, [toast]);
+  }, [toast, t]);
 
   const handleSubmit = async () => {
     const { asset_id, name, style, preview_url } = form;
     const missing = [
-      !asset_id.trim() && 'Asset ID',
-      !name.trim() && '名称',
-      !style.trim() && '风格',
-      !preview_url.trim() && '预览图',
+      !asset_id.trim() && t('virtualHumans.form.assetId'),
+      !name.trim() && t('virtualHumans.form.name'),
+      !style.trim() && t('virtualHumans.form.style'),
+      !preview_url.trim() && t('virtualHumans.form.preview'),
     ].filter(Boolean);
 
     if (missing.length) {
-      toast({ variant: 'destructive', title: '请填写必填项', description: missing.join('、') });
+      toast({
+        variant: 'destructive',
+        title: t('virtualHumans.toast.fieldsRequiredTitle'),
+        description: missing.join(t('virtualHumans.toast.fieldsRequiredJoiner')),
+      });
       return;
     }
 
@@ -246,15 +259,25 @@ export default function VirtualHumansPage() {
       editingPreset
         ? await updatePreset(editingPreset.id, payload)
         : await createPreset(payload);
-      toast({ title: editingPreset ? '更新成功' : '创建成功' });
+      toast({
+        title: editingPreset
+          ? t('virtualHumans.toast.updateSuccess')
+          : t('virtualHumans.toast.createSuccess'),
+      });
       setDialogOpen(false);
       mutate();
     } catch (e: any) {
       const raw = e?.response?.data?.detail;
-      const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ') : e?.message || '未知错误';
+      const msg = typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ')
+          : e?.message || t('virtualHumans.toast.unknownError');
       toast({
         variant: 'destructive',
-        title: editingPreset ? '更新失败' : '创建失败',
+        title: editingPreset
+          ? t('virtualHumans.toast.updateFailed')
+          : t('virtualHumans.toast.createFailed'),
         description: msg,
       });
     } finally {
@@ -267,15 +290,19 @@ export default function VirtualHumansPage() {
     setDeleting(true);
     try {
       await deletePreset(deleteTarget.id);
-      toast({ title: '删除成功' });
+      toast({ title: t('virtualHumans.toast.deleteSuccess') });
       setDeleteTarget(null);
       mutate();
     } catch (e: any) {
       const raw = e?.response?.data?.detail;
-      const msg = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ') : e?.message || '未知错误';
+      const msg = typeof raw === 'string'
+        ? raw
+        : Array.isArray(raw)
+          ? raw.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ')
+          : e?.message || t('virtualHumans.toast.unknownError');
       toast({
         variant: 'destructive',
-        title: '删除失败',
+        title: t('virtualHumans.toast.deleteFailed'),
         description: msg,
       });
     } finally {
@@ -289,34 +316,34 @@ export default function VirtualHumansPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">虚拟人像库</h2>
+          <h2 className="text-3xl font-bold tracking-tight">{t('virtualHumans.title')}</h2>
           <p className="text-muted-foreground mt-1">
-            管理火山方舟预制虚拟人像，用于 Seedance 2.0 真人视频生成
+            {t('virtualHumans.subtitle')}
           </p>
         </div>
         <Button onClick={openCreateDialog}>
-          <Plus className="mr-2 h-4 w-4" /> 添加人像
+          <Plus className="mr-2 h-4 w-4" /> {t('virtualHumans.addBtn')}
         </Button>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex items-center rounded-lg border bg-background p-1 shadow-sm">
-          {GENDER_FILTERS.map((g) => (
+          {GENDER_FILTER_KEYS.map((key) => (
             <Button
-              key={g.key}
-              variant={genderFilter === g.key ? 'secondary' : 'ghost'}
+              key={key}
+              variant={genderFilter === key ? 'secondary' : 'ghost'}
               size="sm"
               className="h-8 px-3 text-xs"
-              onClick={() => setGenderFilter(g.key)}
+              onClick={() => setGenderFilter(key)}
             >
-              {g.label}
+              {t(`virtualHumans.filter.${key}`)}
             </Button>
           ))}
         </div>
 
         <Input
-          placeholder="按风格筛选，如 realistic…"
+          placeholder={t('virtualHumans.filter.stylePlaceholder')}
           className="max-w-xs"
           value={styleFilter}
           onChange={(e) => setStyleFilter(e.target.value)}
@@ -332,12 +359,12 @@ export default function VirtualHumansPage() {
         ) : filteredPresets.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed bg-muted/50 text-muted-foreground">
             <UserRound className="h-8 w-8 opacity-40" />
-            <p className="text-sm">暂无虚拟人像</p>
+            <p className="text-sm">{t('virtualHumans.empty')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-6">
             {filteredPresets.map((preset) => {
-              const gender = GENDER_MAP[preset.gender] ?? GENDER_MAP.male;
+              const genderVariant = GENDER_VARIANT[preset.gender] ?? GENDER_VARIANT.male;
               return (
                 <div
                   key={preset.id}
@@ -364,7 +391,9 @@ export default function VirtualHumansPage() {
                           preset.is_active ? 'bg-emerald-500' : 'bg-gray-400',
                         )}
                       />
-                      {preset.is_active ? '启用' : '停用'}
+                      {preset.is_active
+                        ? t('virtualHumans.status.active')
+                        : t('virtualHumans.status.inactive')}
                     </div>
                   </div>
 
@@ -374,7 +403,9 @@ export default function VirtualHumansPage() {
                       {preset.name}
                     </h3>
                     <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                      <Badge variant={gender.variant} className="text-[10px]">{gender.label}</Badge>
+                      <Badge variant={genderVariant} className="text-[10px]">
+                        {t(`virtualHumans.gender.${preset.gender}`, { defaultValue: preset.gender })}
+                      </Badge>
                       <Badge variant="outline" className="text-[10px] font-normal">{preset.style}</Badge>
                     </div>
                     <p className="truncate font-mono text-[11px] text-muted-foreground" title={preset.asset_id}>
@@ -385,7 +416,7 @@ export default function VirtualHumansPage() {
                   {/* 底部操作区 */}
                   <div className="px-4 py-3 border-t border-border/50 flex items-center justify-between transition-colors duration-300 group-hover:bg-muted/30">
                     <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
-                      编辑配置
+                      {t('virtualHumans.card.editConfig')}
                       <ArrowRight className="w-3 h-3 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
                     </span>
 
@@ -397,7 +428,7 @@ export default function VirtualHumansPage() {
                         onClick={() => setDeleteTarget(preset)}
                       >
                         <Trash2 className="h-3 w-3 mr-1" />
-                        删除
+                        {t('virtualHumans.card.deleteBtn')}
                       </Button>
                     </div>
                   </div>
@@ -412,9 +443,15 @@ export default function VirtualHumansPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingPreset ? '编辑虚拟人像' : '添加虚拟人像'}</DialogTitle>
+            <DialogTitle>
+              {editingPreset
+                ? t('virtualHumans.dialog.editTitle')
+                : t('virtualHumans.dialog.createTitle')}
+            </DialogTitle>
             <DialogDescription>
-              {editingPreset ? '修改虚拟人像预设信息' : '添加一个新的火山方舟预制虚拟人像'}
+              {editingPreset
+                ? t('virtualHumans.dialog.editDesc')
+                : t('virtualHumans.dialog.createDesc')}
             </DialogDescription>
           </DialogHeader>
 
@@ -422,11 +459,11 @@ export default function VirtualHumansPage() {
             {/* asset_id */}
             <div className="grid gap-1.5">
               <Label htmlFor="asset_id">
-                Asset ID <span className="text-destructive">*</span>
+                {t('virtualHumans.form.assetId')} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="asset_id"
-                placeholder="asset-xxxxxxxxx-xxxxx"
+                placeholder={t('virtualHumans.form.assetIdPlaceholder')}
                 value={form.asset_id}
                 onChange={(e) => setField('asset_id', e.target.value)}
               />
@@ -435,11 +472,11 @@ export default function VirtualHumansPage() {
             {/* name */}
             <div className="grid gap-1.5">
               <Label htmlFor="name">
-                名称 <span className="text-destructive">*</span>
+                {t('virtualHumans.form.name')} <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="name"
-                placeholder="人像名称"
+                placeholder={t('virtualHumans.form.namePlaceholder')}
                 value={form.name}
                 onChange={(e) => setField('name', e.target.value)}
               />
@@ -448,7 +485,7 @@ export default function VirtualHumansPage() {
             {/* gender + style row */}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-1.5">
-                <Label>性别</Label>
+                <Label>{t('virtualHumans.form.gender')}</Label>
                 <Select
                   value={form.gender}
                   onValueChange={(v) => setField('gender', v as 'male' | 'female')}
@@ -457,18 +494,18 @@ export default function VirtualHumansPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="male">男</SelectItem>
-                    <SelectItem value="female">女</SelectItem>
+                    <SelectItem value="male">{t('virtualHumans.gender.male')}</SelectItem>
+                    <SelectItem value="female">{t('virtualHumans.gender.female')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="style">
-                  风格 <span className="text-destructive">*</span>
+                  {t('virtualHumans.form.style')} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   id="style"
-                  placeholder="realistic"
+                  placeholder={t('virtualHumans.form.stylePlaceholder')}
                   value={form.style}
                   onChange={(e) => setField('style', e.target.value)}
                 />
@@ -478,7 +515,7 @@ export default function VirtualHumansPage() {
             {/* 预览图上传 */}
             <div className="grid gap-1.5">
               <Label>
-                预览图 <span className="text-destructive">*</span>
+                {t('virtualHumans.form.preview')} <span className="text-destructive">*</span>
               </Label>
               <input
                 ref={fileInputRef}
@@ -491,7 +528,7 @@ export default function VirtualHumansPage() {
                 <div className="relative rounded-lg border bg-muted/20 overflow-hidden">
                   <img
                     src={form.preview_url}
-                    alt="预览"
+                    alt={t('virtualHumans.form.previewAlt')}
                     className="w-full h-48 object-contain"
                   />
                   <Button
@@ -510,7 +547,7 @@ export default function VirtualHumansPage() {
                     disabled={uploading}
                   >
                     {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Upload className="h-3.5 w-3.5 mr-1" />}
-                    更换
+                    {t('virtualHumans.form.replace')}
                   </Button>
                 </div>
               ) : (
@@ -528,10 +565,12 @@ export default function VirtualHumansPage() {
                     <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
                   )}
                   <p className="text-sm text-muted-foreground">
-                    {uploading ? '上传中…' : '点击上传预览图'}
+                    {uploading
+                      ? t('virtualHumans.form.uploading')
+                      : t('virtualHumans.form.uploadHint')}
                   </p>
                   <p className="text-xs text-muted-foreground/60 mt-1">
-                    支持 PNG、JPG、WEBP，最大 5MB，上传后自动压缩
+                    {t('virtualHumans.form.formatHint')}
                   </p>
                 </div>
               )}
@@ -539,10 +578,10 @@ export default function VirtualHumansPage() {
 
             {/* description */}
             <div className="grid gap-1.5">
-              <Label htmlFor="description">描述</Label>
+              <Label htmlFor="description">{t('virtualHumans.form.description')}</Label>
               <Textarea
                 id="description"
-                placeholder="可选描述信息…"
+                placeholder={t('virtualHumans.form.descriptionPlaceholder')}
                 rows={3}
                 value={form.description}
                 onChange={(e) => setField('description', e.target.value)}
@@ -558,11 +597,13 @@ export default function VirtualHumansPage() {
                   onCheckedChange={(v) => setField('is_active', v)}
                 />
                 <Label htmlFor="is_active" className="cursor-pointer">
-                  {form.is_active ? '启用' : '停用'}
+                  {form.is_active
+                    ? t('virtualHumans.form.isActive')
+                    : t('virtualHumans.form.isInactive')}
                 </Label>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="sort_order">排序</Label>
+                <Label htmlFor="sort_order">{t('virtualHumans.form.sortOrder')}</Label>
                 <Input
                   id="sort_order"
                   type="number"
@@ -575,11 +616,13 @@ export default function VirtualHumansPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>
-              取消
+              {t('virtualHumans.form.cancel')}
             </Button>
             <Button onClick={handleSubmit} disabled={submitting || uploading}>
               {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingPreset ? '保存修改' : '创建'}
+              {editingPreset
+                ? t('virtualHumans.form.save')
+                : t('virtualHumans.form.create')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -589,20 +632,22 @@ export default function VirtualHumansPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { !open && setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t('virtualHumans.delete.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              即将删除虚拟人像「{deleteTarget?.name}」，此操作不可撤销。
+              {t('virtualHumans.delete.description', { name: deleteTarget?.name ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>
+              {t('virtualHumans.delete.cancel')}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              删除
+              {t('virtualHumans.delete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -93,5 +93,8 @@
     "tailwindcss": "^4",
     "ts-jest": "^29.4.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "handlebars": "^4.7.9"
   }
 }

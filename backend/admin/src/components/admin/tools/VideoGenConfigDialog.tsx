@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -24,17 +25,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { collectModelsByType } from '@/lib/api-utils';
 import { AlertCircle } from 'lucide-react';
 
-// 标签映射表
-const ASPECT_RATIO_LABELS: Record<string, string> = {
-  "1:1": "1:1 (方形)", "16:9": "16:9 (宽屏)", "9:16": "9:16 (手机)",
-  "4:3": "4:3 (标准)", "3:4": "3:4 (竖屏)", "3:2": "3:2", "2:3": "2:3",
-};
-
-const RESOLUTION_LABELS: Record<string, string> = {
-  "480p": "480p", "720p": "720p (标准)", "768p": "768p",
-  "1080p": "1080p (高清)", "4k": "4K (超高清)",
-};
-
 interface VideoGenConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,6 +45,7 @@ export default function VideoGenConfigDialog({
   onSaveConfig,
 }: VideoGenConfigDialogProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
 
   // 本地表单状态
@@ -86,7 +77,7 @@ export default function VideoGenConfigDialog({
     [videoModels, model],
   );
 
-  // 当前选中模型的能力（从 videoCapabilities 查询参数选项，可选增强）
+  // 当前选中模型的能力
   const caps = useMemo(
     () => videoCapabilities?.[model],
     [videoCapabilities, model],
@@ -106,14 +97,14 @@ export default function VideoGenConfigDialog({
         } : null,
       };
       await onSaveConfig(config);
-      toast({ title: '保存成功', description: '视频生成工具配置已更新' });
+      toast({ title: t('tools.videoDialog.saveSuccess'), description: t('tools.videoDialog.saveSuccessDesc') });
       onSaved();
       onOpenChange(false);
     } catch (e: any) {
       toast({
         variant: 'destructive',
-        title: '保存失败',
-        description: e?.response?.data?.detail || '请重试',
+        title: t('tools.videoDialog.saveFailed'),
+        description: e?.response?.data?.detail || t('tools.videoDialog.retry'),
       });
     } finally {
       setSaving(false);
@@ -124,16 +115,14 @@ export default function VideoGenConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>配置视频生成工具</DialogTitle>
-          <DialogDescription>
-            设置全局 generate_video 工具参数（所有智能体共享此配置）
-          </DialogDescription>
+          <DialogTitle>{t('tools.videoDialog.title')}</DialogTitle>
+          <DialogDescription>{t('tools.videoDialog.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {/* 启用开关 */}
           <div className="flex items-center justify-between">
-            <Label className="text-sm">启用视频生成</Label>
+            <Label className="text-sm">{t('tools.videoDialog.enable')}</Label>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
@@ -143,15 +132,13 @@ export default function VideoGenConfigDialog({
               {videoModels.length === 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>
-                    未找到视频模型。请先在「供应商管理」中为供应商的模型设置「视频模型」类型。
-                  </span>
+                  <span>{t('tools.videoDialog.noModelWarning')}</span>
                 </div>
               )}
 
               {/* 视频模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">视频模型</Label>
+                <Label className="text-xs text-muted-foreground">{t('tools.videoDialog.model')}</Label>
                 <Select
                   value={model}
                   onValueChange={(val) => {
@@ -163,7 +150,7 @@ export default function VideoGenConfigDialog({
                   disabled={videoModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={videoModels.length === 0 ? "无可用视频模型" : "选择视频模型"} />
+                    <SelectValue placeholder={videoModels.length === 0 ? t('tools.videoDialog.modelEmpty') : t('tools.videoDialog.modelSelect')} />
                   </SelectTrigger>
                   <SelectContent>
                     {videoModels.map((m) => (
@@ -178,7 +165,7 @@ export default function VideoGenConfigDialog({
 
               {model && !caps && (
                 <div className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
-                  该模型暂无预设参数配置，将使用默认值。
+                  {t('tools.videoDialog.noCapsHint')}
                 </div>
               )}
 
@@ -186,10 +173,10 @@ export default function VideoGenConfigDialog({
                 <div className="grid grid-cols-3 gap-3">
                   {/* 时长 */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">时长 (秒)</Label>
+                    <Label className="text-xs text-muted-foreground">{t('tools.videoDialog.duration')}</Label>
                     <Select value={duration} onValueChange={setDuration}>
                       <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="选择" />
+                        <SelectValue placeholder={t('tools.videoDialog.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {caps.durations.map((d: number) => (
@@ -201,14 +188,14 @@ export default function VideoGenConfigDialog({
 
                   {/* 分辨率 */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">分辨率</Label>
+                    <Label className="text-xs text-muted-foreground">{t('tools.videoDialog.resolution')}</Label>
                     <Select value={quality} onValueChange={setQuality}>
                       <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="选择" />
+                        <SelectValue placeholder={t('tools.videoDialog.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {caps.resolutions.map((r: string) => (
-                          <SelectItem key={r} value={r}>{RESOLUTION_LABELS[r] || r}</SelectItem>
+                          <SelectItem key={r} value={r}>{t(`tools.resolutions.${r}`, { defaultValue: r })}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -216,14 +203,14 @@ export default function VideoGenConfigDialog({
 
                   {/* 宽高比 */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">宽高比</Label>
+                    <Label className="text-xs text-muted-foreground">{t('tools.videoDialog.aspectRatio')}</Label>
                     <Select value={aspectRatio} onValueChange={setAspectRatio}>
                       <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="选择" />
+                        <SelectValue placeholder={t('tools.videoDialog.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {caps.aspect_ratios.map((ar: string) => (
-                          <SelectItem key={ar} value={ar}>{ASPECT_RATIO_LABELS[ar] || ar}</SelectItem>
+                          <SelectItem key={ar} value={ar}>{t(`tools.aspectRatios.${ar}`, { defaultValue: ar })}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -234,15 +221,15 @@ export default function VideoGenConfigDialog({
               {/* 模型能力概览 */}
               {caps && (
                 <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-                  <p className="font-medium">模型能力:</p>
+                  <p className="font-medium">{t('tools.videoDialog.modelCaps')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {caps.modes.map((m: string) => (
                       <span key={m} className="px-1.5 py-0.5 bg-muted rounded text-[11px]">{m}</span>
                     ))}
-                    {caps.supports_audio && <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 rounded text-[11px]">原生音频</span>}
-                    {caps.supports_reference_images && <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900 rounded text-[11px]">参考图片</span>}
-                    {caps.supports_video_edit && <span className="px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900 rounded text-[11px]">视频编辑</span>}
-                    {caps.supports_video_extension && <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 rounded text-[11px]">视频扩展</span>}
+                    {caps.supports_audio && <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 rounded text-[11px]">{t('tools.videoDialog.supportsAudio')}</span>}
+                    {caps.supports_reference_images && <span className="px-1.5 py-0.5 bg-green-100 dark:bg-green-900 rounded text-[11px]">{t('tools.videoDialog.supportsReferenceImages')}</span>}
+                    {caps.supports_video_edit && <span className="px-1.5 py-0.5 bg-orange-100 dark:bg-orange-900 rounded text-[11px]">{t('tools.videoDialog.supportsVideoEdit')}</span>}
+                    {caps.supports_video_extension && <span className="px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900 rounded text-[11px]">{t('tools.videoDialog.supportsVideoExtension')}</span>}
                   </div>
                 </div>
               )}
@@ -252,10 +239,10 @@ export default function VideoGenConfigDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
+            {t('common.buttons.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
+            {saving ? t('common.status.saving') : t('common.buttons.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

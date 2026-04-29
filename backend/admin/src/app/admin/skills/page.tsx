@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2, Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,14 +29,15 @@ interface SkillInfo {
   status: 'active' | 'inactive';
 }
 
-const STATUS_CONFIG = {
-  active:   { label: '运行中', variant: 'default'     as const },
-  inactive: { label: '已停用', variant: 'secondary'   as const },
+const STATUS_VARIANT: Record<SkillInfo['status'], 'default' | 'secondary'> = {
+  active: 'default',
+  inactive: 'secondary',
 };
 
 export default function SkillsPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +47,11 @@ export default function SkillsPage() {
       const response = await api.get('/admin/skills');
       setSkills(response.data);
     } catch {
-      toast({ title: "加载失败", description: "无法获取技能列表，请检查网络连接", variant: "destructive" });
+      toast({
+        title: t('skills.toast.loadFailed'),
+        description: t('skills.toast.loadFailedDesc'),
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -56,20 +62,31 @@ export default function SkillsPage() {
   const handleToggle = async (skill: SkillInfo) => {
     try {
       const response = await api.post(`/admin/skills/${skill.id}/toggle`);
-      toast({ title: "操作成功", description: response.data.message });
+      toast({ title: t('skills.toast.operationSuccess'), description: response.data.message });
       fetchSkills();
     } catch (error: any) {
-      toast({ title: "操作失败", description: error.response?.data?.detail || "切换技能状态时发生错误", variant: "destructive" });
+      toast({
+        title: t('skills.toast.operationFailed'),
+        description: error.response?.data?.detail || t('skills.toast.toggleFailed'),
+        variant: 'destructive',
+      });
     }
   };
 
   const handleDelete = async (skill: SkillInfo) => {
     try {
       await api.delete(`/admin/skills/${skill.name}`);
-      toast({ title: "删除成功", description: `技能 ${skill.name} 已删除` });
+      toast({
+        title: t('skills.toast.deleteSuccess'),
+        description: t('skills.toast.deleteSuccessDesc', { name: skill.name }),
+      });
       fetchSkills();
     } catch (error: any) {
-      toast({ title: "删除失败", description: error.response?.data?.detail || "删除技能时发生错误", variant: "destructive" });
+      toast({
+        title: t('skills.toast.deleteFailed'),
+        description: error.response?.data?.detail || t('skills.toast.deleteFailedDesc'),
+        variant: 'destructive',
+      });
     }
   };
 
@@ -77,13 +94,11 @@ export default function SkillsPage() {
     <div className="max-w-[1200px] mx-auto w-full space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">技能管理 (Skills)</h2>
-          <p className="text-muted-foreground mt-2">
-            管理 Agent 的扩展能力。技能是声明式的工具包，支持热插拔和版本控制。
-          </p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('skills.title')}</h2>
+          <p className="text-muted-foreground mt-2">{t('skills.subtitle')}</p>
         </div>
         <Button onClick={() => router.push('/admin/skills/new')}>
-          <Plus className="mr-2 h-4 w-4" /> 创建技能
+          <Plus className="mr-2 h-4 w-4" /> {t('skills.createBtn')}
         </Button>
       </div>
 
@@ -94,7 +109,8 @@ export default function SkillsPage() {
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {skills.map(skill => {
-            const cfg = STATUS_CONFIG[skill.status];
+            const variant = STATUS_VARIANT[skill.status];
+            const sourceLabel = t(`skills.source.${skill.source}`, { defaultValue: skill.source });
             return (
               <div
                 key={skill.id}
@@ -115,18 +131,18 @@ export default function SkillsPage() {
                       </h3>
                       <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{skill.description}</p>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">{skill.source}</Badge>
+                        <Badge variant="outline" className="text-xs">{sourceLabel}</Badge>
                         <span className="font-mono text-xs text-muted-foreground">v{skill.version}</span>
                       </div>
                     </div>
-                    <Badge variant={cfg.variant} className="shrink-0">{cfg.label}</Badge>
+                    <Badge variant={variant} className="shrink-0">{t(`skills.status.${skill.status}`)}</Badge>
                   </div>
                 </div>
 
                 {/* 底部操作区 */}
                 <div className="px-5 py-3 border-t border-border/50 flex items-center justify-between transition-colors duration-300 group-hover:bg-muted/30">
                   <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
-                    编辑配置
+                    {t('skills.action.edit')}
                     <ArrowRight className="w-3 h-3 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
                   </span>
 
@@ -140,15 +156,15 @@ export default function SkillsPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除</AlertDialogTitle>
+                            <AlertDialogTitle>{t('skills.delete.title')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要删除技能「{skill.name}」吗？此操作不可撤销。
+                              {t('skills.delete.description', { name: skill.name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t('skills.delete.cancel')}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => handleDelete(skill)}>
-                              删除
+                              {t('skills.delete.confirm')}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -161,7 +177,7 @@ export default function SkillsPage() {
                       className="h-7 px-2.5 text-xs opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
                       onClick={() => handleToggle(skill)}
                     >
-                      {skill.status === 'active' ? '停用' : '启用'}
+                      {skill.status === 'active' ? t('skills.action.disable') : t('skills.action.enable')}
                     </Button>
                   </div>
                 </div>

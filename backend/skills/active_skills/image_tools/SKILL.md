@@ -2,7 +2,7 @@
 name: image_tools
 description: "AI image generation and editing. Provides generate_image and edit_image tools for creating and modifying images."
 metadata:
-  builtin_skill_version: "1.1"
+  builtin_skill_version: "1.2"
 ---
 # Image Tools
 
@@ -51,7 +51,7 @@ Edit or generate an image **using one or more reference images as the visual bas
 - **Character consistency**: User wants to maintain a character's appearance across different scenes or poses.
 - **Style transfer**: Transform an image into a different art style while preserving the content.
 - **Inpainting / Partial edit**: Modify a specific region of an image while keeping everything else unchanged (e.g. "change the sofa color", "remove the person in the background").
-- **Multi-image composition**: Combine elements from multiple reference images into a new scene (e.g. "put the dress from image 1 on the person in image 2").
+- **Multi-image composition**: Combine elements from multiple reference images (up to 10) into a new scene (e.g. "put the dress from image 1 on the person in image 2").
 - **High-fidelity preservation**: Preserve critical details (face, logo, text) while making other changes.
 
 **Key decision rule**: Whenever a reference image exists (from canvas, chat history, or user upload) and the user wants the output to visually relate to it, use `edit_image`. Only use `generate_image` when creating from pure text with no visual reference.
@@ -61,7 +61,7 @@ Edit or generate an image **using one or more reference images as the visual bas
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `image_url` | string | No* | Single reference image URL/path (e.g. `/api/media/filename.jpg`). Do NOT pass base64. |
-| `image_urls` | string[] | No* | Multiple reference image URLs/paths (up to 5). Use for multi-image composition. |
+| `image_urls` | string[] | No* | Multiple reference image URLs/paths (up to 10). Use for multi-image composition. |
 | `prompt` | string | Yes | Description of the desired output. See [Edit Prompt Patterns](#edit-prompt-patterns) below for templates. |
 | `aspect_ratio` | string | No | Output aspect ratio. Single-image edit follows input; multi-image defaults to first image (can be overridden). |
 | `quality` | string | No | Output quality ("standard" or "hd"). Default uses global config. |
@@ -123,6 +123,30 @@ The tool returns the edited/generated image URL in markdown format.
 | "Put dress from image A on person from image B" | `edit_image` + `image_urls` | Multi-image composition |
 | "Add this logo to her t-shirt" (2 images) | `edit_image` + `image_urls` | High-fidelity detail merging |
 | "Refer to my original two character sheets" | `edit_image` + `image_urls` | Combining elements from multiple sources |
+
+---
+
+## Reference Image Categories (Gemini 3)
+
+Gemini 3 image models support mixing up to 10 reference images in a single `edit_image` call. Reference images fall into two semantic categories, and the model handles each differently:
+
+| Category | Purpose | Best For | Examples |
+|----------|---------|----------|----------|
+| **Object reference (high-fidelity)** | Preserve the exact appearance of a specific object | Products, logos, clothing, props, text, branding | "use the bag from image 1", "put this logo on the shirt", "place the product in the scene" |
+| **Character reference (consistency)** | Keep a character's identity consistent across scenes/poses | People, creatures, stylized characters — faces, hair, outfits | "the same woman from image 2 now in a forest", "these 3 people making funny faces" |
+
+**Recommended mix in a single call** (aligned with Gemini 3's internal routing):
+
+- Up to ~6 object-reference images for high-fidelity embedding (logos, products, outfits to preserve pixel-accurately)
+- Up to ~5 character-reference images for identity consistency (faces and features that must stay recognizable)
+- Combined total must stay within the `image_urls` cap of 10
+
+### Referencing Tips
+
+- **Be explicit about roles**: in the prompt, refer to each image by order, e.g. *"Take the dress from image 1, the handbag from image 2, and put them on the woman from image 3"*.
+- **Declare intent per image**: object-reference → use verbs like "use", "include", "place"; character-reference → use "the same person/character from image X".
+- **Group photos of multiple characters**: pass each character's reference separately (e.g. person1.png … person5.png) and describe the scene — e.g. *"An office group photo of these 5 people making funny faces"*.
+- **Aspect ratio**: defaults to the first image; pass `aspect_ratio` explicitly to override.
 
 ---
 
@@ -245,7 +269,7 @@ Generate a character reference sheet from a single image.
 - **Always write prompts in English** for best quality, even when the user speaks another language.
 - For `edit_image`, use the file path from canvas nodes or previous generations — never paste base64 data.
 - When multiple images are needed from the same prompt, set `n` parameter on `generate_image` instead of calling multiple times.
-- **Multi-image editing**: When the user references multiple images (e.g. "refer to the two character images I sent earlier"), use `image_urls` array. Up to 5 images supported.
+- **Multi-image editing**: When the user references multiple images (e.g. "refer to the two character images I sent earlier"), use `image_urls` array. Up to 10 images supported.
 - **Single vs multi aspect ratio**: Single-image edit always follows the input image's aspect ratio (cannot be overridden). Multi-image edit defaults to the first image but can be overridden with `aspect_ratio`.
 - **Iterative refinement**: Use each edit output as the input for the next edit to progressively refine — describe only the incremental changes needed.
 - **Accurate text in images**: To render text in generated images, put the desired text in quotes and describe its placement clearly (e.g. 'the word "HELLO" in bold serif font centered on the banner').

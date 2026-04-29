@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -24,15 +25,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { collectModelsByType } from '@/lib/api-utils';
 import { AlertCircle } from 'lucide-react';
 
-// 音频供应商类型集合（已废弃，改用 model_type 过滤）
-// const MUSIC_PROVIDER_TYPES = new Set(["gemini"]);
-
-// 输出格式选项
-const OUTPUT_FORMAT_OPTIONS = [
-  { value: 'mp3', label: 'MP3 (通用)' },
-  { value: 'wav', label: 'WAV (无损，仅 Pro)' },
-];
-
 interface MusicGenConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -51,6 +43,7 @@ export default function MusicGenConfigDialog({
   onSaveConfig,
 }: MusicGenConfigDialogProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
 
   // 本地表单状态
@@ -78,13 +71,31 @@ export default function MusicGenConfigDialog({
     [audioModels, model],
   );
 
-  // 模型能力标签映射
-  const MODEL_CAPS: Record<string, { label: string; description: string }> = {
-    'lyria-3-clip-preview': { label: 'Clip', description: '短音乐片段 (~30秒), 仅 MP3' },
-    'lyria-3-pro-preview': { label: 'Pro', description: '完整歌曲 (3-5分钟), MP3/WAV, 支持歌词' },
-  };
+  // 输出格式选项
+  const outputFormatOptions = useMemo(
+    () => [
+      { value: 'mp3', label: t('tools.musicDialog.formats.mp3') },
+      { value: 'wav', label: t('tools.musicDialog.formats.wav') },
+    ],
+    [t],
+  );
 
-  const currentCaps = MODEL_CAPS[model];
+  // 模型能力标签映射
+  const modelCapsMap: Record<string, { label: string; description: string }> = useMemo(
+    () => ({
+      'lyria-3-clip-preview': {
+        label: t('tools.musicDialog.caps.clipLabel'),
+        description: t('tools.musicDialog.caps.clipDesc'),
+      },
+      'lyria-3-pro-preview': {
+        label: t('tools.musicDialog.caps.proLabel'),
+        description: t('tools.musicDialog.caps.proDesc'),
+      },
+    }),
+    [t],
+  );
+
+  const currentCaps = modelCapsMap[model];
 
   const handleSave = async () => {
     setSaving(true);
@@ -98,14 +109,14 @@ export default function MusicGenConfigDialog({
         } : null,
       };
       await onSaveConfig(config);
-      toast({ title: '保存成功', description: '音乐生成工具配置已更新' });
+      toast({ title: t('tools.musicDialog.saveSuccess'), description: t('tools.musicDialog.saveSuccessDesc') });
       onSaved();
       onOpenChange(false);
     } catch (e: any) {
       toast({
         variant: 'destructive',
-        title: '保存失败',
-        description: e?.response?.data?.detail || '请重试',
+        title: t('tools.musicDialog.saveFailed'),
+        description: e?.response?.data?.detail || t('tools.musicDialog.retry'),
       });
     } finally {
       setSaving(false);
@@ -116,16 +127,14 @@ export default function MusicGenConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>配置音乐生成工具</DialogTitle>
-          <DialogDescription>
-            设置全局 generate_music 工具参数（所有智能体共享此配置）
-          </DialogDescription>
+          <DialogTitle>{t('tools.musicDialog.title')}</DialogTitle>
+          <DialogDescription>{t('tools.musicDialog.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {/* 启用开关 */}
           <div className="flex items-center justify-between">
-            <Label className="text-sm">启用音乐生成</Label>
+            <Label className="text-sm">{t('tools.musicDialog.enable')}</Label>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
@@ -135,22 +144,20 @@ export default function MusicGenConfigDialog({
               {audioModels.length === 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>
-                    未找到音频模型。请先在「供应商管理」中为供应商的模型设置「音频模型」类型。
-                  </span>
+                  <span>{t('tools.musicDialog.noModelWarning')}</span>
                 </div>
               )}
 
               {/* 音乐模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">音乐模型</Label>
+                <Label className="text-xs text-muted-foreground">{t('tools.musicDialog.model')}</Label>
                 <Select
                   value={model}
                   onValueChange={setModel}
                   disabled={audioModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={audioModels.length === 0 ? "无可用音频模型" : "选择音乐模型"} />
+                    <SelectValue placeholder={audioModels.length === 0 ? t('tools.musicDialog.modelEmpty') : t('tools.musicDialog.modelSelect')} />
                   </SelectTrigger>
                   <SelectContent>
                     {audioModels.map((m) => (
@@ -166,7 +173,7 @@ export default function MusicGenConfigDialog({
               {/* 模型能力概览 */}
               {currentCaps && (
                 <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-                  <p className="font-medium">模型能力:</p>
+                  <p className="font-medium">{t('tools.musicDialog.modelCaps')}</p>
                   <div className="flex items-center gap-2">
                     <span className="px-1.5 py-0.5 bg-pink-100 dark:bg-pink-900 rounded text-[11px]">
                       {currentCaps.label}
@@ -178,13 +185,13 @@ export default function MusicGenConfigDialog({
 
               {/* 输出格式 */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">默认输出格式</Label>
+                <Label className="text-xs text-muted-foreground">{t('tools.musicDialog.outputFormat')}</Label>
                 <Select value={outputFormat} onValueChange={setOutputFormat}>
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder="选择格式" />
+                    <SelectValue placeholder={t('tools.musicDialog.selectFormat')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {OUTPUT_FORMAT_OPTIONS.map(opt => (
+                    {outputFormatOptions.map(opt => (
                       <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -196,10 +203,10 @@ export default function MusicGenConfigDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
+            {t('common.buttons.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
+            {saving ? t('common.status.saving') : t('common.buttons.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

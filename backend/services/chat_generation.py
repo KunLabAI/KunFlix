@@ -564,88 +564,97 @@ async def generate_single_agent(
 
     async def _persist_message_and_billing():
         """Background task: save message, update stats, deduct credits.
-        
+
+        分两阶段持久化，降低 SQLite 写锁冲突概率：
+        - Phase 1: 独立短事务保存 assistant 消息（最关键，必须落库）
+        - Phase 2: 统计 / 扣费 / compaction（允许失败，不阻塞用户看到回复）
+
         Runs independently of the SSE request lifecycle so client disconnect
         cannot cancel the database writes.
         """
         nonlocal billing_event
+
+        # -------- Phase 1: 消息落库（短事务 + 指数退避重试） --------
+        _MAX_MSG_RETRIES = 5
+        assistant_msg_id = None
+        for attempt in range(_MAX_MSG_RETRIES):
+            try:
+                async with AsyncSessionLocal() as session:
+                    assistant_msg = ChatMessage(
+                        session_id=session_id, role="assistant", content=final_content,
+                    )
+                    session.add(assistant_msg)
+                    await session.commit()
+                    assistant_msg_id = assistant_msg.id
+                break
+            except Exception as exc:
+                is_locked = "database is locked" in str(exc)
+                remaining = _MAX_MSG_RETRIES - attempt - 1
+                # 非锁错误或耗尽重试 → 放弃
+                fatal = (not is_locked) or (remaining <= 0)
+                log_fn = logger.error if fatal else logger.warning
+                log_fn("Background message save attempt %d/%d failed: %s",
+                       attempt + 1, _MAX_MSG_RETRIES, exc)
+                if fatal:
+                    return
+                # 指数退避：0.5s, 1s, 2s, 4s, 8s
+                await asyncio.sleep(0.5 * (2 ** attempt))
+
+        # -------- Phase 2: 统计 + 扣费 + compaction（独立事务，失败可容忍） --------
         try:
             async with AsyncSessionLocal() as session:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    role="assistant",
-                    content=final_content,
-                )
-                session.add(assistant_msg)
+                # no_autoflush 避免 query 时触发隐式 flush 与其他写者抢锁
+                async with session.no_autoflush:
+                    from sqlalchemy import func as sa_func
+                    s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
+                    s = s_result.scalars().first()
+                    s and setattr(s, 'updated_at', sa_func.now())
+                    s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
+                    s and setattr(s, 'last_round_tokens', result.input_tokens + result.output_tokens)
 
-                # 更新会话时间戳和累计 token 使用量
-                from sqlalchemy import func as sa_func
-                s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
-                s = s_result.scalars().first()
-                s and setattr(s, 'updated_at', sa_func.now())
-                s and setattr(s, 'total_tokens_used', (s.total_tokens_used or 0) + result.input_tokens + result.output_tokens)
-                s and setattr(s, 'last_round_tokens', result.input_tokens + result.output_tokens)
+                    # 查询实体并更新统计（映射表驱动，避免 if-else）
+                    entity_model_map = {True: Admin, False: User}
+                    entity_model = entity_model_map[is_admin]
+                    e_result = await session.execute(select(entity_model).filter(entity_model.id == entity_id))
+                    entity = e_result.scalars().first()
+                    entity and setattr(entity, 'total_input_tokens', (entity.total_input_tokens or 0) + result.input_tokens)
+                    entity and setattr(entity, 'total_output_tokens', (entity.total_output_tokens or 0) + result.output_tokens)
+                    entity and setattr(entity, 'total_input_chars', (entity.total_input_chars or 0) + input_chars)
+                    entity and setattr(entity, 'total_output_chars', (entity.total_output_chars or 0) + len(result.full_response))
 
-                # 查询实体并更新统计（映射表驱动，避免 if-else）
-                entity_model_map = {True: Admin, False: User}
-                entity_model = entity_model_map[is_admin]
-                e_result = await session.execute(select(entity_model).filter(entity_model.id == entity_id))
-                entity = e_result.scalars().first()
-                if entity:
-                    entity.total_input_tokens = (entity.total_input_tokens or 0) + result.input_tokens
-                    entity.total_output_tokens = (entity.total_output_tokens or 0) + result.output_tokens
-                    entity.total_input_chars = (entity.total_input_chars or 0) + input_chars
-                    entity.total_output_chars = (entity.total_output_chars or 0) + len(result.full_response)
+                    # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
+                    credit_cost, billing_metadata = calculate_credit_cost(result, agent)
+                    billing_event["credit_cost"] = round(credit_cost, 6)
 
-                # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
-                credit_cost, billing_metadata = calculate_credit_cost(result, agent)
-                billing_event["credit_cost"] = round(credit_cost, 6)
+                    try:
+                        (credit_cost > 0) and await deduct_credits_atomic(
+                            user_id=entity_id,
+                            cost=credit_cost,
+                            session=session,
+                            metadata=billing_metadata,
+                            transaction_type="consumption",
+                            idempotency_key=f"chat:{assistant_msg_id}",
+                        )
+                    except InsufficientCreditsError:
+                        billing_event["insufficient"] = True
+                        logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
+                    except BalanceFrozenError:
+                        billing_event["frozen"] = True
+                        logger.warning(f"Balance frozen for {entity_id}")
 
-                try:
-                    (credit_cost > 0) and await deduct_credits_atomic(
-                        user_id=entity_id,
-                        cost=credit_cost,
-                        session=session,
-                        metadata=billing_metadata,
-                        transaction_type="consumption",
-                        idempotency_key=f"chat:{assistant_msg.id}",
+                    # Post-generation deferred compaction
+                    from services.context_compaction import compact_context
+                    _persist_state["compaction"] = await compact_context(
+                        _messages_snapshot, agent, provider, session, session_id,
+                        session_obj=s,
+                        actual_total_tokens=result.input_tokens + result.output_tokens,
                     )
-                except InsufficientCreditsError:
-                    billing_event["insufficient"] = True
-                    logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
-                except BalanceFrozenError:
-                    billing_event["frozen"] = True
-                    logger.warning(f"Balance frozen for {entity_id}")
-
-                # Post-generation deferred compaction
-                from services.context_compaction import compact_context
-                _persist_state["compaction"] = await compact_context(
-                    _messages_snapshot, agent, provider, session, session_id,
-                    session_obj=s,
-                    actual_total_tokens=result.input_tokens + result.output_tokens,
-                )
 
                 await session.commit()
                 logger.info("Message/billing saved successfully (background)")
-
         except Exception as e:
-            logger.error(f"Background save failed: {e}")
-            # Retry: save message only with a fresh session
-            for _retry in range(2):
-                logger.warning(f"Background save retry ({_retry + 1}/2)...")
-                await asyncio.sleep(1.0 * (_retry + 1))
-                try:
-                    async with AsyncSessionLocal() as retry_session:
-                        retry_msg = ChatMessage(
-                            session_id=session_id, role="assistant", content=final_content,
-                        )
-                        retry_session.add(retry_msg)
-                        await retry_session.commit()
-                    logger.info("Message saved on background retry %d", _retry + 1)
-                    return
-                except Exception as retry_exc:
-                    logger.warning(f"Background retry {_retry + 1} failed: {retry_exc}")
-            logger.error(f"All background save retries failed for session {session_id}")
+            # Phase 2 失败不影响消息可见性，仅记录告警
+            logger.warning(f"Background stats/billing save failed (message already persisted): {e}")
 
     # 启动后台保存任务，使用 asyncio.shield 保护任务不被请求取消影响
     try:
