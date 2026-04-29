@@ -629,7 +629,6 @@
       },
       "parameters": {
         "thinkingMode": "思考模式",
-        "thinkingModeDesc": "启用深度推理（仅部分模型支持）",
         "on": "开启",
         "off": "关闭",
         "contextWindow": "上下文窗口",
@@ -790,6 +789,545 @@
         "failed": "无法加载图片",
         "continueEdit": "继续编辑"
       }
+    }
+  },
+  "skills": {
+    "title": "技能管理 (Skills)",
+    "subtitle": "管理 Agent 的扩展能力。技能是声明式的工具包，支持热插拔和版本控制。",
+    "createBtn": "创建技能",
+    "status": {
+      "active": "运行中",
+      "inactive": "已停用"
+    },
+    "source": {
+      "builtin": "内置",
+      "customized": "自定义",
+      "active": "激活"
+    },
+    "toast": {
+      "loadFailed": "加载失败",
+      "loadFailedDesc": "无法获取技能列表，请检查网络连接",
+      "loadDetailFailed": "无法获取技能详情",
+      "operationSuccess": "操作成功",
+      "operationFailed": "操作失败",
+      "toggleFailed": "切换技能状态时发生错误",
+      "deleteSuccess": "删除成功",
+      "deleteSuccessDesc": "技能 {{name}} 已删除",
+      "deleteFailed": "删除失败",
+      "deleteFailedDesc": "删除技能时发生错误",
+      "updateSuccess": "技能更新成功",
+      "createSuccess": "技能创建成功",
+      "saveFailed": "保存失败",
+      "unknownError": "未知错误"
+    },
+    "delete": {
+      "title": "确认删除",
+      "description": "确定要删除技能「{{name}}」吗？此操作不可撤销。",
+      "cancel": "取消",
+      "confirm": "删除"
+    },
+    "action": {
+      "edit": "编辑配置",
+      "enable": "启用",
+      "disable": "停用",
+      "back": "返回",
+      "save": "保存",
+      "saving": "保存中...",
+      "create": "创建技能",
+      "creating": "创建中..."
+    },
+    "edit": {
+      "title": "编辑技能",
+      "description": "编辑技能「{{name}}」的配置与内容"
+    },
+    "create": {
+      "title": "创建技能",
+      "description": "使用 Markdown 定义一个新的 Agent 技能包"
+    },
+    "form": {
+      "identifier": "技能标识",
+      "identifierPlaceholder": "例如：web_search",
+      "identifierHint": "仅支持字母、数字、下划线和中划线",
+      "description": "描述",
+      "descriptionPlaceholder": "简要描述此技能的功能...",
+      "version": "版本",
+      "content": "SKILL.md 正文",
+      "contentHint": "使用 Markdown 编写技能说明。Agent 会根据此内容了解如何使用该技能。",
+      "contentPlaceholder": "# 技能名称\n\n描述该技能的用途和使用方式...\n\n## 使用示例\n\n```\n调用示例...\n```",
+      "autoEnable": "创建后自动启用"
+    }
+  },
+  "mcp": {
+    "title": "MCP 客户端管理",
+    "subtitle": "Model Context Protocol (MCP) 允许 Agent 动态连接到外部工具和数据源。支持无感热重载。",
+    "inDevelopment": {
+      "title": "功能开发中",
+      "desc": "MCP 客户端管理功能尚未实装，敬请期待"
+    }
+  },
+  "tools": {
+    "title": "工具管理",
+    "subtitle": "查看系统注册的工具 Provider、配置工具参数与执行统计。",
+    "logsBtn": "执行日志",
+    "refresh": "刷新",
+    "loading": "加载中...",
+    "card": {
+      "toolCountTitle": "包含 {{count}} 个工具",
+      "viewDetail": "查看详情",
+      "configBtn": "配置"
+    },
+    "detail": {
+      "providerId": "Provider ID",
+      "enableCondition": "启用条件",
+      "noCondition": "无特定条件",
+      "includedTools": "包含的工具 ({{count}})"
+    },
+    "imageDialog": {
+      "title": "配置图像生成工具",
+      "description": "设置全局 generate_image 工具参数（所有智能体共享此配置）",
+      "enable": "启用图像生成",
+      "noModelWarning": "未找到图像模型。请先在「供应商管理」中为供应商的模型设置「图像模型」类型。",
+      "model": "图像模型",
+      "modelEmpty": "无可用图像模型",
+      "modelSelect": "选择图像模型",
+      "aspectRatio": "宽高比",
+      "quality": "画质",
+      "selectPlaceholder": "选择",
+      "selectProviderFirst": "请先选择供应商",
+      "batchCount": "每次生成张数",
+      "batchAuto": "自动（智能体决定）",
+      "batchN": "{{count}} 张",
+      "outputFormat": "输出格式",
+      "saveSuccess": "保存成功",
+      "saveSuccessDesc": "图像生成工具配置已更新",
+      "saveFailed": "保存失败",
+      "retry": "请重试"
+    },
+    "videoDialog": {
+      "title": "配置视频生成工具",
+      "description": "设置全局 generate_video 工具参数（所有智能体共享此配置）",
+      "enable": "启用视频生成",
+      "noModelWarning": "未找到视频模型。请先在「供应商管理」中为供应商的模型设置「视频模型」类型。",
+      "model": "视频模型",
+      "modelEmpty": "无可用视频模型",
+      "modelSelect": "选择视频模型",
+      "noCapsHint": "该模型暂无预设参数配置，将使用默认值。",
+      "duration": "时长 (秒)",
+      "resolution": "分辨率",
+      "aspectRatio": "宽高比",
+      "selectPlaceholder": "选择",
+      "modelCaps": "模型能力:",
+      "supportsAudio": "原生音频",
+      "supportsReferenceImages": "参考图片",
+      "supportsVideoEdit": "视频编辑",
+      "supportsVideoExtension": "视频扩展",
+      "saveSuccess": "保存成功",
+      "saveSuccessDesc": "视频生成工具配置已更新",
+      "saveFailed": "保存失败",
+      "retry": "请重试"
+    },
+    "musicDialog": {
+      "title": "配置音乐生成工具",
+      "description": "设置全局 generate_music 工具参数（所有智能体共享此配置）",
+      "enable": "启用音乐生成",
+      "noModelWarning": "未找到音频模型。请先在「供应商管理」中为供应商的模型设置「音频模型」类型。",
+      "model": "音乐模型",
+      "modelEmpty": "无可用音频模型",
+      "modelSelect": "选择音乐模型",
+      "modelCaps": "模型能力:",
+      "outputFormat": "默认输出格式",
+      "selectFormat": "选择格式",
+      "formats": {
+        "mp3": "MP3 (通用)",
+        "wav": "WAV (无损，仅 Pro)"
+      },
+      "caps": {
+        "clipLabel": "Clip",
+        "clipDesc": "短音乐片段 (~30秒), 仅 MP3",
+        "proLabel": "Pro",
+        "proDesc": "完整歌曲 (3-5分钟), MP3/WAV, 支持歌词"
+      },
+      "saveSuccess": "保存成功",
+      "saveSuccessDesc": "音乐生成工具配置已更新",
+      "saveFailed": "保存失败",
+      "retry": "请重试"
+    },
+    "aspectRatios": {
+      "auto": "自动",
+      "1:1": "1:1 (方形)",
+      "16:9": "16:9 (宽屏)",
+      "9:16": "9:16 (手机)",
+      "4:3": "4:3 (标准)",
+      "3:4": "3:4 (竖屏)",
+      "3:2": "3:2",
+      "2:3": "2:3",
+      "2:1": "2:1 (超宽)",
+      "1:2": "1:2 (超高)"
+    },
+    "qualities": {
+      "standard": "标准",
+      "hd": "高清",
+      "ultra": "超高清"
+    },
+    "outputFormats": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "webp": "WebP"
+    },
+    "resolutions": {
+      "480p": "480p",
+      "720p": "720p (标准)",
+      "768p": "768p",
+      "1080p": "1080p (高清)",
+      "4k": "4K (超高清)"
+    }
+  },
+  "videos": {
+    "title": "视频生成",
+    "subtitle": "管理和监控视频生成任务",
+    "newBtn": "新建视频任务",
+    "empty": "暂无视频任务",
+    "totalCount": "共 {{count}} 条记录",
+    "status": {
+      "pending": "排队中",
+      "processing": "生成中",
+      "completed": "已完成",
+      "failed": "失败"
+    },
+    "mode": {
+      "text_to_video": "文字生成",
+      "image_to_video": "图片生成",
+      "edit": "视频编辑",
+      "subject_reference": "主题参考生成"
+    },
+    "modeLong": {
+      "text_to_video": "文字生成视频",
+      "image_to_video": "图片生成视频",
+      "edit": "视频编辑",
+      "subject_reference": "主题参考生成"
+    },
+    "delete": {
+      "title": "确认删除",
+      "description": "删除后视频文件和任务记录将不可恢复，是否继续？",
+      "success": "删除成功",
+      "failed": "删除失败",
+      "btn": "删除",
+      "taskBtn": "删除任务"
+    },
+    "preview": {
+      "title": "视频预览",
+      "pendingHint": "视频尚未生成完成",
+      "failedFallback": "视频生成失败",
+      "mode": "模式：",
+      "quality": "画质：",
+      "duration": "时长：",
+      "ratio": "比例：",
+      "cost": "费用：",
+      "credits": "{{value}} 积分",
+      "provider": "供应商：",
+      "model": "模型：",
+      "prompt": "提示词：",
+      "createdAt": "创建: {{time}}",
+      "completedAt": "完成: {{time}}",
+      "elapsed": "耗时: {{time}}",
+      "durationSec": "{{value}}秒",
+      "dash": "-"
+    },
+    "form": {
+      "title": "新建视频任务",
+      "subtitle": "配置参数并生成新的视频内容",
+      "sections": {
+        "model": "模型配置",
+        "video": "视频设置",
+        "advanced": "高级设置"
+      },
+      "provider": "供应商",
+      "selectProvider": "选择供应商",
+      "model": "模型",
+      "selectModel": "选择模型",
+      "selectProviderFirst": "先选择供应商",
+      "supportModes": "支持模式: {{modes}}",
+      "supportLastFrame": "、首尾帧生成",
+      "mode": "生成模式",
+      "singleModeHint": "此模型仅支持{{mode}}模式",
+      "prompt": "提示词",
+      "promptPlaceholder": "描述你想生成的视频内容...",
+      "firstFrame": "首帧图片 URL",
+      "firstFramePlaceholder": "输入图片 URL 或 base64 data URL",
+      "firstFrameHint": "此模型需要提供首帧图片才能生成视频",
+      "lastFrame": "尾帧图片 URL (可选)",
+      "lastFramePlaceholder": "输入尾帧图片 URL",
+      "lastFrameHint": "视频将以这张图片结束，实现首尾帧过渡效果",
+      "duration": "时长",
+      "durationValue": "{{value}} 秒",
+      "quality": "画质",
+      "aspectRatio": "画面比例",
+      "promptOptimizer": "提示词优化",
+      "promptOptimizerDesc": "自动优化提示词以获得更好的生成效果",
+      "fastPretreatment": "快速预处理",
+      "fastPretreatmentDesc": "减少优化时间，加快生成速度",
+      "cancel": "取消",
+      "submit": "提交任务",
+      "submitting": "提交中..."
+    },
+    "toast": {
+      "submitSuccess": "视频任务已提交",
+      "submitSuccessDesc": "任务已进入队列，请等待生成完成",
+      "submitFailed": "提交失败",
+      "unknownError": "未知错误"
+    }
+  },
+  "virtualHumans": {
+    "title": "虚拟人像库",
+    "subtitle": "管理火山方舟预制虚拟人像，用于 Seedance 2.0 真人视频生成",
+    "addBtn": "添加人像",
+    "empty": "暂无虚拟人像",
+    "filter": {
+      "all": "全部",
+      "male": "男",
+      "female": "女",
+      "stylePlaceholder": "按风格筛选，如 realistic…"
+    },
+    "gender": {
+      "male": "男",
+      "female": "女"
+    },
+    "status": {
+      "active": "启用",
+      "inactive": "停用"
+    },
+    "card": {
+      "editConfig": "编辑配置",
+      "deleteBtn": "删除"
+    },
+    "dialog": {
+      "createTitle": "添加虚拟人像",
+      "editTitle": "编辑虚拟人像",
+      "createDesc": "添加一个新的火山方舟预制虚拟人像",
+      "editDesc": "修改虚拟人像预设信息"
+    },
+    "form": {
+      "assetId": "Asset ID",
+      "assetIdPlaceholder": "asset-xxxxxxxxx-xxxxx",
+      "name": "名称",
+      "namePlaceholder": "人像名称",
+      "gender": "性别",
+      "style": "风格",
+      "stylePlaceholder": "realistic",
+      "preview": "预览图",
+      "previewAlt": "预览",
+      "uploadHint": "点击上传预览图",
+      "uploading": "上传中…",
+      "formatHint": "支持 PNG、JPG、WEBP，最大 5MB，上传后自动压缩",
+      "replace": "更换",
+      "description": "描述",
+      "descriptionPlaceholder": "可选描述信息…",
+      "isActive": "启用",
+      "isInactive": "停用",
+      "sortOrder": "排序",
+      "cancel": "取消",
+      "save": "保存修改",
+      "create": "创建"
+    },
+    "toast": {
+      "fileTooBigTitle": "文件过大",
+      "fileTooBigDesc": "图片大小不能超过 5MB",
+      "formatUnsupportedTitle": "格式不支持",
+      "formatUnsupportedDesc": "仅支持 PNG、JPG、WEBP 格式",
+      "uploadSuccess": "上传成功",
+      "uploadFailed": "上传失败",
+      "uploadFailedFallback": "上传失败",
+      "fieldsRequiredTitle": "请填写必填项",
+      "fieldsRequiredJoiner": "、",
+      "createSuccess": "创建成功",
+      "updateSuccess": "更新成功",
+      "createFailed": "创建失败",
+      "updateFailed": "更新失败",
+      "deleteSuccess": "删除成功",
+      "deleteFailed": "删除失败",
+      "unknownError": "未知错误"
+    },
+    "delete": {
+      "title": "确认删除",
+      "description": "即将删除虚拟人像「{{name}}」，此操作不可撤销。",
+      "cancel": "取消",
+      "confirm": "删除"
+    }
+  },
+  "promptTemplates": {
+    "title": "提示词模板",
+    "subtitle": "管理 AI 生成使用的提示词模板",
+    "createBtn": "创建模板",
+    "searchPlaceholder": "搜索模板名称或描述...",
+    "filterAll": "全部分类",
+    "filterPlaceholder": "模板分类",
+    "table": {
+      "name": "模板名称",
+      "category": "分类",
+      "varsCount": "变量数",
+      "status": "状态",
+      "actions": "操作",
+      "empty": "暂无模板，点击「创建模板」开始添加",
+      "loading": "加载中...",
+      "noDesc": "暂无描述",
+      "varsUnit": "{{count}} 个"
+    },
+    "status": {
+      "active": "启用",
+      "inactive": "禁用",
+      "default": "默认"
+    },
+    "delete": {
+      "title": "确认删除？",
+      "description": "此操作不可撤销，将永久删除「{{name}}」模板。",
+      "cancel": "取消",
+      "confirm": "确认删除"
+    },
+    "toast": {
+      "deleteSuccess": "模板删除成功",
+      "deleteFailed": "删除失败",
+      "createSuccess": "模板创建成功",
+      "createFailed": "创建失败",
+      "updateSuccess": "模板更新成功",
+      "updateFailed": "更新失败",
+      "unknownError": "未知错误"
+    },
+    "action": {
+      "back": "返回",
+      "save": "保存",
+      "saving": "保存中...",
+      "create": "创建模板",
+      "creating": "创建中...",
+      "addVariable": "添加变量"
+    },
+    "create": {
+      "title": "创建提示词模板",
+      "description": "定义一个新的 AI 生成提示词模板"
+    },
+    "edit": {
+      "title": "编辑提示词模板",
+      "description": "编辑模板「{{name}}」的配置与内容"
+    },
+    "form": {
+      "name": "模板名称",
+      "namePlaceholder": "例如：故事设定生成",
+      "description": "描述",
+      "descriptionPlaceholder": "简要描述此模板的用途...",
+      "category": "分类标签",
+      "categoryPlaceholder": "自定义分类，最多12字",
+      "categoryHint": "支持中英文，最多12个字符",
+      "contentTitle": "提示词内容",
+      "varsUsageHintPrefix": "使用 ",
+      "varsUsageHintSuffix": " 插入变量",
+      "systemPrompt": "系统提示词",
+      "systemPromptPlaceholder": "你是一个专业的剧场剧情设计师...",
+      "userPrompt": "用户提示词（可选）",
+      "userPromptPlaceholderPrefix": "请根据以下信息生成内容...\n\n剧场名称：",
+      "varsTitle": "输入变量",
+      "varsEmpty": "暂无变量，点击「添加变量」定义提示词中的占位符",
+      "varIndex": "变量 #{{index}}",
+      "varName": "变量名（英文）",
+      "varNamePlaceholder": "theater_name",
+      "varLabel": "显示标签",
+      "varLabelPlaceholder": "剧场名称",
+      "varType": "类型",
+      "varDescription": "描述（可选）",
+      "varDescriptionPlaceholder": "变量说明...",
+      "varRequired": "必填",
+      "statusActive": "启用模板",
+      "statusDefault": "设为该类型默认模板"
+    },
+    "varTypes": {
+      "string": "单行文本",
+      "textarea": "多行文本",
+      "number": "数字",
+      "boolean": "布尔值",
+      "select": "下拉选择"
+    }
+  },
+  "admins": {
+    "title": "管理员管理",
+    "addBtn": "新增管理员",
+    "table": {
+      "email": "邮箱",
+      "nickname": "昵称",
+      "permissionLevel": "权限级别",
+      "credits": "积分",
+      "status": "状态",
+      "lastLogin": "最后登录",
+      "actions": "操作",
+      "loading": "加载中...",
+      "dash": "-"
+    },
+    "permission": {
+      "admin": "管理员",
+      "super_admin": "超级管理员"
+    },
+    "status": {
+      "enabled": "启用",
+      "disabled": "禁用"
+    },
+    "tooltip": {
+      "adjustCredits": "调整积分"
+    },
+    "create": {
+      "title": "新增管理员",
+      "description": "创建新的管理员账户",
+      "emailPlaceholder": "admin@example.com",
+      "nicknamePlaceholder": "管理员昵称",
+      "passwordPlaceholder": "至少 6 位",
+      "submit": "创建",
+      "submitting": "创建中..."
+    },
+    "edit": {
+      "title": "编辑管理员",
+      "description": "修改管理员 {{name}} 的信息",
+      "passwordLabel": "新密码（留空则不修改）",
+      "passwordPlaceholder": "输入新密码",
+      "isActive": "启用账户",
+      "submit": "保存",
+      "submitting": "保存中..."
+    },
+    "form": {
+      "email": "邮箱",
+      "nickname": "昵称",
+      "password": "密码",
+      "permissionLevel": "权限级别"
+    },
+    "validation": {
+      "emailInvalid": "请输入有效的邮箱地址",
+      "nicknameRequired": "请输入昵称",
+      "passwordMin": "密码至少 6 位"
+    },
+    "delete": {
+      "title": "确认删除？",
+      "description": "确定要删除管理员 \"{{name}}\" 吗？此操作不可撤销。",
+      "cancel": "取消",
+      "confirm": "确认删除"
+    },
+    "credits": {
+      "title": "调整积分",
+      "description": "管理员: {{name}} | 当前余额: {{balance}}",
+      "amountLabel": "调整数量",
+      "amountPlaceholder": "正数=充值，负数=扣减",
+      "noteLabel": "备注说明",
+      "notePlaceholder": "可选：填写调整原因",
+      "cancel": "取消",
+      "confirm": "确认调整",
+      "processing": "处理中..."
+    },
+    "toast": {
+      "createSuccess": "创建成功",
+      "createSuccessDesc": "管理员 {{name}} 已创建",
+      "createFailed": "创建失败",
+      "updateSuccess": "更新成功",
+      "updateFailed": "更新失败",
+      "deleteSuccess": "删除成功",
+      "deleteSuccessDesc": "管理员 {{name}} 已删除",
+      "deleteFailed": "删除失败",
+      "creditsSuccess": "积分调整成功",
+      "creditsFailed": "调整失败",
+      "retryLater": "请稍后重试"
     }
   },
   "login": {

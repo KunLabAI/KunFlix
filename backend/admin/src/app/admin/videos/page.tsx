@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { useVideoTasks, useDeleteVideoTask } from '@/hooks/useVideoTasks';
 import { VideoTaskResponse } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -27,19 +28,13 @@ import VideoPreviewModal from './VideoPreviewModal';
 import { formatRelativeTime } from '@/lib/date-utils';
 
 // ---------------------------------------------------------------------------
-// 映射表（无 if-else）
+// Status variant map (variant-only; labels resolved via i18n)
 // ---------------------------------------------------------------------------
-const STATUS_MAP: Record<string, { label: string; variant: 'secondary' | 'default' | 'outline' | 'destructive' }> = {
-  pending:    { label: '排队中', variant: 'secondary' },
-  processing: { label: '生成中', variant: 'default' },
-  completed:  { label: '已完成', variant: 'outline' },
-  failed:     { label: '失败',   variant: 'destructive' },
-};
-
-const MODE_LABELS: Record<string, string> = {
-  text_to_video:  '文字生成',
-  image_to_video: '图片生成',
-  edit:           '视频编辑',
+const STATUS_VARIANT: Record<string, 'secondary' | 'default' | 'outline' | 'destructive'> = {
+  pending: 'secondary',
+  processing: 'default',
+  completed: 'outline',
+  failed: 'destructive',
 };
 
 const DELETABLE_STATUSES = new Set(['completed', 'failed']);
@@ -50,6 +45,7 @@ const DELETABLE_STATUSES = new Set(['completed', 'failed']);
 export default function VideosPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
@@ -63,7 +59,7 @@ export default function VideosPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // 自动轮询：当有进行中的任务时，每 5 秒刷新一次
-  const hasActiveTasks = tasks.some((t: VideoTaskResponse) => 
+  const hasActiveTasks = tasks.some((t: VideoTaskResponse) =>
     t.status === 'pending' || t.status === 'processing'
   );
 
@@ -82,13 +78,13 @@ export default function VideosPage() {
     setDeleting(true);
     try {
       await deleteVideoTask(task!.id);
-      toast({ title: '删除成功' });
+      toast({ title: t('videos.delete.success') });
       setDeleteTarget(null);
       mutate();
     } catch (e: any) {
       toast({
-        title: '删除失败',
-        description: e?.response?.data?.detail || e?.message || '未知错误',
+        title: t('videos.delete.failed'),
+        description: e?.response?.data?.detail || e?.message || t('videos.toast.unknownError'),
         variant: 'destructive',
       });
     } finally {
@@ -101,11 +97,11 @@ export default function VideosPage() {
       {/* 标题区域 */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">视频生成</h2>
-          <p className="text-muted-foreground">管理和监控视频生成任务</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('videos.title')}</h2>
+          <p className="text-muted-foreground">{t('videos.subtitle')}</p>
         </div>
         <Button onClick={() => router.push('/admin/videos/new')}>
-          <Plus className="mr-2 h-4 w-4" /> 新建视频任务
+          <Plus className="mr-2 h-4 w-4" /> {t('videos.newBtn')}
         </Button>
       </div>
 
@@ -118,23 +114,24 @@ export default function VideosPage() {
         ) : tasks.length === 0 ? (
           <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/50 text-muted-foreground">
             <Video className="mb-2 h-8 w-8 opacity-50" />
-            <p>暂无视频任务</p>
+            <p>{t('videos.empty')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {tasks.map((task: VideoTaskResponse) => {
-              const statusInfo = STATUS_MAP[task.status] ?? STATUS_MAP.pending;
+              const variant = STATUS_VARIANT[task.status] ?? STATUS_VARIANT.pending;
+              const statusLabel = t(`videos.status.${task.status}`, { defaultValue: task.status });
               const canDelete = DELETABLE_STATUSES.has(task.status);
-              
+
               return (
-                <Card 
-                  key={task.id} 
+                <Card
+                  key={task.id}
                   className="group relative flex flex-col overflow-hidden transition-all hover:border-primary/50 hover:shadow-lg"
                 >
                   <div className="relative aspect-video w-full bg-muted">
                     {task.status === 'completed' && task.video_url ? (
-                      <video 
-                        src={task.video_url} 
+                      <video
+                        src={task.video_url}
                         className="h-full w-full object-cover"
                         preload="metadata"
                       />
@@ -150,13 +147,13 @@ export default function VideosPage() {
                     
                     {/* 状态标签 */}
                     <div className="absolute right-2 top-2">
-                      <Badge variant={statusInfo.variant} className="shadow-sm">
-                        {statusInfo.label}
+                      <Badge variant={variant} className="shadow-sm">
+                        {statusLabel}
                       </Badge>
                     </div>
 
                     {/* 操作遮罩 */}
-                    <div 
+                    <div
                       className="absolute inset-0 flex items-center justify-center gap-3 bg-black/0 transition-colors group-hover:bg-black/20 cursor-pointer"
                       onClick={() => setPreviewTask(task)}
                     >
@@ -181,7 +178,7 @@ export default function VideosPage() {
                   <CardContent className="flex-1 p-4">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <Badge variant="outline" className="text-[10px] font-normal">
-                        {MODE_LABELS[task.video_mode] ?? task.video_mode}
+                        {t(`videos.mode.${task.video_mode}`, { defaultValue: task.video_mode })}
                       </Badge>
                       <span className="text-[10px] text-muted-foreground">
                         {task.quality} · {task.duration}s
@@ -213,7 +210,7 @@ export default function VideosPage() {
       {total > pageSize && (
         <div className="flex items-center justify-between pt-4">
           <span className="text-sm text-muted-foreground">
-            共 {total} 条记录
+            {t('videos.totalCount', { count: total })}
           </span>
           <div className="flex items-center gap-2">
             <Button
@@ -250,16 +247,16 @@ export default function VideosPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { !open && setDeleteTarget(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t('videos.delete.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后视频文件和任务记录将不可恢复，是否继续？
+              {t('videos.delete.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t('common.buttons.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              删除
+              {t('videos.delete.btn')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Loader2, Sparkles, Zap, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,7 +18,6 @@ import { useCreateVideoTask } from '@/hooks/useVideoTasks';
 import { useModelCapabilities, useVideoFormVisibility } from '@/hooks/useModelCapabilities';
 import { LLMProvider } from '@/types';
 import { parseProviderModels } from '@/lib/api-utils';
-import { VIDEO_MODE_LABELS, RESOLUTION_LABELS, ASPECT_RATIO_LABELS } from '@/types/video';
 
 // ---------------------------------------------------------------------------
 // 页面组件
@@ -25,13 +25,14 @@ import { VIDEO_MODE_LABELS, RESOLUTION_LABELS, ASPECT_RATIO_LABELS } from '@/typ
 export default function CreateVideoPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { providers, isLoading: providersLoading } = useLLMProviders();
   const { createVideoTask } = useCreateVideoTask();
 
   // 基础状态
   const [providerId, setProviderId] = useState('');
   const [model, setModel] = useState('');
-  
+
   // 视频配置状态
   const [videoMode, setVideoMode] = useState('text_to_video');
   const [prompt, setPrompt] = useState('');
@@ -40,11 +41,11 @@ export default function CreateVideoPage() {
   const [duration, setDuration] = useState(6);
   const [quality, setQuality] = useState<string>('720p');
   const [aspectRatio, setAspectRatio] = useState('16:9');
-  
+
   // MiniMax 特有配置
   const [promptOptimizer, setPromptOptimizer] = useState(true);
   const [fastPretreatment, setFastPretreatment] = useState(false);
-  
+
   const [submitting, setSubmitting] = useState(false);
 
   // 获取选中的供应商
@@ -59,7 +60,7 @@ export default function CreateVideoPage() {
 
   // 获取模型能力配置
   const { capabilities, isLoading: capabilitiesLoading } = useModelCapabilities(model || null);
-  
+
   // 根据能力配置计算表单可见性
   const visibility = useVideoFormVisibility(capabilities, videoMode);
 
@@ -108,20 +109,20 @@ export default function CreateVideoPage() {
         prompt: prompt.trim(),
         image_url: visibility.showFirstFrame ? imageUrl || undefined : undefined,
         last_frame_image: visibility.showLastFrame ? lastFrameImageUrl || undefined : undefined,
-        config: { 
-          duration, 
-          quality: quality as any, 
+        config: {
+          duration,
+          quality: quality as any,
           aspect_ratio: aspectRatio,
           prompt_optimizer: visibility.showPromptOptimizer ? promptOptimizer : undefined,
           fast_pretreatment: visibility.showFastPretreatment ? fastPretreatment : undefined,
         },
       });
-      toast({ title: '视频任务已提交', description: '任务已进入队列，请等待生成完成' });
+      toast({ title: t('videos.toast.submitSuccess'), description: t('videos.toast.submitSuccessDesc') });
       router.push('/admin/videos');
     } catch (e: any) {
       toast({
-        title: '提交失败',
-        description: e?.response?.data?.detail || e?.message || '未知错误',
+        title: t('videos.toast.submitFailed'),
+        description: e?.response?.data?.detail || e?.message || t('videos.toast.unknownError'),
         variant: 'destructive',
       });
     } finally {
@@ -164,8 +165,8 @@ export default function CreateVideoPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">新建视频任务</h2>
-            <p className="text-muted-foreground">配置参数并生成新的视频内容</p>
+            <h2 className="text-2xl font-bold tracking-tight">{t('videos.form.title')}</h2>
+            <p className="text-muted-foreground">{t('videos.form.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -173,13 +174,13 @@ export default function CreateVideoPage() {
       <div className="grid gap-8">
         {/* Model Configuration */}
         <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">模型配置</h3>
+          <h3 className="text-lg font-semibold">{t('videos.form.sections.model')}</h3>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div className="grid gap-2">
-              <Label>供应商</Label>
+              <Label>{t('videos.form.provider')}</Label>
               <Select value={providerId} onValueChange={handleProviderChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="选择供应商" />
+                  <SelectValue placeholder={t('videos.form.selectProvider')} />
                 </SelectTrigger>
                 <SelectContent>
                   {providers?.map((p: LLMProvider) => (
@@ -189,10 +190,10 @@ export default function CreateVideoPage() {
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>模型</Label>
+              <Label>{t('videos.form.model')}</Label>
               <Select value={model} onValueChange={handleModelChange} disabled={!providerId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={providerId ? "选择模型" : "先选择供应商"} />
+                  <SelectValue placeholder={providerId ? t('videos.form.selectModel') : t('videos.form.selectProviderFirst')} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableModels.map((m: string) => (
@@ -207,20 +208,24 @@ export default function CreateVideoPage() {
           {capabilities && (
             <div className="rounded-lg bg-primary/5 p-3 text-sm text-muted-foreground">
               <Sparkles className="mr-2 inline h-4 w-4 text-primary" />
-              支持模式: {capabilities.modes.map(m => VIDEO_MODE_LABELS[m]).join('、')}
-              {capabilities.supports_last_frame && '、首尾帧生成'}
+              {t('videos.form.supportModes', {
+                modes: capabilities.modes
+                  .map((m: string) => t(`videos.modeLong.${m}`, { defaultValue: m }))
+                  .join('、'),
+              })}
+              {capabilities.supports_last_frame && t('videos.form.supportLastFrame')}
             </div>
           )}
         </section>
 
         {/* Video Settings */}
         <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
-          <h3 className="text-lg font-semibold">视频设置</h3>
+          <h3 className="text-lg font-semibold">{t('videos.form.sections.video')}</h3>
           
           {/* 生成模式 - 仅当支持多个模式时显示 */}
           {visibility.showModeSelect && (
             <div className="grid gap-2">
-              <Label>生成模式</Label>
+              <Label>{t('videos.form.mode')}</Label>
               <Select value={videoMode} onValueChange={setVideoMode}>
                 <SelectTrigger>
                   <SelectValue />
@@ -228,7 +233,7 @@ export default function CreateVideoPage() {
                 <SelectContent>
                   {capabilities?.modes.map((mode) => (
                     <SelectItem key={mode} value={mode}>
-                      {VIDEO_MODE_LABELS[mode]}
+                      {t(`videos.modeLong.${mode}`, { defaultValue: mode })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -241,18 +246,20 @@ export default function CreateVideoPage() {
             <Alert variant="default" className="bg-muted">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                此模型仅支持{VIDEO_MODE_LABELS[capabilities.modes[0]]}模式
+                {t('videos.form.singleModeHint', {
+                  mode: t(`videos.modeLong.${capabilities.modes[0]}`, { defaultValue: capabilities.modes[0] }),
+                })}
               </AlertDescription>
             </Alert>
           )}
 
           {/* 提示词 */}
           <div className="grid gap-2">
-            <Label>提示词</Label>
+            <Label>{t('videos.form.prompt')}</Label>
             <Textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="描述你想生成的视频内容..."
+              placeholder={t('videos.form.promptPlaceholder')}
               className="min-h-[120px] resize-none"
               maxLength={2000}
             />
@@ -264,27 +271,27 @@ export default function CreateVideoPage() {
           {/* 首帧图片 */}
           {visibility.showFirstFrame && (
             <div className="grid gap-2">
-              <Label>首帧图片 URL <span className="text-destructive">*</span></Label>
+              <Label>{t('videos.form.firstFrame')} <span className="text-destructive">*</span></Label>
               <Input
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="输入图片 URL 或 base64 data URL"
+                placeholder={t('videos.form.firstFramePlaceholder')}
                 required
               />
-              <p className="text-xs text-muted-foreground">此模型需要提供首帧图片才能生成视频</p>
+              <p className="text-xs text-muted-foreground">{t('videos.form.firstFrameHint')}</p>
             </div>
           )}
 
           {/* 尾帧图片 */}
           {visibility.showLastFrame && (
             <div className="grid gap-2">
-              <Label>尾帧图片 URL (可选)</Label>
+              <Label>{t('videos.form.lastFrame')}</Label>
               <Input
                 value={lastFrameImageUrl}
                 onChange={(e) => setLastFrameImageUrl(e.target.value)}
-                placeholder="输入尾帧图片 URL"
+                placeholder={t('videos.form.lastFramePlaceholder')}
               />
-              <p className="text-xs text-muted-foreground">视频将以这张图片结束，实现首尾帧过渡效果</p>
+              <p className="text-xs text-muted-foreground">{t('videos.form.lastFrameHint')}</p>
             </div>
           )}
 
@@ -292,8 +299,8 @@ export default function CreateVideoPage() {
           <div className="grid gap-6 pt-2">
             <div className="grid gap-4">
               <div className="flex items-center justify-between">
-                <Label>时长</Label>
-                <span className="text-sm font-medium">{duration} 秒</span>
+                <Label>{t('videos.form.duration')}</Label>
+                <span className="text-sm font-medium">{t('videos.form.durationValue', { value: duration })}</span>
               </div>
               {visibility.showDurationSlider ? (
                 <Slider
@@ -313,7 +320,7 @@ export default function CreateVideoPage() {
                       onClick={() => setDuration(d)}
                       className="flex-1"
                     >
-                      {d} 秒
+                      {t('videos.form.durationValue', { value: d })}
                     </Button>
                   ))}
                 </div>
@@ -323,7 +330,7 @@ export default function CreateVideoPage() {
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {/* 画质 */}
               <div className="grid gap-2">
-                <Label>画质</Label>
+                <Label>{t('videos.form.quality')}</Label>
                 <Select value={quality} onValueChange={setQuality}>
                   <SelectTrigger>
                     <SelectValue />
@@ -331,7 +338,7 @@ export default function CreateVideoPage() {
                   <SelectContent>
                     {visibility.resolutionOptions.map((res) => (
                       <SelectItem key={res} value={res}>
-                        {RESOLUTION_LABELS[res] || res}
+                        {t(`tools.resolutions.${res}`, { defaultValue: res })}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -340,7 +347,7 @@ export default function CreateVideoPage() {
               
               {/* 画面比例 */}
               <div className="grid gap-2">
-                <Label>画面比例</Label>
+                <Label>{t('videos.form.aspectRatio')}</Label>
                 <Select value={aspectRatio} onValueChange={setAspectRatio}>
                   <SelectTrigger>
                     <SelectValue />
@@ -348,7 +355,7 @@ export default function CreateVideoPage() {
                   <SelectContent>
                     {(visibility.aspectRatioOptions || ['16:9', '9:16', '1:1']).map((ratio) => (
                       <SelectItem key={ratio} value={ratio}>
-                        {ASPECT_RATIO_LABELS[ratio] || ratio}
+                        {t(`tools.aspectRatios.${ratio}`, { defaultValue: ratio })}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -361,7 +368,7 @@ export default function CreateVideoPage() {
         {/* 高级设置 */}
         {(visibility.showPromptOptimizer || visibility.showFastPretreatment) && (
           <section className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">
-            <h3 className="text-lg font-semibold">高级设置</h3>
+            <h3 className="text-lg font-semibold">{t('videos.form.sections.advanced')}</h3>
             
             <div className="grid gap-4">
               {visibility.showPromptOptimizer && (
@@ -369,9 +376,9 @@ export default function CreateVideoPage() {
                   <div className="space-y-0.5">
                     <Label className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4" />
-                      提示词优化
+                      {t('videos.form.promptOptimizer')}
                     </Label>
-                    <p className="text-xs text-muted-foreground">自动优化提示词以获得更好的生成效果</p>
+                    <p className="text-xs text-muted-foreground">{t('videos.form.promptOptimizerDesc')}</p>
                   </div>
                   <Switch
                     checked={promptOptimizer}
@@ -385,9 +392,9 @@ export default function CreateVideoPage() {
                   <div className="space-y-0.5">
                     <Label className="flex items-center gap-2">
                       <Zap className="h-4 w-4" />
-                      快速预处理
+                      {t('videos.form.fastPretreatment')}
                     </Label>
-                    <p className="text-xs text-muted-foreground">减少优化时间，加快生成速度</p>
+                    <p className="text-xs text-muted-foreground">{t('videos.form.fastPretreatmentDesc')}</p>
                   </div>
                   <Switch
                     checked={fastPretreatment}
@@ -401,15 +408,15 @@ export default function CreateVideoPage() {
 
         {/* Footer Actions */}
         <div className="flex items-center justify-end gap-3 pb-8">
-          <Button variant="outline" onClick={() => router.back()}>取消</Button>
+          <Button variant="outline" onClick={() => router.back()}>{t('videos.form.cancel')}</Button>
           <Button onClick={handleSubmit} disabled={!canSubmit} size="lg" className="min-w-[120px]">
             {submitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                提交中...
+                {t('videos.form.submitting')}
               </>
             ) : (
-              '提交任务'
+              t('videos.form.submit')
             )}
           </Button>
         </div>

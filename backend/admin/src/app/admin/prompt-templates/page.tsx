@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'next/navigation';
 import { usePromptTemplates, useDeletePromptTemplate } from '@/hooks/usePromptTemplates';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ import { Plus, Pencil, Trash2, Search, FileText } from 'lucide-react';
 import api from '@/lib/axios';
 
 export default function PromptTemplatesPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [searchText, setSearchText] = useState('');
   const [filterTemplateType, setFilterTemplateType] = useState<string>('');
@@ -55,17 +57,17 @@ export default function PromptTemplatesPage() {
       .catch(() => {});
   }, [templates]);
 
-  const filteredTemplates = templates?.filter((t) =>
+  const filteredTemplates = templates?.filter((tpl) =>
     searchText
-      ? t.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        t.description?.toLowerCase().includes(searchText.toLowerCase())
+      ? tpl.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        tpl.description?.toLowerCase().includes(searchText.toLowerCase())
       : true
   );
 
   const handleDelete = async (id: string) => {
     try {
       await deleteTemplate(id);
-      toast({ title: '模板删除成功' });
+      toast({ title: t('promptTemplates.toast.deleteSuccess') });
       mutate();
     } catch (err: any) {
       const detail = err.response?.data?.detail;
@@ -73,8 +75,12 @@ export default function PromptTemplatesPage() {
         ? detail
         : Array.isArray(detail)
           ? detail.map((e: any) => e.msg).join('; ')
-          : '未知错误';
-      toast({ variant: 'destructive', title: '删除失败', description: message });
+          : t('promptTemplates.toast.unknownError');
+      toast({
+        variant: 'destructive',
+        title: t('promptTemplates.toast.deleteFailed'),
+        description: message,
+      });
     }
   };
 
@@ -82,11 +88,11 @@ export default function PromptTemplatesPage() {
     <div className="max-w-[1200px] mx-auto w-full space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">提示词模板</h2>
-          <p className="text-muted-foreground">管理 AI 生成使用的提示词模板</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('promptTemplates.title')}</h2>
+          <p className="text-muted-foreground">{t('promptTemplates.subtitle')}</p>
         </div>
         <Button onClick={() => router.push('/admin/prompt-templates/new')}>
-          <Plus className="mr-2 h-4 w-4" /> 创建模板
+          <Plus className="mr-2 h-4 w-4" /> {t('promptTemplates.createBtn')}
         </Button>
       </div>
 
@@ -95,7 +101,7 @@ export default function PromptTemplatesPage() {
         <div className="relative">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="搜索模板名称或描述..."
+            placeholder={t('promptTemplates.searchPlaceholder')}
             className="pl-9 w-64"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
@@ -103,10 +109,10 @@ export default function PromptTemplatesPage() {
         </div>
         <Select value={filterTemplateType || '__all__'} onValueChange={(v) => setFilterTemplateType(v === '__all__' ? '' : v)}>
           <SelectTrigger className="w-44">
-            <SelectValue placeholder="模板分类" />
+            <SelectValue placeholder={t('promptTemplates.filterPlaceholder')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">全部分类</SelectItem>
+            <SelectItem value="__all__">{t('promptTemplates.filterAll')}</SelectItem>
             {categoryOptions.map((cat) => (
               <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
             ))}
@@ -119,24 +125,24 @@ export default function PromptTemplatesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>模板名称</TableHead>
-              <TableHead>分类</TableHead>
-              <TableHead>变量数</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t('promptTemplates.table.name')}</TableHead>
+              <TableHead>{t('promptTemplates.table.category')}</TableHead>
+              <TableHead>{t('promptTemplates.table.varsCount')}</TableHead>
+              <TableHead>{t('promptTemplates.table.status')}</TableHead>
+              <TableHead className="text-right">{t('promptTemplates.table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center">
-                  加载中...
+                  {t('promptTemplates.table.loading')}
                 </TableCell>
               </TableRow>
             ) : filteredTemplates?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                  暂无模板，点击「创建模板」开始添加
+                  {t('promptTemplates.table.empty')}
                 </TableCell>
               </TableRow>
             ) : (
@@ -150,7 +156,7 @@ export default function PromptTemplatesPage() {
                       <div>
                         <div className="font-medium">{template.name}</div>
                         <div className="text-xs text-muted-foreground line-clamp-1 max-w-[220px]">
-                          {template.description || '暂无描述'}
+                          {template.description || t('promptTemplates.table.noDesc')}
                         </div>
                       </div>
                     </div>
@@ -163,15 +169,21 @@ export default function PromptTemplatesPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{template.variables_schema?.length || 0} 个</span>
+                    <span className="text-sm">
+                      {t('promptTemplates.table.varsUnit', { count: template.variables_schema?.length || 0 })}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       {template.is_default && (
-                        <Badge variant="secondary" className="text-xs">默认</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          {t('promptTemplates.status.default')}
+                        </Badge>
                       )}
                       <Badge variant={template.is_active ? 'default' : 'outline'} className="text-xs">
-                        {template.is_active ? '启用' : '禁用'}
+                        {template.is_active
+                          ? t('promptTemplates.status.active')
+                          : t('promptTemplates.status.inactive')}
                       </Badge>
                     </div>
                   </TableCell>
@@ -188,15 +200,15 @@ export default function PromptTemplatesPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                            <AlertDialogTitle>{t('promptTemplates.delete.title')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              此操作不可撤销，将永久删除「{template.name}」模板。
+                              {t('promptTemplates.delete.description', { name: template.name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t('promptTemplates.delete.cancel')}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => template.id && handleDelete(template.id)}>
-                              确认删除
+                              {t('promptTemplates.delete.confirm')}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>

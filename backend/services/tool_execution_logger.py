@@ -41,8 +41,10 @@ def _sanitize_args(args: dict) -> dict:
     return {k: v for k, v in args.items() if k not in _SENSITIVE_KEYS}
 
 
-_MAX_RETRIES = 3
+_MAX_RETRIES = 5
 _RETRY_BASE_DELAY = 1.0  # seconds
+# 首次延迟较长，让主聊天流程的消息落库事务先完成，避免与主写者竞争
+_INITIAL_DELAY = 1.5
 
 
 async def _write_record(
@@ -56,13 +58,15 @@ async def _write_record(
     """Persist a ToolExecution record using an independent DB session.
 
     Retries on database-locked errors with exponential backoff.
+    首次延迟 1.5s 等主聊天事务提交；失败后按 1s, 2s, 4s, 8s 退避。
     """
     from models import ToolExecution
 
+    # 初始延迟：让主流程的消息保存事务先落地，减少写锁竞争
+    await asyncio.sleep(_INITIAL_DELAY)
+
     for attempt in range(_MAX_RETRIES):
         try:
-            # Small initial delay to reduce contention with the main chat flow
-            await asyncio.sleep(0.3 * (attempt + 1))
             async with AsyncSessionLocal() as session:
                 record = ToolExecution(
                     tool_name=tool_name,

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -59,32 +60,30 @@ import { Textarea } from '@/components/ui/textarea';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
-// 权限级别映射表
-const PERMISSION_LEVELS: Record<string, { label: string; variant: 'default' | 'secondary' }> = {
-  admin: { label: '管理员', variant: 'default' },
-  super_admin: { label: '超级管理员', variant: 'secondary' },
+// 权限级别变体映射
+const PERMISSION_VARIANT: Record<string, 'default' | 'secondary'> = {
+  admin: 'default',
+  super_admin: 'secondary',
 };
 
-// 创建管理员表单 Schema
-const createSchema = z.object({
-  email: z.string().email('请输入有效的邮箱地址'),
-  nickname: z.string().min(1, '请输入昵称').max(100),
-  password: z.string().min(6, '密码至少 6 位'),
-  permission_level: z.string(),
-});
+const PERMISSION_KEYS = ['admin', 'super_admin'] as const;
 
-// 编辑管理员表单 Schema
-const editSchema = z.object({
-  nickname: z.string().min(1, '请输入昵称').max(100),
-  password: z.string().optional(),
-  permission_level: z.string(),
-  is_active: z.boolean(),
-});
+type CreateValues = {
+  email: string;
+  nickname: string;
+  password: string;
+  permission_level: string;
+};
 
-type CreateValues = z.infer<typeof createSchema>;
-type EditValues = z.infer<typeof editSchema>;
+type EditValues = {
+  nickname: string;
+  password?: string;
+  permission_level: string;
+  is_active: boolean;
+};
 
 export default function AdminsPage() {
+  const { t } = useTranslation();
   const { data: admins, isLoading } = useSWR<Admin[]>('/admin/admins', fetcher);
   const { toast } = useToast();
 
@@ -95,6 +94,29 @@ export default function AdminsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditDescription, setCreditDescription] = useState('');
+
+  // Schema 随语言切换动态重建
+  const createSchema = useMemo(
+    () =>
+      z.object({
+        email: z.string().email(t('admins.validation.emailInvalid')),
+        nickname: z.string().min(1, t('admins.validation.nicknameRequired')).max(100),
+        password: z.string().min(6, t('admins.validation.passwordMin')),
+        permission_level: z.string(),
+      }),
+    [t],
+  );
+
+  const editSchema = useMemo(
+    () =>
+      z.object({
+        nickname: z.string().min(1, t('admins.validation.nicknameRequired')).max(100),
+        password: z.string().optional(),
+        permission_level: z.string(),
+        is_active: z.boolean(),
+      }),
+    [t],
+  );
 
   const createForm = useForm<CreateValues>({
     resolver: zodResolver(createSchema),
@@ -141,14 +163,17 @@ export default function AdminsPage() {
     setSubmitting(true);
     try {
       await api.post('/admin/admins', values);
-      toast({ title: '创建成功', description: `管理员 ${values.nickname} 已创建` });
+      toast({
+        title: t('admins.toast.createSuccess'),
+        description: t('admins.toast.createSuccessDesc', { name: values.nickname }),
+      });
       setCreateDialogOpen(false);
       mutate('/admin/admins');
     } catch (err: any) {
       toast({
         variant: 'destructive',
-        title: '创建失败',
-        description: err?.response?.data?.detail || '请稍后重试',
+        title: t('admins.toast.createFailed'),
+        description: err?.response?.data?.detail || t('admins.toast.retryLater'),
       });
     } finally {
       setSubmitting(false);
@@ -169,14 +194,14 @@ export default function AdminsPage() {
         payload.password = values.password;
       }
       await api.put(`/admin/admins/${selectedAdmin.id}`, payload);
-      toast({ title: '更新成功' });
+      toast({ title: t('admins.toast.updateSuccess') });
       setEditDialogOpen(false);
       mutate('/admin/admins');
     } catch (err: any) {
       toast({
         variant: 'destructive',
-        title: '更新失败',
-        description: err?.response?.data?.detail || '请稍后重试',
+        title: t('admins.toast.updateFailed'),
+        description: err?.response?.data?.detail || t('admins.toast.retryLater'),
       });
     } finally {
       setSubmitting(false);
@@ -186,13 +211,16 @@ export default function AdminsPage() {
   const onDelete = async (admin: Admin) => {
     try {
       await api.delete(`/admin/admins/${admin.id}`);
-      toast({ title: '删除成功', description: `管理员 ${admin.nickname} 已删除` });
+      toast({
+        title: t('admins.toast.deleteSuccess'),
+        description: t('admins.toast.deleteSuccessDesc', { name: admin.nickname }),
+      });
       mutate('/admin/admins');
     } catch (err: any) {
       toast({
         variant: 'destructive',
-        title: '删除失败',
-        description: err?.response?.data?.detail || '请稍后重试',
+        title: t('admins.toast.deleteFailed'),
+        description: err?.response?.data?.detail || t('admins.toast.retryLater'),
       });
     }
   };
@@ -212,14 +240,14 @@ export default function AdminsPage() {
         amount: parseFloat(creditAmount),
         description: creditDescription || undefined,
       });
-      toast({ title: '积分调整成功' });
+      toast({ title: t('admins.toast.creditsSuccess') });
       setCreditsDialogOpen(false);
       mutate('/admin/admins');
     } catch (err: any) {
       toast({
         variant: 'destructive',
-        title: '调整失败',
-        description: err?.response?.data?.detail || '请稍后重试',
+        title: t('admins.toast.creditsFailed'),
+        description: err?.response?.data?.detail || t('admins.toast.retryLater'),
       });
     } finally {
       setSubmitting(false);
@@ -229,9 +257,9 @@ export default function AdminsPage() {
   return (
     <div className="max-w-[1200px] mx-auto w-full space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold tracking-tight">管理员管理</h2>
+        <h2 className="text-3xl font-bold tracking-tight">{t('admins.title')}</h2>
         <Button onClick={openCreateDialog}>
-          <Plus className="mr-2 h-4 w-4" /> 新增管理员
+          <Plus className="mr-2 h-4 w-4" /> {t('admins.addBtn')}
         </Button>
       </div>
 
@@ -239,43 +267,52 @@ export default function AdminsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>邮箱</TableHead>
-              <TableHead>昵称</TableHead>
-              <TableHead>权限级别</TableHead>
-              <TableHead>积分</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>最后登录</TableHead>
-              <TableHead className="text-right">操作</TableHead>
+              <TableHead>{t('admins.table.email')}</TableHead>
+              <TableHead>{t('admins.table.nickname')}</TableHead>
+              <TableHead>{t('admins.table.permissionLevel')}</TableHead>
+              <TableHead>{t('admins.table.credits')}</TableHead>
+              <TableHead>{t('admins.table.status')}</TableHead>
+              <TableHead>{t('admins.table.lastLogin')}</TableHead>
+              <TableHead className="text-right">{t('admins.table.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
-                  加载中...
+                  {t('admins.table.loading')}
                 </TableCell>
               </TableRow>
             ) : admins?.map((admin) => {
-              const levelInfo = PERMISSION_LEVELS[admin.permission_level] || PERMISSION_LEVELS.admin;
+              const variant = PERMISSION_VARIANT[admin.permission_level] ?? PERMISSION_VARIANT.admin;
               return (
                 <TableRow key={admin.id}>
                   <TableCell className="font-medium">{admin.email}</TableCell>
                   <TableCell>{admin.nickname}</TableCell>
                   <TableCell>
-                    <Badge variant={levelInfo.variant}>{levelInfo.label}</Badge>
+                    <Badge variant={variant}>
+                      {t(`admins.permission.${admin.permission_level}`, { defaultValue: admin.permission_level })}
+                    </Badge>
                   </TableCell>
                   <TableCell className="font-mono">{Number(admin.credits ?? 0).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={admin.is_active ? 'default' : 'secondary'}>
-                      {admin.is_active ? '启用' : '禁用'}
+                      {admin.is_active
+                        ? t('admins.status.enabled')
+                        : t('admins.status.disabled')}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {admin.last_login_at ? new Date(admin.last_login_at).toLocaleString() : '-'}
+                    {admin.last_login_at ? new Date(admin.last_login_at).toLocaleString() : t('admins.table.dash')}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" title="调整积分" onClick={() => openCreditsDialog(admin)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title={t('admins.tooltip.adjustCredits')}
+                        onClick={() => openCreditsDialog(admin)}
+                      >
                         <Coins className="h-4 w-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEditDialog(admin)}>
@@ -289,14 +326,16 @@ export default function AdminsPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除？</AlertDialogTitle>
+                            <AlertDialogTitle>{t('admins.delete.title')}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              确定要删除管理员 &quot;{admin.nickname}&quot; 吗？此操作不可撤销。
+                              {t('admins.delete.description', { name: admin.nickname })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => onDelete(admin)}>确认删除</AlertDialogAction>
+                            <AlertDialogCancel>{t('admins.delete.cancel')}</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => onDelete(admin)}>
+                              {t('admins.delete.confirm')}
+                            </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
@@ -313,8 +352,8 @@ export default function AdminsPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>新增管理员</DialogTitle>
-            <DialogDescription>创建新的管理员账户</DialogDescription>
+            <DialogTitle>{t('admins.create.title')}</DialogTitle>
+            <DialogDescription>{t('admins.create.description')}</DialogDescription>
           </DialogHeader>
           <Form {...createForm}>
             <form onSubmit={createForm.handleSubmit(onCreate)} className="space-y-4">
@@ -323,9 +362,9 @@ export default function AdminsPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>邮箱</FormLabel>
+                    <FormLabel>{t('admins.form.email')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="admin@example.com" {...field} />
+                      <Input placeholder={t('admins.create.emailPlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -336,9 +375,9 @@ export default function AdminsPage() {
                 name="nickname"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>昵称</FormLabel>
+                    <FormLabel>{t('admins.form.nickname')}</FormLabel>
                     <FormControl>
-                      <Input placeholder="管理员昵称" {...field} />
+                      <Input placeholder={t('admins.create.nicknamePlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -349,9 +388,9 @@ export default function AdminsPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>密码</FormLabel>
+                    <FormLabel>{t('admins.form.password')}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="至少 6 位" {...field} />
+                      <Input type="password" placeholder={t('admins.create.passwordPlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -362,15 +401,17 @@ export default function AdminsPage() {
                 name="permission_level"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>权限级别</FormLabel>
+                    <FormLabel>{t('admins.form.permissionLevel')}</FormLabel>
                     <FormControl>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(PERMISSION_LEVELS).map(([key, val]) => (
-                            <SelectItem key={key} value={key}>{val.label}</SelectItem>
+                          {PERMISSION_KEYS.map((key) => (
+                            <SelectItem key={key} value={key}>
+                              {t(`admins.permission.${key}`)}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -380,9 +421,11 @@ export default function AdminsPage() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>取消</Button>
+                <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>
+                  {t('admins.delete.cancel')}
+                </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? '创建中...' : '创建'}
+                  {submitting ? t('admins.create.submitting') : t('admins.create.submit')}
                 </Button>
               </DialogFooter>
             </form>
@@ -394,8 +437,10 @@ export default function AdminsPage() {
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>编辑管理员</DialogTitle>
-            <DialogDescription>修改管理员 {selectedAdmin?.nickname} 的信息</DialogDescription>
+            <DialogTitle>{t('admins.edit.title')}</DialogTitle>
+            <DialogDescription>
+              {t('admins.edit.description', { name: selectedAdmin?.nickname ?? '' })}
+            </DialogDescription>
           </DialogHeader>
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onEdit)} className="space-y-4">
@@ -404,7 +449,7 @@ export default function AdminsPage() {
                 name="nickname"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>昵称</FormLabel>
+                    <FormLabel>{t('admins.form.nickname')}</FormLabel>
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
@@ -417,9 +462,9 @@ export default function AdminsPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>新密码（留空则不修改）</FormLabel>
+                    <FormLabel>{t('admins.edit.passwordLabel')}</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="输入新密码" {...field} />
+                      <Input type="password" placeholder={t('admins.edit.passwordPlaceholder')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -430,15 +475,17 @@ export default function AdminsPage() {
                 name="permission_level"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>权限级别</FormLabel>
+                    <FormLabel>{t('admins.form.permissionLevel')}</FormLabel>
                     <FormControl>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(PERMISSION_LEVELS).map(([key, val]) => (
-                            <SelectItem key={key} value={key}>{val.label}</SelectItem>
+                          {PERMISSION_KEYS.map((key) => (
+                            <SelectItem key={key} value={key}>
+                              {t(`admins.permission.${key}`)}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -453,7 +500,7 @@ export default function AdminsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <div className="flex items-center justify-between">
-                      <FormLabel>启用账户</FormLabel>
+                      <FormLabel>{t('admins.edit.isActive')}</FormLabel>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} />
                       </FormControl>
@@ -463,9 +510,11 @@ export default function AdminsPage() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>取消</Button>
+                <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  {t('admins.delete.cancel')}
+                </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? '保存中...' : '保存'}
+                  {submitting ? t('admins.edit.submitting') : t('admins.edit.submit')}
                 </Button>
               </DialogFooter>
             </form>
@@ -477,9 +526,12 @@ export default function AdminsPage() {
       <Dialog open={creditsDialogOpen} onOpenChange={setCreditsDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>调整积分</DialogTitle>
+            <DialogTitle>{t('admins.credits.title')}</DialogTitle>
             <DialogDescription>
-              管理员: {selectedAdmin?.nickname} | 当前余额: {Number(selectedAdmin?.credits ?? 0).toFixed(2)}
+              {t('admins.credits.description', {
+                name: selectedAdmin?.nickname ?? '',
+                balance: Number(selectedAdmin?.credits ?? 0).toFixed(2),
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -496,30 +548,32 @@ export default function AdminsPage() {
               ))}
             </div>
             <div>
-              <label className="text-sm font-medium">调整数量</label>
+              <label className="text-sm font-medium">{t('admins.credits.amountLabel')}</label>
               <Input
                 type="number"
-                placeholder="正数=充值，负数=扣减"
+                placeholder={t('admins.credits.amountPlaceholder')}
                 value={creditAmount}
                 onChange={(e) => setCreditAmount(e.target.value)}
               />
             </div>
             <div>
-              <label className="text-sm font-medium">备注说明</label>
+              <label className="text-sm font-medium">{t('admins.credits.noteLabel')}</label>
               <Textarea
-                placeholder="可选：填写调整原因"
+                placeholder={t('admins.credits.notePlaceholder')}
                 value={creditDescription}
                 onChange={(e) => setCreditDescription(e.target.value)}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreditsDialogOpen(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setCreditsDialogOpen(false)}>
+              {t('admins.credits.cancel')}
+            </Button>
             <Button
               onClick={onAdjustCredits}
               disabled={submitting || !creditAmount || parseFloat(creditAmount) === 0}
             >
-              {submitting ? '处理中...' : '确认调整'}
+              {submitting ? t('admins.credits.processing') : t('admins.credits.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -629,7 +629,6 @@
       },
       "parameters": {
         "thinkingMode": "Thinking Mode",
-        "thinkingModeDesc": "Enable deep reasoning (supported by some models)",
         "on": "On",
         "off": "Off",
         "contextWindow": "Context Window",
@@ -790,6 +789,545 @@
         "failed": "Unable to load image",
         "continueEdit": "Continue Editing"
       }
+    }
+  },
+  "skills": {
+    "title": "Skills Management",
+    "subtitle": "Manage Agent extension capabilities. Skills are declarative toolkits that support hot-swapping and version control.",
+    "createBtn": "Create Skill",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "source": {
+      "builtin": "Built-in",
+      "customized": "Custom",
+      "active": "Active"
+    },
+    "toast": {
+      "loadFailed": "Load failed",
+      "loadFailedDesc": "Unable to fetch the skills list, please check your network connection",
+      "loadDetailFailed": "Unable to fetch skill details",
+      "operationSuccess": "Operation successful",
+      "operationFailed": "Operation failed",
+      "toggleFailed": "An error occurred while toggling the skill status",
+      "deleteSuccess": "Deleted successfully",
+      "deleteSuccessDesc": "Skill {{name}} has been deleted",
+      "deleteFailed": "Delete failed",
+      "deleteFailedDesc": "An error occurred while deleting the skill",
+      "updateSuccess": "Skill updated successfully",
+      "createSuccess": "Skill created successfully",
+      "saveFailed": "Save failed",
+      "unknownError": "Unknown error"
+    },
+    "delete": {
+      "title": "Confirm Delete",
+      "description": "Are you sure you want to delete the skill \"{{name}}\"? This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    },
+    "action": {
+      "edit": "Edit Config",
+      "enable": "Enable",
+      "disable": "Disable",
+      "back": "Back",
+      "save": "Save",
+      "saving": "Saving...",
+      "create": "Create Skill",
+      "creating": "Creating..."
+    },
+    "edit": {
+      "title": "Edit Skill",
+      "description": "Edit the configuration and content of skill \"{{name}}\""
+    },
+    "create": {
+      "title": "Create Skill",
+      "description": "Define a new Agent skill package using Markdown"
+    },
+    "form": {
+      "identifier": "Skill Identifier",
+      "identifierPlaceholder": "e.g. web_search",
+      "identifierHint": "Only letters, digits, underscores and hyphens are allowed",
+      "description": "Description",
+      "descriptionPlaceholder": "Briefly describe what this skill does...",
+      "version": "Version",
+      "content": "SKILL.md Content",
+      "contentHint": "Write skill instructions in Markdown. The Agent will reference this content to know how to use the skill.",
+      "contentPlaceholder": "# Skill Name\n\nDescribe the purpose and usage of this skill...\n\n## Example\n\n```\nExample invocation...\n```",
+      "autoEnable": "Enable automatically after creation"
+    }
+  },
+  "mcp": {
+    "title": "MCP Client Management",
+    "subtitle": "Model Context Protocol (MCP) allows Agents to dynamically connect to external tools and data sources. Supports seamless hot reload.",
+    "inDevelopment": {
+      "title": "Under Development",
+      "desc": "MCP client management is not yet available. Stay tuned."
+    }
+  },
+  "tools": {
+    "title": "Tools Management",
+    "subtitle": "View registered tool providers, configure tool parameters and execution statistics.",
+    "logsBtn": "Execution Logs",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "card": {
+      "toolCountTitle": "Contains {{count}} tool(s)",
+      "viewDetail": "View Details",
+      "configBtn": "Configure"
+    },
+    "detail": {
+      "providerId": "Provider ID",
+      "enableCondition": "Enable Condition",
+      "noCondition": "No specific condition",
+      "includedTools": "Included Tools ({{count}})"
+    },
+    "imageDialog": {
+      "title": "Configure Image Generation Tool",
+      "description": "Configure global generate_image tool parameters (shared by all Agents)",
+      "enable": "Enable image generation",
+      "noModelWarning": "No image model found. Please set the model type to \"Image Model\" in Provider Management first.",
+      "model": "Image Model",
+      "modelEmpty": "No available image models",
+      "modelSelect": "Select image model",
+      "aspectRatio": "Aspect Ratio",
+      "quality": "Quality",
+      "selectPlaceholder": "Select",
+      "selectProviderFirst": "Please select a provider first",
+      "batchCount": "Images per batch",
+      "batchAuto": "Auto (decided by Agent)",
+      "batchN": "{{count}} image(s)",
+      "outputFormat": "Output Format",
+      "saveSuccess": "Saved",
+      "saveSuccessDesc": "Image generation tool configuration has been updated",
+      "saveFailed": "Save failed",
+      "retry": "Please retry"
+    },
+    "videoDialog": {
+      "title": "Configure Video Generation Tool",
+      "description": "Configure global generate_video tool parameters (shared by all Agents)",
+      "enable": "Enable video generation",
+      "noModelWarning": "No video model found. Please set the model type to \"Video Model\" in Provider Management first.",
+      "model": "Video Model",
+      "modelEmpty": "No available video models",
+      "modelSelect": "Select video model",
+      "noCapsHint": "This model has no preset parameters and will use default values.",
+      "duration": "Duration (seconds)",
+      "resolution": "Resolution",
+      "aspectRatio": "Aspect Ratio",
+      "selectPlaceholder": "Select",
+      "modelCaps": "Model Capabilities:",
+      "supportsAudio": "Native Audio",
+      "supportsReferenceImages": "Reference Images",
+      "supportsVideoEdit": "Video Editing",
+      "supportsVideoExtension": "Video Extension",
+      "saveSuccess": "Saved",
+      "saveSuccessDesc": "Video generation tool configuration has been updated",
+      "saveFailed": "Save failed",
+      "retry": "Please retry"
+    },
+    "musicDialog": {
+      "title": "Configure Music Generation Tool",
+      "description": "Configure global generate_music tool parameters (shared by all Agents)",
+      "enable": "Enable music generation",
+      "noModelWarning": "No audio model found. Please set the model type to \"Audio Model\" in Provider Management first.",
+      "model": "Music Model",
+      "modelEmpty": "No available audio models",
+      "modelSelect": "Select music model",
+      "modelCaps": "Model Capabilities:",
+      "outputFormat": "Default Output Format",
+      "selectFormat": "Select format",
+      "formats": {
+        "mp3": "MP3 (General)",
+        "wav": "WAV (Lossless, Pro only)"
+      },
+      "caps": {
+        "clipLabel": "Clip",
+        "clipDesc": "Short clip (~30s), MP3 only",
+        "proLabel": "Pro",
+        "proDesc": "Full song (3-5 min), MP3/WAV, with lyrics"
+      },
+      "saveSuccess": "Saved",
+      "saveSuccessDesc": "Music generation tool configuration has been updated",
+      "saveFailed": "Save failed",
+      "retry": "Please retry"
+    },
+    "aspectRatios": {
+      "auto": "Auto",
+      "1:1": "1:1 (Square)",
+      "16:9": "16:9 (Widescreen)",
+      "9:16": "9:16 (Phone)",
+      "4:3": "4:3 (Standard)",
+      "3:4": "3:4 (Portrait)",
+      "3:2": "3:2",
+      "2:3": "2:3",
+      "2:1": "2:1 (Ultra-wide)",
+      "1:2": "1:2 (Ultra-tall)"
+    },
+    "qualities": {
+      "standard": "Standard",
+      "hd": "HD",
+      "ultra": "Ultra HD"
+    },
+    "outputFormats": {
+      "png": "PNG",
+      "jpeg": "JPEG",
+      "webp": "WebP"
+    },
+    "resolutions": {
+      "480p": "480p",
+      "720p": "720p (SD)",
+      "768p": "768p",
+      "1080p": "1080p (HD)",
+      "4k": "4K (Ultra HD)"
+    }
+  },
+  "videos": {
+    "title": "Video Generation",
+    "subtitle": "Manage and monitor video generation tasks",
+    "newBtn": "New Video Task",
+    "empty": "No video tasks yet",
+    "totalCount": "{{count}} record(s)",
+    "status": {
+      "pending": "Queued",
+      "processing": "Processing",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "mode": {
+      "text_to_video": "Text-to-Video",
+      "image_to_video": "Image-to-Video",
+      "edit": "Video Edit",
+      "subject_reference": "Subject Reference"
+    },
+    "modeLong": {
+      "text_to_video": "Text to Video",
+      "image_to_video": "Image to Video",
+      "edit": "Video Editing",
+      "subject_reference": "Subject Reference Generation"
+    },
+    "delete": {
+      "title": "Confirm Delete",
+      "description": "After deletion, the video file and task record cannot be recovered. Continue?",
+      "success": "Deleted successfully",
+      "failed": "Delete failed",
+      "btn": "Delete",
+      "taskBtn": "Delete Task"
+    },
+    "preview": {
+      "title": "Video Preview",
+      "pendingHint": "Video generation is not yet complete",
+      "failedFallback": "Video generation failed",
+      "mode": "Mode: ",
+      "quality": "Quality: ",
+      "duration": "Duration: ",
+      "ratio": "Ratio: ",
+      "cost": "Cost: ",
+      "credits": "{{value}} credits",
+      "provider": "Provider: ",
+      "model": "Model: ",
+      "prompt": "Prompt: ",
+      "createdAt": "Created: {{time}}",
+      "completedAt": "Completed: {{time}}",
+      "elapsed": "Elapsed: {{time}}",
+      "durationSec": "{{value}}s",
+      "dash": "-"
+    },
+    "form": {
+      "title": "New Video Task",
+      "subtitle": "Configure parameters and generate new video content",
+      "sections": {
+        "model": "Model Configuration",
+        "video": "Video Settings",
+        "advanced": "Advanced Settings"
+      },
+      "provider": "Provider",
+      "selectProvider": "Select provider",
+      "model": "Model",
+      "selectModel": "Select model",
+      "selectProviderFirst": "Please select a provider first",
+      "supportModes": "Supported modes: {{modes}}",
+      "supportLastFrame": ", first-last frame generation",
+      "mode": "Generation Mode",
+      "singleModeHint": "This model only supports {{mode}} mode",
+      "prompt": "Prompt",
+      "promptPlaceholder": "Describe the video content you want to generate...",
+      "firstFrame": "First Frame Image URL",
+      "firstFramePlaceholder": "Enter image URL or base64 data URL",
+      "firstFrameHint": "This model requires a first frame image to generate the video",
+      "lastFrame": "Last Frame Image URL (optional)",
+      "lastFramePlaceholder": "Enter last frame image URL",
+      "lastFrameHint": "The video will end with this image, producing a first-to-last-frame transition",
+      "duration": "Duration",
+      "durationValue": "{{value}} sec",
+      "quality": "Quality",
+      "aspectRatio": "Aspect Ratio",
+      "promptOptimizer": "Prompt Optimizer",
+      "promptOptimizerDesc": "Automatically optimize the prompt for better generation results",
+      "fastPretreatment": "Fast Pretreatment",
+      "fastPretreatmentDesc": "Reduce optimization time and speed up generation",
+      "cancel": "Cancel",
+      "submit": "Submit Task",
+      "submitting": "Submitting..."
+    },
+    "toast": {
+      "submitSuccess": "Video task submitted",
+      "submitSuccessDesc": "The task has been queued, please wait for generation to complete",
+      "submitFailed": "Submit failed",
+      "unknownError": "Unknown error"
+    }
+  },
+  "virtualHumans": {
+    "title": "Virtual Humans Library",
+    "subtitle": "Manage Volcano Ark preset virtual humans for Seedance 2.0 real-person video generation",
+    "addBtn": "Add Human",
+    "empty": "No virtual humans yet",
+    "filter": {
+      "all": "All",
+      "male": "Male",
+      "female": "Female",
+      "stylePlaceholder": "Filter by style, e.g. realistic..."
+    },
+    "gender": {
+      "male": "Male",
+      "female": "Female"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "card": {
+      "editConfig": "Edit Config",
+      "deleteBtn": "Delete"
+    },
+    "dialog": {
+      "createTitle": "Add Virtual Human",
+      "editTitle": "Edit Virtual Human",
+      "createDesc": "Add a new Volcano Ark preset virtual human",
+      "editDesc": "Modify the virtual human preset information"
+    },
+    "form": {
+      "assetId": "Asset ID",
+      "assetIdPlaceholder": "asset-xxxxxxxxx-xxxxx",
+      "name": "Name",
+      "namePlaceholder": "Virtual human name",
+      "gender": "Gender",
+      "style": "Style",
+      "stylePlaceholder": "realistic",
+      "preview": "Preview Image",
+      "previewAlt": "Preview",
+      "uploadHint": "Click to upload preview image",
+      "uploading": "Uploading...",
+      "formatHint": "Supports PNG, JPG, WEBP, up to 5MB, auto-compressed after upload",
+      "replace": "Replace",
+      "description": "Description",
+      "descriptionPlaceholder": "Optional description...",
+      "isActive": "Active",
+      "isInactive": "Inactive",
+      "sortOrder": "Sort Order",
+      "cancel": "Cancel",
+      "save": "Save Changes",
+      "create": "Create"
+    },
+    "toast": {
+      "fileTooBigTitle": "File too large",
+      "fileTooBigDesc": "Image size cannot exceed 5MB",
+      "formatUnsupportedTitle": "Unsupported format",
+      "formatUnsupportedDesc": "Only PNG, JPG and WEBP formats are supported",
+      "uploadSuccess": "Upload successful",
+      "uploadFailed": "Upload failed",
+      "uploadFailedFallback": "Upload failed",
+      "fieldsRequiredTitle": "Please fill in required fields",
+      "fieldsRequiredJoiner": ", ",
+      "createSuccess": "Created successfully",
+      "updateSuccess": "Updated successfully",
+      "createFailed": "Create failed",
+      "updateFailed": "Update failed",
+      "deleteSuccess": "Deleted successfully",
+      "deleteFailed": "Delete failed",
+      "unknownError": "Unknown error"
+    },
+    "delete": {
+      "title": "Confirm Delete",
+      "description": "The virtual human \"{{name}}\" is about to be deleted. This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Delete"
+    }
+  },
+  "promptTemplates": {
+    "title": "Prompt Templates",
+    "subtitle": "Manage prompt templates used for AI generation",
+    "createBtn": "Create Template",
+    "searchPlaceholder": "Search template name or description...",
+    "filterAll": "All categories",
+    "filterPlaceholder": "Template category",
+    "table": {
+      "name": "Template Name",
+      "category": "Category",
+      "varsCount": "Variables",
+      "status": "Status",
+      "actions": "Actions",
+      "empty": "No templates yet. Click \"Create Template\" to add one.",
+      "loading": "Loading...",
+      "noDesc": "No description",
+      "varsUnit": "{{count}}"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Disabled",
+      "default": "Default"
+    },
+    "delete": {
+      "title": "Confirm Delete?",
+      "description": "This action cannot be undone. The template \"{{name}}\" will be permanently deleted.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "toast": {
+      "deleteSuccess": "Template deleted successfully",
+      "deleteFailed": "Delete failed",
+      "createSuccess": "Template created successfully",
+      "createFailed": "Create failed",
+      "updateSuccess": "Template updated successfully",
+      "updateFailed": "Update failed",
+      "unknownError": "Unknown error"
+    },
+    "action": {
+      "back": "Back",
+      "save": "Save",
+      "saving": "Saving...",
+      "create": "Create Template",
+      "creating": "Creating...",
+      "addVariable": "Add Variable"
+    },
+    "create": {
+      "title": "Create Prompt Template",
+      "description": "Define a new AI generation prompt template"
+    },
+    "edit": {
+      "title": "Edit Prompt Template",
+      "description": "Edit the configuration and content of template \"{{name}}\""
+    },
+    "form": {
+      "name": "Template Name",
+      "namePlaceholder": "e.g. Story Setting Generation",
+      "description": "Description",
+      "descriptionPlaceholder": "Briefly describe the purpose of this template...",
+      "category": "Category Tag",
+      "categoryPlaceholder": "Custom category, max 12 chars",
+      "categoryHint": "Supports Chinese and English, up to 12 characters",
+      "contentTitle": "Prompt Content",
+      "varsUsageHintPrefix": "Use ",
+      "varsUsageHintSuffix": " to insert variables",
+      "systemPrompt": "System Prompt",
+      "systemPromptPlaceholder": "You are a professional theater plot designer...",
+      "userPrompt": "User Prompt (optional)",
+      "userPromptPlaceholderPrefix": "Generate content based on the following information...\n\nTheater name: ",
+      "varsTitle": "Input Variables",
+      "varsEmpty": "No variables yet. Click \"Add Variable\" to define placeholders in the prompt.",
+      "varIndex": "Variable #{{index}}",
+      "varName": "Variable Name (English)",
+      "varNamePlaceholder": "theater_name",
+      "varLabel": "Display Label",
+      "varLabelPlaceholder": "Theater Name",
+      "varType": "Type",
+      "varDescription": "Description (optional)",
+      "varDescriptionPlaceholder": "Variable description...",
+      "varRequired": "Required",
+      "statusActive": "Enable template",
+      "statusDefault": "Set as default for this category"
+    },
+    "varTypes": {
+      "string": "Single-line Text",
+      "textarea": "Multi-line Text",
+      "number": "Number",
+      "boolean": "Boolean",
+      "select": "Dropdown Select"
+    }
+  },
+  "admins": {
+    "title": "Admin Management",
+    "addBtn": "Add Admin",
+    "table": {
+      "email": "Email",
+      "nickname": "Nickname",
+      "permissionLevel": "Permission Level",
+      "credits": "Credits",
+      "status": "Status",
+      "lastLogin": "Last Login",
+      "actions": "Actions",
+      "loading": "Loading...",
+      "dash": "-"
+    },
+    "permission": {
+      "admin": "Admin",
+      "super_admin": "Super Admin"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "tooltip": {
+      "adjustCredits": "Adjust Credits"
+    },
+    "create": {
+      "title": "Add Admin",
+      "description": "Create a new admin account",
+      "emailPlaceholder": "admin@example.com",
+      "nicknamePlaceholder": "Admin nickname",
+      "passwordPlaceholder": "At least 6 characters",
+      "submit": "Create",
+      "submitting": "Creating..."
+    },
+    "edit": {
+      "title": "Edit Admin",
+      "description": "Update info for admin {{name}}",
+      "passwordLabel": "New Password (leave empty to keep unchanged)",
+      "passwordPlaceholder": "Enter new password",
+      "isActive": "Active",
+      "submit": "Save",
+      "submitting": "Saving..."
+    },
+    "form": {
+      "email": "Email",
+      "nickname": "Nickname",
+      "password": "Password",
+      "permissionLevel": "Permission Level"
+    },
+    "validation": {
+      "emailInvalid": "Please enter a valid email",
+      "nicknameRequired": "Please enter a nickname",
+      "passwordMin": "Password must be at least 6 characters"
+    },
+    "delete": {
+      "title": "Confirm deletion?",
+      "description": "Delete admin \"{{name}}\"? This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "credits": {
+      "title": "Adjust Credits",
+      "description": "Admin: {{name}} | Current balance: {{balance}}",
+      "amountLabel": "Adjustment Amount",
+      "amountPlaceholder": "Positive = recharge, negative = deduct",
+      "noteLabel": "Note",
+      "notePlaceholder": "Optional: reason for adjustment",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "processing": "Processing..."
+    },
+    "toast": {
+      "createSuccess": "Created successfully",
+      "createSuccessDesc": "Admin {{name}} has been created",
+      "createFailed": "Creation failed",
+      "updateSuccess": "Updated successfully",
+      "updateFailed": "Update failed",
+      "deleteSuccess": "Deleted successfully",
+      "deleteSuccessDesc": "Admin {{name}} has been deleted",
+      "deleteFailed": "Deletion failed",
+      "creditsSuccess": "Credits adjusted successfully",
+      "creditsFailed": "Adjustment failed",
+      "retryLater": "Please try again later"
     }
   },
   "login": {

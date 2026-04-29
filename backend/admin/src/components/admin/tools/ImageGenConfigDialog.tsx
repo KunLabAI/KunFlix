@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -24,21 +25,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { collectModelsByType } from '@/lib/api-utils';
 import { AlertCircle } from 'lucide-react';
 
-// 标签映射表
-const ASPECT_RATIO_LABELS: Record<string, string> = {
-  "auto": "自动", "1:1": "1:1 (方形)", "16:9": "16:9 (宽屏)", "9:16": "9:16 (手机)",
-  "4:3": "4:3 (标准)", "3:4": "3:4 (竖屏)", "3:2": "3:2", "2:3": "2:3",
-  "2:1": "2:1 (超宽)", "1:2": "1:2 (超高)",
-};
-
-const QUALITY_LABELS: Record<string, string> = {
-  "standard": "标准", "hd": "高清", "ultra": "超高清",
-};
-
-const OUTPUT_FORMAT_LABELS: Record<string, string> = {
-  "png": "PNG", "jpeg": "JPEG", "webp": "WebP",
-};
-
 interface ImageGenConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -59,6 +45,7 @@ export default function ImageGenConfigDialog({
   onSaveConfig,
 }: ImageGenConfigDialogProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
 
   // 本地表单状态
@@ -117,14 +104,14 @@ export default function ImageGenConfigDialog({
         } : null,
       };
       await onSaveConfig(config);
-      toast({ title: '保存成功', description: '图像生成工具配置已更新' });
+      toast({ title: t('tools.imageDialog.saveSuccess'), description: t('tools.imageDialog.saveSuccessDesc') });
       onSaved();
       onOpenChange(false);
     } catch (e: any) {
       toast({
         variant: 'destructive',
-        title: '保存失败',
-        description: e?.response?.data?.detail || '请重试',
+        title: t('tools.imageDialog.saveFailed'),
+        description: e?.response?.data?.detail || t('tools.imageDialog.retry'),
       });
     } finally {
       setSaving(false);
@@ -135,16 +122,14 @@ export default function ImageGenConfigDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>配置图像生成工具</DialogTitle>
-          <DialogDescription>
-            设置全局 generate_image 工具参数（所有智能体共享此配置）
-          </DialogDescription>
+          <DialogTitle>{t('tools.imageDialog.title')}</DialogTitle>
+          <DialogDescription>{t('tools.imageDialog.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {/* 启用开关 */}
           <div className="flex items-center justify-between">
-            <Label className="text-sm">启用图像生成</Label>
+            <Label className="text-sm">{t('tools.imageDialog.enable')}</Label>
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
@@ -154,22 +139,20 @@ export default function ImageGenConfigDialog({
               {imageModels.length === 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950 rounded-md p-3">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>
-                    未找到图像模型。请先在「供应商管理」中为供应商的模型设置「图像模型」类型。
-                  </span>
+                  <span>{t('tools.imageDialog.noModelWarning')}</span>
                 </div>
               )}
 
               {/* 图像模型（扁平列表，按 model_type 过滤） */}
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">图像模型</Label>
+                <Label className="text-xs text-muted-foreground">{t('tools.imageDialog.model')}</Label>
                 <Select
                   value={model}
                   onValueChange={setModel}
                   disabled={imageModels.length === 0}
                 >
                   <SelectTrigger className="bg-background">
-                    <SelectValue placeholder={imageModels.length === 0 ? "无可用图像模型" : "选择图像模型"} />
+                    <SelectValue placeholder={imageModels.length === 0 ? t('tools.imageDialog.modelEmpty') : t('tools.imageDialog.modelSelect')} />
                   </SelectTrigger>
                   <SelectContent>
                     {imageModels.map((m) => (
@@ -185,18 +168,18 @@ export default function ImageGenConfigDialog({
               <div className="grid grid-cols-2 gap-3">
                 {/* 宽高比 */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">宽高比</Label>
+                  <Label className="text-xs text-muted-foreground">{t('tools.imageDialog.aspectRatio')}</Label>
                   <Select
                     value={aspectRatio}
                     onValueChange={setAspectRatio}
                     disabled={!caps}
                   >
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder={caps ? "选择" : "请先选择供应商"} />
+                      <SelectValue placeholder={caps ? t('tools.imageDialog.selectPlaceholder') : t('tools.imageDialog.selectProviderFirst')} />
                     </SelectTrigger>
                     <SelectContent>
                       {(caps?.aspect_ratios || []).map((v: string) => (
-                        <SelectItem key={v} value={v}>{ASPECT_RATIO_LABELS[v] || v}</SelectItem>
+                        <SelectItem key={v} value={v}>{t(`tools.aspectRatios.${v}`, { defaultValue: v })}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -204,18 +187,18 @@ export default function ImageGenConfigDialog({
 
                 {/* 画质 */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">画质</Label>
+                  <Label className="text-xs text-muted-foreground">{t('tools.imageDialog.quality')}</Label>
                   <Select
                     value={quality}
                     onValueChange={setQuality}
                     disabled={!caps}
                   >
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder={caps ? "选择" : "请先选择供应商"} />
+                      <SelectValue placeholder={caps ? t('tools.imageDialog.selectPlaceholder') : t('tools.imageDialog.selectProviderFirst')} />
                     </SelectTrigger>
                     <SelectContent>
                       {(caps?.qualities || []).map((v: string) => (
-                        <SelectItem key={v} value={v}>{QUALITY_LABELS[v] || v}</SelectItem>
+                        <SelectItem key={v} value={v}>{t(`tools.qualities.${v}`, { defaultValue: v })}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -225,20 +208,20 @@ export default function ImageGenConfigDialog({
               <div className="grid grid-cols-2 gap-3">
                 {/* 批量生成数量 */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">每次生成张数</Label>
+                  <Label className="text-xs text-muted-foreground">{t('tools.imageDialog.batchCount')}</Label>
                   <Select
                     value={batchCount === null || batchCount === 0 ? 'auto' : String(batchCount)}
                     onValueChange={val => setBatchCount(val === 'auto' ? 0 : Number(val))}
                   >
                     <SelectTrigger className="bg-background">
-                      <SelectValue placeholder="选择" />
+                      <SelectValue placeholder={t('tools.imageDialog.selectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="auto">自动（智能体决定）</SelectItem>
-                      <SelectItem value="1">1 张</SelectItem>
-                      <SelectItem value="2">2 张</SelectItem>
-                      <SelectItem value="3">3 张</SelectItem>
-                      <SelectItem value="4">4 张</SelectItem>
+                      <SelectItem value="auto">{t('tools.imageDialog.batchAuto')}</SelectItem>
+                      <SelectItem value="1">{t('tools.imageDialog.batchN', { count: 1 })}</SelectItem>
+                      <SelectItem value="2">{t('tools.imageDialog.batchN', { count: 2 })}</SelectItem>
+                      <SelectItem value="3">{t('tools.imageDialog.batchN', { count: 3 })}</SelectItem>
+                      <SelectItem value="4">{t('tools.imageDialog.batchN', { count: 4 })}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -246,17 +229,17 @@ export default function ImageGenConfigDialog({
                 {/* 输出格式 */}
                 {(caps?.output_formats?.length ?? 0) > 0 && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">输出格式</Label>
+                    <Label className="text-xs text-muted-foreground">{t('tools.imageDialog.outputFormat')}</Label>
                     <Select
                       value={outputFormat}
                       onValueChange={setOutputFormat}
                     >
                       <SelectTrigger className="bg-background">
-                        <SelectValue placeholder="选择" />
+                        <SelectValue placeholder={t('tools.imageDialog.selectPlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {(caps?.output_formats || []).map((v: string) => (
-                          <SelectItem key={v} value={v}>{OUTPUT_FORMAT_LABELS[v] || v}</SelectItem>
+                          <SelectItem key={v} value={v}>{t(`tools.outputFormats.${v}`, { defaultValue: v })}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -269,10 +252,10 @@ export default function ImageGenConfigDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            取消
+            {t('common.buttons.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? '保存中...' : '保存'}
+            {saving ? t('common.status.saving') : t('common.buttons.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

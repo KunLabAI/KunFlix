@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,26 +26,27 @@ interface BatchBarProps {
   onRefresh: () => void;
 }
 
-const BatchBar: React.FC<BatchBarProps> = ({ isLoading, onRefresh }) => (
-  <div className="flex justify-between items-center mb-6">
-    <div>
-      <h2 className="text-3xl font-bold tracking-tight">工具管理</h2>
-      <p className="text-muted-foreground mt-2">
-        查看系统注册的工具 Provider、配置工具参数与执行统计。
-      </p>
-    </div>
-    <div className="flex gap-2">
-      <Link href="/admin/tools/logs">
-        <Button variant="outline">
-          <FileText className="mr-2 h-4 w-4" /> 执行日志
+const BatchBar: React.FC<BatchBarProps> = ({ isLoading, onRefresh }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex justify-between items-center mb-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">{t('tools.title')}</h2>
+        <p className="text-muted-foreground mt-2">{t('tools.subtitle')}</p>
+      </div>
+      <div className="flex gap-2">
+        <Link href="/admin/tools/logs">
+          <Button variant="outline">
+            <FileText className="mr-2 h-4 w-4" /> {t('tools.logsBtn')}
+          </Button>
+        </Link>
+        <Button variant="outline" onClick={onRefresh} disabled={isLoading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> {t('tools.refresh')}
         </Button>
-      </Link>
-      <Button variant="outline" onClick={onRefresh} disabled={isLoading}>
-        <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} /> 刷新
-      </Button>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ---------------------------------------------------------------------------
 // ToolCard Component
@@ -56,6 +58,7 @@ interface ToolCardProps {
 }
 
 const ToolCard: React.FC<ToolCardProps> = ({ provider, onOpenDetail, onEdit }) => {
+  const { t } = useTranslation();
   const hasImageGen = provider.tools.some(t => t.name === 'generate_image');
   const hasVideoGen = provider.tools.some(t => t.name === 'generate_video');
   const hasMusicGen = provider.tools.some(t => t.name === 'generate_music');
@@ -82,7 +85,10 @@ const ToolCard: React.FC<ToolCardProps> = ({ provider, onOpenDetail, onEdit }) =
               {provider.provider_name}
             </span>
           </div>
-          <div className="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-secondary/80 text-secondary-foreground text-sm font-bold" title={`包含 ${provider.tools.length} 个工具`}>
+          <div
+            className="flex items-center justify-center w-8 h-8 shrink-0 rounded-full bg-secondary/80 text-secondary-foreground text-sm font-bold"
+            title={t('tools.card.toolCountTitle', { count: provider.tools.length })}
+          >
             {provider.tools.length}
           </div>
         </div>
@@ -91,7 +97,7 @@ const ToolCard: React.FC<ToolCardProps> = ({ provider, onOpenDetail, onEdit }) =
       {/* 底部操作区 */}
       <div className="px-5 py-3 border-t border-border/50 flex items-center justify-between transition-colors duration-300 group-hover:bg-muted/30">
         <span className="text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-1">
-          查看详情
+          {t('tools.card.viewDetail')}
           <ArrowRight className="w-3 h-3 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
         </span>
         
@@ -106,7 +112,7 @@ const ToolCard: React.FC<ToolCardProps> = ({ provider, onOpenDetail, onEdit }) =
             }}
           >
             <Settings2 className="w-3 h-3 mr-1.5" />
-            配置
+            {t('tools.card.configBtn')}
           </Button>
         )}
       </div>
@@ -193,6 +199,7 @@ const CardGrid: React.FC<CardGridProps> = ({ registry, onOpenDetail, onEdit }) =
 // Page Component
 // ---------------------------------------------------------------------------
 export default function ToolsPage() {
+  const { t } = useTranslation();
   const { registry, isLoading: regLoading } = useToolRegistry();
   const { activeProviders } = useLLMProviders();
   const { capabilities: imageCapabilities } = useImageCapabilities();
@@ -301,7 +308,7 @@ export default function ToolsPage() {
               <div>
                 <DialogTitle className="text-xl">{detailProvider?.display_name}</DialogTitle>
                 <div className="text-sm text-muted-foreground mt-1">
-                  Provider ID: <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{detailProvider?.provider_name}</code>
+                  {t('tools.detail.providerId')}: <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{detailProvider?.provider_name}</code>
                 </div>
               </div>
             </div>
@@ -312,14 +319,14 @@ export default function ToolsPage() {
           
           <div className="space-y-4 mt-4">
             <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-              <span className="text-sm text-muted-foreground block mb-1">启用条件</span>
-              <span className="text-sm font-medium">{detailProvider?.condition || '无特定条件'}</span>
+              <span className="text-sm text-muted-foreground block mb-1">{t('tools.detail.enableCondition')}</span>
+              <span className="text-sm font-medium">{detailProvider?.condition || t('tools.detail.noCondition')}</span>
             </div>
             
             <div>
               <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <Settings2 className="w-4 h-4" />
-                包含的工具 ({detailProvider?.tools.length})
+                {t('tools.detail.includedTools', { count: detailProvider?.tools.length ?? 0 })}
               </h4>
               <div className="grid gap-2 max-h-[300px] overflow-y-auto pr-2">
                 {detailProvider?.tools.map((tool) => (
