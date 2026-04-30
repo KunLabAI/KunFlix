@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,7 @@ from services.chat_utils import serialize_content, deserialize_content
 from services.chat_generation import generate_single_agent
 from services.chat_multi_agent import generate_multi_agent
 from services.billing import is_paid_agent as check_is_paid_agent, check_balance_sufficient, BalanceFrozenError
+from ratelimit import limiter, ENDPOINT_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,9 @@ async def get_session_messages(
 
 
 @router.post("/{session_id}/messages")
+@limiter.limit(ENDPOINT_LIMITS["chat_send"])
 async def send_message(
+    request: Request,
     session_id: str,
     message: ChatMessageCreate,
     current_user=Depends(get_current_active_user_or_admin),

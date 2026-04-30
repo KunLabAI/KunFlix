@@ -3,8 +3,12 @@ import os
 import sys
 import json
 
+# 脚本已迁移至 backend/scripts/ 子目录。需将 backend 根目录加入 sys.path，
+# 使得 database/models/config 等顶层模块可被导入。
+_BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+sys.path.insert(0, _BACKEND_DIR)
 # Add local deps to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "deps")))
+sys.path.append(os.path.abspath(os.path.join(_BACKEND_DIR, "deps")))
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,8 +30,8 @@ def run_migrations():
     
     print("Running database migrations...")
     
-    # 获取 alembic.ini 的路径
-    alembic_ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+    # 获取 alembic.ini 的路径（位于 backend 根目录）
+    alembic_ini_path = os.path.join(_BACKEND_DIR, "alembic.ini")
     
     # 创建 Alembic 配置
     alembic_cfg = Config(alembic_ini_path)

@@ -22,6 +22,8 @@ from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provide
 from services.music_providers.base import MusicContext
 from services.music_generation import execute_music_task_background
 from services.media_utils import resolve_media_filepath
+from tasks_queue import enqueue as enqueue_job
+from dataclasses import asdict
 
 if TYPE_CHECKING:
     from models import Agent
@@ -208,8 +210,17 @@ async def _execute_music_gen_tool(args: dict, ctx: "ToolContext") -> str:
 
     logger.info("Music task created via tool: %s (%s: %s)", task.id, music_provider_type, model)
 
-    # 启动后台任务
-    asyncio.create_task(
+    # 启动后台任务：优先 arq 入队（跨进程），失败则 fallback 到 asyncio
+    job = await enqueue_job(
+        "run_music_task_job",
+        task.id,
+        asdict(music_ctx),
+        provider_id,
+        ctx.user_id,
+        ctx.session_id,
+        ctx.theater_id,
+    )
+    job is None and asyncio.create_task(
         execute_music_task_background(
             task_id=task.id,
             music_ctx=music_ctx,

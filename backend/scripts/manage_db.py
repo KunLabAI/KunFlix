@@ -3,8 +3,8 @@ import os
 import subprocess
 import argparse
 
-# Ensure we are in the backend directory
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+# Ensure we are in the backend directory (脚本已迁移至 backend/scripts/)
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(BACKEND_DIR)
 
 def run_command(command):
@@ -64,7 +64,8 @@ def main():
         downgrade()
     elif args.command == "seed":
         print("Running seed script...")
-        cmd = f"{sys.executable} seed_db.py"
+        seed_script = os.path.join("scripts", "seed_db.py")
+        cmd = f'"{sys.executable}" "{seed_script}"'
         print(f"Running: {cmd}")
         try:
             subprocess.check_call(cmd, shell=True)

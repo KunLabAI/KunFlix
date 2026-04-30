@@ -1,10 +1,12 @@
 """
 AgentExecutor - Unified wrapper for DialogAgent execution with token tracking.
 
-缓存策略：
-- 使用 cachetools.TTLCache 替代裸 dict，提供 LRU + TTL 自动淘汰
+缓存策略（二级缓存）：
+- L1：进程内 cachetools.TTLCache，缓存 DialogAgent / model 实例（含 LLM Client 不可序列化）
+- L2：Redis，缓存 Agent / Provider 配置的可序列化快照（JSON），减少 DB 命中
 - 每个 cache_key 挂一把 asyncio.Lock，防止缓存击穿下的重复构造
 - 容量与 TTL 从 Settings 注入，生产可通过 .env 调优
+- 失效：routers/llm_config.py 在 CRUD 后发布 invalidate 事件，听众负责清 L1
 """
 from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator, TYPE_CHECKING
 from dataclasses import dataclass
@@ -30,6 +32,8 @@ from agentscope.model import (
 )
 import agentscope
 from services.llm_stream import stream_completion, StreamResult, DEFAULT_BASE_URLS
+from cache import get_cache_backend
+from cache.pubsub import subscribe, channel_invalidate
 
 if TYPE_CHECKING:
     from services.tool_manager import ToolManager
@@ -164,6 +168,30 @@ class AgentExecutor:
         )
         # per-key 锁：防止同一 key 并发构造时缓存击穿
         self._cache_locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # 注册到全局弱引用集合，便于失效事件到达后逐实例清 L1
+        _executor_registry.add(self)
+
+    def invalidate_provider(self, provider_id: str) -> None:
+        """清除 L1 中与该 provider 相关的实例。"""
+        # agent_cache key 格式：{agent_id}_{provider_id}
+        suffix = f"_{provider_id}"
+        stale = [k for k in list(self._agent_cache) if k.endswith(suffix)]
+        for k in stale:
+            self._agent_cache.pop(k, None)
+            self._cache_locks.pop(k, None)
+        # model_cache key 格式：{provider_id}_{model_name}
+        prefix = f"{provider_id}_"
+        stale_m = [k for k in list(self._model_cache) if k.startswith(prefix)]
+        for k in stale_m:
+            self._model_cache.pop(k, None)
+
+    def invalidate_agent(self, agent_id: str) -> None:
+        """清除 L1 中与该 agent 相关的实例。"""
+        prefix = f"{agent_id}_"
+        stale = [k for k in list(self._agent_cache) if k.startswith(prefix)]
+        for k in stale:
+            self._agent_cache.pop(k, None)
+            self._cache_locks.pop(k, None)
 
     async def execute(
         self,
@@ -373,19 +401,30 @@ class AgentExecutor:
         )
 
     async def _load_agent(self, agent_id: str) -> Agent:
-        """Load agent configuration from database"""
+        """Load agent configuration from database, with L2 (Redis) cache fallback."""
+        cache_key = f"agent:{agent_id}"
+        cached = await _L2_CACHE.get(cache_key)
+        if cached is not None:
+            agent = Agent(**cached)
+            return agent
         result = await self.db.execute(select(Agent).filter(Agent.id == agent_id))
         agent = result.scalars().first()
         if not agent:
             raise ValueError(f"Agent not found: {agent_id}")
+        await _L2_CACHE.set(cache_key, _serialize_orm(agent))
         return agent
 
     async def _load_provider(self, provider_id: str) -> LLMProvider:
-        """Load LLM provider configuration"""
+        """Load LLM provider configuration with L2 (Redis) cache fallback."""
+        cache_key = f"provider:{provider_id}"
+        cached = await _L2_CACHE.get(cache_key)
+        if cached is not None:
+            return LLMProvider(**cached)
         result = await self.db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
         provider = result.scalars().first()
         if not provider:
             raise ValueError(f"LLM Provider not found: {provider_id}")
+        await _L2_CACHE.set(cache_key, _serialize_orm(provider))
         return provider
 
     async def _get_dialog_agent(self, agent_config: Agent, provider: LLMProvider) -> DialogAgent:
@@ -431,3 +470,50 @@ def calculate_credit_cost(
 ) -> float:
     """Calculate credit cost based on token usage and rates."""
     return (input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate)
+
+
+# ---------------------------------------------------------------------------
+# L2 cache (config snapshot) + invalidation listener
+# ---------------------------------------------------------------------------
+_L2_CACHE = get_cache_backend(
+    max_size=settings.AGENT_CACHE_MAX_SIZE,
+    default_ttl=settings.AGENT_CACHE_TTL_SECONDS,
+)
+
+# 进程内跟踪所有 AgentExecutor 实例（弱引用），方便收到失效事件后清 L1
+import weakref
+_executor_registry: "weakref.WeakSet[AgentExecutor]" = weakref.WeakSet()
+
+
+def _serialize_orm(obj) -> Dict[str, Any]:
+    """仅取 SQLAlchemy ORM 实例的列字段为 JSON 快照。"""
+    cols = obj.__table__.columns.keys()
+    return {c: getattr(obj, c, None) for c in cols}
+
+
+# 远程失效事件 -> L1/L2 清理动作（映射表驱动）
+async def _evict_provider(key: str) -> None:
+    await _L2_CACHE.delete(f"provider:{key}")
+    for ex in list(_executor_registry):
+        ex.invalidate_provider(key)
+
+
+async def _evict_agent(key: str) -> None:
+    await _L2_CACHE.delete(f"agent:{key}")
+    for ex in list(_executor_registry):
+        ex.invalidate_agent(key)
+
+
+_INVALIDATION_HANDLERS = {
+    channel_invalidate("provider"): _evict_provider,
+    channel_invalidate("agent"): _evict_agent,
+}
+
+
+async def start_invalidation_listener() -> None:
+    """后台任务：订阅失效频道，收到后清 L1/L2。未连 Redis 立刻返回。"""
+    channels = list(_INVALIDATION_HANDLERS.keys())
+    async for ch, payload in subscribe(*channels):
+        handler = _INVALIDATION_HANDLERS.get(ch)
+        key = isinstance(payload, dict) and payload.get("key")
+        handler and key and await handler(key)

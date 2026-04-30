@@ -1,6 +1,6 @@
 """媒体文件服务路由"""
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from pathlib import Path
 import re
 import logging
@@ -25,6 +25,8 @@ from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
 from services.image_config_adapter import to_provider_config
 from services.media_utils import build_media_storage_path, resolve_media_filepath, MEDIA_DIR
+from storage import get_storage_backend
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,24 @@ _MAX_UPLOAD_LABELS = { "image": "50MB", "video": "500MB", "audio": "100MB" }
 # 安全文件名：UUID + 已知媒体扩展名（图片 + 视频 + 音频）
 _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov|mp3|wav|ogg)$')
 
+
+async def _fallback_presign_post(
+    backend,
+    user_id: str,
+    file_type: str,
+    filename: str,
+    content_type: str,
+    max_size: int,
+) -> Optional[dict]:
+    """下级预签名方式：存在 presign_upload (POST policy) 时用之；否则返回 None。"""
+    fn = getattr(backend, "presign_upload", None)
+    return await fn(
+        user_id=user_id,
+        file_type=file_type,
+        filename=filename,
+        content_type=content_type,
+        max_size=max_size,
+    ) if fn else None
 # 纯 UUID（无扩展名）— LLM 模型可能在回复中截断文件扩展名
 _UUID_ONLY = re.compile(r'^[a-f0-9\-]{36}$')
 
@@ -357,6 +377,123 @@ async def storage_usage(
 
 
 # ---------------------------------------------------------------------------
+# Phase1+: 预签名上传端点（仅 STORAGE_BACKEND=s3 生效，客户端直传对象存储）
+# ---------------------------------------------------------------------------
+
+@router.post("/presign-upload")
+async def presign_upload(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """生成对象存储预签名上传凭证，允许客户端直传 S3/MinIO。
+
+    Body:
+    - filename: 原始文件名（仅用于推断扩展名，实际 key 使用 UUID）
+    - mime_type / content_type: 客户端上传的 Content-Type
+    - file_size (可选): 预检查配额
+
+    仅在 settings.STORAGE_BACKEND == 's3' 时返回预签名凭证；本地后端返回 400。
+    """
+    settings.STORAGE_BACKEND == "s3" or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Presigned upload is only available when STORAGE_BACKEND=s3")
+    )
+
+    original = (payload.get("filename") or "").strip()
+    original or (_ for _ in ()).throw(HTTPException(status_code=400, detail="filename is required"))
+    ext = original.rsplit(".", 1)[-1].lower() if "." in original else ""
+    ext in _EXT_MIME or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+    )
+
+    mime = payload.get("content_type") or payload.get("mime_type") or _EXT_MIME[ext]
+    file_type = _derive_file_type(mime)
+    new_filename = f"{uuid.uuid4()}.{ext}"
+
+    # 可选预检查配额
+    declared_size = int(payload.get("file_size") or 0)
+    max_size = _MAX_UPLOAD_SIZES.get(file_type, 50 * 1024 * 1024)
+    (declared_size <= max_size) or (_ for _ in ()).throw(
+        HTTPException(status_code=413, detail=f"file_size {declared_size} exceeds max {max_size} for {file_type}")
+    )
+
+    # 存储配额预检查（同步与 upload_media）
+    used = current_user.storage_used_bytes or 0
+    quota = current_user.storage_quota_bytes or 2147483648
+    plan_result = await db.execute(
+        select(SubscriptionPlan.storage_quota_bytes)
+        .where(SubscriptionPlan.id == current_user.subscription_plan_id)
+    ) if current_user.subscription_plan_id else None
+    plan_quota = (plan_result.scalar() if plan_result else None) or 0
+    effective_quota = max(quota, plan_quota)
+    (declared_size == 0 or used + declared_size <= effective_quota) or (_ for _ in ()).throw(
+        HTTPException(status_code=413, detail="存储空间不足")
+    )
+
+    backend = get_storage_backend()
+    # 优先走协议标准 PUT 预签名；返回 None 则回落到 POST policy
+    result = None
+    put_signer = getattr(backend, "presigned_put_url", None)
+    put_signer and (result := await put_signer(
+        user_id=current_user.id,
+        file_type=file_type,
+        filename=new_filename,
+        content_type=mime,
+    ))
+    result or (result := await _fallback_presign_post(
+        backend, current_user.id, file_type, new_filename, mime, max_size,
+    ))
+    result or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Backend does not support presigned upload")
+    )
+    return {
+        "upload": result,
+        "filename": new_filename,
+        "original_name": original,
+        "mime_type": mime,
+        "file_type": file_type,
+    }
+
+
+@router.post("/presign-confirm")
+async def presign_confirm(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_active_user),
+):
+    """客户端预签名直传成功后调用此端点创建 Asset 记录与扣减配额。
+
+    Body: { key, filename, original_name, mime_type, file_type, size }
+    """
+    fields = {k: payload.get(k) for k in ("key", "filename", "original_name", "mime_type", "file_type", "size")}
+    all(fields[k] for k in ("key", "filename", "mime_type", "file_type")) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Missing required fields: key/filename/mime_type/file_type")
+    )
+    size = int(fields["size"] or 0)
+
+    asset = Asset(
+        id=generate_uuid(),
+        user_id=current_user.id,
+        filename=fields["filename"],
+        original_name=fields["original_name"] or fields["filename"],
+        file_path=fields["key"],
+        file_type=fields["file_type"],
+        mime_type=fields["mime_type"],
+        size=size,
+    )
+    db.add(asset)
+
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalars().first()
+    user.storage_used_bytes = (user.storage_used_bytes or 0) + size
+
+    await db.commit()
+    await db.refresh(asset)
+    return {"asset": _asset_to_response(asset)}
+
+
+
+# ---------------------------------------------------------------------------
 # 虚拟人像预览图子目录
 # ---------------------------------------------------------------------------
 
@@ -380,9 +517,35 @@ async def serve_virtual_human_preview(filename: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{filename}")
-async def serve_media(filename: str):
-    """安全地提供媒体文件（支持无扩展名的 UUID 回退查找，兼容平铺和用户隔离目录）"""
-    # 优先精确匹配（带扩展名）— resolve_media_filepath 自动处理平铺/隔离两种结构
+async def serve_media(filename: str, db: AsyncSession = Depends(get_db)):
+    """安全地提供媒体文件（支持本地后端 + S3 预签名重定向）"""
+    # 优先精确匹配（带扩展名）
+    matched = _SAFE_FILENAME.match(filename)
+    matched or _UUID_ONLY.match(filename) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Invalid filename")
+    )
+
+    # S3 后端：根据 Asset 查出 key 后重定向到预签名/公网 URL
+    s3_handlers = {
+        "s3": lambda: _serve_s3(filename, db),
+        "local": lambda: _serve_local(filename),
+    }
+    handler = s3_handlers.get(settings.STORAGE_BACKEND, s3_handlers["local"])
+    return await handler()
+
+
+async def _serve_s3(filename: str, db: AsyncSession):
+    """S3 后端：查 Asset.file_path 作为 key，302 跳转到预签名 URL。"""
+    asset_q = await db.execute(select(Asset).where(Asset.filename == filename))
+    asset = asset_q.scalars().first()
+    asset or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
+    backend = get_storage_backend()
+    target_url = await backend._resolve_url(asset.file_path)  # noqa: SLF001 - intentional reuse
+    return RedirectResponse(url=target_url, status_code=302)
+
+
+async def _serve_local(filename: str):
+    """本地后端：保持原有逆向查找逻辑。"""
     matched = _SAFE_FILENAME.match(filename)
     if matched:
         filepath = resolve_media_filepath(filename)

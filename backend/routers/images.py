@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ from services.billing import (
     InsufficientCreditsError,
     BalanceFrozenError,
 )
+from ratelimit import limiter, ENDPOINT_LIMITS
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -190,8 +191,10 @@ async def get_image_model_capabilities(
 # POST /api/images/generate —— 同步图像生成
 # ---------------------------------------------------------------------------
 @router.post("/generate", response_model=ImageGenerateResponse)
+@limiter.limit(ENDPOINT_LIMITS["image_generate"])
 async def generate_images(
-    request: ImageGenerateRequest,
+    request: Request,
+    payload: ImageGenerateRequest,
     current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -213,7 +216,7 @@ async def generate_images(
         raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
 
     # 查询 LLMProvider
-    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == request.provider_id))
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == payload.provider_id))
     provider = provider_result.scalar_one_or_none()
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="LLM Provider not found"))
     provider.is_active or (_ for _ in ()).throw(
@@ -223,20 +226,20 @@ async def generate_images(
     provider_type = (provider.provider_type or "").lower()
 
     # 校验模型在 model_metadata 中标记为 image
-    model_meta = (provider.model_metadata or {}).get(request.model) or {}
+    model_meta = (provider.model_metadata or {}).get(payload.model) or {}
     (model_meta.get("model_type") == "image") or (_ for _ in ()).throw(
-        HTTPException(status_code=400, detail=f"Model {request.model} is not an image model")
+        HTTPException(status_code=400, detail=f"Model {payload.model} is not an image model")
     )
 
     # 校验 mode 是否被该供应商支持
     caps = IMAGE_PROVIDER_CAPABILITIES.get(provider_type) or {}
     supported_modes = caps.get("supported_modes") or ["text_to_image"]
-    (request.mode in supported_modes) or (_ for _ in ()).throw(
-        HTTPException(status_code=400, detail=f"Mode '{request.mode}' not supported by provider '{provider_type}'")
+    (payload.mode in supported_modes) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Mode '{payload.mode}' not supported by provider '{provider_type}'")
     )
 
     # 构建统一配置并适配为供应商配置
-    params = request.config.model_dump(exclude_none=True) if request.config else {}
+    params = payload.config.model_dump(exclude_none=True) if payload.config else {}
     n = int(params.pop("batch_count", 1) or 1)
     unified = {"image_generation_enabled": True, "image_config": params}
     adapted = to_provider_config(provider_type, unified) or {"image_config": {}}
@@ -244,12 +247,12 @@ async def generate_images(
     # 根据 mode 分派：text_to_image 走 SDK 生成器，edit/reference_images 走 _EDIT_HANDLERS
     try:
         image_urls: list[str] = await _dispatch_image_generation(
-            mode=request.mode,
+            mode=payload.mode,
             provider_type=provider_type,
             provider=provider,
-            model=request.model,
-            prompt=request.prompt,
-            reference_images=request.reference_images,
+            model=payload.model,
+            prompt=payload.prompt,
+            reference_images=payload.reference_images,
             adapted=adapted,
             n=n,
             user_id=entity_id,
@@ -268,7 +271,7 @@ async def generate_images(
     await _register_generated_image_assets(image_urls, entity_id, db)
 
     # 计费：从 provider.model_costs[model].image_generation 读取单价，按张计费
-    rate_map = (provider.model_costs or {}).get(request.model, {}) or {}
+    rate_map = (provider.model_costs or {}).get(payload.model, {}) or {}
     rate = float(rate_map.get("image_generation", 0) or 0)
     credit_cost = rate * len(image_urls)
 
@@ -280,7 +283,7 @@ async def generate_images(
             metadata={
                 "kind": "image_generation",
                 "provider_id": provider.id,
-                "model": request.model,
+                "model": payload.model,
                 "count": len(image_urls),
                 "rate": rate,
             },
@@ -293,13 +296,13 @@ async def generate_images(
 
     logger.info(
         "Image generated: user=%s provider=%s model=%s count=%d cost=%.4f",
-        entity_id, provider.id, request.model, len(image_urls), credit_cost,
+        entity_id, provider.id, payload.model, len(image_urls), credit_cost,
     )
 
     return ImageGenerateResponse(
         images=image_urls,
-        prompt=request.prompt,
-        model=request.model,
+        prompt=payload.prompt,
+        model=payload.model,
         provider_id=provider.id,
         provider_name=provider.name,
         credit_cost=credit_cost,

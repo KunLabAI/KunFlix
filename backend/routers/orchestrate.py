@@ -1,7 +1,7 @@
 """
 Orchestration API endpoints for multi-agent collaboration.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -14,6 +14,8 @@ from schemas import OrchestrationRequest, TaskExecutionResponse, SubTaskResponse
 from auth import get_current_active_user
 from services.orchestrator import DynamicOrchestrator
 from services.billing import check_balance_sufficient, BalanceFrozenError
+from ratelimit import limiter, ENDPOINT_LIMITS
+from realtime import new_stream_id, stream_key, sse_tee
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +27,19 @@ router = APIRouter(
 
 
 @router.post("")
+@limiter.limit(ENDPOINT_LIMITS["orchestrate_execute"])
 async def execute_orchestration(
-    request: OrchestrationRequest,
+    request: Request,
+    payload: OrchestrationRequest,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Execute a multi-agent orchestration task.
-    
+
     Returns a streaming response with Server-Sent Events (SSE) for real-time progress.
+    响应头 `X-Stream-Id` 为本次 SSE 流的引用 id，客户端断连后可通过
+    `GET /api/sse/resume/orchestrate/{X-Stream-Id}` 携带 `Last-Event-ID` 续传。
     """
     # Check user credits for paid operations
     try:
@@ -44,17 +50,19 @@ async def execute_orchestration(
         raise HTTPException(status_code=403, detail="Account balance is frozen")
 
     orchestrator = DynamicOrchestrator(db)
+    ref_id = new_stream_id()
+    skey = stream_key(current_user.id, "orchestrate", ref_id)
 
     async def generate():
         try:
             async for event in orchestrator.execute(
-                task_description=request.task_description,
+                task_description=payload.task_description,
                 user_id=current_user.id,
-                leader_agent_id=request.leader_agent_id,
-                session_id=request.session_id,
-                theater_id=request.theater_id,
-                max_iterations=request.options.max_iterations,
-                enable_review=request.options.enable_review,
+                leader_agent_id=payload.leader_agent_id,
+                session_id=payload.session_id,
+                theater_id=payload.theater_id,
+                max_iterations=payload.options.max_iterations,
+                enable_review=payload.options.enable_review,
             ):
                 yield event.to_sse()
         except Exception as e:
@@ -62,12 +70,13 @@ async def execute_orchestration(
             yield f"event: error\ndata: {{\"error\": \"{str(e)}\"}}\n\n"
 
     return StreamingResponse(
-        generate(),
+        sse_tee(skey, generate()),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "X-Stream-Id": ref_id,
         }
     )
 

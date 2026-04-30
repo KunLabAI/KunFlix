@@ -161,7 +161,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt  #安装所有依赖项
-python seed_db.py  # 初始化数据库
+python scripts/seed_db.py  # 初始化数据库
 python main.py     # 启动后端服务
 ```
 </details>

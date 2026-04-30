@@ -2,6 +2,39 @@ import api from '@/lib/axios';
 
 export const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
+/**
+ * 统一提取 FastAPI / axios 错误为字符串，防止将 detail 对象或数组直接传给
+ * React 子节点导致 "Objects are not valid as a React child"。
+ * FastAPI 422 结构：{ detail: [{ loc: [..], msg: string, type: string, ctx?: {..} }] }
+ */
+export const formatApiError = (err: any, fallback = 'Request failed'): string => {
+  const detail = err?.response?.data?.detail;
+  const message = err?.response?.data?.message;
+
+  // 映射表驱动的分派（避免 if-else 链）
+  const formatters: Record<string, () => string> = {
+    string: () => detail as string,
+    array: () => (detail as any[])
+      .map((d) => {
+        const loc = Array.isArray(d?.loc) ? d.loc.filter((x: any) => x !== 'body').join('.') : '';
+        const msg = d?.msg || JSON.stringify(d);
+        return loc ? `${loc}: ${msg}` : msg;
+      })
+      .join('; '),
+    object: () => (detail?.msg as string) || JSON.stringify(detail),
+  };
+
+  const kind = typeof detail === 'string'
+    ? 'string'
+    : Array.isArray(detail)
+      ? 'array'
+      : detail && typeof detail === 'object'
+        ? 'object'
+        : '';
+
+  return formatters[kind]?.() || (typeof message === 'string' && message) || err?.message || fallback;
+};
+
 export const parseProviderModels = (models: string[] | string): string[] => {
   if (Array.isArray(models)) {
     return models;

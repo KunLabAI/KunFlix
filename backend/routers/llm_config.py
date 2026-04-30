@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
@@ -9,6 +9,8 @@ from models import LLMProvider, Admin
 from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
 from auth import require_admin
 from agents import narrative_engine
+from cache.pubsub import invalidate as publish_invalidate
+from services import audit
 import agentscope
 from agentscope.message import Msg
 from agentscope.model import (
@@ -139,7 +141,8 @@ async def test_connection(request: TestConnectionRequest, _admin: Admin = Depend
 @router.post("", response_model=LLMProviderResponse)
 async def create_llm_provider(
     provider: LLMProviderCreate,
-    _admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     # Check if name exists
@@ -162,7 +165,13 @@ async def create_llm_provider(
     # For simplicity, we can just trigger a reload check
     if new_provider.is_active:
         await narrative_engine.reload_config(db)
-        
+    await publish_invalidate("provider", new_provider.id)
+    audit.record(
+        action="llm_provider.create", actor=current_admin,
+        resource_type="llm_provider", resource_id=new_provider.id,
+        detail=provider.model_dump(),
+        request=request,
+    )
     return new_provider
 
 @router.get("", response_model=List[LLMProviderResponse])
@@ -191,7 +200,8 @@ async def read_llm_provider(
 async def update_llm_provider(
     provider_id: str, 
     provider_update: LLMProviderUpdate,
-    _admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
@@ -215,13 +225,20 @@ async def update_llm_provider(
     
     if provider.is_active:
         await narrative_engine.reload_config(db)
-        
+    await publish_invalidate("provider", provider.id)
+    audit.record(
+        action="llm_provider.update", actor=current_admin,
+        resource_type="llm_provider", resource_id=provider.id,
+        detail={"changed_fields": sorted(update_data.keys()), "values": update_data},
+        request=request,
+    )
     return provider
 
 @router.delete("/{provider_id}")
 async def delete_llm_provider(
     provider_id: str,
-    _admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db)
 ):
     result = await db.execute(select(LLMProvider).filter(LLMProvider.id == provider_id))
@@ -229,6 +246,14 @@ async def delete_llm_provider(
     if provider is None:
         raise HTTPException(status_code=404, detail="Provider not found")
         
+    snapshot = {"name": provider.name, "provider_type": provider.provider_type, "model": provider.model}
     await db.delete(provider)
     await db.commit()
+    await publish_invalidate("provider", provider_id)
+    audit.record(
+        action="llm_provider.delete", actor=current_admin,
+        resource_type="llm_provider", resource_id=provider_id,
+        detail=snapshot,
+        request=request,
+    )
     return {"ok": True}

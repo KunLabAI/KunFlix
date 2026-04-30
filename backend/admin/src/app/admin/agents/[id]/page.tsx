@@ -7,6 +7,7 @@ import { ArrowLeft, Save, Settings } from 'lucide-react';
 import AgentForm from '@/components/admin/agents/AgentForm';
 import { useAgent, useCreateAgent, useUpdateAgent } from '@/hooks/useAgents';
 import { Agent } from '@/types';
+import { formatApiError } from '@/lib/api-utils';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
@@ -45,7 +46,7 @@ export default function AgentDetailPage() {
       toast({ 
         variant: "destructive",
         title: t('agents.toast.submitFailed'),
-        description: err.response?.data?.detail || t('agents.toast.unknownError')
+        description: formatApiError(err, t('agents.toast.unknownError'))
       });
     } finally {
       setSaving(false);

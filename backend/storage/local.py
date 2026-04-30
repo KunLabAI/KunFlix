@@ -75,3 +75,26 @@ class LocalStorageBackend:
     def get_local_path(self, filename: str) -> Optional[Path]:
         """沿用 media_utils.resolve_media_filepath 的两级查找策略。"""
         return resolve_media_filepath(filename)
+
+    async def presigned_put_url(
+        self,
+        *,
+        user_id: Optional[str],
+        file_type: str,
+        filename: str,
+        content_type: Optional[str] = None,
+        expires_in: Optional[int] = None,
+    ) -> Optional[dict]:
+        """本地后端不支持预签名：返回 None 让调用方回落。"""
+        return None
+
+    async def presigned_get_url(
+        self,
+        *,
+        user_id: Optional[str],
+        file_type: str,
+        filename: str,
+        expires_in: Optional[int] = None,
+    ) -> Optional[str]:
+        """本地后端直接用 /api/media/ 作为访问地址，无须预签名。"""
+        return None

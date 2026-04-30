@@ -49,3 +49,31 @@ class StorageBackend(Protocol):
     def get_local_path(self, filename: str) -> Optional[Path]:
         """本地后端返回磁盘路径；远端后端返回 None。供静态文件服务使用。"""
         ...
+
+    async def presigned_put_url(
+        self,
+        *,
+        user_id: Optional[str],
+        file_type: str,
+        filename: str,
+        content_type: Optional[str] = None,
+        expires_in: Optional[int] = None,
+    ) -> Optional[dict]:
+        """生成客户端直传的 PUT 预签名 URL。
+
+        返回值形如 {"url": str, "headers": dict, "key": str, "public_url": str|None,
+        "expires_in": int}；不支持预签名的后端（如 Local）返回 None。调用方根据 None 值
+        回落到其他上传路径。
+        """
+        ...
+
+    async def presigned_get_url(
+        self,
+        *,
+        user_id: Optional[str],
+        file_type: str,
+        filename: str,
+        expires_in: Optional[int] = None,
+    ) -> Optional[str]:
+        """生成 GET 预签名 URL。不支持预签名的后端返回 None。"""
+        ...
