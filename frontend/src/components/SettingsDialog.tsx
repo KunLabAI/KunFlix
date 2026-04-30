@@ -246,7 +246,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
                 {t("settings.subscription.noUsageData")}
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 400, height: 244 }}>
                 <AreaChart data={dailyUsage} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis
