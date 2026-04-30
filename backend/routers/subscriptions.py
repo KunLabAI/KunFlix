@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
@@ -10,6 +10,7 @@ from schemas import (
     SubscriptionPlanResponse,
 )
 from auth import require_admin
+from services import audit
 
 router = APIRouter(
     prefix="/api/admin/subscriptions",
@@ -21,6 +22,7 @@ router = APIRouter(
 @router.post("", response_model=SubscriptionPlanResponse)
 async def create_plan(
     plan: SubscriptionPlanCreate,
+    request: Request,
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -34,6 +36,14 @@ async def create_plan(
     db.add(new_plan)
     await db.commit()
     await db.refresh(new_plan)
+    audit.record(
+        action="subscription_plan.create",
+        actor=_admin,
+        resource_type="subscription_plan",
+        resource_id=new_plan.id,
+        detail={"name": new_plan.name},
+        request=request,
+    )
     return new_plan
 
 
@@ -70,6 +80,7 @@ async def get_plan(
 async def update_plan(
     plan_id: str,
     plan_update: SubscriptionPlanUpdate,
+    request: Request,
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -97,12 +108,21 @@ async def update_plan(
 
     await db.commit()
     await db.refresh(plan)
+    audit.record(
+        action="subscription_plan.update",
+        actor=_admin,
+        resource_type="subscription_plan",
+        resource_id=plan.id,
+        detail={"changes": list(update_data.keys())},
+        request=request,
+    )
     return plan
 
 
 @router.delete("/{plan_id}")
 async def delete_plan(
     plan_id: str,
+    request: Request,
     _admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -113,6 +133,15 @@ async def delete_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    plan_name = plan.name
     await db.delete(plan)
     await db.commit()
+    audit.record(
+        action="subscription_plan.delete",
+        actor=_admin,
+        resource_type="subscription_plan",
+        resource_id=plan_id,
+        detail={"name": plan_name},
+        request=request,
+    )
     return {"message": "Plan deleted successfully"}

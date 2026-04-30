@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Agent } from '@/types';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
 import { useAgents } from '@/hooks/useAgents';
+import { formatApiError } from '@/lib/api-utils';
 import { createAgentFormSchema, AgentFormValues } from './schema';
 import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
@@ -300,7 +301,7 @@ export default function AgentForm({
       toast({
         variant: "destructive",
         title: t('agents.form.submitFailedTitle'),
-        description: error.response?.data?.detail ? JSON.stringify(error.response.data.detail) : t('agents.form.submitFailedDesc'),
+        description: formatApiError(error, t('agents.form.submitFailedDesc')),
       });
     }
   };

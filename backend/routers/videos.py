@@ -1,7 +1,7 @@
 """
 视频生成 API 路由
 """
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.future import select
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +17,9 @@ from services.video_generation import submit_video_task, poll_video_task, VideoC
 from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
 from services.video_providers.virtual_human_presets import list_presets as list_virtual_human_presets
+from realtime.dispatcher import push_to_user
+from tasks_queue import enqueue as enqueue_job
+from ratelimit import limiter, ENDPOINT_LIMITS
 from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
 from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
 import base64
@@ -76,8 +79,10 @@ async def list_video_tasks(
 
 
 @router.post("", response_model=VideoTaskResponse)
+@limiter.limit(ENDPOINT_LIMITS["video_create"])
 async def create_video_task(
-    request: VideoGenerateRequest,
+    request: Request,
+    payload: VideoGenerateRequest,
     current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -93,41 +98,41 @@ async def create_video_task(
         raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
 
     # 查询 LLMProvider
-    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == request.provider_id))
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == payload.provider_id))
     provider = provider_result.scalar_one_or_none()
     provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="LLM Provider not found"))
 
     # 合并配置
-    config = request.config or VideoConfig()
+    config = payload.config or VideoConfig()
 
     # 计算输入图片数量
-    input_image_count = 1 if request.image_url and request.video_mode in ("image_to_video", "edit") else 0
-    input_image_count += 1 if request.last_frame_image else 0
+    input_image_count = 1 if payload.image_url and payload.video_mode in ("image_to_video", "edit") else 0
+    input_image_count += 1 if payload.last_frame_image else 0
 
     # 推断供应商类型
-    provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(request.model, provider.provider_type)
+    provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(payload.model, provider.provider_type)
     
     # ── 本地 /api/media/ 路径转 base64 data URL（供应商需要 HTTPS 或 base64） ──
     # DashScope HappyHorse 不支持 data URL, 由适配器内部通过上传策略处理本地文件
     _prep = lambda u: _prepare_media_url(provider_type, u)
-    image_url = _prep(request.image_url)
-    last_frame_image = _prep(request.last_frame_image)
-    extension_video_url = _prep(request.extension_video_url)
+    image_url = _prep(payload.image_url)
+    last_frame_image = _prep(payload.last_frame_image)
+    extension_video_url = _prep(payload.extension_video_url)
     reference_images = [
-        {**img, "url": _prep(img.get("url"))} for img in (request.reference_images or [])
+        {**img, "url": _prep(img.get("url"))} for img in (payload.reference_images or [])
     ]
     reference_videos = [
-        {**v, "url": _prep(v.get("url"))} for v in (request.reference_videos or [])
+        {**v, "url": _prep(v.get("url"))} for v in (payload.reference_videos or [])
     ]
     reference_audios = [
-        {**a, "url": _prep(a.get("url"))} for a in (request.reference_audios or [])
+        {**a, "url": _prep(a.get("url"))} for a in (payload.reference_audios or [])
     ]
 
     # 构建视频上下文
     ctx = VideoContext(
         api_key=provider.api_key,
-        model=request.model,
-        prompt=request.prompt,
+        model=payload.model,
+        prompt=payload.prompt,
         provider_type=provider_type,
         image_url=image_url,
         last_frame_image=last_frame_image,
@@ -135,14 +140,14 @@ async def create_video_task(
         quality=config.quality,
         aspect_ratio=config.aspect_ratio,
         mode=config.mode,
-        video_mode=request.video_mode,
+        video_mode=payload.video_mode,
         prompt_optimizer=config.prompt_optimizer,
         fast_pretreatment=config.fast_pretreatment,
         reference_images=reference_images,
         extension_video_url=extension_video_url,
         reference_videos=reference_videos,
         reference_audios=reference_audios,
-        return_last_frame=request.return_last_frame,
+        return_last_frame=payload.return_last_frame,
         base_url=provider.base_url,
     )
 
@@ -157,13 +162,13 @@ async def create_video_task(
     # 创建 VideoTask 记录
     task = VideoTask(
         xai_task_id=result.task_id,
-        session_id=request.session_id,
-        provider_id=request.provider_id,
-        model=request.model,
+        session_id=payload.session_id,
+        provider_id=payload.provider_id,
+        model=payload.model,
         user_id=entity_id,
-        video_mode=request.video_mode,
-        prompt=request.prompt,
-        image_url=request.image_url,
+        video_mode=payload.video_mode,
+        prompt=payload.prompt,
+        image_url=payload.image_url,
         duration=config.duration,
         quality=config.quality,
         aspect_ratio=config.aspect_ratio,
@@ -176,6 +181,9 @@ async def create_video_task(
     await db.refresh(task)
 
     logger.info(f"Video task created: {task.id} ({provider_type}: {result.task_id})")
+
+    # Phase1+: QUEUE_BACKEND=arq 时入队后台轮询；否则保持原 GET 状态轮询路径
+    await enqueue_job("poll_video_task_job", task.id)
 
     return _build_task_response(task, provider_name=provider.name)
 
@@ -269,6 +277,14 @@ async def get_video_task_status(
 
     await db.commit()
     await db.refresh(task)
+
+    # 终态实时推送到客户端（有 Redis 跨实例、无 Redis 退化本地）
+    _terminal_push = {
+        "completed": lambda: push_to_user(task.user_id, "video.completed", _build_task_response(task, provider_name=provider.name).model_dump()),
+        "failed":    lambda: push_to_user(task.user_id, "video.failed",    _build_task_response(task, provider_name=provider.name).model_dump()),
+    }
+    pusher = _terminal_push.get(task.status)
+    pusher and task.user_id and await pusher()
 
     return _build_task_response(task, provider_name=provider.name)
 

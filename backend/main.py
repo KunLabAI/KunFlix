@@ -67,14 +67,17 @@ from routers import (  # noqa: E402
     orchestrate,
     prompt_templates,
     skills_api,
+    sse as sse_router,
     subscriptions,
     theaters,
     videos,
 )
 from startup import lifespan  # noqa: E402
+from ratelimit import install_rate_limit  # noqa: E402
 
 
 app = FastAPI(title="KunFlix", lifespan=lifespan)
+install_rate_limit(app)
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +123,7 @@ _ROUTERS = (
     music.router,
     admin_dashboard.router,
     admin_virtual_humans.router,
+    sse_router.router,
 )
 for _router in _ROUTERS:
     app.include_router(_router)
@@ -130,8 +134,16 @@ async def root():
     return {"message": "Welcome to the KunFlix API"}
 
 
+@app.websocket("/api/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """统一实时网关。客户端连接 /api/ws?token=<jwt>。"""
+    from realtime.gateway import websocket_endpoint as ws_handler
+    await ws_handler(websocket)
+
+
+# 向后兼容：保留旧路径 /ws/{user_id} 作为 echo 调试，不参与事件路由
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
+async def legacy_echo_ws(websocket: WebSocket, user_id: str):
     await websocket.accept()
     try:
         while True:

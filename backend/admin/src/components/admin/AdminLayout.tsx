@@ -39,7 +39,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 const LANGUAGES = [
   { code: 'zh-CN', labelKey: 'layout.language.zhCN' },
@@ -133,7 +133,6 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               <Button variant="ghost" className={cn("w-full justify-start pl-0 hover:bg-muted", collapsed && "justify-center px-0")}>
                 <div className="flex items-center gap-2 w-full">
                    <Avatar className="h-8 w-8">
-                      <AvatarImage src="/avatars/01.png" alt="@admin" />
                       <AvatarFallback>AD</AvatarFallback>
                    </Avatar>
                    {!collapsed && (

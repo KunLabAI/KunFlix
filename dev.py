@@ -45,7 +45,7 @@ def init_database(python_exec):
     """初始化数据库（执行迁移和种子数据），幂等操作"""
     log("Initializing database...", "[DATABASE]")
     
-    seed_script = os.path.join(BACKEND_DIR, "seed_db.py")
+    seed_script = os.path.join(BACKEND_DIR, "scripts", "seed_db.py")
     try:
         subprocess.check_call([python_exec, seed_script], cwd=BACKEND_DIR)
         log("Database initialization completed.", "[DATABASE]")

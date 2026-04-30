@@ -14,6 +14,7 @@ from config import settings
 
 from cache.base import CacheBackend
 from cache.memory import MemoryCacheBackend
+from cache.redis import RedisCacheBackend
 
 
 def _build_memory(max_size: int, default_ttl: int) -> CacheBackend:
@@ -21,10 +22,7 @@ def _build_memory(max_size: int, default_ttl: int) -> CacheBackend:
 
 
 def _build_redis(max_size: int, default_ttl: int) -> CacheBackend:
-    raise NotImplementedError(
-        "Redis cache backend is not yet implemented. "
-        "Install and configure Redis, then provide a RedisCacheBackend."
-    )
+    return RedisCacheBackend(max_size=max_size, default_ttl=default_ttl)
 
 
 _BACKEND_REGISTRY: dict[str, Callable[[int, int], CacheBackend]] = {

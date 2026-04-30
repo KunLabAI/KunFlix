@@ -16,7 +16,11 @@ from auth import (
     create_refresh_token,
     decode_token,
     get_current_active_user,
+    oauth2_scheme,
 )
+from auth_revocation import revoke as revoke_jti
+from services import audit
+from ratelimit import limiter, ip_limiter
 from config import settings
 from database import get_db
 from models import User, CreditTransaction
@@ -40,6 +44,7 @@ router = APIRouter(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@ip_limiter.limit("5/minute")
 async def register(
     body: UserRegister,
     request: Request,
@@ -67,6 +72,7 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
+@ip_limiter.limit("10/minute")
 async def login(
     body: UserLogin,
     request: Request,
@@ -109,6 +115,13 @@ async def login(
     access_token = create_access_token(user.id, user.role)
     refresh_token = create_refresh_token(user.id)
 
+    audit.record(
+        action="auth.login", actor=user,
+        resource_type="user", resource_id=user.id,
+        detail={"device_type": device_type},
+        request=request,
+    )
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -117,13 +130,27 @@ async def login(
     )
 
 
+def _remaining_ttl(payload: dict) -> int:
+    """根据 payload['exp'] 计算剩余有效秒数（向下取整，最小 0）。"""
+    exp = int(payload.get("exp") or 0)
+    now = int(datetime.now(timezone.utc).timestamp())
+    return max(0, exp - now)
+
+
 @router.post("/refresh", response_model=AccessTokenResponse)
+@limiter.limit("30/minute")
 async def refresh(
     body: TokenRefresh,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Exchange a refresh token for a new access token."""
-    payload = decode_token(body.refresh_token)
+    """Exchange a refresh token for a new access token.
+
+    旧 refresh token 一次性轮换：成功换发后将旧 jti 加入黑名单，防止重放。
+    """
+    # 使用 decode_token_checked：若旧 refresh 已被撤销（例如某次轮换后重放）直接 401
+    from auth import decode_token_checked  # 局部导入避免循环
+    payload = await decode_token_checked(body.refresh_token)
 
     if payload.get("type") != "refresh":
         raise HTTPException(
@@ -144,11 +171,41 @@ async def refresh(
     user.last_login_at = datetime.now(timezone.utc)
     await db.commit()
 
+    # 旧 refresh token 入黑名单（一次性轮换）
+    await revoke_jti(payload.get("jti"), _remaining_ttl(payload))
+
     access_token = create_access_token(user.id, user.role)
     return AccessTokenResponse(
         access_token=access_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(
+    body: TokenRefresh,
+    access_token: str = Depends(oauth2_scheme),
+):
+    """主动登出：将当前 access token 与传入的 refresh token 同时加入黑名单。
+
+    设计要点：
+    - 解码失败/类型错误等异常一律静默成功，避免登出端点泄漏 token 状态
+    - TTL 跟随 token 自身剩余有效期，过期自动失效
+    """
+    _safe_revoke = lambda token: _try_revoke(token)
+    await _safe_revoke(access_token)
+    await _safe_revoke(body.refresh_token)
+    audit.record(action="auth.logout")
+    return None
+
+
+async def _try_revoke(token: str) -> None:
+    """尽力解码并撤销，任何异常都吞掉。"""
+    try:
+        payload = decode_token(token)
+    except HTTPException:
+        return
+    await revoke_jti(payload.get("jti"), _remaining_ttl(payload))
 
 
 @router.get("/me", response_model=UserResponse)

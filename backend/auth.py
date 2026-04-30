@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal
+import uuid as _uuid
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -10,6 +11,7 @@ from sqlalchemy.future import select
 
 from config import settings
 from database import get_db
+from auth_revocation import is_revoked
 
 # ---------------------------------------------------------------------------
 # Password hashing  (direct bcrypt, no passlib)
@@ -45,6 +47,7 @@ def create_access_token(
         "role": role,
         "subject_type": subject_type,
         "type": "access",
+        "jti": _uuid.uuid4().hex,
         "exp": expire
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
@@ -57,6 +60,7 @@ def create_refresh_token(subject_id: str, subject_type: Literal["user", "admin"]
         "sub": subject_id,
         "subject_type": subject_type,
         "type": "refresh",
+        "jti": _uuid.uuid4().hex,
         "exp": expire
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
@@ -74,6 +78,18 @@ def decode_token(token: str) -> dict:
         )
 
 
+async def decode_token_checked(token: str) -> dict:
+    """Decode + 黑名单检查。需事件循环上下文。"""
+    payload = decode_token(token)
+    if await is_revoked(payload.get("jti")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
@@ -87,7 +103,7 @@ async def get_current_user(
     """Extract user from JWT access token."""
     from models import User  # deferred to avoid circular import
 
-    payload = decode_token(token)
+    payload = await decode_token_checked(token)
     user_id: Optional[str] = payload.get("sub")
     token_type: Optional[str] = payload.get("type")
 
@@ -123,7 +139,7 @@ async def get_current_admin(
     """从 JWT 中提取管理员信息（基于 admins 表）"""
     from models import Admin  # deferred to avoid circular import
 
-    payload = decode_token(token)
+    payload = await decode_token_checked(token)
     admin_id: Optional[str] = payload.get("sub")
     token_type: Optional[str] = payload.get("type")
     subject_type: Optional[str] = payload.get("subject_type", "user")
@@ -169,7 +185,7 @@ async def get_current_user_or_admin(
     """
     from models import User, Admin  # deferred to avoid circular import
 
-    payload = decode_token(token)
+    payload = await decode_token_checked(token)
     subject_id: Optional[str] = payload.get("sub")
     token_type: Optional[str] = payload.get("type")
     subject_type: Optional[str] = payload.get("subject_type", "user")

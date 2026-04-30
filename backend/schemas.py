@@ -269,7 +269,7 @@ class AgentBase(BaseModel):
     model: str
     agent_type: Literal["text", "image", "multimodal", "video"] = Field(default="text")
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
-    context_window: int = Field(default=4096, ge=4096, le=262144)
+    context_window: int = Field(default=4096, ge=4096, le=1048576)
     system_prompt: str
     tools: List[str] = Field(default_factory=list)
     thinking_mode: bool = False
@@ -324,7 +324,7 @@ class AgentUpdate(BaseModel):
     model: Optional[str] = None
     agent_type: Optional[Literal["text", "image", "multimodal", "video"]] = None
     temperature: Optional[float] = Field(None, ge=0.0, le=1.0)
-    context_window: Optional[int] = Field(None, ge=4096, le=262144)
+    context_window: Optional[int] = Field(None, ge=4096, le=1048576)
     system_prompt: Optional[str] = None
     tools: Optional[List[str]] = None
     thinking_mode: Optional[bool] = None

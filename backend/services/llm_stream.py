@@ -1085,9 +1085,19 @@ async def stream_completion(
     
     try:
         yielded = False
-        async for chunk in handler(ctx, result):
-            yielded = True
-            yield chunk, result
+        # 熔断器保护：在上游 stream 调用外加一层；未启用不影响。
+        # 出现 CircuitOpenError 时快速返回错误信息，避免雪崩上游
+        from circuit import guarded, CircuitOpenError
+        try:
+            async with guarded(f"llm:{ctx.provider_type}"):
+                async for chunk in handler(ctx, result):
+                    yielded = True
+                    yield chunk, result
+        except CircuitOpenError as ce:
+            logger.warning("LLM circuit OPEN provider=%s: %s", ctx.provider_type, ce)
+            result.full_response = result.full_response or f"Service temporarily unavailable: {ctx.provider_type}"
+            yield result.full_response, result
+            return
         # When handler produced tool_calls but no text, yield sentinel so caller sees result
         (not yielded and result.tool_calls) and (yield ("", result))  # type: ignore[func-returns-value]
     except Exception as e:

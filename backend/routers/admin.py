@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, delete
@@ -17,6 +17,7 @@ from schemas import (
     AdminResponse,
 )
 from services.billing import refund_credits_atomic
+from services import audit
 
 router = APIRouter(
     prefix="/api/admin",
@@ -188,7 +189,8 @@ async def recalc_all_storage(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: str,
-    _current_admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a user and their related data (admin only)."""
@@ -197,6 +199,7 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    user_email = user.email
     # 级联删除关联数据
     await db.execute(delete(CreditTransaction).where(CreditTransaction.user_id == user_id))
     await db.execute(delete(ChatSession).where(ChatSession.user_id == user_id))
@@ -204,6 +207,14 @@ async def delete_user(
 
     await db.delete(user)
     await db.commit()
+    audit.record(
+        action="user.delete",
+        actor=current_admin,
+        resource_type="user",
+        resource_id=user_id,
+        detail={"email": user_email},
+        request=request,
+    )
     return {"ok": True}
 
 
@@ -214,6 +225,7 @@ async def delete_user(
 async def adjust_user_credits(
     user_id: str,
     body: CreditAdjustRequest,
+    request: Request,
     current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -251,6 +263,19 @@ async def adjust_user_credits(
     await db.commit()
     await db.refresh(user)
 
+    audit.record(
+        action="user.credits_adjust",
+        actor=current_admin,
+        resource_type="user",
+        resource_id=user_id,
+        detail={
+            "amount": body.amount,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "transaction_type": transaction_type,
+        },
+        request=request,
+    )
     return {
         "ok": True,
         "balance_before": balance_before,
@@ -263,6 +288,7 @@ async def adjust_user_credits(
 async def refund_user_credits(
     user_id: str,
     body: CreditRefundRequest,
+    request: Request,
     current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -292,6 +318,18 @@ async def refund_user_credits(
     await db.commit()
     await db.refresh(user)
 
+    audit.record(
+        action="user.credits_refund",
+        actor=current_admin,
+        resource_type="user",
+        resource_id=user_id,
+        detail={
+            "amount": body.amount,
+            "idempotency_key": idempotency_key,
+            "original_transaction_id": body.transaction_id,
+        },
+        request=request,
+    )
     return {
         "ok": True,
         "balance_before": float(transaction.balance_before) if transaction else float(user.credits or 0),
@@ -335,6 +373,7 @@ async def get_user_credits_history(
 async def assign_user_subscription(
     user_id: str,
     body: SubscriptionAssignRequest,
+    request: Request,
     current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -384,6 +423,18 @@ async def assign_user_subscription(
     await db.commit()
     await db.refresh(user)
 
+    audit.record(
+        action="user.subscription_assign",
+        actor=current_admin,
+        resource_type="user",
+        resource_id=user_id,
+        detail={
+            "plan_id": plan.id,
+            "plan_name": plan.name,
+            "credits_granted": credits_granted,
+        },
+        request=request,
+    )
     return {
         "ok": True,
         "plan_id": plan.id,
@@ -396,7 +447,8 @@ async def assign_user_subscription(
 @router.delete("/users/{user_id}/subscription")
 async def cancel_user_subscription(
     user_id: str,
-    _current_admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """取消用户订阅"""
@@ -405,6 +457,7 @@ async def cancel_user_subscription(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    prior_plan_id = user.subscription_plan_id
     user.subscription_plan_id = None
     user.subscription_status = "inactive"
     user.subscription_start_at = None
@@ -412,6 +465,14 @@ async def cancel_user_subscription(
 
     await db.commit()
 
+    audit.record(
+        action="user.subscription_cancel",
+        actor=current_admin,
+        resource_type="user",
+        resource_id=user_id,
+        detail={"prior_plan_id": prior_plan_id},
+        request=request,
+    )
     return {"ok": True}
 
 
@@ -436,7 +497,8 @@ async def list_admins(
 @router.post("/admins", response_model=AdminResponse)
 async def create_admin(
     body: AdminCreate,
-    _current_admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """创建新管理员"""
@@ -455,6 +517,14 @@ async def create_admin(
     await db.commit()
     await db.refresh(admin)
 
+    audit.record(
+        action="admin.create",
+        actor=current_admin,
+        resource_type="admin",
+        resource_id=admin.id,
+        detail={"email": admin.email, "permission_level": admin.permission_level},
+        request=request,
+    )
     return AdminResponse.model_validate(admin)
 
 
@@ -477,7 +547,8 @@ async def get_admin_detail(
 async def update_admin(
     admin_id: str,
     body: AdminUpdate,
-    _current_admin: Admin = Depends(require_admin),
+    request: Request,
+    current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """更新管理员信息"""
@@ -504,12 +575,24 @@ async def update_admin(
     await db.commit()
     await db.refresh(admin)
 
+    audit.record(
+        action="admin.update",
+        actor=current_admin,
+        resource_type="admin",
+        resource_id=admin.id,
+        detail={
+            "changes": [k for k, v in update_fields.items() if v is not None],
+            "password_changed": bool(body.password),
+        },
+        request=request,
+    )
     return AdminResponse.model_validate(admin)
 
 
 @router.delete("/admins/{admin_id}")
 async def delete_admin(
     admin_id: str,
+    request: Request,
     current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -523,9 +606,18 @@ async def delete_admin(
     if not admin:
         raise HTTPException(status_code=404, detail="Admin not found")
 
+    admin_email = admin.email
     await db.delete(admin)
     await db.commit()
 
+    audit.record(
+        action="admin.delete",
+        actor=current_admin,
+        resource_type="admin",
+        resource_id=admin_id,
+        detail={"email": admin_email},
+        request=request,
+    )
     return {"ok": True}
 
 
@@ -536,6 +628,7 @@ async def delete_admin(
 async def adjust_admin_credits(
     admin_id: str,
     body: CreditAdjustRequest,
+    request: Request,
     current_admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -570,6 +663,19 @@ async def adjust_admin_credits(
     await db.commit()
     await db.refresh(admin)
 
+    audit.record(
+        action="admin.credits_adjust",
+        actor=current_admin,
+        resource_type="admin",
+        resource_id=admin_id,
+        detail={
+            "amount": body.amount,
+            "balance_before": balance_before,
+            "balance_after": balance_after,
+            "transaction_type": transaction_type,
+        },
+        request=request,
+    )
     return {
         "ok": True,
         "balance_before": balance_before,

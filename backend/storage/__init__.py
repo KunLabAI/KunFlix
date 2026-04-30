@@ -21,10 +21,8 @@ def _build_local() -> StorageBackend:
 
 
 def _build_s3() -> StorageBackend:
-    raise NotImplementedError(
-        "S3 storage backend not implemented yet. "
-        "请在此注册具体实现（boto3/aioboto3）并从 settings 读取 bucket/region/credentials。"
-    )
+    from .s3 import S3StorageBackend
+    return S3StorageBackend()
 
 
 _BACKEND_REGISTRY: dict[str, Callable[[], StorageBackend]] = {

@@ -141,6 +141,50 @@ def _ensure_media_dir() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Background tasks (cancelled on shutdown)
+# ---------------------------------------------------------------------------
+
+_background_tasks: list[asyncio.Task] = []
+
+
+def _spawn_background_tasks() -> None:
+    """启动需要跟随应用生命周期的后台任务。"""
+    from services.agent_executor import start_invalidation_listener
+    from realtime.dispatcher import start_user_event_listener
+
+    factories = {
+        "cache_invalidation": start_invalidation_listener,
+        "user_event_listener": start_user_event_listener,
+    }
+    for name, fn in factories.items():
+        task = asyncio.create_task(fn(), name=name)
+        _background_tasks.append(task)
+        logger.info("Spawned background task: %s", name)
+
+
+async def _shutdown_background_tasks() -> None:
+    for task in _background_tasks:
+        task.cancel()
+    for task in _background_tasks:
+        try:
+            await task
+        except (asyncio.CancelledError, Exception) as exc:  # noqa: BLE001
+            logger.debug("Background task %s exited: %s", task.get_name(), exc)
+    _background_tasks.clear()
+
+
+async def _close_external_clients() -> None:
+    from cache.client import close_redis
+
+    closers = {"redis": close_redis}
+    for name, fn in closers.items():
+        try:
+            await fn()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("close %s error: %s", name, exc)
+
+
+# ---------------------------------------------------------------------------
 # Public entrypoint
 # ---------------------------------------------------------------------------
 
@@ -150,12 +194,17 @@ async def run_startup() -> None:
     _MIGRATION_STRATEGY[bool(settings.RUN_MIGRATIONS)]()
     await _load_narrative_engine()
     _ensure_media_dir()
+    _spawn_background_tasks()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001 — FastAPI 约定签名
     await run_startup()
-    yield
+    try:
+        yield
+    finally:
+        await _shutdown_background_tasks()
+        await _close_external_clients()
 
 
 __all__ = ["lifespan", "run_startup"]

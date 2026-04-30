@@ -2,6 +2,7 @@ import uuid
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, JSON, DateTime, Float, Boolean, BigInteger, Numeric, Index
 from sqlalchemy.sql import func
 from database import Base
+from security.types import EncryptedString
 
 def generate_uuid():
     return str(uuid.uuid4())
@@ -181,7 +182,7 @@ class LLMProvider(Base):
     name = Column(String, unique=True, index=True)  # e.g. "OpenAI", "DashScope"
     provider_type = Column(String)  # e.g. "openai_chat", "dashscope_chat", "post_api_chat"
 
-    api_key = Column(String)  # Encrypted ideally, but plain for now
+    api_key = Column(EncryptedString)  # 透明 Fernet 加密；ENCRYPTION_KEY 未配时透传明文兼容存量
     base_url = Column(String, nullable=True)  # e.g. "https://api.openai.com/v1"
 
     models = Column(JSON, default=[])  # List of model names e.g. ["gpt-4", "gpt-3.5"]
@@ -601,4 +602,31 @@ class ToolExecution(Base):
     status = Column(String(20), default="success", index=True)
     error_message = Column(Text, nullable=True)
     duration_ms = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class AuditLog(Base):
+    """合规审计日志 — 记录主要写操作（LLM Provider/关键配置/账号安全事件等）。
+
+    不存储敏感原始值，detail 中使用 redacted 后的差异快照。
+    选型上遵循 SaaS 最小可用集，后续可近似为 CloudTrail 事件模型。
+    """
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_actor_created", "actor_id", "created_at"),
+        Index("ix_audit_logs_resource", "resource_type", "resource_id", "created_at"),
+        Index("ix_audit_logs_action_created", "action", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    actor_type = Column(String(20), nullable=False, default="system")  # user | admin | system
+    actor_id = Column(String(36), nullable=True, index=True)
+    action = Column(String(100), nullable=False, index=True)           # e.g. llm_provider.create
+    resource_type = Column(String(50), nullable=True)                  # e.g. llm_provider
+    resource_id = Column(String(64), nullable=True)
+    status = Column(String(20), default="success", index=True)         # success | failure
+    ip = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    detail = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
