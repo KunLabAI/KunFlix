@@ -4,7 +4,7 @@ import { Handle, Position, NodeProps, Node, useReactFlow, NodeResizer } from '@x
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Clapperboard, Trash2, Copy, Image, Film, Music, Play, X, Pencil, FileSpreadsheet, Loader2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@e965/xlsx';
 import { useCanvasStore, StoryboardNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { NodeToolbar, ToolbarAction } from './NodeToolbar';
 import NodeEffectOverlay from './NodeEffectOverlay';

@@ -165,6 +165,9 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
         orderedList: { keepMarks: true, keepAttributes: false },
         codeBlock: { languageClassPrefix: 'language-' },
         blockquote: {},
+        // tiptap v3 的 StarterKit 已内置 link/underline，禁用后由下方显式版本接管，避免重复注册
+        link: false,
+        underline: false,
       }),
       Underline,
       Link.configure({ openOnClick: false }),

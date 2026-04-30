@@ -212,6 +212,9 @@ export function SimpleEditor() {
         },
         codeBlock: false,
         horizontalRule: false,
+        // tiptap v3 的 StarterKit 已内置 link/underline，禁用后由下方显式版本接管，避免重复注册
+        link: false,
+        underline: false,
       }),
       TiptapLink.configure({
         openOnClick: false,

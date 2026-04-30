@@ -3,7 +3,7 @@ import { useReactFlow } from '@xyflow/react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { useCanvasStore, CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, AudioNodeData, StoryboardNodeData } from '@/store/useCanvasStore';
-import * as XLSX from 'xlsx';
+import * as XLSX from '@e965/xlsx';
 import { useResourceStore } from '@/store/useResourceStore';
 import api from '@/lib/api';
 
