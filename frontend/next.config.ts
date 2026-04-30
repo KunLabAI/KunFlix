@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // 显式指定 Turbopack 工作区根目录，避免 Next.js 向上查找时误把用户主目录下的 pnpm-lock.yaml 当作 monorepo 根
+  turbopack: {
+    root: path.resolve(__dirname),
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "500mb",
