@@ -68,7 +68,7 @@
     "swr": "^2.4.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.0",
     "xlsx": "^0.18.5",
     "zustand": "^5.0.12"
   },
@@ -97,6 +97,12 @@
     "typescript": "^5"
   },
   "overrides": {
-    "handlebars": "^4.7.9"
+    "handlebars": "^4.7.9",
+    "flatted": "^3.4.2",
+    "minimatch": "^9.0.7",
+    "socket.io-parser": "^4.2.6",
+    "follow-redirects": "^1.16.0",
+    "picomatch": "^4.0.4",
+    "postcss": "^8.5.10"
   }
 }

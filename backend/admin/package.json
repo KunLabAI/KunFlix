@@ -67,10 +67,19 @@
     "autoprefixer": "^10.4.24",
     "eslint": "^9.0.0",
     "eslint-config-next": "^16.2.4",
-    "happy-dom": "^20.6.3",
-    "postcss": "^8.5.6",
+    "happy-dom": "^20.8.9",
+    "postcss": "^8.5.10",
     "tailwindcss": "^4.2.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "dompurify": "^3.4.0",
+    "flatted": "^3.4.2",
+    "minimatch": "^9.0.7",
+    "rollup": "^4.59.0",
+    "follow-redirects": "^1.16.0",
+    "picomatch": "^4.0.4",
+    "postcss": "$postcss"
   }
 }
