@@ -24,6 +24,7 @@ import { useImagePreview } from '@/hooks/useImagePreview';
 import { useImageNodeConnections } from '@/hooks/useImageNodeConnections';
 import { useImageGenerationApply } from '@/hooks/useImageGenerationApply';
 import { useQuickImageMode } from '@/hooks/useQuickImageMode';
+import { useAnnotationExport } from '@/hooks/useAnnotationExport';
 
 // ── 子组件 ──
 import { MAX_IMAGES } from './ImageNode/constants';
@@ -81,6 +82,14 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   // ── 图像预览 ──
   const preview = useImagePreview();
+
+  // ── 标注保存 ──
+  const annotationExport = useAnnotationExport(id, data);
+  const handleSaveAnnotation = useCallback(async (dataUrl: string | null) => {
+    const newUrl = await annotationExport.saveAnnotation(dataUrl);
+    newUrl && preview.setPreviewUrl(newUrl);
+    return newUrl;
+  }, [annotationExport, preview]);
 
   // ── 快捷模式切换 ──
   const quick = useQuickImageMode(id, data, imageList, normalizeImageUrl);
@@ -441,12 +450,19 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         scale={preview.scale}
         position={preview.position}
         isDragging={preview.isDragging}
+        mode={preview.mode}
         onClose={preview.closePreview}
         onZoomIn={preview.zoomIn}
         onZoomOut={preview.zoomOut}
         onPointerDown={preview.handlePointerDown}
         onPointerMove={preview.handlePointerMove}
         onPointerUp={preview.handlePointerUp}
+        annotationEnabled
+        isFull={annotationExport.isFull}
+        isSaving={annotationExport.isSaving}
+        onEnterAnnotate={preview.enterAnnotate}
+        onExitAnnotate={preview.exitAnnotate}
+        onSaveAnnotation={handleSaveAnnotation}
       />
     </>
   );

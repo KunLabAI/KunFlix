@@ -44,6 +44,8 @@ export type ImageGenHistoryEntry = {
   batch_count?: number;
   output_format?: string;
   createdAt?: string;
+  /** 来源分类：ai 生成 / 上传 / 标注合成 / 多宫格导出。旧数据缺省视为 'ai'。 */
+  source?: 'ai' | 'upload' | 'annotation' | 'export';
 };
 
 export type CharacterNodeData = {

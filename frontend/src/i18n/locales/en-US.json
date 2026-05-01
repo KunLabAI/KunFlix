@@ -265,7 +265,29 @@
         "exportRatioMax": "Maximum"
       },
       "preview": {
-        "dragOrFullscreen": "Drag to move / Double-click for fullscreen preview"
+        "dragOrFullscreen": "Drag to move / Double-click for fullscreen preview",
+        "zoomIn": "Zoom in",
+        "zoomOut": "Zoom out",
+        "close": "Close"
+      },
+      "annotation": {
+        "enter": "Annotate",
+        "exit": "Exit",
+        "save": "Save as new image",
+        "clear": "Clear",
+        "undo": "Undo",
+        "redo": "Redo",
+        "strokeWidth": "Stroke",
+        "fontSize": "Font size",
+        "customColor": "Custom color",
+        "confirmDiscard": "Unsaved annotations will be lost. Continue?",
+        "exportName": "{{name}} - Annotated",
+        "exportFailed": "Failed to compose annotated image",
+        "tool": {
+          "pen": "Pen",
+          "text": "Text",
+          "eraser": "Eraser"
+        }
       },
       "audio": {
         "showLyrics": "Show Lyrics",
