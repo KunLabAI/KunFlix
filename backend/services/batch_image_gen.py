@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 
 from services.media_utils import save_inline_image
+from services._retry_utils import run_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -77,10 +78,13 @@ async def _generate_single_image(
     try:
         contents = [{"role": "user", "parts": [{"text": prompt}]}]
         
-        response = await client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(**config_params),
+        response = await run_with_retry(
+            lambda: client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=types.GenerateContentConfig(**config_params),
+            ),
+            label=f"batch_image_gen[{prompt_index}]",
         )
         
         # 解析响应

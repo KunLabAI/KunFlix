@@ -362,6 +362,10 @@
         "pickRefNodeHint": "Selected {{c}}/{{m}}",
         "noPickableNodes": "No usable image nodes on canvas",
         "refItem": "Reference",
+        "currentImage": "Current image",
+        "switchToEdit": "Edit with this image",
+        "switchToReference": "Use as multi-reference",
+        "pickEditImage": "Pick an image to edit",
         "removeRef": "Remove",
         "generatingHint": "Generating image…",
         "lastDuration": "Last generation time"

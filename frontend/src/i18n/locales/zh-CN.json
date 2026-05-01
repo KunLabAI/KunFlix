@@ -362,6 +362,10 @@
         "pickRefNodeHint": "已选 {{c}}/{{m}}",
         "noPickableNodes": "画布中没有可用的图像节点",
         "refItem": "参考图",
+        "currentImage": "当前图像",
+        "switchToEdit": "用此图进行图像编辑",
+        "switchToReference": "用此图作为多图参考",
+        "pickEditImage": "选择要编辑的图片",
         "removeRef": "移除",
         "generatingHint": "图像生成中…",
         "lastDuration": "本次生成耗时"

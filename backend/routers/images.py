@@ -37,6 +37,7 @@ from services.billing import (
     InsufficientCreditsError,
     BalanceFrozenError,
 )
+from services._retry_utils import is_transient_network_error, friendly_network_error_message
 from ratelimit import limiter, ENDPOINT_LIMITS
 import asyncio
 
@@ -100,17 +101,27 @@ async def _dispatch_image_generation(
     adapted_img = (adapted.get("image_config") or {})
     extractor = _EDIT_PARAM_EXTRACTORS.get(provider_type, lambda c: {})
     extra = extractor(adapted_img)
-    edited_url = await handler(
-        api_key=provider.api_key,
-        base_url=provider.base_url,
-        model=model,
-        image_urls=resolved_urls,
-        prompt=prompt,
-        aspect_ratio=adapted_img.get("aspect_ratio"),
-        user_id=user_id,
-        **extra,
+
+    # edit / reference_images 模式下，e个 handler 每次调用仅返回一张图；
+    # 若 batch_count > 1 则并行发起 n 次调用合并结果。
+    batch = max(1, int(n or 1))
+    edited_urls = await asyncio.gather(
+        *[
+            handler(
+                api_key=provider.api_key,
+                base_url=provider.base_url,
+                model=model,
+                image_urls=resolved_urls,
+                prompt=prompt,
+                aspect_ratio=adapted_img.get("aspect_ratio"),
+                user_id=user_id,
+                **extra,
+            )
+            for _ in range(batch)
+        ],
+        return_exceptions=True,
     )
-    return [edited_url] if edited_url else []
+    return [u for u in edited_urls if isinstance(u, str) and u]
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +272,13 @@ async def generate_images(
         raise
     except Exception as e:
         logger.error("Image generate API error: %s", e, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Image generation failed: {e}")
+        # 瞬时网络错误（Gemini 响应中断等）→ 503 + 友好提示；其余保持 502
+        transient = is_transient_network_error(e)
+        raise HTTPException(
+            status_code=503 if transient else 502,
+            detail=friendly_network_error_message(e, service="图像生成") if transient
+                   else f"Image generation failed: {e}",
+        )
 
     image_urls or (_ for _ in ()).throw(
         HTTPException(status_code=502, detail="No images were generated (possibly filtered by content moderation)")
