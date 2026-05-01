@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, User, generate_uuid
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.media_utils import MEDIA_DIR, get_relative_path, resolve_media_filepath
+from services._retry_utils import run_with_retry
 
 if TYPE_CHECKING:
     from services.tool_manager.context import ToolContext
@@ -269,7 +270,10 @@ async def _edit_via_xai(
     resolution and payload.update(resolution=resolution)
     
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(url, headers=headers, json=payload)
+        resp = await run_with_retry(
+            lambda: client.post(url, headers=headers, json=payload),
+            label="image_edit.xai",
+        )
         if resp.status_code >= 400:
             logger.error(f"xAI image edit error {resp.status_code}: {resp.text[:500]}")
             # Extract human-readable error from xAI response for better agent feedback
@@ -369,10 +373,14 @@ async def _edit_via_gemini(
     
     # contents: [image_part_1, image_part_2, ..., prompt_text]
     # 使用异步 API 避免阻塞事件循环（同步 client.models 会导致并行工具调用时全局阻塞）
-    response = await client.aio.models.generate_content(
-        model=model or "gemini-2.0-flash-exp-image-generation",
-        contents=[*image_parts, prompt],
-        config=config,
+    # 包一层重试：Gemini 偶发 aiohttp ClientPayloadError / ServerDisconnectedError
+    response = await run_with_retry(
+        lambda: client.aio.models.generate_content(
+            model=model or "gemini-2.0-flash-exp-image-generation",
+            contents=[*image_parts, prompt],
+            config=config,
+        ),
+        label="image_edit.gemini",
     )
     
     # 提取生成的图片（与 batch_image_gen.py 对齐：SDK 返回的 data 已是原始 bytes）

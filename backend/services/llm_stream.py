@@ -896,10 +896,15 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
     if img_enabled:
         # 非流式：一次性获取完整响应（含图片数据）
-        response = await client.aio.models.generate_content(
-            model=ctx.model,
-            contents=contents,
-            config=types.GenerateContentConfig(**config_params),
+        # 包一层重试：Gemini 偶发 aiohttp ClientPayloadError（响应体被截断）
+        from services._retry_utils import run_with_retry
+        response = await run_with_retry(
+            lambda: client.aio.models.generate_content(
+                model=ctx.model,
+                contents=contents,
+                config=types.GenerateContentConfig(**config_params),
+            ),
+            label="stream_gemini.image",
         )
 
         for candidate in (getattr(response, 'candidates', None) or []):

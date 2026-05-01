@@ -126,16 +126,18 @@ async def _generate_via_xai(
     prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> list[str]:
     img_cfg = config.get("image_config") or {}
+    # 采用「多份 prompt、每份 n=1」模式，统一合并 各供应商对 n 参数支持不一的差异，
+    # 保证 batch_count 总与返回图数一致。
     xai_config = XAIBatchImageConfig(
         aspect_ratio=img_cfg.get("aspect_ratio") or "auto",
         resolution=img_cfg.get("resolution") or "1k",
-        n=n,
+        n=1,
         response_format=img_cfg.get("response_format") or "b64_json",
     )
     result = await batch_generate_xai_images(
         api_key=api_key,
         model=model,
-        prompts=[prompt],
+        prompts=[prompt] * max(1, n),
         config=xai_config,
         base_url=base_url,
         user_id=user_id,
@@ -169,16 +171,18 @@ async def _generate_via_ark(
     prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> list[str]:
     img_cfg = config.get("image_config") or {}
+    # 采用「多份 prompt、每份 n=1」模式：Seedream 4 等模型未原生支持 n>1，
+    # 统一通过并行调用保证 batch_count 生效。
     ark_config = ArkBatchImageConfig(
         size=img_cfg.get("size") or "1K",
-        n=n,
+        n=1,
         response_format=img_cfg.get("response_format") or "url",
         watermark=img_cfg.get("watermark", False),
     )
     result = await batch_generate_ark_images(
         api_key=api_key,
         model=model,
-        prompts=[prompt],
+        prompts=[prompt] * max(1, n),
         config=ark_config,
         base_url=base_url,
         user_id=user_id,
