@@ -1,1286 +1,242 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Settings2, Send, Sparkles, Zap, ChevronDown, Square, XCircle, ArrowRight, Paperclip, ImageIcon, Film, Music, X, UserRound, Check } from 'lucide-react';
-import { Slider } from '@/components/ui/slider';
-import { useTranslation } from 'react-i18next';
-import { cn } from '@/lib/utils';
+import React, { useRef, useState } from 'react';
+import { XCircle } from 'lucide-react';
+import { useDropdownOutside } from '@/hooks/useDropdownOutside';
+import { useVideoPanelForm } from '@/hooks/useVideoPanelForm';
+import { useVideoPanelReferences } from '@/hooks/useVideoPanelReferences';
+import { useVideoPanelResize } from '@/hooks/useVideoPanelResize';
+import { AttachmentPreviews } from './VideoGeneratePanel/AttachmentPreviews';
+import { PromptInputArea } from './VideoGeneratePanel/PromptInputArea';
+import { ModelSelector } from './VideoGeneratePanel/ModelSelector';
+import { VirtualHumanPicker } from './VideoGeneratePanel/VirtualHumanPicker';
+import { NodeRefPicker } from './VideoGeneratePanel/NodeRefPicker';
 import {
-  useVideoModels,
-  useVideoModelCapabilities,
-  useVideoFormVisibility,
-  useVirtualHumanPresets,
-  useVideoProviders,
-  VIDEO_MODE_LABELS,
-  RESOLUTION_LABELS,
-  ASPECT_RATIO_LABELS,
-  type VideoCreateParams,
-} from '@/hooks/useVideoGeneration';
-import type { CanvasNode, CharacterNodeData, VideoNodeData, AudioNodeData, VideoGenHistoryEntry } from '@/store/useCanvasStore';
-import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
-import RefTagInput, { type RefTagInputRef, type RefImage, type RefType } from './RefTagInput';
-import { NodePickerDropdown, type NodePickerItem } from './NodePickerDropdown';
+  PanelActionButtons,
+  ApplyButton,
+} from './VideoGeneratePanel/PanelActionButtons';
+import { ConfigPanel } from './VideoGeneratePanel/ConfigPanel';
+import type { VideoGeneratePanelProps } from './VideoGeneratePanel/types';
 
-// ---------------------------------------------------------------------------
-// Provider logo mapping
-// ---------------------------------------------------------------------------
+// 对外类型 re-export —— 保持向后兼容
+export type { VideoGeneratePanelProps } from './VideoGeneratePanel/types';
 
-const PROVIDER_ICONS: Record<string, string> = {
-  openai: '/provider/openai.svg',
-  azure: '/provider/azureai-color.svg',
-  dashscope: '/provider/qwen-color.svg',
-  anthropic: '/provider/claude-color.svg',
-  gemini: '/provider/gemini-color.svg',
-  deepseek: '/provider/deepseek-color.svg',
-  minimax: '/provider/minimax-color.svg',
-  xai: '/provider/grok.svg',
-  doubao: '/provider/doubao-color.svg',
-  kling: '/provider/kling-color.svg',
-  meta: '/provider/meta-color.svg',
-  microsoft: '/provider/microsoft-color.svg',
-  openrouter: '/provider/openrouter.svg',
-  sora: '/provider/sora-color.svg',
-  ark: '/provider/volcengine-color.svg',
-};
+export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
+  const {
+    onSubmit,
+    onStop,
+    isSubmitting,
+    taskActive,
+    taskDone,
+    taskFailed,
+    taskError,
+    submitError,
+    hasExistingVideo,
+    onApplyToNode,
+    onApplyToNextNode,
+    canvasNodes = [],
+    initialConfig,
+    onLinkNode,
+    onUnlinkNode,
+  } = props;
 
-// ---------------------------------------------------------------------------
-// Aspect ratio SVG icon — proportional rectangle
-// ---------------------------------------------------------------------------
+  // ── 三大 hook ──
+  const form = useVideoPanelForm(initialConfig);
+  const refs = useVideoPanelReferences({
+    videoMode: form.videoMode,
+    capabilities: form.capabilities,
+    selectedModel: form.selectedModel,
+    canvasNodes,
+    prompt: form.prompt,
+    setPrompt: form.setPrompt,
+    setVideoMode: form.setVideoMode,
+    onLinkNode,
+    onUnlinkNode,
+  });
+  const { inputContainerRef, inputMaxHeight, resizeHandlers } = useVideoPanelResize();
 
-function AspectRatioIcon({ ratio, className }: { ratio: string; className?: string }) {
-  // Parse ratio like '16:9' → w=16, h=9
-  const [w, h] = ratio.split(':').map(Number);
-  const isAuto = !w || !h;
-  const maxDim = 14;
-  const scale = maxDim / Math.max(w || 1, h || 1);
-  const rw = isAuto ? 10 : Math.round(w * scale);
-  const rh = isAuto ? 10 : Math.round(h * scale);
-  const ox = (16 - rw) / 2;
-  const oy = (16 - rh) / 2;
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={className}>
-      {isAuto ? (
-        <text x="8" y="11" textAnchor="middle" fontSize="9" fontWeight="600" fill="currentColor">A</text>
-      ) : (
-        <rect x={ox} y={oy} width={rw} height={rh} rx="1.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
-      )}
-    </svg>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Props — parent (VideoNode) owns task state
-// ---------------------------------------------------------------------------
-
-export interface VideoGeneratePanelProps {
-  onSubmit: (params: VideoCreateParams) => void;
-  onStop: () => void;
-  isSubmitting: boolean;
-  taskActive: boolean;
-  taskDone: boolean;
-  taskFailed: boolean;
-  taskError?: string | null;
-  submitError?: string | null;
-  hasExistingVideo: boolean;
-  onApplyToNode: () => void;
-  onApplyToNextNode: () => void;
-  canvasNodes?: CanvasNode[];
-  /** Pre-fill form from history entry (e.g. drag from history) */
-  initialConfig?: Partial<VideoGenHistoryEntry> | null;
-  /** Current video node ID — used for auto-linking source nodes */
-  nodeId?: string;
-  /** Called when a source node is selected as material — parent should create edge */
-  onLinkNode?: (sourceNodeId: string) => void;
-  /** Called when a source node material is removed — parent should remove edge */
-  onUnlinkNode?: (sourceNodeId: string) => void;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: extract image URL from a canvas image node
-// ---------------------------------------------------------------------------
-
-function getImageNodeUrl(node: CanvasNode): string | null {
-  const data = node.data as CharacterNodeData;
-  let url: string | null = (data.images && data.images[0]) || data.imageUrl || null;
-  url && !url.startsWith('http') && !url.startsWith('/api/media/') && !url.startsWith('data:') && (url = `/api/media/${url}`);
-  return url;
-}
-
-function getVideoNodeUrl(node: CanvasNode): string | null {
-  const data = node.data as VideoNodeData;
-  let url: string | null = data.videoUrl || null;
-  url && !url.startsWith('http') && !url.startsWith('/api/media/') && !url.startsWith('data:') && (url = `/api/media/${url}`);
-  return url;
-}
-
-function getAudioNodeUrl(node: CanvasNode): string | null {
-  const data = node.data as AudioNodeData;
-  let url: string | null = data.audioUrl || null;
-  url && !url.startsWith('http') && !url.startsWith('/api/media/') && !url.startsWith('data:') && (url = `/api/media/${url}`);
-  return url;
-}
-
-// Node picker mode determined by videoMode
-type PickerMode = 'none' | 'single_image' | 'first_last_frame' | 'multi_image' | 'video';
-const PICKER_MODE_MAP: Record<string, PickerMode> = {
-  text_to_video: 'none',
-  image_to_video: 'first_last_frame',
-  reference_images: 'multi_image',
-  edit: 'video',
-  video_extension: 'video',
-};
-const DEFAULT_MAX_REFS = 5;
-
-// ---------------------------------------------------------------------------
-// Compact toggle switch
-// ---------------------------------------------------------------------------
-
-function ToggleSwitch({
-  checked,
-  onChange,
-  label,
-  icon,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  label: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
-        {icon}
-        {label}
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          'relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
-          checked ? 'bg-primary' : 'bg-muted',
-        )}
-      >
-        <span
-          className={cn(
-            'pointer-events-none block h-3 w-3 rounded-full bg-background shadow-sm transition-transform',
-            checked ? 'translate-x-3' : 'translate-x-0',
-          )}
-        />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Native select styling
-// ---------------------------------------------------------------------------
-
-const SELECT_CLS =
-  'w-full h-7 rounded-md border border-border/50 bg-background px-2 text-[11px] appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring';
-
-const SELECT_ARROW_STYLE = {
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-  backgroundRepeat: 'no-repeat',
-  backgroundPosition: 'right 6px center',
-  paddingRight: '20px',
-} as const;
-
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-export default function VideoGeneratePanel({
-  onSubmit,
-  onStop,
-  isSubmitting,
-  taskActive,
-  taskDone,
-  taskFailed,
-  taskError,
-  submitError,
-  hasExistingVideo,
-  onApplyToNode,
-  onApplyToNextNode,
-  canvasNodes = [],
-  initialConfig,
-  nodeId,
-  onLinkNode,
-  onUnlinkNode,
-}: VideoGeneratePanelProps) {
-  const { t } = useTranslation();
-
-  // Data
-  const { models, isLoading: modelsLoading } = useVideoModels();
-  const { providers } = useVideoProviders();
-
-  // Model dropdown state
-  const [showModelDropdown, setShowModelDropdown] = useState(false);
-  const modelDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Form state
-  const [selectedModelKey, setSelectedModelKey] = useState('');
-  const [prompt, setPrompt] = useState('');
+  // ── 展开配置区（仅主文件自己管） ──
   const [showConfig, setShowConfig] = useState(false);
   const configRef = useRef<HTMLDivElement>(null);
-
-  // Config state
-  const [videoMode, setVideoMode] = useState('text_to_video');
-  const [showModeDropdown, setShowModeDropdown] = useState(false);
-  const modeDropdownRef = useRef<HTMLDivElement>(null);
-  const [showQualityDropdown, setShowQualityDropdown] = useState(false);
-  const qualityDropdownRef = useRef<HTMLDivElement>(null);
-  const [showAspectDropdown, setShowAspectDropdown] = useState(false);
-  const aspectDropdownRef = useRef<HTMLDivElement>(null);
-  const [imageUrl, setImageUrl] = useState('');
-  const [lastFrameImageUrl, setLastFrameImageUrl] = useState('');
-  const [referenceImages, setReferenceImages] = useState<RefImage[]>([]);
-  const [extensionVideoUrl, setExtensionVideoUrl] = useState('');
-  const [duration, setDuration] = useState(6);
-  const [quality, setQuality] = useState('720p');
-  const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [promptOptimizer, setPromptOptimizer] = useState(true);
-  const [fastPretreatment, setFastPretreatment] = useState(false);
-
-  // Track source node IDs for single-attachment slots (imageUrl / lastFrame / extensionVideo)
-  const imageNodeIdRef = useRef<string | null>(null);
-  const lastFrameNodeIdRef = useRef<string | null>(null);
-  const extensionVideoNodeIdRef = useRef<string | null>(null);
-
-  // Link / unlink helpers
-  const linkNode = useCallback((sourceId: string) => {
-    onLinkNode?.(sourceId);
-  }, [onLinkNode]);
-
-  const unlinkNode = useCallback((sourceId: string | null) => {
-    sourceId && onUnlinkNode?.(sourceId);
-  }, [onUnlinkNode]);
-
-  // Unlink all currently linked nodes (used on mode switch / model change)
-  const unlinkAll = useCallback(() => {
-    unlinkNode(imageNodeIdRef.current);
-    unlinkNode(lastFrameNodeIdRef.current);
-    unlinkNode(extensionVideoNodeIdRef.current);
-    referenceImages.forEach(r => r.sourceNodeId && unlinkNode(r.sourceNodeId));
-    imageNodeIdRef.current = null;
-    lastFrameNodeIdRef.current = null;
-    extensionVideoNodeIdRef.current = null;
-  }, [unlinkNode, referenceImages]);
-
-  // Derived
-  const selectedModel = models.find((m) => `${m.provider_id}::${m.model_name}` === selectedModelKey) || null;
-  const { capabilities } = useVideoModelCapabilities(selectedModel?.model_name || null);
-  const visibility = useVideoFormVisibility(capabilities, videoMode);
-
-  // Auto-correct params when capabilities change
-  useEffect(() => {
-    const caps = capabilities;
-    caps &&
-      (() => {
-        !caps.modes.includes(videoMode) && setVideoMode(caps.modes[0]);
-        !caps.resolutions.includes(quality) && setQuality(caps.resolutions[0]);
-        !caps.durations.includes(duration) && setDuration(caps.durations[0]);
-        !caps.aspect_ratios.includes(aspectRatio) && setAspectRatio(caps.aspect_ratios[0]);
-      })();
-  }, [capabilities]);
-
-  // Clear attachments when switching modes
-  useEffect(() => {
-    unlinkAll();
-    videoMode === 'text_to_video' && (setImageUrl(''), setLastFrameImageUrl(''), setReferenceImages([]), setExtensionVideoUrl(''));
-    videoMode === 'image_to_video' && (setReferenceImages([]), setExtensionVideoUrl(''));
-    videoMode === 'reference_images' && (setImageUrl(''), setLastFrameImageUrl(''), setExtensionVideoUrl(''));
-    (videoMode === 'edit' || videoMode === 'video_extension') && (setReferenceImages([]), setImageUrl(''), setLastFrameImageUrl(''));
-  }, [videoMode]);
-
-  // Click outside closes config
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      configRef.current && !configRef.current.contains(e.target as HTMLElement) && setShowConfig(false);
-    };
-    showConfig && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showConfig]);
-
-  // Click outside closes mode dropdown
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      modeDropdownRef.current && !modeDropdownRef.current.contains(e.target as HTMLElement) && setShowModeDropdown(false);
-    };
-    showModeDropdown && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showModeDropdown]);
-
-  // Click outside closes quality dropdown
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      qualityDropdownRef.current && !qualityDropdownRef.current.contains(e.target as HTMLElement) && setShowQualityDropdown(false);
-    };
-    showQualityDropdown && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showQualityDropdown]);
-
-  // Click outside closes aspect ratio dropdown
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      aspectDropdownRef.current && !aspectDropdownRef.current.contains(e.target as HTMLElement) && setShowAspectDropdown(false);
-    };
-    showAspectDropdown && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showAspectDropdown]);
-
-  // Apply initialConfig once when models are available
-  const appliedInitRef = useRef(false);
-  useEffect(() => {
-    const cfg = initialConfig;
-    (cfg && models.length > 0 && !appliedInitRef.current) && (() => {
-      appliedInitRef.current = true;
-      cfg.prompt && setPrompt(cfg.prompt);
-      // Restore model selection
-      const modelKey = cfg.provider_id && cfg.model
-        ? `${cfg.provider_id}::${cfg.model}`
-        : (models.find(m => m.model_name === cfg.model) ?? null);
-      const resolvedKey = typeof modelKey === 'string'
-        ? modelKey
-        : modelKey ? `${modelKey.provider_id}::${modelKey.model_name}` : '';
-      resolvedKey && models.some(m => `${m.provider_id}::${m.model_name}` === resolvedKey) && setSelectedModelKey(resolvedKey);
-      cfg.video_mode && setVideoMode(cfg.video_mode);
-      cfg.duration && setDuration(cfg.duration);
-      cfg.quality && setQuality(cfg.quality);
-      cfg.aspect_ratio && setAspectRatio(cfg.aspect_ratio);
-    })();
-  }, [initialConfig, models]);
-
-  // Node picker state
   const [showNodePicker, setShowNodePicker] = useState(false);
-  const nodePickerRef = useRef<HTMLDivElement>(null);
 
-  // Virtual human presets
-  const { presets: vhPresets, isSeedance } = useVirtualHumanPresets(selectedModel?.model_name || null);
-  const [showVhPicker, setShowVhPicker] = useState(false);
-  const vhPickerRef = useRef<HTMLDivElement>(null);
-  const showVhButton = isSeedance && (videoMode === 'reference_images' || videoMode === 'image_to_video');
+  useDropdownOutside([[showConfig, configRef, setShowConfig]]);
 
-  // Picker mode based on current video mode
-  const pickerMode: PickerMode = PICKER_MODE_MAP[videoMode] || 'none';
+  const canSubmit =
+    !!form.selectedModel &&
+    form.prompt.trim().length > 0 &&
+    !isSubmitting &&
+    !taskActive;
 
-  // Available nodes from canvas（按 updatedAt 倒序）
-  const imageNodes = useMemo(
-    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'image' && getImageNodeUrl(n))),
-    [canvasNodes],
-  );
-  const videoNodes = useMemo(
-    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'video' && getVideoNodeUrl(n))),
-    [canvasNodes],
-  );
-  const audioNodes = useMemo(
-    () => selectNodesByUpdatedDesc(canvasNodes.filter((n) => n.type === 'audio' && getAudioNodeUrl(n))),
-    [canvasNodes],
-  );
-
-  // Per-type limits from capabilities
-  const maxRefImages = capabilities?.max_reference_images ?? DEFAULT_MAX_REFS;
-  const supportsRefVideos = capabilities?.supports_reference_videos ?? false;
-  const supportsRefAudios = capabilities?.supports_reference_audios ?? false;
-  const maxRefVideos = capabilities?.max_reference_videos ?? 0;
-  const maxRefAudios = capabilities?.max_reference_audios ?? 0;
-  const maxTotalRefs = maxRefImages + maxRefVideos + maxRefAudios;
-
-  // Ref counts by type
-  const imageRefCount = referenceImages.filter(r => r.refType === 'image').length;
-  const videoRefCount = referenceImages.filter(r => r.refType === 'video').length;
-  const audioRefCount = referenceImages.filter(r => r.refType === 'audio').length;
-
-  // Nodes to show in picker — multi_image shows mixed types for Seedance（按 updatedAt 统一倒序）
-  const pickerNodes = useMemo(() => {
-    const isMulti = pickerMode === 'multi_image';
-    const isVid = pickerMode === 'video';
-    const nodes = isVid ? videoNodes : isMulti ? [
-      ...imageNodes,
-      ...(supportsRefVideos ? videoNodes : []),
-      ...(supportsRefAudios ? audioNodes : []),
-    ] : imageNodes;
-    return isMulti ? selectNodesByUpdatedDesc(nodes) : nodes;
-  }, [pickerMode, imageNodes, videoNodes, audioNodes, supportsRefVideos, supportsRefAudios]);
-
-  const hasPickerSelection =
-    (pickerMode === 'single_image' && !!imageUrl) ||
-    (pickerMode === 'first_last_frame' && !!imageUrl && !!lastFrameImageUrl) ||
-    (pickerMode === 'multi_image' && referenceImages.length > 0) ||
-    (pickerMode === 'video' && !!extensionVideoUrl);
-
-  // Click outside closes node picker
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      nodePickerRef.current && !nodePickerRef.current.contains(e.target as HTMLElement) && setShowNodePicker(false);
-    };
-    showNodePicker && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showNodePicker]);
-
-  // Click outside closes virtual human picker
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      vhPickerRef.current && !vhPickerRef.current.contains(e.target as HTMLElement) && setShowVhPicker(false);
-    };
-    showVhPicker && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showVhPicker]);
-
-  // Select a virtual human preset (always image type)
-  const handleSelectVhPreset = (preset: typeof vhPresets[number]) => {
-    imageRefCount >= maxRefImages && (void 0);
-    imageRefCount < maxRefImages && (() => {
-      setReferenceImages((prev) => [...prev, {
-        url: preset.asset_uri,
-        name: preset.name,
-        refType: 'image' as RefType,
-        previewUrl: preset.preview_url,
-      }]);
-      // Auto-switch to reference_images mode when adding a virtual human in image_to_video mode
-      videoMode === 'image_to_video' && setVideoMode('reference_images');
-      inputRef.current?.insertTag(imageRefCount + 1, preset.name, 'image', true);
-      imageRefCount + 1 >= maxRefImages && setShowVhPicker(false);
-    })();
-  };
-
-  // Ref to the rich input for inserting tags programmatically
-  const inputRef = useRef<RefTagInputRef>(null);
-
-  // Remove a reference and clean up type-specific tags in prompt, then renumber
-  const TAG_PREFIX_MAP: Record<RefType, string> = { image: 'IMAGE', video: 'VIDEO', audio: 'AUDIO' };
-  const handleRemoveRefImage = (removeIdx: number) => {
-    const removedRef = referenceImages[removeIdx];
-    removedRef.sourceNodeId && unlinkNode(removedRef.sourceNodeId);
-    const newRefs = referenceImages.filter((_, i) => i !== removeIdx);
-    setReferenceImages(newRefs);
-    const removedType = removedRef.refType;
-    const prefix = TAG_PREFIX_MAP[removedType];
-    const typeIdx = referenceImages.slice(0, removeIdx).filter(r => r.refType === removedType).length + 1;
-    const totalOfType = referenceImages.filter(r => r.refType === removedType).length;
-    let updated = prompt;
-    updated = updated.replace(new RegExp(`<${prefix}_${typeIdx}>`, 'g'), '');
-    for (let i = totalOfType; i > typeIdx; i--) {
-      updated = updated.replace(new RegExp(`<${prefix}_${i}>`, 'g'), `<${prefix}_${i - 1}>`);
-    }
-    updated = updated.replace(/  +/g, ' ').trim();
-    setPrompt(updated);
-  };
-
-  const handleSelectNode = (node: CanvasNode) => {
-    const data = node.data as Record<string, unknown>;
-    const nodeName = (data.name as string) || node.id.slice(0, 8);
-    // single_image: set imageUrl
-    pickerMode === 'single_image' && (() => {
-      const url = getImageNodeUrl(node);
-      url && (unlinkNode(imageNodeIdRef.current), setImageUrl(url), imageNodeIdRef.current = node.id, linkNode(node.id));
-      setShowNodePicker(false);
-    })();
-    // first_last_frame: fill first frame first, then last frame
-    pickerMode === 'first_last_frame' && (() => {
-      const url = getImageNodeUrl(node);
-      url && (!imageUrl
-        ? (setImageUrl(url), imageNodeIdRef.current = node.id, linkNode(node.id))
-        : (setLastFrameImageUrl(url), lastFrameNodeIdRef.current = node.id, linkNode(node.id), setShowNodePicker(false)));
-    })();
-    // multi_image: append to referenceImages — supports image/video/audio node types
-    pickerMode === 'multi_image' && (() => {
-      const nt = node.type as string;
-      const urlMap: Record<string, () => string | null> = {
-        image: () => getImageNodeUrl(node),
-        video: () => getVideoNodeUrl(node),
-        audio: () => getAudioNodeUrl(node),
-      };
-      const limitMap: Record<string, [number, number]> = {
-        image: [imageRefCount, maxRefImages],
-        video: [videoRefCount, maxRefVideos],
-        audio: [audioRefCount, maxRefAudios],
-      };
-      const refType = (nt === 'video' ? 'video' : nt === 'audio' ? 'audio' : 'image') as RefType;
-      const url = urlMap[nt]?.() ?? getImageNodeUrl(node);
-      const [count, max] = limitMap[nt] ?? [imageRefCount, maxRefImages];
-      url && count < max && (() => {
-        setReferenceImages((prev) => [...prev, { url, name: nodeName, refType, sourceNodeId: node.id }]);
-        linkNode(node.id);
-        // Insert type-specific tag: <IMAGE_N>, <VIDEO_N>, or <AUDIO_N>
-        inputRef.current?.insertTag(count + 1, nodeName, refType);
-      })();
-      referenceImages.length + 1 >= maxTotalRefs && setShowNodePicker(false);
-    })();
-    // video: set extensionVideoUrl
-    pickerMode === 'video' && (() => {
-      const url = getVideoNodeUrl(node);
-      url && (unlinkNode(extensionVideoNodeIdRef.current), setExtensionVideoUrl(url), extensionVideoNodeIdRef.current = node.id, linkNode(node.id));
-      setShowNodePicker(false);
-    })();
-  };
-
-  const canSubmit = !!selectedModel && prompt.trim().length > 0 && !isSubmitting && !taskActive;
-
-  const handleModelChange = (key: string) => {
-    unlinkAll();
-    setSelectedModelKey(key);
-    setVideoMode('text_to_video');
-    setDuration(6);
-    setQuality('720p');
-    setImageUrl('');
-    setLastFrameImageUrl('');
-    setReferenceImages([]);
-    setExtensionVideoUrl('');
+  const handleModelSelect = (key: string) => {
+    refs.unlinkAll();
+    form.handleModelChange(key);
   };
 
   const handleSubmit = () => {
-    const m = selectedModel;
-    const isRef = videoMode === 'reference_images';
-    const imgRefs = referenceImages.filter(r => r.refType === 'image');
-    const vidRefs = referenceImages.filter(r => r.refType === 'video');
-    const audRefs = referenceImages.filter(r => r.refType === 'audio');
-    m &&
-      onSubmit({
-        provider_id: m.provider_id,
-        model: m.model_name,
-        video_mode: videoMode,
-        prompt: prompt.trim(),
-        image_url: visibility.showFirstFrame ? imageUrl || undefined : undefined,
-        last_frame_image: visibility.showLastFrame ? lastFrameImageUrl || undefined : undefined,
-        reference_images: isRef && imgRefs.length > 0
-          ? imgRefs.map((ref) => ({ url: ref.url }))
+    const m = form.selectedModel;
+    const isRef = form.videoMode === 'reference_images';
+    const imgRefs = refs.referenceImages.filter((r) => r.refType === 'image');
+    const vidRefs = refs.referenceImages.filter((r) => r.refType === 'video');
+    const audRefs = refs.referenceImages.filter((r) => r.refType === 'audio');
+    m && onSubmit({
+      provider_id: m.provider_id,
+      model: m.model_name,
+      video_mode: form.videoMode,
+      prompt: form.prompt.trim(),
+      image_url: form.visibility.showFirstFrame ? refs.imageUrl || undefined : undefined,
+      last_frame_image: form.visibility.showLastFrame ? refs.lastFrameImageUrl || undefined : undefined,
+      reference_images: isRef && imgRefs.length > 0 ? imgRefs.map((r) => ({ url: r.url })) : undefined,
+      reference_videos: isRef && vidRefs.length > 0 ? vidRefs.map((r) => ({ url: r.url })) : undefined,
+      reference_audios: isRef && audRefs.length > 0 ? audRefs.map((r) => ({ url: r.url })) : undefined,
+      extension_video_url:
+        (form.videoMode === 'edit' || form.videoMode === 'video_extension') && refs.extensionVideoUrl
+          ? refs.extensionVideoUrl
           : undefined,
-        reference_videos: isRef && vidRefs.length > 0
-          ? vidRefs.map((ref) => ({ url: ref.url }))
-          : undefined,
-        reference_audios: isRef && audRefs.length > 0
-          ? audRefs.map((ref) => ({ url: ref.url }))
-          : undefined,
-        extension_video_url: (videoMode === 'edit' || videoMode === 'video_extension') && extensionVideoUrl
-          ? extensionVideoUrl
-          : undefined,
-        config: {
-          duration,
-          quality,
-          aspect_ratio: aspectRatio,
-          prompt_optimizer: visibility.showPromptOptimizer ? promptOptimizer : undefined,
-          fast_pretreatment: visibility.showFastPretreatment ? fastPretreatment : undefined,
-        },
-      });
+      config: {
+        duration: form.duration,
+        quality: form.quality,
+        aspect_ratio: form.aspectRatio,
+        prompt_optimizer: form.visibility.showPromptOptimizer ? form.promptOptimizer : undefined,
+        fast_pretreatment: form.visibility.showFastPretreatment ? form.fastPretreatment : undefined,
+      },
+    });
   };
 
-  // Click outside closes model dropdown
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as HTMLElement) && setShowModelDropdown(false);
-    };
-    showModelDropdown && document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [showModelDropdown]);
-
-  // Resize handle for input container
-  const [inputMaxHeight, setInputMaxHeight] = useState<number | null>(null);
-  const resizingRef = useRef(false);
-  const resizeStartY = useRef(0);
-  const resizeStartH = useRef(0);
-  const inputContainerRef = useRef<HTMLDivElement>(null);
-
-  const handleResizePointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    resizingRef.current = true;
-    resizeStartY.current = e.clientY;
-    const edEl = inputContainerRef.current?.querySelector('[role="textbox"]') as HTMLElement | null;
-    resizeStartH.current = edEl?.offsetHeight ?? 44;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, []);
-
-  const handleResizePointerMove = useCallback((e: React.PointerEvent) => {
-    resizingRef.current && (() => {
-      const delta = e.clientY - resizeStartY.current;
-      const newH = Math.max(44, Math.min(400, resizeStartH.current + delta));
-      setInputMaxHeight(newH);
-    })();
-  }, []);
-
-  const handleResizePointerUp = useCallback((e: React.PointerEvent) => {
-    resizingRef.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-  }, []);
-
-  // Flatten models with provider info — logo shown per-item, no grouping headers
-  const flatModels = useMemo(() => {
-    const list: { key: string; model: typeof models[number]; providerType: string; providerName: string }[] = [];
-    const covered = new Set<string>();
-    for (const p of providers) {
-      covered.add(p.id);
-      for (const m of models.filter(mm => mm.provider_id === p.id)) {
-        list.push({
-          key: `${m.provider_id}::${m.model_name}`,
-          model: m,
-          providerType: p.provider_type,
-          providerName: p.name,
-        });
-      }
-    }
-    // Include any models not matched to a provider
-    for (const m of models.filter(mm => !covered.has(mm.provider_id))) {
-      list.push({
-        key: `${m.provider_id}::${m.model_name}`,
-        model: m,
-        providerType: '',
-        providerName: 'Other',
-      });
-    }
-    return list;
-  }, [models, providers]);
-
-  const handleModelSelect = useCallback((key: string) => {
-    handleModelChange(key);
-    setShowModelDropdown(false);
-  }, []);
-
-  // Resolve current provider logo for the trigger button
-  const selectedProviderType = useMemo(() => {
-    return flatModels.find(f => f.key === selectedModelKey)?.providerType || '';
-  }, [flatModels, selectedModelKey]);
-  const selectedProviderLogo = PROVIDER_ICONS[selectedProviderType] || '';
-
-
+  const handleSelectNode = (node: Parameters<typeof refs.handleSelectNode>[0]) => {
+    const shouldClose = refs.handleSelectNode(node);
+    return shouldClose;
+  };
 
   return (
-    <div className="w-full space-y-1.5" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-      {/* Main input container — MessageInput style */}
-      <div ref={inputContainerRef} className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col relative">
-        {/* Attachment previews — image(s) or video */}
-        {/* Single image (non-first_last_frame modes) */}
-        {pickerMode === 'single_image' && imageUrl && (
-          <div className="px-3 pt-2.5 pb-0">
-            <div className="relative inline-block group/imgpreview">
-              <img src={imageUrl} alt="Reference" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); imageNodeIdRef.current = null; setImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
-                <X className="h-2.5 w-2.5" />
-              </button>
-              <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-black/60 text-white backdrop-blur-sm">
-                {t('canvas.node.video.firstFrameImage')}
-              </div>
-            </div>
-          </div>
-        )}
+    <div
+      className="w-full space-y-1.5"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div
+        ref={inputContainerRef}
+        className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col relative"
+      >
+        <AttachmentPreviews
+          pickerMode={refs.pickerMode}
+          imageUrl={refs.imageUrl}
+          lastFrameImageUrl={refs.lastFrameImageUrl}
+          referenceImages={refs.referenceImages}
+          extensionVideoUrl={refs.extensionVideoUrl}
+          maxTotalRefs={refs.maxTotalRefs}
+          showLastFrame={form.visibility.showLastFrame}
+          onOpenPicker={() => setShowNodePicker(true)}
+          onClearImage={refs.clearImage}
+          onClearFirstLast={refs.clearFirstLastFrames}
+          onClearLastFrame={refs.clearLastFrame}
+          onClearExtensionVideo={refs.clearExtensionVideo}
+          onRemoveRefImage={refs.handleRemoveRefImage}
+        />
 
-        {/* First + Last frame preview for image_to_video */}
-        {pickerMode === 'first_last_frame' && imageUrl && (
-          <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
-            {/* First frame */}
-            <div className="relative inline-block group/firstframe">
-              <img src={imageUrl} alt="First frame" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-              <button type="button" onClick={() => { unlinkNode(imageNodeIdRef.current); unlinkNode(lastFrameNodeIdRef.current); imageNodeIdRef.current = null; lastFrameNodeIdRef.current = null; setImageUrl(''); setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/firstframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
-                <X className="h-2.5 w-2.5" />
-              </button>
-              <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-emerald-600/80 text-white backdrop-blur-sm">
-                {t('canvas.node.video.firstFrame')}
-              </div>
-            </div>
-            {/* Arrow connector */}
-            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
-            {/* Last frame or placeholder */}
-            {lastFrameImageUrl ? (
-              <div className="relative inline-block group/lastframe">
-                <img src={lastFrameImageUrl} alt="Last frame" draggable={false} className="h-16 w-16 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                <button type="button" onClick={() => { unlinkNode(lastFrameNodeIdRef.current); lastFrameNodeIdRef.current = null; setLastFrameImageUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/lastframe:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
-                  <X className="h-2.5 w-2.5" />
-                </button>
-                <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-semibold bg-amber-600/80 text-white backdrop-blur-sm">
-                  {t('canvas.node.video.lastFrame')}
-                </div>
-              </div>
-            ) : visibility.showLastFrame ? (
-              <button
-                type="button"
-                onClick={() => setShowNodePicker(true)}
-                className="h-16 w-16 rounded-lg border-2 border-dashed border-border/60 hover:border-primary/40 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer group/addlast"
-              >
-                <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50 group-hover/addlast:text-primary/60 transition-colors" />
-                <span className="text-[8px] text-muted-foreground/60 group-hover/addlast:text-primary/60 transition-colors">{t('canvas.node.video.addLastFrame')}</span>
-              </button>
-            ) : null}
-          </div>
-        )}
-
-        {/* Empty first+last frame placeholders when no image loaded yet */}
-        {pickerMode === 'first_last_frame' && !imageUrl && (
-          <div className="px-3 pt-2.5 pb-0 flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setShowNodePicker(true)}
-              className="h-16 w-16 rounded-lg border-2 border-dashed border-border/60 hover:border-emerald-500/40 flex flex-col items-center justify-center gap-0.5 transition-colors cursor-pointer group/addfirst"
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50 group-hover/addfirst:text-emerald-500/60 transition-colors" />
-              <span className="text-[8px] text-muted-foreground/60 group-hover/addfirst:text-emerald-500/60 transition-colors">{t('canvas.node.video.firstFrame')}</span>
-            </button>
-            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/30 shrink-0" />
-            <button
-              type="button"
-              onClick={() => setShowNodePicker(true)}
-              disabled
-              className="h-16 w-16 rounded-lg border-2 border-dashed border-border/40 flex flex-col items-center justify-center gap-0.5 opacity-40 cursor-not-allowed"
-            >
-              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground/50" />
-              <span className="text-[8px] text-muted-foreground/60">{t('canvas.node.video.lastFrame')}</span>
-            </button>
-          </div>
-        )}
-
-        {pickerMode === 'multi_image' && referenceImages.length > 0 && (
-          <div className="px-3 pt-2.5 pb-0 flex gap-1.5 flex-wrap">
-            {referenceImages.map((ref, idx) => {
-              const isImg = ref.refType === 'image';
-              const isVid = ref.refType === 'video';
-              const isAud = ref.refType === 'audio';
-              const isVirtualHuman = isImg && ref.url.startsWith('asset://');
-              // Image-only index for <IMAGE_N> tag
-              const imgIdx = isImg ? referenceImages.slice(0, idx).filter(r => r.refType === 'image').length + 1 : 0;
-              const tagColor = isVid ? 'text-amber-300' : isAud ? 'text-teal-300' : isVirtualHuman ? 'text-purple-300' : 'text-blue-300';
-              const tagLabel = isVid ? `VIDEO_${referenceImages.slice(0, idx).filter(r => r.refType === 'video').length + 1}`
-                : isAud ? `AUDIO_${referenceImages.slice(0, idx).filter(r => r.refType === 'audio').length + 1}`
-                : `IMAGE_${imgIdx}`;
-              const TypeIcon = isVid ? Film : isAud ? Music : isVirtualHuman ? UserRound : ImageIcon;
-              return (
-                <div key={idx} className="relative inline-block group/imgpreview">
-                  {isVid ? (
-                    <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted overflow-hidden">
-                      <video src={ref.url} draggable={false} className="w-full h-full object-cover" preload="metadata" muted />
-                    </div>
-                  ) : isAud ? (
-                    <div className="h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center">
-                      <Music className="w-6 h-6 text-teal-400/60" />
-                    </div>
-                  ) : (ref.previewUrl || ref.url) && !(ref.url.startsWith('asset://') && !ref.previewUrl) ? (
-                    <img src={ref.previewUrl || ref.url} alt={ref.name} draggable={false} className="h-14 w-14 rounded-lg object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }} />
-                  ) : null}
-                  {isImg && (
-                    <div className={cn('h-14 w-14 rounded-lg border border-border/50 bg-muted flex items-center justify-center', (ref.previewUrl || (!ref.url.startsWith('asset://') && ref.url)) ? 'hidden absolute inset-0' : '')}>
-                      <UserRound className="w-6 h-6 text-muted-foreground/50" />
-                    </div>
-                  )}
-                  <button type="button" onClick={() => handleRemoveRefImage(idx)} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/imgpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                  <div className="absolute bottom-0 left-0 right-0 px-0.5 py-0.5 rounded-b-lg text-[7px] font-semibold bg-black/70 text-white backdrop-blur-sm text-center leading-tight truncate">
-                    <span className={tagColor}>&lt;{tagLabel}&gt;</span>
-                    <br />
-                    <span className="opacity-80">{ref.name}</span>
-                  </div>
-                  {/* Type badge */}
-                  <div className="absolute top-0.5 left-0.5">
-                    <TypeIcon className={cn('w-3 h-3', isVid ? 'text-amber-400' : isAud ? 'text-teal-400' : isVirtualHuman ? 'text-purple-400' : 'text-emerald-400')} />
-                  </div>
-                </div>
-              );
-            })}
-            <span className="text-[9px] text-muted-foreground self-end pb-1">{referenceImages.length}/{maxTotalRefs}</span>
-          </div>
-        )}
-
-        {pickerMode === 'video' && extensionVideoUrl && (
-          <div className="px-3 pt-2.5 pb-0">
-            <div className="relative inline-block group/vidpreview">
-              <div className="h-16 w-24 rounded-lg bg-muted border border-border/50 flex items-center justify-center overflow-hidden">
-                <video src={extensionVideoUrl} draggable={false} className="w-full h-full object-cover" preload="metadata" muted />
-              </div>
-              <button type="button" onClick={() => { unlinkNode(extensionVideoNodeIdRef.current); extensionVideoNodeIdRef.current = null; setExtensionVideoUrl(''); }} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center opacity-0 group-hover/vidpreview:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground">
-                <X className="h-2.5 w-2.5" />
-              </button>
-              <div className="absolute bottom-0.5 left-0.5 px-1 py-0.5 rounded text-[8px] font-medium bg-black/60 text-white backdrop-blur-sm">
-                {t('canvas.node.video.sourceVideo')}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Rich prompt input with inline <IMAGE_N> tags */}
-        <RefTagInput
-          ref={inputRef}
-          value={prompt}
-          onChange={setPrompt}
-          referenceImages={referenceImages}
-          placeholder={t('canvas.node.video.promptPlaceholder')}
-          disabled={taskActive}
-          onSubmit={() => canSubmit && handleSubmit()}
-          maxHeight={inputMaxHeight ?? undefined}
+        <PromptInputArea
+          inputRef={refs.inputRef}
+          prompt={form.prompt}
+          setPrompt={form.setPrompt}
+          referenceImages={refs.referenceImages}
+          taskActive={taskActive}
+          canSubmit={canSubmit}
+          onSubmit={handleSubmit}
+          maxHeight={inputMaxHeight}
+          resizeHandlers={resizeHandlers}
         />
 
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between px-2 pb-2 pt-0.5">
-          {/* Left: model selector */}
           <div className="flex items-center gap-1">
-            <div className="relative" ref={modelDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowModelDropdown(v => !v)}
-                disabled={modelsLoading || taskActive}
-                className={cn(
-                  'h-8 pl-2 pr-6 rounded-lg bg-transparent text-sm font-medium cursor-pointer inline-flex items-center gap-1.5',
-                  'hover:bg-primary/10 transition-colors',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  selectedModelKey ? 'text-foreground' : 'text-muted-foreground',
-                )}
-              >
-                {selectedProviderLogo && <img src={selectedProviderLogo} alt="" className="w-4 h-4 object-contain" />}
-                {modelsLoading ? '...' : (selectedModel?.display_name || t('canvas.node.video.selectModel'))}
-                <ChevronDown className={cn(
-                  'absolute right-1.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground transition-transform duration-150',
-                  showModelDropdown && 'rotate-180',
-                )} />
-              </button>
-
-              {/* Custom model dropdown — flat list with per-item provider logo */}
-              {showModelDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
-                  {flatModels.map(({ key, model: m, providerType, providerName }) => {
-                    const logoSrc = PROVIDER_ICONS[providerType];
-                    const isSelected = key === selectedModelKey;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => handleModelSelect(key)}
-                        title={providerName}
-                        className={cn(
-                          'w-full flex items-center gap-2 px-2.5 py-2 text-xs transition-colors cursor-pointer',
-                          isSelected
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-foreground hover:bg-accent',
-                        )}
-                      >
-                        {logoSrc
-                          ? <img src={logoSrc} alt="" className="w-4 h-4 object-contain shrink-0" />
-                          : <span className="w-4 h-4 shrink-0" />}
-                        <span className="flex-1 text-left font-medium truncate">{m.display_name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 shrink-0 text-primary" />}
-                      </button>
-                    );
-                  })}
-                  {models.length === 0 && !modelsLoading && (
-                    <div className="p-3 text-[10px] text-muted-foreground text-center">
-                      {t('canvas.node.video.noVideoProviders')}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <ModelSelector
+              selectedModelKey={form.selectedModelKey}
+              selectedModel={form.selectedModel}
+              selectedProviderType={form.selectedProviderType}
+              flatModels={form.flatModels}
+              modelsCount={form.models.length}
+              modelsLoading={form.modelsLoading}
+              taskActive={taskActive}
+              onSelect={handleModelSelect}
+            />
           </div>
 
-          {/* Right: node picker + config + action buttons */}
           <div className="flex items-center gap-1">
-            {/* Virtual human picker — shown for Seedance models */}
-            {showVhButton && (
-              <div className="relative" ref={vhPickerRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowVhPicker((v) => !v)}
-                  disabled={taskActive || vhPresets.length === 0 || imageRefCount >= maxRefImages}
-                  className={cn(
-                    'h-8 w-8 rounded-lg flex items-center justify-center',
-                    'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
-                    'disabled:opacity-50 disabled:cursor-not-allowed',
-                    showVhPicker && 'bg-accent text-foreground',
-                  )}
-                  title={t('canvas.node.video.selectVirtualHuman')}
-                >
-                  <UserRound className="w-4 h-4" />
-                </button>
-
-                {/* Virtual human dropdown */}
-                {showVhPicker && (
-                  <div className="absolute bottom-full right-0 mb-1 w-64 max-h-72 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground border-b border-border/50">
-                      {t('canvas.node.video.selectVirtualHuman')}
-                    </div>
-                    {vhPresets.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => handleSelectVhPreset(preset)}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-accent transition-colors cursor-pointer"
-                      >
-                        <div className="h-9 w-9 shrink-0 relative">
-                          <img
-                            src={preset.preview_url}
-                            alt={preset.name}
-                            className="h-9 w-9 rounded-lg object-cover border border-border/30"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
-                          />
-                          <div className="hidden h-9 w-9 rounded-lg border border-border/30 bg-muted flex items-center justify-center absolute inset-0">
-                            <UserRound className="w-4 h-4 text-muted-foreground/50" />
-                          </div>
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1 text-left">
-                          <span className="font-medium truncate text-foreground">{preset.name}</span>
-                          <span className="text-[10px] text-muted-foreground truncate">
-                            {preset.gender === 'female' ? '女' : '男'} · {preset.style}
-                          </span>
-                        </div>
-                        <UserRound className="w-3 h-3 shrink-0 text-purple-400" />
-                      </button>
-                    ))}
-                    {vhPresets.length === 0 && (
-                      <div className="p-3 text-[10px] text-muted-foreground text-center">
-                        {t('canvas.node.video.noVirtualHumans')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+            {refs.showVhButton && (
+              <VirtualHumanPicker
+                presets={refs.vhPresets}
+                imageRefCount={refs.imageRefCount}
+                maxRefImages={refs.maxRefImages}
+                taskActive={taskActive}
+                onSelect={refs.handleSelectVhPreset}
+              />
             )}
 
-            {/* Node picker — shown when mode needs node input */}
-            {(pickerMode !== 'none' && pickerMode !== 'first_last_frame') && (
-              <div className="relative" ref={nodePickerRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowNodePicker((v) => !v)}
-                  disabled={taskActive || pickerNodes.length === 0}
-                  className={cn(
-                    'h-8 w-8 rounded-lg flex items-center justify-center',
-                    'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
-                    'disabled:opacity-50 disabled:cursor-not-allowed',
-                    showNodePicker && 'bg-accent text-foreground',
-                    hasPickerSelection && 'text-primary',
-                  )}
-                  title={pickerMode === 'video' ? t('canvas.node.video.selectVideoNode') : t('canvas.node.video.selectImageNode')}
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
-
-                {/* Dropdown */}
-                {showNodePicker && (
-                  <NodePickerDropdown
-                    open={showNodePicker}
-                    anchor="bottom"
-                    align="right"
-                    title={pickerMode === 'video'
-                      ? t('canvas.node.video.selectVideoNode')
-                      : pickerMode === 'multi_image'
-                        ? t('canvas.node.video.selectRefImages', { max: maxTotalRefs })
-                        : t('canvas.node.video.selectImageNode')}
-                    emptyText={pickerMode === 'video' ? t('canvas.node.video.noVideoNodes') : t('canvas.node.video.noImageNodes')}
-                    items={pickerNodes.map<NodePickerItem>((node) => {
-                      const nt = node.type as string;
-                      const isVideo = pickerMode === 'video' || nt === 'video';
-                      const isAudio = nt === 'audio';
-                      const data = node.data as Record<string, unknown>;
-                      const label = ((data.name || node.id.slice(0, 8)) as string);
-                      const thumbUrl = isVideo ? getVideoNodeUrl(node) : isAudio ? null : getImageNodeUrl(node);
-                      const atLimit = isVideo ? videoRefCount >= maxRefVideos
-                        : isAudio ? audioRefCount >= maxRefAudios
-                        : imageRefCount >= maxRefImages;
-                      return {
-                        node,
-                        label,
-                        thumbUrl,
-                        disabled: pickerMode === 'multi_image' && atLimit,
-                      };
-                    })}
-                    onSelect={handleSelectNode}
-                  />
-                )}
-              </div>
+            {refs.pickerMode !== 'none' && (
+              <NodeRefPicker
+                open={showNodePicker}
+                onOpenChange={setShowNodePicker}
+                pickerMode={refs.pickerMode}
+                pickerNodes={refs.pickerNodes}
+                imageNodes={refs.imageNodes}
+                imageUrl={refs.imageUrl}
+                hasPickerSelection={refs.hasPickerSelection}
+                taskActive={taskActive}
+                imageRefCount={refs.imageRefCount}
+                videoRefCount={refs.videoRefCount}
+                audioRefCount={refs.audioRefCount}
+                maxRefImages={refs.maxRefImages}
+                maxRefVideos={refs.maxRefVideos}
+                maxRefAudios={refs.maxRefAudios}
+                maxTotalRefs={refs.maxTotalRefs}
+                onSelect={handleSelectNode}
+              />
             )}
 
-            {/* Node picker — first_last_frame mode */}
-            {pickerMode === 'first_last_frame' && (
-              <div className="relative" ref={nodePickerRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowNodePicker((v) => !v)}
-                  disabled={taskActive || imageNodes.length === 0}
-                  className={cn(
-                    'h-8 w-8 rounded-lg flex items-center justify-center',
-                    'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
-                    'disabled:opacity-50 disabled:cursor-not-allowed',
-                    showNodePicker && 'bg-accent text-foreground',
-                    imageUrl && 'text-primary',
-                  )}
-                  title={!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
-                >
-                  <Paperclip className="w-4 h-4" />
-                </button>
-
-                {showNodePicker && (
-                  <NodePickerDropdown
-                    open={showNodePicker}
-                    anchor="bottom"
-                    align="right"
-                    title={!imageUrl ? t('canvas.node.video.selectFirstFrame') : t('canvas.node.video.selectLastFrame')}
-                    emptyText={t('canvas.node.video.noImageNodes')}
-                    items={imageNodes.map<NodePickerItem>((node) => {
-                      const data = node.data as Record<string, unknown>;
-                      return {
-                        node,
-                        label: ((data.name || node.id.slice(0, 8)) as string),
-                        thumbUrl: getImageNodeUrl(node),
-                      };
-                    })}
-                    onSelect={handleSelectNode}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Config toggle */}
-            <button
-              type="button"
-              onClick={() => setShowConfig((v) => !v)}
-              disabled={!selectedModel || taskActive}
-              className={cn(
-                'h-8 w-8 rounded-lg flex items-center justify-center',
-                'text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                showConfig && 'bg-accent text-foreground',
-              )}
-              title={t('canvas.node.video.advancedSettings')}
-            >
-              <Settings2 className="w-4 h-4" />
-            </button>
-
-            {/* Action button: submit / stop */}
-            {taskActive ? (
-              <button
-                type="button"
-                onClick={onStop}
-                className="h-8 w-8 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center"
-                title={t('canvas.node.video.stopGenerate')}
-              >
-                <Square className="h-3.5 w-3.5 fill-current" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-                className={cn(
-                  'h-8 w-8 rounded-lg transition-all duration-200 flex items-center justify-center',
-                  canSubmit
-                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed',
-                )}
-                title={t('canvas.node.video.submit')}
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            )}
+            <PanelActionButtons
+              taskActive={taskActive}
+              canSubmit={canSubmit}
+              hasSelectedModel={!!form.selectedModel}
+              showConfig={showConfig}
+              onToggleConfig={() => setShowConfig((v) => !v)}
+              onStop={onStop}
+              onSubmit={handleSubmit}
+            />
           </div>
-        </div>
-
-        {/* Resize handle — at bottom edge of the input container */}
-        <div
-          className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center justify-center h-3 w-12 cursor-ns-resize group/resize select-none z-10"
-          onPointerDown={handleResizePointerDown}
-          onPointerMove={handleResizePointerMove}
-          onPointerUp={handleResizePointerUp}
-        >
-          <div className="w-8 h-[3px] rounded-full bg-border/40 group-hover/resize:bg-border/80 group-active/resize:bg-primary/60 transition-colors" />
         </div>
       </div>
 
-      {/* "Apply to Node" / "Apply to Next Node" button — shown when task done */}
+      {/* 生成成功后的应用按钮 */}
       {taskDone && (
-        <button
-          type="button"
-          onClick={hasExistingVideo ? onApplyToNextNode : onApplyToNode}
-          className="w-full h-8 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-medium flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md transition-all duration-200"
-        >
-          <ArrowRight className="w-3.5 h-3.5" />
-          {hasExistingVideo
-            ? t('canvas.node.video.applyToNextNode')
-            : t('canvas.node.video.applyToNode')}
-        </button>
+        <ApplyButton
+          hasExistingVideo={hasExistingVideo}
+          onApplyToNode={onApplyToNode}
+          onApplyToNextNode={onApplyToNextNode}
+        />
       )}
 
-      {/* Expandable config section */}
-      {showConfig && selectedModel && (
-        <div
-          ref={configRef}
-          className="rounded-lg border border-border/50 bg-card p-2.5 space-y-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150"
-        >
-          {/* Mode */}
-          {visibility.showModeSelect && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.mode')}</label>
-              <div className="relative" ref={modeDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowModeDropdown(v => !v)}
-                  className={cn(SELECT_CLS, 'flex items-center justify-between')}
-                  style={SELECT_ARROW_STYLE}
-                >
-                  {VIDEO_MODE_LABELS[videoMode] || videoMode}
-                </button>
-                {showModeDropdown && (
-                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                    {capabilities?.modes.map((mode) => {
-                      const isSelected = mode === videoMode;
-                      return (
-                        <button
-                          key={mode}
-                          type="button"
-                          onClick={() => { setVideoMode(mode); setShowModeDropdown(false); }}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                            isSelected
-                              ? 'bg-primary/10 text-primary font-medium'
-                              : 'text-foreground hover:bg-accent',
-                          )}
-                        >
-                          <span className="flex-1 text-left">{VIDEO_MODE_LABELS[mode] || mode}</span>
-                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Duration */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.duration')}</label>
-              <span className="text-[11px] font-medium">{duration === -1 ? 'Auto' : `${duration}s`}</span>
-            </div>
-            {visibility.showDurationSlider ? (
-              <Slider
-                value={[duration]}
-                onValueChange={(v) => setDuration(v[0])}
-                min={Math.min(...visibility.durationOptions)}
-                max={Math.max(...visibility.durationOptions)}
-                step={1}
-              />
-            ) : (
-              <div className="flex gap-1 flex-wrap">
-                {visibility.durationOptions.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setDuration(d)}
-                    className={cn(
-                      'px-2 py-0.5 rounded text-[11px] font-medium border transition-colors',
-                      duration === d
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background text-foreground border-border/50 hover:bg-secondary',
-                    )}
-                  >
-                    {d === -1 ? 'Auto' : `${d}s`}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quality + Aspect Ratio */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.quality')}</label>
-              <div className="relative" ref={qualityDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowQualityDropdown(v => !v)}
-                  className={cn(SELECT_CLS, 'flex items-center justify-between')}
-                  style={SELECT_ARROW_STYLE}
-                >
-                  {RESOLUTION_LABELS[quality] || quality}
-                </button>
-                {showQualityDropdown && (
-                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                    {visibility.resolutionOptions.map((r) => {
-                      const isSelected = r === quality;
-                      return (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => { setQuality(r); setShowQualityDropdown(false); }}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                            isSelected
-                              ? 'bg-primary/10 text-primary font-medium'
-                              : 'text-foreground hover:bg-accent',
-                          )}
-                        >
-                          <span className="flex-1 text-left">{RESOLUTION_LABELS[r] || r}</span>
-                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.aspectRatio')}</label>
-              <div className="relative" ref={aspectDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowAspectDropdown(v => !v)}
-                  className={cn(SELECT_CLS, 'flex items-center gap-1.5')}
-                  style={SELECT_ARROW_STYLE}
-                >
-                  <AspectRatioIcon ratio={aspectRatio} className="w-4 h-4 text-muted-foreground shrink-0" />
-                  {ASPECT_RATIO_LABELS[aspectRatio] || aspectRatio}
-                </button>
-                {showAspectDropdown && (
-                  <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                    {visibility.aspectRatioOptions.map((ar) => {
-                      const isSelected = ar === aspectRatio;
-                      return (
-                        <button
-                          key={ar}
-                          type="button"
-                          onClick={() => { setAspectRatio(ar); setShowAspectDropdown(false); }}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                            isSelected
-                              ? 'bg-primary/10 text-primary font-medium'
-                              : 'text-foreground hover:bg-accent',
-                          )}
-                        >
-                          <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
-                          <span className="flex-1 text-left">{ASPECT_RATIO_LABELS[ar] || ar}</span>
-                          {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* First/Last frame hint — URL inputs removed, use node picker + preview instead */}
-
-          {/* Advanced toggles */}
-          {(visibility.showPromptOptimizer || visibility.showFastPretreatment) && (
-            <div className="space-y-1.5 pt-1.5 border-t border-border/30">
-              {visibility.showPromptOptimizer && (
-                <ToggleSwitch
-                  checked={promptOptimizer}
-                  onChange={setPromptOptimizer}
-                  label={t('canvas.node.video.promptOptimizer')}
-                  icon={<Sparkles className="w-3 h-3" />}
-                />
-              )}
-              {visibility.showFastPretreatment && (
-                <ToggleSwitch
-                  checked={fastPretreatment}
-                  onChange={setFastPretreatment}
-                  label={t('canvas.node.video.fastPretreatment')}
-                  icon={<Zap className="w-3 h-3" />}
-                />
-              )}
-            </div>
-          )}
-        </div>
+      {/* 展开配置区 */}
+      {showConfig && form.selectedModel && (
+        <ConfigPanel
+          containerRef={configRef}
+          capabilities={form.capabilities}
+          visibility={form.visibility}
+          videoMode={form.videoMode}
+          setVideoMode={form.setVideoMode}
+          duration={form.duration}
+          setDuration={form.setDuration}
+          quality={form.quality}
+          setQuality={form.setQuality}
+          aspectRatio={form.aspectRatio}
+          setAspectRatio={form.setAspectRatio}
+          promptOptimizer={form.promptOptimizer}
+          setPromptOptimizer={form.setPromptOptimizer}
+          fastPretreatment={form.fastPretreatment}
+          setFastPretreatment={form.setFastPretreatment}
+        />
       )}
 
-      {/* Task failed inline hint */}
+      {/* 任务失败提示 */}
       {taskFailed && taskError && (
         <div className="flex items-center gap-1.5 text-destructive text-[11px] p-1">
           <XCircle className="w-3 h-3 shrink-0" />
@@ -1288,7 +244,7 @@ export default function VideoGeneratePanel({
         </div>
       )}
 
-      {/* Submission error (not a task failure) */}
+      {/* 提交错误提示 */}
       {submitError && (
         <div className="flex items-center gap-1.5 text-destructive text-[11px] p-1">
           <XCircle className="w-3 h-3 shrink-0" />

@@ -3,32 +3,32 @@
 import React, { type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import type { ImageGenHistoryEntry } from '@/store/useCanvasStore';
+import type { VideoGenHistoryEntry } from '@/store/useCanvasStore';
 
 interface Props {
-  historyImages: ImageGenHistoryEntry[];
+  historyVideos: VideoGenHistoryEntry[];
   showHistory: boolean;
-  imageList: string[];
+  currentVideoUrl: string | null;
   onToggle: () => void;
   onClick: (url: string) => void;
-  onDragStart: (e: DragEvent<HTMLDivElement>, entry: ImageGenHistoryEntry) => void;
-  onDragEnd: (e: DragEvent<HTMLDivElement>, entry: ImageGenHistoryEntry) => void;
+  onDragStart: (e: DragEvent<HTMLDivElement>, entry: VideoGenHistoryEntry) => void;
+  onDragEnd: (e: DragEvent<HTMLDivElement>, entry: VideoGenHistoryEntry) => void;
 }
 
 /**
  * 生成历史侧栏（节点左侧）+ 切换按钮
  */
 export function HistorySidebar({
-  historyImages,
+  historyVideos,
   showHistory,
-  imageList,
+  currentVideoUrl,
   onToggle,
   onClick,
   onDragStart,
   onDragEnd,
 }: Props) {
   const { t } = useTranslation();
-  if (historyImages.length === 0) return null;
+  if (historyVideos.length === 0) return null;
 
   return (
     <>
@@ -39,30 +39,30 @@ export function HistorySidebar({
         )}
       >
         <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1.5 py-1">
-          {historyImages.map((entry, i) => (
+          {historyVideos.map((v, i) => (
             <div
-              key={`${entry.url}-${i}`}
+              key={`${v.url}-${i}`}
               draggable
-              onDragStart={(e) => onDragStart(e, entry)}
-              onDragEnd={(e) => onDragEnd(e, entry)}
-              onClick={() => onClick(entry.url)}
+              onDragStart={(e) => onDragStart(e, v)}
+              onDragEnd={(e) => onDragEnd(e, v)}
+              onClick={() => onClick(v.url)}
               className={cn(
-                'w-[64px] h-[64px] rounded-md overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
-                imageList.includes(entry.url)
+                'w-[72px] h-[56px] rounded-md border overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
+                currentVideoUrl === v.url
                   ? 'border-primary ring-1 ring-primary/50'
                   : 'border-border/50 hover:border-primary/50',
               )}
-              title={entry.prompt || entry.quality || t('canvas.node.image.aiGenerated', 'AI 生成图像')}
+              title={v.prompt || v.quality || t('canvas.node.video.aiGenerated')}
             >
-              <img
-                src={entry.url}
-                alt=""
+              <video
+                src={v.url}
                 className="w-full h-full object-cover pointer-events-none"
-                draggable={false}
+                muted
+                preload="metadata"
               />
-              {entry.quality && (
+              {v.quality && (
                 <span className="absolute bottom-0 right-0 px-1 py-px text-[8px] font-medium bg-black/70 text-white rounded-tl">
-                  {entry.quality}
+                  {v.quality}
                 </span>
               )}
             </div>
@@ -77,9 +77,9 @@ export function HistorySidebar({
           'absolute right-full top-1/2 -translate-y-1/2 w-5 h-10 flex items-center justify-center rounded-l-md border border-r-0 bg-background/90 backdrop-blur-sm text-muted-foreground hover:text-foreground transition-all nodrag z-10',
           showHistory ? 'mr-[106px]' : 'mr-1',
         )}
-        title={t('canvas.node.image.historyToggle', '生成历史')}
+        title={t('canvas.node.video.historyToggle')}
       >
-        <span className="text-[10px] font-bold">{historyImages.length}</span>
+        <span className="text-[10px] font-bold">{historyVideos.length}</span>
       </button>
     </>
   );
