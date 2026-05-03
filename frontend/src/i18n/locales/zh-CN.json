@@ -268,7 +268,9 @@
         "dragOrFullscreen": "拖拽移动节点 / 双击全屏预览",
         "zoomIn": "放大",
         "zoomOut": "缩小",
-        "close": "关闭"
+        "close": "关闭",
+        "download": "下载",
+        "downloadFailed": "下载失败"
       },
       "annotation": {
         "enter": "标注",

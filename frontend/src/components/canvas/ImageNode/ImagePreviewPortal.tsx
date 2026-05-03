@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
-import { ZoomIn, ZoomOut, X, PencilLine } from 'lucide-react';
+import { ZoomIn, ZoomOut, X, PencilLine, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AnnotationCanvasHandle } from './AnnotationCanvas';
 import { AnnotationToolbar } from './AnnotationToolbar';
@@ -73,12 +73,15 @@ export function ImagePreviewPortal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, open]);
 
-  // 计算可用画布尺寸
+  // 计算可用画布尺寸（与 view 模式保持一致，取容器的 70%）
   useEffect(() => {
     if (mode !== 'annotate' || !open) return;
     const update = () => {
       const el = containerRef.current;
-      el && setViewport({ w: el.clientWidth, h: el.clientHeight });
+      el && setViewport({
+        w: Math.floor(el.clientWidth * 0.7),
+        h: Math.floor(el.clientHeight * 0.7),
+      });
     };
     update();
     window.addEventListener('resize', update);
@@ -104,6 +107,28 @@ export function ImagePreviewPortal({
       if (!window.confirm(t('canvas.node.annotation.confirmDiscard'))) return;
     }
     onClose();
+  };
+
+  const handleDownload = async () => {
+    if (!url) return;
+    const fallback = () => window.open(url, '_blank');
+    try {
+      const resp = await fetch(url, { mode: 'cors' });
+      if (!resp.ok) return fallback();
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const ext = (blob.type.split('/')[1] || 'png').split(';')[0];
+      const safeName = (name || 'image').replace(/[\\/:*?"<>|]/g, '_');
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = /\.[a-z0-9]+$/i.test(safeName) ? safeName : `${safeName}.${ext}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch {
+      fallback();
+    }
   };
 
   return createPortal(
@@ -136,18 +161,6 @@ export function ImagePreviewPortal({
             >
               <ZoomOut className="h-5 w-5" />
             </Button>
-            {annotationEnabled && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="bg-black/50 hover:bg-black/70 text-white border-none backdrop-blur-md"
-                onClick={(e) => { e.stopPropagation(); onEnterAnnotate(); }}
-                title={t('canvas.node.annotation.enter')}
-              >
-                <PencilLine className="h-4 w-4 mr-1" />
-                {t('canvas.node.annotation.enter')}
-              </Button>
-            )}
           </>
         )}
         <Button
@@ -163,11 +176,11 @@ export function ImagePreviewPortal({
 
       {/* Main area */}
       {mode === 'view' && (
-        <div id="preview-container" className="w-full h-full flex items-center justify-center overflow-hidden p-8">
+        <div id="preview-container" className="w-full h-full flex items-center justify-center overflow-hidden p-8 pb-28">
           <img
             src={url || undefined}
             alt={name}
-            className="max-w-full max-h-full object-contain transition-transform duration-75 ease-out select-none"
+            className="max-w-[70%] max-h-[70%] object-contain transition-transform duration-75 ease-out select-none"
             style={{
               transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
               cursor: isDragging ? 'grabbing' : 'grab',
@@ -178,6 +191,38 @@ export function ImagePreviewPortal({
             onPointerUp={onPointerUp}
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* View-mode bottom toolbar: download + enter annotation (aligned with annotate mode toolbar) */}
+      {mode === 'view' && (
+        <div
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-50"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-2 bg-black/70 backdrop-blur-md text-white rounded-lg px-3 py-2 shadow-lg pointer-events-auto">
+            <button
+              className="h-8 px-3 flex items-center gap-1.5 rounded text-white/90 hover:bg-white/10 text-sm"
+              onClick={handleDownload}
+              title={t('canvas.node.preview.download')}
+            >
+              <Download className="w-4 h-4" />
+              <span>{t('canvas.node.preview.download')}</span>
+            </button>
+            {annotationEnabled && (
+              <>
+                <div className="w-px h-6 bg-white/20" />
+                <button
+                  className="h-8 px-3 flex items-center gap-1.5 rounded text-white/90 hover:bg-white/10 text-sm"
+                  onClick={onEnterAnnotate}
+                  title={t('canvas.node.annotation.enter')}
+                >
+                  <PencilLine className="w-4 h-4" />
+                  <span>{t('canvas.node.annotation.enter')}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -206,6 +251,7 @@ export function ImagePreviewPortal({
               saveDisabledReason={isFull ? t('canvas.node.upload.maxReached', { max: 9 }) : null}
               onSave={handleSave}
               onCancel={handleExit}
+              onDownload={handleDownload}
             />
           </div>
         </>

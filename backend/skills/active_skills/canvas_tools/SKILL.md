@@ -2,7 +2,7 @@
 name: canvas_tools
 description: "Canvas node and edge CRUD operations. Provides tools to manage theater canvas nodes and connections between them."
 metadata:
-  builtin_skill_version: "1.3"
+  builtin_skill_version: "1.4"
 ---
 # Canvas Tools
 
@@ -109,6 +109,42 @@ Edges connect nodes left-to-right. Always use the standard direction:
 - `target_handle`: `"left-target"` (default)
 
 Only deviate if the user explicitly requests a different flow direction.
+
+### Edge Compatibility Matrix (Source → Target)
+
+This matrix is the **single source of truth** for edge legality.
+It is mirrored on the frontend at `frontend/src/lib/canvas/edgeRules.md`.
+Both `create_canvas_edge` and the frontend `onConnect` handler MUST validate against it.
+
+| Source \\ Target | text | image | video | audio | storyboard |
+|---|---|---|---|---|---|
+| **text**       | allow (append/continue) | allow (fill prompt)         | allow (fill prompt)           | allow (fill lyrics/TTS)    | allow (append row / column text) |
+| **image**      | deferred (OCR/caption)  | allow (image-to-image ref)  | allow (first-frame / ref)     | forbid                     | allow (fill media column)        |
+| **video**      | deferred (subtitle)     | allow (frame extract)       | allow (style/continuation)    | deferred (audio extract)   | allow (fill media column)        |
+| **audio**      | deferred (ASR)          | forbid                      | allow (voiceover input)       | deferred (mix)             | allow (fill media column)        |
+| **storyboard** | allow (flatten rows)    | allow (batch generate)      | allow (batch generate)        | allow (batch generate)     | allow (append/merge rows)        |
+
+Legend:
+- **allow** — create the edge.
+- **forbid** — reject the edge and return an error with reason `"forbidden_type_combination"`.
+- **deferred** — phase-1 not supported; reject with reason `"not_supported_yet"` (UI tooltip: "coming soon").
+
+### Hard Constraints
+
+Always reject when any of these hold:
+1. Self-loop: `source_node_id == target_node_id`.
+2. Duplicate edge: same `(source_node_id, source_handle, target_node_id, target_handle)` already exists.
+3. Same-polarity handles: both endpoints are `*-source` or both are `*-target`.
+4. Matrix entry is `forbid` or `deferred`.
+
+### Content Injection Semantics (for reference)
+
+`create_canvas_edge` itself does NOT perform content injection — that is a frontend UX concern.
+However, when planning a workflow, keep the semantics in mind:
+- text → image/video: upstream text becomes the downstream generation prompt.
+- image → image/video: upstream media URL is appended as a reference image.
+- any media → storyboard: URL is written into the matching media column.
+- storyboard → image/video/audio: each row triggers one generation task (downstream app logic).
 
 ---
 

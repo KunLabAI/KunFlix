@@ -31,7 +31,7 @@ export interface QuickAddMenuState {
 
 export function useQuickAddMenu() {
   const { screenToFlowPosition } = useReactFlow();
-  const { addNode, onConnect } = useCanvasStore();
+  const { addNode, connectAndInject } = useCanvasStore();
 
   const [menuState, setMenuState] = useState<QuickAddMenuState>({
     show: false,
@@ -103,33 +103,21 @@ export function useQuickAddMenu() {
 
     addNode(newNode);
 
-    // Connect based on handle direction
-    let targetHandle = null;
-    let sourceHandle = menuState.sourceHandleId;
-    let connectionSource = menuState.sourceNodeId;
-    let connectionTarget = newNodeId;
+    // 根据拖拽起点 handle 的几何侧边决定连线方向：
+    // - 右侧拖出：原节点 = source，新节点 = target（正向，将原节点内容注入到新节点）
+    // - 左侧拖出：新节点 = source，原节点 = target（反向，新节点为空不会注入，符合几何语义）
+    // Loose 模式下拖拽起点 handle 始终是 `*-source`，因此只看前缀方向。
+    const srcHandle = menuState.sourceHandleId || '';
+    const isLeftEdge = srcHandle.startsWith('left-');
+    const connectionSource = isLeftEdge ? newNodeId : menuState.sourceNodeId;
+    const connectionTarget = isLeftEdge ? menuState.sourceNodeId : newNodeId;
+    const sourceHandle = 'right-source';
+    const targetHandle = 'left-target';
 
-    const handleConnections: Record<string, () => void> = {
-      'left-source': () => { targetHandle = 'right-target'; },
-      'right-source': () => { targetHandle = 'left-target'; },
-      'left-target': () => {
-        connectionSource = newNodeId;
-        connectionTarget = menuState.sourceNodeId!;
-        sourceHandle = 'right-source';
-        targetHandle = 'left-target';
-      },
-      'right-target': () => {
-        connectionSource = newNodeId;
-        connectionTarget = menuState.sourceNodeId!;
-        sourceHandle = 'left-source';
-        targetHandle = 'right-target';
-      },
-    };
-
-    const applyConnection = handleConnections[menuState.sourceHandleId || ''];
-    applyConnection?.();
-
-    onConnect({
+    // 建连线；若源节点有可注入内容，`connectAndInject` 内部会弹 confirm Toast
+    // 让用户选择是否注入。用户选“取消”：线已建立但不注入 = 空节点；
+    // 用户选“注入”：执行 doInject。源节点无内容时内部会提前 return，不弹。
+    connectAndInject({
       source: connectionSource,
       sourceHandle: sourceHandle,
       target: connectionTarget,
@@ -137,7 +125,7 @@ export function useQuickAddMenu() {
     });
 
     setMenuState((prev) => ({ ...prev, show: false }));
-  }, [menuState, screenToFlowPosition, addNode, onConnect]);
+  }, [menuState, screenToFlowPosition, addNode, connectAndInject]);
 
   // Close menu when clicking elsewhere
   useEffect(() => {

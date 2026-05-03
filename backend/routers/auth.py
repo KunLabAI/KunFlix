@@ -174,9 +174,12 @@ async def refresh(
     # 旧 refresh token 入黑名单（一次性轮换）
     await revoke_jti(payload.get("jti"), _remaining_ttl(payload))
 
+    # 同步颁发新的 refresh_token，避免前端持有被拉黑的旧 token 导致二次刷新失败
     access_token = create_access_token(user.id, user.role)
+    new_refresh_token = create_refresh_token(user.id)
     return AccessTokenResponse(
         access_token=access_token,
+        refresh_token=new_refresh_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
 

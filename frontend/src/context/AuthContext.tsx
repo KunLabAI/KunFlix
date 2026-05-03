@@ -200,6 +200,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const data = await response.json();
       localStorage.setItem("access_token", data.access_token);
+      // 后端一次性轮换：同步写回新的 refresh_token，避免旧 token 被拉黑后二次刷新失败
+      data.refresh_token && localStorage.setItem("refresh_token", data.refresh_token);
       return true;
     } catch {
       logout();

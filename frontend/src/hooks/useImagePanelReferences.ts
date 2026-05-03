@@ -43,8 +43,14 @@ export function useImagePanelReferences({
 
   // mode 切换时：清空参考图并解除已建立的连线
   const prevModeRef = useRef<ImageMode>(mode);
+  // 智能注入：标记下一次 mode 切换 effect 跳过清空副作用
+  const skipNextClearRef = useRef(false);
   useEffect(() => {
-    prevModeRef.current !== mode && (() => {
+    const skip = skipNextClearRef.current;
+    skip && (skipNextClearRef.current = false);
+    skip && (prevModeRef.current = mode);
+    const shouldClear = !skip && prevModeRef.current !== mode;
+    shouldClear && (() => {
       referenceImages.forEach((r) => r.sourceNodeId !== nodeId && onUnlinkNode?.(r.sourceNodeId));
       setReferenceImages([]);
       prevModeRef.current = mode;
@@ -89,12 +95,53 @@ export function useImagePanelReferences({
     return maxRefs === 1; // 提示调用方可关闭 picker
   }, [referenceImages.length, maxRefs, onLinkNode, nodeId, t]);
 
+  /**
+   * 外部添加一项参考图（例如来自上游节点连线注入）。
+   * 返回 { ok, reason }，ok=false 时 reason='limit'|'duplicate'。
+   */
+  const addRefExternal = useCallback(
+    (sourceNodeId: string, url: string, name?: string): { ok: boolean; reason?: 'limit' | 'duplicate' } => {
+      const duplicate = referenceImages.some((r) => r.sourceNodeId === sourceNodeId);
+      if (duplicate) return { ok: false, reason: 'duplicate' };
+      const reached = referenceImages.length >= maxRefs;
+      if (reached) return { ok: false, reason: 'limit' };
+      const label = name || t('canvas.node.image.refItem', '参考图');
+      setReferenceImages((prev) => [...prev, { url, name: label, sourceNodeId }]);
+      return { ok: true };
+    },
+    [referenceImages, maxRefs, t],
+  );
+
   // 先 unlink 再 setState（避免在 updater 中调用外部 setState）
   const removeRef = useCallback((idx: number) => {
     const target = referenceImages[idx];
     target && target.sourceNodeId !== nodeId && onUnlinkNode?.(target.sourceNodeId);
     setReferenceImages((prev) => prev.filter((_, i) => i !== idx));
   }, [referenceImages, onUnlinkNode, nodeId]);
+
+  /**
+   * 智能注入：一次性切换模式并填入参考图，跳过 mode 切换的自动清空副作用。
+   * 返回 {appliedCount, droppedCount}；droppedCount > 0 意味着因模式上限被截断。
+   */
+  const applySmartInject = useCallback(
+    (targetMode: ImageMode, items: { url: string; name: string; sourceNodeId: string }[]) => {
+      // 先解除当前已连接的外部源
+      referenceImages.forEach((r) => r.sourceNodeId !== nodeId && onUnlinkNode?.(r.sourceNodeId));
+      // 模式将变 → 跳过一次清空 effect
+      const modeWillChange = targetMode !== mode;
+      modeWillChange && (skipNextClearRef.current = true);
+      setMode(targetMode);
+      const limit = IMAGE_MODE_MAX_REFS[targetMode] || 0;
+      const truncated = limit > 0 ? items.slice(0, limit) : [];
+      setReferenceImages(truncated);
+      truncated.forEach((it) => it.sourceNodeId !== nodeId && onLinkNode?.(it.sourceNodeId));
+      return {
+        appliedCount: truncated.length,
+        droppedCount: Math.max(0, items.length - truncated.length),
+      };
+    },
+    [referenceImages, nodeId, mode, setMode, onLinkNode, onUnlinkNode],
+  );
 
   // 参考图数量校验
   const refsOk =
@@ -109,5 +156,7 @@ export function useImagePanelReferences({
     refsOk,
     selectNode,
     removeRef,
+    addRefExternal,
+    applySmartInject,
   };
 }
