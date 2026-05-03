@@ -268,7 +268,9 @@
         "dragOrFullscreen": "Drag to move / Double-click for fullscreen preview",
         "zoomIn": "Zoom in",
         "zoomOut": "Zoom out",
-        "close": "Close"
+        "close": "Close",
+        "download": "Download",
+        "downloadFailed": "Download failed"
       },
       "annotation": {
         "enter": "Annotate",

@@ -66,6 +66,8 @@ api.interceptors.response.use(
         refresh_token: refreshToken,
       });
       localStorage.setItem("access_token", data.access_token);
+      // 后端采用一次性轮换：必须同步写回新的 refresh_token，否则下次刷新必挂
+      data.refresh_token && localStorage.setItem("refresh_token", data.refresh_token);
       original.headers.set("Authorization", `Bearer ${data.access_token}`);
       processQueue(null, data.access_token);
       return api(original);

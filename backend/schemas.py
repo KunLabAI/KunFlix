@@ -82,6 +82,8 @@ class TokenResponse(BaseModel):
 
 class AccessTokenResponse(BaseModel):
     access_token: str
+    # 一次性轮换模式下同步回传新的 refresh_token；未轮换的接口可省略
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     expires_in: int
 

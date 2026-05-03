@@ -4,6 +4,7 @@ import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import I18nProvider from "@/i18n/I18nProvider";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -43,6 +44,7 @@ export default function RootLayout({
             </AuthProvider>
           </I18nProvider>
         </AntdRegistry>
+        <Toaster position="top-center" richColors closeButton />
       </body>
     </html>
   );

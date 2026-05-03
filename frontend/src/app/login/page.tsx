@@ -131,17 +131,18 @@ function FilmStripRow({ cards, duration, reverse, size = "small" }: {
 }
 
 // 表单字段配置（动态国际化）
+// autoComplete 语义对齐 WHATWG 规范：邮箱/用户名/当前密码/新密码，便于密码管理器识别与自动填充
 function getFormFields(t: (key: string) => string) {
   return {
     login: [
-      { name: "email", type: "email", label: t("login.email"), placeholder: t("login.emailPlaceholder"), icon: Mail, required: true },
-      { name: "password", type: "password", label: t("login.password"), placeholder: t("login.passwordPlaceholder"), icon: Lock, required: true },
+      { name: "email", type: "email", label: t("login.email"), placeholder: t("login.emailPlaceholder"), icon: Mail, required: true, autoComplete: "email" },
+      { name: "password", type: "password", label: t("login.password"), placeholder: t("login.passwordPlaceholder"), icon: Lock, required: true, autoComplete: "current-password" },
     ],
     register: [
-      { name: "email", type: "email", label: t("login.email"), placeholder: t("login.emailPlaceholder"), icon: Mail, required: true },
-      { name: "nickname", type: "text", label: t("login.nickname"), placeholder: t("login.nicknamePlaceholder"), icon: User, required: true },
-      { name: "password", type: "password", label: t("login.password"), placeholder: t("login.passwordMinPlaceholder"), icon: Lock, required: true, minLength: 6 },
-      { name: "confirmPassword", type: "password", label: t("login.confirmPassword"), placeholder: t("login.confirmPasswordPlaceholder"), icon: Lock, required: true },
+      { name: "email", type: "email", label: t("login.email"), placeholder: t("login.emailPlaceholder"), icon: Mail, required: true, autoComplete: "email" },
+      { name: "nickname", type: "text", label: t("login.nickname"), placeholder: t("login.nicknamePlaceholder"), icon: User, required: true, autoComplete: "username" },
+      { name: "password", type: "password", label: t("login.password"), placeholder: t("login.passwordMinPlaceholder"), icon: Lock, required: true, minLength: 6, autoComplete: "new-password" },
+      { name: "confirmPassword", type: "password", label: t("login.confirmPassword"), placeholder: t("login.confirmPasswordPlaceholder"), icon: Lock, required: true, autoComplete: "new-password" },
     ],
   };
 }
@@ -408,6 +409,8 @@ export default function LoginPage() {
                         <field.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <input
                           type={field.type === "password" && showPassword[field.name] ? "text" : field.type}
+                          name={field.name}
+                          autoComplete={field.autoComplete}
                           value={formData[field.name] || ""}
                           onChange={(e) => handleInputChange(field.name, e.target.value)}
                           placeholder={field.placeholder}

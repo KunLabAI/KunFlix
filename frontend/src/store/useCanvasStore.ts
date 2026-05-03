@@ -15,7 +15,10 @@ import {
   OnConnect,
   Viewport,
 } from '@xyflow/react';
-import { hasCycle } from '@/lib/graphUtils';
+import { validateEdge, REJECT_MESSAGES, type EdgeRejectReason } from '@/lib/canvas/edgeRules';
+import { buildPayload, injectPayload } from '@/lib/canvas/edgePayload';
+import { emitPanelInject, setPendingSmartInject } from '@/lib/canvas/panelEvents';
+import { edgeToast } from '@/lib/canvas/toast';
 import {
   theaterApi,
   type TheaterNodeCreate,
@@ -152,6 +155,17 @@ interface CanvasState {
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
+  /**
+   * 校验后建边并立即注入下游载荷。
+   * @param connection - ReactFlow 连接对象
+   * @param options.fromQuickAdd - 来自 QuickAddMenu，已隐含用户同意，跳过确认
+   * @param options.silent - 校验失败不弹 Toast（hook 侧批量处理时用）
+   * @returns { ok, reason } 指示是否成功
+   */
+  connectAndInject: (
+    connection: Connection,
+    options?: { fromQuickAdd?: boolean; silent?: boolean },
+  ) => { ok: boolean; reason?: EdgeRejectReason };
   addNode: (node: CanvasNode) => void;
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
@@ -321,21 +335,79 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       onConnect: (connection: Connection) => {
-        const { edges } = get();
-        
-        // Prevent self-loops
-        if (connection.source === connection.target) return;
+        // 统一走 connectAndInject；已存在节点间连线会弹确认
+        get().connectAndInject(connection);
+      },
 
-        // Prevent cycles
-        if (hasCycle(edges, connection.source, connection.target)) {
-          console.warn('Cycle detected! Connection blocked.');
-          return;
-        }
+      connectAndInject: (connection: Connection, options?: { fromQuickAdd?: boolean; silent?: boolean }) => {
+        const { edges, nodes } = get();
+        const sourceNode = nodes.find((n) => n.id === connection.source);
+        const targetNode = nodes.find((n) => n.id === connection.target);
 
+        // 节点不存在直接返回（可能是幽灵节点残留）
+        const missing = !sourceNode || !targetNode || !connection.source || !connection.target;
+        if (missing) return { ok: false, reason: 'unknown_type' as EdgeRejectReason };
+
+        // 1. 合法性校验
+        const validation = validateEdge({
+          sourceId: connection.source!,
+          targetId: connection.target!,
+          sourceType: sourceNode.type,
+          targetType: targetNode.type,
+          sourceHandle: connection.sourceHandle,
+          targetHandle: connection.targetHandle,
+          existingEdges: edges,
+        });
+
+        const rejectHandlers: Partial<Record<EdgeRejectReason, (msg: string) => void>> = {
+          self_loop: (msg) => edgeToast.error(msg),
+          same_polarity: (msg) => edgeToast.error(msg),
+          duplicate_edge: (msg) => edgeToast.error(msg),
+          cycle: (msg) => edgeToast.error(msg),
+          forbidden_type_combination: (msg) => edgeToast.error(msg),
+          not_supported_yet: (msg) => edgeToast.info(msg),
+          unknown_type: (msg) => edgeToast.error(msg),
+        };
+        const rejectedSilently = !validation.ok && options?.silent;
+        const rejectedNoisily = !validation.ok && !options?.silent;
+        rejectedNoisily && rejectHandlers[validation.reason!]?.(
+          validation.message || REJECT_MESSAGES[validation.reason!],
+        );
+        if (!validation.ok) return { ok: false, reason: validation.reason };
+        void rejectedSilently;
+
+        // 2. 建边
         const newEdges = addEdge({ ...connection, type: 'custom', animated: true }, edges);
-        
         set({ edges: newEdges, isDirty: true });
         get().takeSnapshot();
+
+        // 3. 构建 payload（空则不注入，但连线已建立）
+        const payload = buildPayload(sourceNode);
+        if (!payload) return { ok: true };
+
+        // 4. 默认直接注入（不弹二次确认）
+        const result = injectPayload(targetNode, payload, sourceNode.id);
+        const applyPatch = (patch: Record<string, unknown> | undefined) => {
+          patch && get().updateNodeData(
+            targetNode.id,
+            patch as Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>,
+          );
+        };
+        applyPatch(result.dataPatch);
+        (result.panelEvents || []).forEach((e) => {
+          emitPanelInject(targetNode.id, e);
+          // smart-image-inject 额外写入 pending，覆盖订阅时序丢失 + 新节点模型未就绪的场景
+          e.type === 'smart-image-inject' && setPendingSmartInject(targetNode.id, e);
+        });
+        (result.warnings || []).forEach((w) => edgeToast.warn(w));
+        // storyboard 媒体列也直接 apply，不再二次确认
+        if (result.pendingConfirm) {
+          const applied = result.pendingConfirm.apply();
+          applyPatch(applied.dataPatch);
+        }
+        void options;
+
+        return { ok: true };
       },
 
       addNode: (node: CanvasNode) => {

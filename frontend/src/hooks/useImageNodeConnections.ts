@@ -15,12 +15,14 @@ export function useImageNodeConnections(targetId: string) {
   const linkNode = useCallback((sourceNodeId: string) => {
     const edges = getEdges();
     const alreadyLinked = edges.some((e) => e.source === sourceNodeId && e.target === targetId);
-    alreadyLinked || useCanvasStore.getState().onConnect({
+    // 面板内选取已隐含用户同意且已有 ref 挂载，不重复弹注入确认。
+    // 校验失败用 silent 模式（避免打断面板交互）
+    alreadyLinked || useCanvasStore.getState().connectAndInject({
       source: sourceNodeId,
       sourceHandle: 'right-source',
       target: targetId,
       targetHandle: 'left-target',
-    });
+    }, { fromQuickAdd: true, silent: true });
   }, [targetId, getEdges]);
 
   const unlinkNode = useCallback((sourceNodeId: string) => {

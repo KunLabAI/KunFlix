@@ -87,12 +87,16 @@ export function useVideoPanelReferences({
   const unlinkAll = useCallback(() => unlinkAllRef.current(), []);
 
   // ── 模式变更时清空对应字段并解除连线 ──
+  // 智能注入：标记下一次 videoMode 变更 effect 跳过清空副作用
+  const skipNextClearRef = useRef(false);
   useEffect(() => {
-    unlinkAll();
-    videoMode === 'text_to_video' && (setImageUrl(''), setLastFrameImageUrl(''), setReferenceImages([]), setExtensionVideoUrl(''));
-    videoMode === 'image_to_video' && (setReferenceImages([]), setExtensionVideoUrl(''));
-    videoMode === 'reference_images' && (setImageUrl(''), setLastFrameImageUrl(''), setExtensionVideoUrl(''));
-    (videoMode === 'edit' || videoMode === 'video_extension') && (setReferenceImages([]), setImageUrl(''), setLastFrameImageUrl(''));
+    const skip = skipNextClearRef.current;
+    skip && (skipNextClearRef.current = false);
+    !skip && unlinkAll();
+    !skip && videoMode === 'text_to_video' && (setImageUrl(''), setLastFrameImageUrl(''), setReferenceImages([]), setExtensionVideoUrl(''));
+    !skip && videoMode === 'image_to_video' && (setReferenceImages([]), setExtensionVideoUrl(''));
+    !skip && videoMode === 'reference_images' && (setImageUrl(''), setLastFrameImageUrl(''), setExtensionVideoUrl(''));
+    !skip && (videoMode === 'edit' || videoMode === 'video_extension') && (setReferenceImages([]), setImageUrl(''), setLastFrameImageUrl(''));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoMode]);
 
@@ -296,6 +300,147 @@ export function useVideoPanelReferences({
     setExtensionVideoUrl('');
   }, [unlinkNode]);
 
+  // ── 外部注入（上游连线触发） ──
+  type ExternalRejectReason = 'no_slot' | 'limit' | 'duplicate';
+  type ExternalResult = { ok: boolean; reason?: ExternalRejectReason };
+
+  /** 由上游 image 节点或 video 首帧注入一张参考图 */
+  const addImageExternal = useCallback(
+    (sourceNodeId: string, url: string, name?: string, tag?: 'first-frame'): ExternalResult => {
+      const label = name || sourceNodeId.slice(0, 8);
+      // 1）single_image / first_last_frame：首选首帧槽位（特别是 tag='first-frame'）
+      const singleSlotAvailable =
+        (pickerMode === 'single_image' || pickerMode === 'first_last_frame') && !imageUrl;
+      const lastSlotAvailable =
+        pickerMode === 'first_last_frame' && !!imageUrl && !lastFrameImageUrl;
+      const putSingle = () => {
+        setImageUrl(url);
+        imageNodeIdRef.current = sourceNodeId;
+      };
+      const putLast = () => {
+        setLastFrameImageUrl(url);
+        lastFrameNodeIdRef.current = sourceNodeId;
+      };
+      singleSlotAvailable && putSingle();
+      !singleSlotAvailable && lastSlotAvailable && putLast();
+      const usedSingleSlot = singleSlotAvailable || lastSlotAvailable;
+      if (usedSingleSlot) return { ok: true };
+      // 2）multi_image：往 referenceImages 追加
+      const isMulti = pickerMode === 'multi_image';
+      const duplicate = referenceImages.some((r) => r.sourceNodeId === sourceNodeId && r.refType === 'image');
+      const reached = imageRefCount >= maxRefImages;
+      const canAddMulti = isMulti && !duplicate && !reached;
+      canAddMulti && (() => {
+        setReferenceImages((prev) => [...prev, { url, name: label, refType: 'image' as RefType, sourceNodeId }]);
+        inputRef.current?.insertTag(imageRefCount + 1, label, 'image');
+      })();
+      if (canAddMulti) return { ok: true };
+      const failReason: ExternalRejectReason = !isMulti ? 'no_slot' : duplicate ? 'duplicate' : 'limit';
+      void tag;
+      return { ok: false, reason: failReason };
+    },
+    [pickerMode, imageUrl, lastFrameImageUrl, referenceImages, imageRefCount, maxRefImages],
+  );
+
+  /** 由上游 video 节点注入一个视频参考 */
+  const addVideoExternal = useCallback(
+    (sourceNodeId: string, url: string, name?: string): ExternalResult => {
+      const label = name || sourceNodeId.slice(0, 8);
+      // 1）video pickerMode（edit / video_extension）：填延展视频
+      const videoSlotAvailable = pickerMode === 'video' && !extensionVideoUrl;
+      videoSlotAvailable && (() => {
+        setExtensionVideoUrl(url);
+        extensionVideoNodeIdRef.current = sourceNodeId;
+      })();
+      if (videoSlotAvailable) return { ok: true };
+      // 2）multi_image：追加为 video 参考
+      const isMulti = pickerMode === 'multi_image';
+      const canAddVideoMulti = isMulti && supportsRefVideos;
+      const duplicate = referenceImages.some((r) => r.sourceNodeId === sourceNodeId && r.refType === 'video');
+      const reached = videoRefCount >= maxRefVideos;
+      const canAdd = canAddVideoMulti && !duplicate && !reached;
+      canAdd && (() => {
+        setReferenceImages((prev) => [...prev, { url, name: label, refType: 'video' as RefType, sourceNodeId }]);
+        inputRef.current?.insertTag(videoRefCount + 1, label, 'video');
+      })();
+      if (canAdd) return { ok: true };
+      const failReason: ExternalRejectReason = !canAddVideoMulti ? 'no_slot' : duplicate ? 'duplicate' : 'limit';
+      return { ok: false, reason: failReason };
+    },
+    [pickerMode, extensionVideoUrl, supportsRefVideos, referenceImages, videoRefCount, maxRefVideos],
+  );
+
+  /** 由上游 audio 节点注入一个音频参考（仅 multi_image 且支持 audio） */
+  const addAudioExternal = useCallback(
+    (sourceNodeId: string, url: string, name?: string): ExternalResult => {
+      const label = name || sourceNodeId.slice(0, 8);
+      const isMulti = pickerMode === 'multi_image';
+      const canAddAudioMulti = isMulti && supportsRefAudios;
+      const duplicate = referenceImages.some((r) => r.sourceNodeId === sourceNodeId && r.refType === 'audio');
+      const reached = audioRefCount >= maxRefAudios;
+      const canAdd = canAddAudioMulti && !duplicate && !reached;
+      canAdd && (() => {
+        setReferenceImages((prev) => [...prev, { url, name: label, refType: 'audio' as RefType, sourceNodeId }]);
+        inputRef.current?.insertTag(audioRefCount + 1, label, 'audio');
+      })();
+      if (canAdd) return { ok: true };
+      const failReason: ExternalRejectReason = !canAddAudioMulti ? 'no_slot' : duplicate ? 'duplicate' : 'limit';
+      return { ok: false, reason: failReason };
+    },
+    [pickerMode, supportsRefAudios, referenceImages, audioRefCount, maxRefAudios],
+  );
+
+  /**
+   * 智能注入：一次性切换 videoMode 并填入图像参考，跳过 mode 切换的自动清空副作用。
+   * - targetMode = 'image_to_video'：填第一张到首帧槽（imageUrl）
+   * - targetMode = 'reference_images'：按 maxRefImages 截断填入 referenceImages
+   */
+  const applySmartInject = useCallback(
+    (
+      targetMode: 'image_to_video' | 'reference_images',
+      items: { url: string; name: string; sourceNodeId: string }[],
+    ) => {
+      // 1) 先清理旧连线
+      unlinkAll();
+      const modeWillChange = targetMode !== videoMode;
+      modeWillChange && (skipNextClearRef.current = true);
+      setVideoMode(targetMode);
+      // 2) 重置所有槽位
+      setImageUrl('');
+      setLastFrameImageUrl('');
+      setExtensionVideoUrl('');
+      setReferenceImages([]);
+      // 3) image_to_video：取第一张填首帧
+      const i2v = targetMode === 'image_to_video';
+      const firstItem = items[0];
+      i2v && firstItem && (() => {
+        setImageUrl(firstItem.url);
+        imageNodeIdRef.current = firstItem.sourceNodeId;
+        firstItem.sourceNodeId && onLinkNode?.(firstItem.sourceNodeId);
+      })();
+      if (i2v) {
+        return { appliedCount: firstItem ? 1 : 0, droppedCount: Math.max(0, items.length - 1) };
+      }
+      // 4) reference_images：按上限截断填入
+      const limit = maxRefImages;
+      const truncated = items.slice(0, limit);
+      const nextRefs: RefImage[] = truncated.map((it) => ({
+        url: it.url,
+        name: it.name,
+        refType: 'image' as RefType,
+        sourceNodeId: it.sourceNodeId,
+      }));
+      setReferenceImages(nextRefs);
+      truncated.forEach((it) => it.sourceNodeId && onLinkNode?.(it.sourceNodeId));
+      // 延后插入 prompt tag（等待 setState 射出后的 DOM 就绪）
+      setTimeout(() => {
+        truncated.forEach((it, idx) => inputRef.current?.insertTag(idx + 1, it.name, 'image'));
+      }, 0);
+      return { appliedCount: truncated.length, droppedCount: Math.max(0, items.length - limit) };
+    },
+    [videoMode, maxRefImages, onLinkNode, setVideoMode],
+  );
+
   return {
     // 状态
     imageUrl,
@@ -331,6 +476,11 @@ export function useVideoPanelReferences({
     clearFirstLastFrames,
     clearLastFrame,
     clearExtensionVideo,
+    // 外部注入
+    addImageExternal,
+    addVideoExternal,
+    addAudioExternal,
+    applySmartInject,
   };
 }
 

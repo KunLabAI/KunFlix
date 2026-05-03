@@ -12,6 +12,7 @@ import {
   Trash2,
   Check,
   Loader2,
+  Download,
 } from 'lucide-react';
 import type { AnnotationStateApi, AnnotationTool } from '@/hooks/useAnnotationState';
 
@@ -22,6 +23,7 @@ interface Props {
   saveDisabledReason?: string | null;
   onSave: () => void;
   onCancel: () => void;
+  onDownload?: () => void;
 }
 
 const TOOL_ICON: Record<AnnotationTool, React.ComponentType<{ className?: string }>> = {
@@ -33,7 +35,7 @@ const TOOL_ICON: Record<AnnotationTool, React.ComponentType<{ className?: string
 /**
  * 标注工具栏：模式切换 / 颜色 / 笔触粗细 / 字号 / 撤销重做 / 清空 / 保存。
  */
-export function AnnotationToolbar({ api, isSaving, canSave, saveDisabledReason, onSave, onCancel }: Props) {
+export function AnnotationToolbar({ api, isSaving, canSave, saveDisabledReason, onSave, onCancel, onDownload }: Props) {
   const { t } = useTranslation();
   const tools: AnnotationTool[] = ['pen', 'text', 'eraser'];
 
@@ -153,6 +155,15 @@ export function AnnotationToolbar({ api, isSaving, canSave, saveDisabledReason, 
       <div className="w-px h-6 bg-white/20" />
 
       {/* Actions */}
+      {onDownload && (
+        <button
+          className="w-8 h-8 flex items-center justify-center rounded text-white/70 hover:bg-white/10"
+          onClick={onDownload}
+          title={t('canvas.node.preview.download')}
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      )}
       <Button
         variant="ghost"
         size="sm"

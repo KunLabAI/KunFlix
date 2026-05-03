@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import TheaterNode, TheaterEdge
 from services.tool_manager.context import ToolContext
+from services.tool_manager.providers._canvas_edge_rules import validate_edge
 
 logger = logging.getLogger(__name__)
 
@@ -263,8 +264,10 @@ def _json_result(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, default=str)
 
 
-def _error_result(message: str) -> str:
-    return _json_result({"error": message})
+def _error_result(message: str, code: str | None = None) -> str:
+    payload: dict[str, Any] = {"error": message}
+    code and payload.update({"code": code})
+    return _json_result(payload)
 
 
 def _node_summary(node: TheaterNode) -> dict:
@@ -597,25 +600,42 @@ async def _exec_create_edge(
     target_node = target_result.scalar_one_or_none()
 
     if not source_node:
-        return _error_result(f"Source node not found: {source_node_id}")
+        return _error_result(f"Source node not found: {source_node_id}", code="source_not_found")
     if not target_node:
-        return _error_result(f"Target node not found: {target_node_id}")
+        return _error_result(f"Target node not found: {target_node_id}", code="target_not_found")
 
     if migrated_target_types:
         if source_node.node_type not in migrated_target_types:
-            return _error_result(f"Cannot connect from node of type '{source_node.node_type}'")
+            return _error_result(f"Cannot connect from node of type '{source_node.node_type}'", code="target_type_scope")
         if target_node.node_type not in migrated_target_types:
-            return _error_result(f"Cannot connect to node of type '{target_node.node_type}'")
+            return _error_result(f"Cannot connect to node of type '{target_node.node_type}'", code="target_type_scope")
 
-    # 检查是否已存在相同连线
-    existing_query = select(TheaterEdge).where(
-        TheaterEdge.theater_id == theater_id,
-        TheaterEdge.source_node_id == source_node_id,
-        TheaterEdge.target_node_id == target_node_id,
+    # 拉取当前剧场所有边，用于四元组去重与拓扑环检测
+    all_edges_q = select(TheaterEdge).where(TheaterEdge.theater_id == theater_id)
+    all_edges_r = await db.execute(all_edges_q)
+    existing_edges = [
+        {
+            "source_node_id": e.source_node_id,
+            "target_node_id": e.target_node_id,
+            "source_handle": e.source_handle,
+            "target_handle": e.target_handle,
+        }
+        for e in all_edges_r.scalars().all()
+    ]
+
+    validation = validate_edge(
+        source_id=source_node_id,
+        target_id=target_node_id,
+        source_type=source_node.node_type,
+        target_type=target_node.node_type,
+        source_handle=source_handle or None,
+        target_handle=target_handle or None,
+        existing_edges=existing_edges,
     )
-    existing_result = await db.execute(existing_query)
-    if existing_result.scalar_one_or_none():
-        return _error_result("Edge already exists between these nodes")
+    if not validation.get("ok"):
+        reason = validation.get("reason") or "unknown_type"
+        message = validation.get("message") or "Edge validation failed"
+        return _error_result(message, code=reason)
 
     # 创建连线
     edge = TheaterEdge(
