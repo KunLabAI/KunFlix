@@ -57,29 +57,28 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
 
   const [showConfig, setShowConfig] = useState(false);
 
-  // 智能图像注入 handler（提出以便订阅 + pending drain 共用）
+  // 图像节点连线到图像节点的注入处理：
+  // 设计原则：连线 == 「源节点加入参考图列表」，**不**主动切换生成模式，由用户手动选择。
+  // - 源节点可能有多张图，这里只取第一张作为该源对应的参考图（一个源节点 → 一个参考图条目）。
+  // - 当前模式不接受参考图（text_to_image 容量=0）或已达上限时，toast 提示用户切模式
+  //   （用户切到 edit/reference_images 后，useImagePanelReferences 的 mode-change effect 会
+  //   从已有的 incoming edges 自动回填参考图）。
   const handleSmartImageInject = useCallback(
     (event: { sourceNodeId: string; urls: string[]; name?: string }) => {
       const urls = (event.urls || []).filter((u) => typeof u === 'string' && u.length > 0);
       if (urls.length === 0) return;
-      // 1 张 → edit；多张 → reference_images
-      const targetMode = urls.length === 1 ? 'edit' : 'reference_images';
-      const modeLabel = targetMode === 'edit' ? '图像编辑' : '多图参考';
-      const supported = form.visibility.supportedModes.includes(targetMode);
-      if (!supported) {
-        edgeToast.warn(`当前模型不支持「${modeLabel}」模式，请先手动切换模型`);
-        return;
-      }
-      const baseLabel = event.name || t('canvas.node.image.refItem', '参考图');
-      const items = urls.map((url, i) => ({
-        url,
-        name: urls.length > 1 ? `${baseLabel} ${i + 1}` : baseLabel,
-        sourceNodeId: event.sourceNodeId,
-      }));
-      const { appliedCount, droppedCount } = refs.applySmartInject(targetMode, items);
-      droppedCount > 0 && edgeToast.info(`已截断为前 ${appliedCount} 张（「${modeLabel}」模式上限）`);
+      const url = urls[0];
+      const name = event.name || t('canvas.node.image.refItem', '参考图');
+      const result = refs.addRefExternal(event.sourceNodeId, url, name);
+      // duplicate 静默（重复连线等常见无害场景）；limit 时给出可操作提示
+      result.ok === false && result.reason === 'limit' && edgeToast.warn(
+        t(
+          'canvas.node.image.refLimitReached',
+          '当前模式不接受更多参考图，请切换到「图像编辑」或「多图参考」模式',
+        ),
+      );
     },
-    [form.visibility.supportedModes, refs, t],
+    [refs, t],
   );
 
   // 订阅由上游连线触发的面板注入事件

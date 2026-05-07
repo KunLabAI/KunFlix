@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import {
   IMAGE_MODE_MAX_REFS,
   type ImageMode,
 } from '@/hooks/useImageGeneration';
-import { selectNodesByUpdatedDesc, type CanvasNode, type CharacterNodeData } from '@/store/useCanvasStore';
+import { selectNodesByUpdatedDesc, useCanvasStore, type CanvasNode, type CharacterNodeData } from '@/store/useCanvasStore';
 import { getImageNodeUrl } from '@/components/canvas/ImageGeneratePanel/utils';
 import type { ImageRef, ImagePanelModeRequest } from '@/components/canvas/ImageGeneratePanel/types';
 
@@ -22,9 +23,11 @@ interface Options {
 
 /**
  * 参考图状态管理：
- * - 受控 referenceImages 数组
- * - mode 切换时清空并解除连线
- * - 响应外部 modeRequest（token 驱动）
+ * - 受控 referenceImages 数组（面板 UI 层）
+ * - mode 切换时：仅按新容量截断 UI 列表；容量变大时从已连线的上游图像节点自动回填。
+ *   连线（edges）== 节点间的拓扑关系；参考图 == 当前模式下的 UI 展示。二者解耦，
+ *   模式切换不会删除连线（规避「切模式导致连线丢失」的 bug）。
+ * - 响应外部 modeRequest（token 驱动，快捷模式按钮）
  * - 筛选可选的画布节点（按 updatedAt 倒序）
  */
 export function useImagePanelReferences({
@@ -41,18 +44,51 @@ export function useImagePanelReferences({
   const [referenceImages, setReferenceImages] = useState<ImageRef[]>([]);
   const maxRefs = IMAGE_MODE_MAX_REFS[mode] || 0;
 
-  // mode 切换时：清空参考图并解除已建立的连线
+  // 订阅 incoming edges 的 source 节点 id（仅依赖图像节点间的拓扑）
+  // 连线 ≠ 参考图展示：连线是节点间的数据流拓扑，生成模式只决定 UI 如何展示这些来源。
+  // 性能：用 useShallow 浅比较结果数组，仅当 incoming source id 列表实际变化才触发重渲染（
+  // 拖动节点/其他变更导致 edges 引用波动时不会重新渲染所有已挂载的面板）。
+  const incomingSourceIds = useCanvasStore(
+    useShallow((s) => (nodeId ? s.edges.filter((e) => e.target === nodeId).map((e) => e.source) : [])),
+  );
+
+  // mode 切换时：
+  // - 仅按新 mode 容量「截断」面板 UI 层的参考图列表；不再删除底层连线
+  //   （连线代表「节点已关联」，不应随 edit/reference_images/text_to_image 的容量变化而破坏拓扑）
+  // - 若容量变大且存在已连线但未展示的源节点，按 incoming 顺序自动回填，保证 UX 连续性
+  // - 切换到 text_to_image（容量=0）时面板不显示任何参考图，但连线保留
   const prevModeRef = useRef<ImageMode>(mode);
-  // 智能注入：标记下一次 mode 切换 effect 跳过清空副作用
+  // 智能注入：标记下一次 mode 切换 effect 跳过副作用（applySmartInject 已自行处理）
   const skipNextClearRef = useRef(false);
   useEffect(() => {
     const skip = skipNextClearRef.current;
     skip && (skipNextClearRef.current = false);
     skip && (prevModeRef.current = mode);
-    const shouldClear = !skip && prevModeRef.current !== mode;
-    shouldClear && (() => {
-      referenceImages.forEach((r) => r.sourceNodeId !== nodeId && onUnlinkNode?.(r.sourceNodeId));
-      setReferenceImages([]);
+    const shouldAdjust = !skip && prevModeRef.current !== mode;
+    shouldAdjust && (() => {
+      const limit = IMAGE_MODE_MAX_REFS[mode] || 0;
+      const truncated = referenceImages.slice(0, limit);
+      // 自动回填：从已连线的上游图像节点中选取尚未出现在参考图中的源，补齐到容量上限
+      const existing = new Set(truncated.map((r) => r.sourceNodeId));
+      const filled: ImageRef[] = [];
+      incomingSourceIds.forEach((sid) => {
+        const canFill = filled.length + truncated.length < limit
+          && !existing.has(sid)
+          && sid !== nodeId;
+        canFill && (() => {
+          const src = canvasNodes.find((n) => n.id === sid);
+          const url = src ? getImageNodeUrl(src) : null;
+          url && (() => {
+            const data = (src as CanvasNode).data as CharacterNodeData;
+            const name = data.name || t('canvas.node.image.refItem', '参考图');
+            filled.push({ url, name, sourceNodeId: sid });
+          })();
+        })();
+      });
+      const next = [...truncated, ...filled];
+      const changed = next.length !== referenceImages.length
+        || next.some((r, i) => r.sourceNodeId !== referenceImages[i]?.sourceNodeId);
+      changed && setReferenceImages(next);
       prevModeRef.current = mode;
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

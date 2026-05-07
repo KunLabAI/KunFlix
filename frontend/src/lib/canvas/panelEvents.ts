@@ -50,14 +50,16 @@ export interface AddReferenceAudioEvent {
 }
 
 /**
- * 注入事件：智能图像注入 —— 由图像源节点连入图像/视频面板时派发。
+ * 注入事件：图像源节点连线注入 —— 由图像源节点连入图像面板 / 视频面板时派发。
  *
- * 面板依据 `urls.length` 决定目标模式：
- * - 1 张 → 图像：edit；视频：image_to_video
- * - N 张 → 图像：reference_images；视频：reference_images
+ * 面板处理策略（因面板而异）：
+ * - ImageGeneratePanel：**不**切换生成模式，仅将源节点追加到参考图列表（取 urls[0]）。
+ *   若当前模式不接受参考图（text_to_image）或已达上限，toast 提示用户切模式。
+ *   模式切换由用户手动完成，切后会从已有 incoming edges 自动回填。
+ * - VideoGeneratePanel：依据 urls.length 自选视频相关模式（1张 → image_to_video，N张 → reference_images）。
  *
- * 若当前模型不支持该模式，面板仅弹出警告 Toast（不自动换模型）。
- * 若超过当前模式上限 N，截断前 N 张并提示。
+ * pending 机制：QuickAdd 新建节点时面板尚未 mount，事件会先写入 pending，
+ * 面板在 capabilities 就绪后 drain 一次。
  */
 export interface SmartImageInjectEvent {
   type: 'smart-image-inject';
