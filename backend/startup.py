@@ -238,7 +238,12 @@ async def _close_external_clients() -> None:
 # Public entrypoint
 # ---------------------------------------------------------------------------
 
-_DEFAULT_JWT_SECRET = "change-me-in-production-use-openssl-rand-hex-32"
+_MIN_JWT_SECRET_LEN = 32
+# 历史占位字符串，迁移期间的及时提示；不再写入 config.py 避免 Secret Scanning 正则命中
+_LEGACY_JWT_PLACEHOLDERS = frozenset({
+    "change-me-in-production-use-openssl-rand-hex-32",
+    "CHANGE_ME_OPENSSL_RAND_HEX_32",
+})
 
 
 def _is_production_like() -> bool:
@@ -254,14 +259,41 @@ def _is_production_like() -> bool:
 
 
 def _validate_production_secrets() -> None:
-    """生产类似环境下拒绝默认 JWT_SECRET_KEY。本地开发静默放行。"""
-    if not _is_production_like():
-        return
-    if (settings.JWT_SECRET_KEY or "").strip() == _DEFAULT_JWT_SECRET:
+    """JWT_SECRET_KEY 硬化校验：
+    - 生产类似环境：空 / 占位符 / 长度 < 32 均 fail-fast
+    - 本地开发：空值时生成进程内随机密钥并 warn，保证零配置可启动
+    """
+    current = (settings.JWT_SECRET_KEY or "").strip()
+    prod = _is_production_like()
+
+    is_missing = not current
+    is_placeholder = current in _LEGACY_JWT_PLACEHOLDERS
+    is_too_short = bool(current) and len(current) < _MIN_JWT_SECRET_LEN
+
+    fail_reasons = {
+        is_missing: "JWT_SECRET_KEY is empty",
+        is_placeholder: "JWT_SECRET_KEY is still the default placeholder",
+        is_too_short: f"JWT_SECRET_KEY shorter than {_MIN_JWT_SECRET_LEN} chars",
+    }
+    active_reason = next((msg for bad, msg in fail_reasons.items() if bad), "")
+
+    # 生产无条件拒绝
+    if prod and active_reason:
         raise RuntimeError(
-            "JWT_SECRET_KEY is still the default placeholder in a production-like environment. "
+            f"{active_reason} in a production-like environment. "
             "Generate one via `python -c \"import secrets; print(secrets.token_hex(32))\"` "
             "and set JWT_SECRET_KEY in .env.prod before starting."
+        )
+
+    # 开发兼容：空值 / 占位符 → 进程内随机密钥（重启失效，防经典错误）
+    needs_patch = active_reason and not prod
+    if needs_patch:
+        import secrets
+        settings.JWT_SECRET_KEY = secrets.token_hex(32)
+        logger.warning(
+            "%s; generated an ephemeral in-memory JWT_SECRET_KEY for local dev. "
+            "Tokens will be invalidated on restart \u2014 set JWT_SECRET_KEY in .env for persistent sessions.",
+            active_reason,
         )
 
 

@@ -43,8 +43,8 @@ sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
 git clone <your-repo-url> /opt/kunflix
 cd /opt/kunflix/deploy
 cp .env.prod.example .env.prod
-vi .env.prod   # 填写 DOMAIN / CERTBOT_EMAIL / POSTGRES_PASSWORD / JWT_SECRET_KEY /
-               #      ENCRYPTION_KEY / OPENAI_API_KEY
+vi .env.prod   # 填写 DOMAIN / CERTBOT_EMAIL / POSTGRES_PASSWORD / REDIS_PASSWORD /
+               #      JWT_SECRET_KEY / ENCRYPTION_KEY / OPENAI_API_KEY
 
 # 2) 生成加密密钥（示例）
 python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -92,3 +92,19 @@ docker compose --env-file .env.prod exec certbot certbot certificates
 - **媒体文件**：`mediadata` 卷同时挂给 backend（读写）和 nginx（只读直出），节省后端带宽。
 - **证书续期**：`certbot` 容器 12h 轮询 `renew`，webroot 模式不中断服务。
 - **迁移**：`RUN_MIGRATIONS=true` 让 backend 首启时自动 `alembic upgrade head`。
+
+## 安全加固清单（上线前必确认）
+完整策略见 [`SECURITY.md`](../SECURITY.md)，关键项：
+
+- **密码 / 密钥**：`.env.prod` 中所有 `CHANGE_ME_*` 占位符必须替换为强随机值
+  - `JWT_SECRET_KEY`：`openssl rand -hex 32`（小于 32 字符或留占位符时，backend 启动直接 fail-fast）
+  - `REDIS_PASSWORD`：`openssl rand -base64 32`（compose 以 `--requirepass` 注入 Redis）
+  - `POSTGRES_PASSWORD`：高强度随机密码
+  - `ENCRYPTION_KEY`：`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+- **容器运行时**：`backend/frontend/admin/nginx` 已启用 `no-new-privileges:true` + `cap_drop: ALL`（Nginx 保留 `NET_BIND_SERVICE` 绑定 80/443）
+- **资源限额**：backend 1C/1G，frontend/admin 0.5C/512M，nginx 0.5C/256M，避免单容器耗尽宿主
+- **边缘限流**：Nginx `limit_req_zone` + `limit_conn_zone`：`/api/auth/` 5r/s、`/api/` 30r/s，与 FastAPI slowapi 双层防护
+- **响应头**：HSTS / CSP / X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Permissions-Policy / COOP 均由 Nginx 统一下发
+- **端口暴露**：仅 80/443 对公网开放；`postgres:5432`、`redis:6379` 仅在 `kunflix_net` Docker 桥接网内联通
+- **依赖安全**：`.github/dependabot.yml` 每周扫描 pip/npm/docker；`.github/workflows/codeql.yml` 静态分析 Python+TS
+

@@ -12,20 +12,30 @@ export const ADMIN_USER_KEY = "admin_user";
 export const ADMIN_REFRESH_LOCK_KEY = "admin_auth:refresh:lock";
 export const ADMIN_REFRESH_CHANNEL = "kunflix_admin_auth_refresh";
 
+// 注意：access_token / refresh_token / user 这三个 key 也是【主前端】在用的活跃 key。
+// 所以迁移函数绝对不能删除它们，否则会把主前端的会话清掉。
 const LEGACY_KEYS = ["access_token", "refresh_token", "user"] as const;
 const NEW_KEYS = [ADMIN_TOKEN_KEY, ADMIN_REFRESH_KEY, ADMIN_USER_KEY] as const;
+const MIGRATION_FLAG_KEY = "admin_legacy_migrated";
 
-/** 一次性迁移：若旧 key 存在且新 key 不存在，搬过来；随后清理旧 key，防止主站覆盖。 */
+/**
+ * 一次性迁移：仅当新 admin_* key 为空且旧 key 存在时，把值复制一份到新 key。
+ * - 绝不删除旧 key（主前端仍在使用）
+ * - 通过 MIGRATION_FLAG_KEY 确保只运行一次，避免反复覆盖
+ * - 对非 admin 用户：即使复制过去，/admin/auth/me 会判定 token 无效并跳登录，无副作用
+ */
 export function migrateLegacyAdminKeys(): void {
   if (typeof window === "undefined") return;
+  if (localStorage.getItem(MIGRATION_FLAG_KEY) === "1") return;
+
   LEGACY_KEYS.forEach((legacy, idx) => {
     const legacyVal = localStorage.getItem(legacy);
     const newKey = NEW_KEYS[idx];
     const newVal = localStorage.getItem(newKey);
     legacyVal && !newVal && localStorage.setItem(newKey, legacyVal);
-    // 无论是否已迁移，都清掉旧 key，避免主站登录覆盖
-    legacyVal && localStorage.removeItem(legacy);
   });
+
+  localStorage.setItem(MIGRATION_FLAG_KEY, "1");
 }
 
 export function clearAdminSession(): void {

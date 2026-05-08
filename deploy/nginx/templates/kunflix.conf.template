@@ -36,6 +36,13 @@ server {
     add_header X-Content-Type-Options    "nosniff" always;
     add_header X-Frame-Options           "SAMEORIGIN" always;
     add_header Referrer-Policy           "strict-origin-when-cross-origin" always;
+    # Permissions-Policy：禁用未使用的敏感设备接口，缩小攻击面
+    add_header Permissions-Policy        "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), interest-cohort=()" always;
+    # Cross-Origin-Opener-Policy：隔离主页面的浏览器上下文，缓解 Spectre 类侧信道
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    # CSP：Next.js 运行时需要 inline script/style；wss:/ws: 保障 SSE 和 WebSocket
+    # 如后续接入第三方 CDN（如 Google Fonts / Sentry），在对应 *-src 中追加域名
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https: wss: ws:; media-src 'self' blob: https:; worker-src 'self' blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
 
     client_max_body_size 500m;
 
@@ -50,9 +57,31 @@ server {
     }
 
     # -------------------------------------------------------------------------
+    # /api/auth/  —— 鉴权端点：严格速率限制（防暴破 / 撞库）
+    # 必须写在更宽泛的 /api/ 之前，nginx prefix 匹配优先级：最长前缀胜出
+    # -------------------------------------------------------------------------
+    location /api/auth/ {
+        limit_req  zone=api_auth burst=10 nodelay;
+        limit_conn per_ip_conn 20;
+    
+        proxy_pass         http://backend:8000/api/auth/;
+        proxy_http_version 1.1;
+    
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+    }
+    
+    # -------------------------------------------------------------------------
     # /api/*  —— FastAPI 后端（WebSocket / SSE 长连接）
     # -------------------------------------------------------------------------
     location /api/ {
+        # 边缘限流：与 FastAPI slowapi 双层防护；突发允许小量 burst
+        limit_req  zone=api_general burst=60 nodelay;
+        limit_conn per_ip_conn 50;
+    
         proxy_pass         http://backend:8000/api/;
         proxy_http_version 1.1;
 
