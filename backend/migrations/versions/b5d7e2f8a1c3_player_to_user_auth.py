@@ -67,7 +67,7 @@ def upgrade() -> None:
                 username,
                 :placeholder_hash,
                 'user',
-                1,
+                TRUE,
                 0, 0, 0, 0,
                 current_chapter, personality_profile, inventory, relationships,
                 created_at
@@ -85,7 +85,7 @@ def upgrade() -> None:
                 total_input_tokens, total_output_tokens, total_input_chars, total_output_chars,
                 current_chapter, created_at
             ) VALUES (
-                :id, :email, :nickname, :password_hash, 'admin', 1,
+                :id, :email, :nickname, :password_hash, 'admin', TRUE,
                 0, 0, 0, 0, 1, CURRENT_TIMESTAMP
             )
         """).bindparams(
