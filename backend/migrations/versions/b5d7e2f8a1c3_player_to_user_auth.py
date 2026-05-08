@@ -113,7 +113,15 @@ def upgrade() -> None:
             batch_op.create_index('ix_chat_sessions_user_id', ['user_id'])
 
     # 7. Drop players table
-    op.drop_table('players')
+    # 注：在 PostgreSQL 下，story_chapters 上的 player_id_fkey 外键约束不会因列
+    # 改名（第 4 步）自动消失，drop_table 会因依赖报错。用 CASCADE 连带移除
+    # 残留外键约束；SQLite 方言 batch_alter_table 已整表重建，直接 drop 即可。
+    bind = op.get_bind()
+    dialect_name = bind.dialect.name if bind is not None else ''
+    _drop_players = {
+        'postgresql': lambda: op.execute('DROP TABLE players CASCADE'),
+    }
+    _drop_players.get(dialect_name, lambda: op.drop_table('players'))()
 
 
 def downgrade() -> None:
