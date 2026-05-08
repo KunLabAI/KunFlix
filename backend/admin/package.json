@@ -40,7 +40,7 @@
     "react": "^19.2.4",
     "react-day-picker": "^9.13.2",
     "react-dom": "^19.2.4",
-    "react-hook-form": "^7.71.1",
+    "react-hook-form": "^7.75.0",
     "react-i18next": "^17.0.2",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
