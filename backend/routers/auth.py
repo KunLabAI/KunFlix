@@ -18,7 +18,8 @@ from auth import (
     get_current_active_user,
     oauth2_scheme,
 )
-from auth_revocation import revoke as revoke_jti
+from auth_revocation import revoke as revoke_jti, is_revoked
+from auth_rotation import try_set_rotated, get_rotated
 from services import audit
 from ratelimit import limiter, ip_limiter
 from config import settings
@@ -146,16 +147,32 @@ async def refresh(
 ):
     """Exchange a refresh token for a new access token.
 
-    旧 refresh token 一次性轮换：成功换发后将旧 jti 加入黑名单，防止重放。
+    一次性轮换 + 5 秒幂等窗口：
+    - 首次成功：生成新 access/refresh，写入 rotation 缓存，将旧 jti 加入黑名单
+    - 窗口内并发重放（多页签并发刷新）：返回同一套新 token，避免跨页签互相踢下线
+    - 窗口外重放：旧 jti 已进黑名单，直接 401
     """
-    # 使用 decode_token_checked：若旧 refresh 已被撤销（例如某次轮换后重放）直接 401
-    from auth import decode_token_checked  # 局部导入避免循环
-    payload = await decode_token_checked(body.refresh_token)
+    payload = decode_token(body.refresh_token)
 
     if payload.get("type") != "refresh":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",
+        )
+
+    jti = payload.get("jti")
+
+    # 幂等快路径：5 秒窗口内已轮换过则直接返回
+    cached = await get_rotated(jti)
+    if cached:
+        return AccessTokenResponse(**cached)
+
+    # 黑名单校验：窗口外重放直接拒绝
+    if await is_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     user_id = payload.get("sub")
@@ -167,21 +184,29 @@ async def refresh(
             detail="User not found or disabled",
         )
 
-    # 刷新 token 时也更新活跃时间，确保已登录用户被统计为活跃
+    # 刷新时也更新活跃时间，确保已登录用户被统计为活跃
     user.last_login_at = datetime.now(timezone.utc)
     await db.commit()
 
-    # 旧 refresh token 入黑名单（一次性轮换）
-    await revoke_jti(payload.get("jti"), _remaining_ttl(payload))
-
-    # 同步颁发新的 refresh_token，避免前端持有被拉黑的旧 token 导致二次刷新失败
     access_token = create_access_token(user.id, user.role)
     new_refresh_token = create_refresh_token(user.id)
-    return AccessTokenResponse(
-        access_token=access_token,
-        refresh_token=new_refresh_token,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    response_payload = {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
+
+    # NX 写入幂等缓存：赢家继续 revoke；输家读回赢家结果
+    won = await try_set_rotated(jti, response_payload)
+    if not won:
+        cached = await get_rotated(jti)
+        if cached:
+            return AccessTokenResponse(**cached)
+
+    # 旧 refresh token 入黑名单（一次性轮换）
+    await revoke_jti(jti, _remaining_ttl(payload))
+
+    return AccessTokenResponse(**response_payload)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

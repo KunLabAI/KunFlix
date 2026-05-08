@@ -1,4 +1,12 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import {
+  ADMIN_TOKEN_KEY,
+  ADMIN_REFRESH_KEY,
+  ADMIN_REFRESH_LOCK_KEY,
+  ADMIN_REFRESH_CHANNEL,
+  clearAdminSession,
+} from '@/lib/authStorage';
+import { createTokenRefresh } from '@/lib/tokenRefresh';
 
 // 生产部署走同源 Nginx 反向代理：浏览器请求 /api/* 由 Nginx 转发到 backend:8000
 // 开发环境可通过 NEXT_PUBLIC_API_URL 指向本地后端；未设置时走相对路径 /api
@@ -11,95 +19,68 @@ const api = axios.create({
   },
 });
 
+// 只有这三个端点不触发自动刷新；注意必须放行 /admin/auth/me，否则初始校验失败会直接登出
+const NO_REFRESH_PATHS = ['/admin/auth/login', '/admin/auth/refresh', '/admin/auth/logout'];
+
+const redirectToLogin = () => {
+  if (typeof window === 'undefined') return;
+  clearAdminSession();
+  // 避免在 /admin/login 重复跳转造成循环
+  const onLoginPage = window.location.pathname === '/admin/login';
+  onLoginPage || (window.location.href = '/admin/login');
+};
+
+// 跨页签 Token 刷新协调器（admin 专属 key 与 channel）
+export const tokenRefresher = createTokenRefresh({
+  tokenKey: ADMIN_TOKEN_KEY,
+  refreshKey: ADMIN_REFRESH_KEY,
+  lockKey: ADMIN_REFRESH_LOCK_KEY,
+  channelName: ADMIN_REFRESH_CHANNEL,
+  doRefresh: async (refreshToken) => {
+    // 使用裸 axios 避免走响应拦截器造成递归
+    const { data } = await axios.post(`${API_BASE}/admin/auth/refresh`, {
+      refresh_token: refreshToken,
+    });
+    return data;
+  },
+  onRefreshFailure: redirectToLogin,
+});
+
 // Request interceptor: attach Authorization header
 api.interceptors.request.use(
   (config) => {
-    if (typeof window !== "undefined") {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        config.headers.set("Authorization", `Bearer ${token}`);
-      }
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem(ADMIN_TOKEN_KEY);
+      token && config.headers.set('Authorization', `Bearer ${token}`);
     }
     return config;
   },
   (error) => Promise.reject(error),
 );
 
-// Response interceptor: handle 401 with token refresh
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (value: unknown) => void;
-  reject: (reason?: unknown) => void;
-}> = [];
-
-const processQueue = (error: unknown, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (token) {
-      prom.resolve(token);
-    } else {
-      prom.reject(error);
-    }
-  });
-  failedQueue = [];
-};
-
+// Response interceptor: handle 401 with token refresh (cross-tab coordinated)
 api.interceptors.response.use(
   (response) => response,
-  async (error) => {
-    if (typeof window === "undefined") {
-      return Promise.reject(error);
-    }
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    if (typeof window === 'undefined') return Promise.reject(error);
 
-    // Skip refresh for auth endpoints and already-retried requests
-    // Fix: check for /auth/ in the URL to cover /admin/auth/... endpoints
-    const isAuthEndpoint = originalRequest?.url?.includes('/auth/');
-    if (error.response?.status !== 401 || isAuthEndpoint || originalRequest._retry) {
-      return Promise.reject(error);
-    }
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+    if (!originalRequest) return Promise.reject(error);
 
-    // Queue concurrent requests while refreshing
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      }).then((token) => {
-        originalRequest.headers.set("Authorization", `Bearer ${token}`);
-        return api(originalRequest);
-      });
-    }
+    const url = originalRequest.url || '';
+    const isNoRefresh = NO_REFRESH_PATHS.some((p) => url.includes(p));
+    const shouldRefresh =
+      error.response?.status === 401 && !isNoRefresh && !originalRequest._retry;
+    if (!shouldRefresh) return Promise.reject(error);
 
     originalRequest._retry = true;
-    isRefreshing = true;
+    const result = await tokenRefresher.refresh();
+    if (!result.ok) return Promise.reject(error);
 
-    const refreshToken = localStorage.getItem('refresh_token');
-    if (!refreshToken) {
-      isRefreshing = false;
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
-      window.location.href = '/admin/admin/login';
-      return Promise.reject(error);
-    }
-
-    try {
-      const { data } = await axios.post(`${API_BASE}/admin/auth/refresh`, {
-        refresh_token: refreshToken,
-      });
-      const newToken = data.access_token;
-      localStorage.setItem('access_token', newToken);
-      originalRequest.headers.set("Authorization", `Bearer ${newToken}`);
-      processQueue(null, newToken);
-      return api(originalRequest);
-    } catch (refreshError) {
-      processQueue(refreshError, null);
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
-      window.location.href = '/admin/admin/login';
-      return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
-    }
+    originalRequest.headers.set('Authorization', `Bearer ${result.accessToken}`);
+    return api(originalRequest);
   },
 );
 

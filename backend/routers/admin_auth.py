@@ -22,6 +22,8 @@ from auth import (
     decode_token,
     get_current_active_admin,
 )
+from auth_revocation import revoke as revoke_jti, is_revoked
+from auth_rotation import try_set_rotated, get_rotated
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -90,15 +92,24 @@ async def admin_login(
     )
 
 
+def _remaining_ttl(payload: dict) -> int:
+    """根据 payload['exp'] 计算剩余有效秒数（向下取整，最小 0）。"""
+    exp = int(payload.get("exp") or 0)
+    now = int(datetime.now(timezone.utc).timestamp())
+    return max(0, exp - now)
+
+
 @router.post("/refresh", response_model=AccessTokenResponse)
 async def admin_refresh_token(
     body: TokenRefresh,
     db: AsyncSession = Depends(get_db),
 ):
-    """刷新管理员 Access Token"""
+    """刷新管理员 Access Token
+
+    与用户端对齐：一次性轮换 + 5 秒幂等窗口 + 旧 jti 黑名单。
+    """
     payload = decode_token(body.refresh_token)
 
-    # 验证是 refresh token 且是管理员类型
     is_refresh = payload.get("type") == "refresh"
     is_admin_type = payload.get("subject_type") == "admin"
     admin_id = payload.get("sub")
@@ -109,7 +120,21 @@ async def admin_refresh_token(
             detail="Invalid refresh token",
         )
 
-    # 验证管理员存在
+    jti = payload.get("jti")
+
+    # 幂等快路径：5 秒窗口内已轮换过则直接返回
+    cached = await get_rotated(jti)
+    if cached:
+        return AccessTokenResponse(**cached)
+
+    # 黑名单校验：窗口外重放拒绝
+    if await is_revoked(jti):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     result = await db.execute(select(Admin).filter(Admin.id == admin_id))
     admin = result.scalars().first()
 
@@ -120,11 +145,22 @@ async def admin_refresh_token(
         )
 
     new_access_token = create_access_token(admin.id, "admin", subject_type="admin")
+    new_refresh_token = create_refresh_token(admin.id, subject_type="admin")
+    response_payload = {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
 
-    return AccessTokenResponse(
-        access_token=new_access_token,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    won = await try_set_rotated(jti, response_payload)
+    if not won:
+        cached = await get_rotated(jti)
+        if cached:
+            return AccessTokenResponse(**cached)
+
+    await revoke_jti(jti, _remaining_ttl(payload))
+
+    return AccessTokenResponse(**response_payload)
 
 
 @router.get("/me", response_model=AdminResponse)
