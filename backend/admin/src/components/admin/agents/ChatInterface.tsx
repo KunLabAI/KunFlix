@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Plus, Trash2, Bot, User, MoreHorizontal, Loader2, MessageSquare, ChevronDown, ImagePlus, X, Zap, Terminal } from 'lucide-react';
 import useSWR, { mutate } from 'swr';
-import api from '@/lib/axios';
+import api, { tokenRefresher } from '@/lib/axios';
+import { ADMIN_TOKEN_KEY } from '@/lib/authStorage';
 import { fetcher } from '@/lib/api-utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -224,20 +225,12 @@ export default function ChatInterface({ agentId }: ChatInterfaceProps) {
         })
       });
 
-      let response = await doFetch(localStorage.getItem('access_token'));
+      let response = await doFetch(localStorage.getItem(ADMIN_TOKEN_KEY));
 
-      // Token expired → refresh and retry once
+      // Token expired → 通过跨页签协调器刷新，避免并发拉黑
       if (response.status === 401) {
-        const refreshToken = localStorage.getItem('refresh_token');
-        const refreshRes = refreshToken && await fetch(`${baseURL}/admin/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        const refreshOk = refreshRes && refreshRes.ok;
-        const newToken = refreshOk ? (await refreshRes.json()).access_token : null;
-        newToken && localStorage.setItem('access_token', newToken);
-        response = newToken ? await doFetch(newToken) : response;
+        const result = await tokenRefresher.refresh();
+        response = result.ok ? await doFetch(result.accessToken) : response;
       }
 
       if (!response.ok) throw new Error(response.statusText);

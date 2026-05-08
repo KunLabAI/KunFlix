@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createTokenRefresh } from "./tokenRefresh";
 
 const api = axios.create({
   baseURL: "/api",
@@ -16,16 +17,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 with token refresh (with request queuing)
-let isRefreshing = false;
-let failedQueue: Array<{
-  resolve: (v: unknown) => void;
-  reject: (r?: unknown) => void;
-}> = [];
+// 跨页签刷新协调器：避免多页签并发刷新导致的旧 refresh_token 入黑名单后互相踢下线
+export const tokenRefresher = createTokenRefresh({
+  tokenKey: "access_token",
+  refreshKey: "refresh_token",
+  lockKey: "auth:refresh:lock",
+  channelName: "kunflix_auth_refresh",
+  doRefresh: async (refreshToken) => {
+    const { data } = await axios.post("/api/auth/refresh", {
+      refresh_token: refreshToken,
+    });
+    return data;
+  },
+  onRefreshFailure: () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
+  },
+});
 
-const processQueue = (err: unknown, token: string | null = null) => {
-  failedQueue.forEach((p) => (token ? p.resolve(token) : p.reject(err)));
-  failedQueue = [];
+// 仅以下 auth 端点不走自动刷新；/auth/me 等仍需要刷新流程
+const NO_REFRESH_AUTH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout", "/auth/register"];
+
+const isNoRefreshAuth = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return NO_REFRESH_AUTH_PATHS.some((p) => url.includes(p));
 };
 
 api.interceptors.response.use(
@@ -35,50 +52,20 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
     const original = error.config;
-    const isAuthRoute = original?.url?.startsWith("/auth/");
 
-    if (error.response?.status !== 401 || isAuthRoute || original._retry) {
+    if (error.response?.status !== 401 || isNoRefreshAuth(original?.url) || original?._retry) {
       return Promise.reject(error);
-    }
-
-    if (isRefreshing) {
-      return new Promise((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      }).then((token) => {
-        original.headers.set("Authorization", `Bearer ${token}`);
-        return api(original);
-      });
     }
 
     original._retry = true;
-    isRefreshing = true;
-
-    const refreshToken = localStorage.getItem("refresh_token");
-    if (!refreshToken) {
-      isRefreshing = false;
-      localStorage.clear();
+    const result = await tokenRefresher.refresh();
+    if (!result.ok) {
+      // 最终失败：跳转登录
       window.location.href = "/login";
       return Promise.reject(error);
     }
-
-    try {
-      const { data } = await axios.post("/api/auth/refresh", {
-        refresh_token: refreshToken,
-      });
-      localStorage.setItem("access_token", data.access_token);
-      // 后端采用一次性轮换：必须同步写回新的 refresh_token，否则下次刷新必挂
-      data.refresh_token && localStorage.setItem("refresh_token", data.refresh_token);
-      original.headers.set("Authorization", `Bearer ${data.access_token}`);
-      processQueue(null, data.access_token);
-      return api(original);
-    } catch (refreshErr) {
-      processQueue(refreshErr, null);
-      localStorage.clear();
-      window.location.href = "/login";
-      return Promise.reject(refreshErr);
-    } finally {
-      isRefreshing = false;
-    }
+    original.headers.set("Authorization", `Bearer ${result.accessToken}`);
+    return api(original);
   }
 );
 

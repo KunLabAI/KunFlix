@@ -238,8 +238,36 @@ async def _close_external_clients() -> None:
 # Public entrypoint
 # ---------------------------------------------------------------------------
 
+_DEFAULT_JWT_SECRET = "change-me-in-production-use-openssl-rand-hex-32"
+
+
+def _is_production_like() -> bool:
+    """根据运行环境特征判断是否为生产类似环境（映射表无 if-else）。"""
+    url = (settings.DATABASE_URL or "").lower()
+    signals = {
+        settings.RUN_MIGRATIONS: True,
+        url.startswith("postgresql"): True,
+        url.startswith("postgres"): True,
+        os.environ.get("ENVIRONMENT", "").lower() == "production": True,
+    }
+    return True in signals
+
+
+def _validate_production_secrets() -> None:
+    """生产类似环境下拒绝默认 JWT_SECRET_KEY。本地开发静默放行。"""
+    if not _is_production_like():
+        return
+    if (settings.JWT_SECRET_KEY or "").strip() == _DEFAULT_JWT_SECRET:
+        raise RuntimeError(
+            "JWT_SECRET_KEY is still the default placeholder in a production-like environment. "
+            "Generate one via `python -c \"import secrets; print(secrets.token_hex(32))\"` "
+            "and set JWT_SECRET_KEY in .env.prod before starting."
+        )
+
+
 async def run_startup() -> None:
     """Execute the full startup sequence."""
+    _validate_production_secrets()
     await _wait_for_database()
     await _MIGRATION_STRATEGY[bool(settings.RUN_MIGRATIONS)]()
     await _load_narrative_engine()

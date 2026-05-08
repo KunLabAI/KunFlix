@@ -8,6 +8,7 @@ import React, {
   useCallback,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { tokenRefresher } from "@/lib/api";
 
 export interface User {
   id: string;
@@ -148,6 +149,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [pathname, router]);
 
+  // 主动续期：access_token 剩余 < 5 分钟时触发刷新（与跨页签锁共用）
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    tokenRefresher.startAutoRefresh();
+    return () => tokenRefresher.stopAutoRefresh();
+  }, [isAuthenticated]);
+
   const login = useCallback(
     (accessToken: string, refreshToken: string, userData: User) => {
       localStorage.setItem("access_token", accessToken);
@@ -177,36 +185,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, []);
 
-  // Token刷新方法：供fetch请求使用
+  // Token刷新方法：统一走跨页签协调器，避免多 tab 并发刷新互相拉黑
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    const storedRefreshToken = localStorage.getItem("refresh_token");
-    if (!storedRefreshToken) {
+    const result = await tokenRefresher.refresh();
+    if (!result.ok) {
       logout();
       return false;
     }
-
-    try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-      const response = await fetch(`${apiBase}/api/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: storedRefreshToken }),
-      });
-
-      if (!response.ok) {
-        logout();
-        return false;
-      }
-
-      const data = await response.json();
-      localStorage.setItem("access_token", data.access_token);
-      // 后端一次性轮换：同步写回新的 refresh_token，避免旧 token 被拉黑后二次刷新失败
-      data.refresh_token && localStorage.setItem("refresh_token", data.refresh_token);
-      return true;
-    } catch {
-      logout();
-      return false;
-    }
+    return true;
   }, [logout]);
 
   return (
