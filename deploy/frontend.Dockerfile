@@ -19,10 +19,12 @@ RUN npm config set registry ${NPM_REGISTRY} \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund \
-    && npm install --no-save --no-audit --no-fund --ignore-scripts \
-        lightningcss-linux-x64-musl \
-        @next/swc-linux-x64-musl
+# Workaround npm#4828: Windows 生成的 package-lock.json 只记录 win32 平台的 optional
+# native 依赖 (@tailwindcss/oxide/lightningcss/@next/swc/sharp...),Alpine 下 npm ci
+# 无法补齐 linux-x64-musl 对应二进制导致 build 崩溃。按 npm 官方提示删除 lock 后改用
+# npm install,让当前平台按 package.json 重新 resolve 出对应的 optional native 依赖。
+RUN rm -f package-lock.json \
+    && npm install --no-audit --no-fund
 
 # ---------- Stage 2: 构建 ----------
 FROM node:22-alpine AS build
