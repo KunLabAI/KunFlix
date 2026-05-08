@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
+// 生产部署走同源 Nginx 反向代理：浏览器请求 /api/* 由 Nginx 转发到 backend:8000
+// 开发环境可通过 NEXT_PUBLIC_API_URL 指向本地后端；未设置时走相对路径 /api
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,

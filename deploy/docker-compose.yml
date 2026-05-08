@@ -1,0 +1,173 @@
+# ============================================================================
+# KunFlix - Docker Compose（单机生产部署 / 2C4G Ubuntu）
+# ----------------------------------------------------------------------------
+# 使用方式：
+#   cd deploy
+#   cp .env.prod.example .env.prod
+#   docker compose --env-file .env.prod up -d --build
+# ============================================================================
+
+name: kunflix
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 —— 主数据库
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: kunflix-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
+      LANG: en_US.utf8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 —— 缓存 / Pub-Sub / SSE Stream / 限流
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: kunflix-redis
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Backend —— FastAPI + uvicorn
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    container_name: kunflix-backend
+    env_file:
+      - .env.prod
+    environment:
+      # 运行时从 compose env 注入 / 覆盖，保证与 postgres/redis 服务名一致
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      CACHE_BACKEND: redis
+      QUEUE_BACKEND: arq
+      QUEUE_REDIS_URL: redis://redis:6379/1
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_BASE_DIR: /app/media
+      RUN_MIGRATIONS: "true"
+      RATE_LIMIT_ENABLED: "true"
+      CIRCUIT_BREAKER_ENABLED: "true"
+      AUDIT_ENABLED: "true"
+      # 生产通过 Nginx 单域名同源访问，保留内部直连来源以兼容调试
+      CORS_ALLOW_ORIGINS: "https://${DOMAIN},http://${DOMAIN}"
+    volumes:
+      - mediadata:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Frontend —— Next.js (port 3666)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ..
+      dockerfile: deploy/frontend.Dockerfile
+    container_name: kunflix-frontend
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Admin Dashboard —— Next.js (port 3888, basePath=/admin)
+  # ---------------------------------------------------------------------------
+  admin:
+    build:
+      context: ..
+      dockerfile: deploy/admin.Dockerfile
+    container_name: kunflix-admin
+    environment:
+      NODE_ENV: production
+      BACKEND_INTERNAL_URL: http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Nginx —— 反向代理 + TLS 终结 + 静态媒体直出
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: kunflix-nginx
+    environment:
+      # nginx 官方镜像的 envsubst 机制：将 templates/*.template 渲染到 conf.d/
+      DOMAIN: ${DOMAIN}
+      NGINX_ENVSUBST_TEMPLATE_SUFFIX: ".template"
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx/conf.d
+      # 仅替换 DOMAIN，nginx 内置变量（$host / $remote_addr 等）保留原样
+      NGINX_ENVSUBST_FILTER: "^DOMAIN$$"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - mediadata:/var/www/media:ro
+      - certbotdata:/etc/letsencrypt:ro
+      - certbotwww:/var/www/certbot:ro
+    depends_on:
+      - frontend
+      - admin
+      - backend
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
+  # Certbot —— Let's Encrypt 证书签发与自动续期
+  # ---------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot:latest
+    container_name: kunflix-certbot
+    volumes:
+      - certbotdata:/etc/letsencrypt
+      - certbotwww:/var/www/certbot
+    # 每 12 小时尝试续期一次；首次签发用 scripts/init-letsencrypt.sh
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+networks:
+  kunflix_net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  mediadata:
+  certbotdata:
+  certbotwww:
