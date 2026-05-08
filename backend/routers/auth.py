@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func as sa_func
+from sqlalchemy import func as sa_func, cast, Date, text
 from user_agents import parse as parse_ua
 
 from auth import (
@@ -275,18 +275,20 @@ async def credits_daily_usage(
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户最近N天的每日积分消耗聚合"""
+    date_col = cast(CreditTransaction.created_at, Date)
+    cutoff = sa_func.current_date() - text(f"INTERVAL '{days} days'")
     result = await db.execute(
         select(
-            sa_func.date(CreditTransaction.created_at).label("date"),
+            date_col.label("date"),
             sa_func.sum(sa_func.abs(CreditTransaction.amount)).label("total"),
         )
         .filter(
             CreditTransaction.user_id == current_user.id,
             CreditTransaction.amount < 0,  # 仅统计消耗
-            CreditTransaction.created_at >= sa_func.date("now", f"-{days} days"),
+            CreditTransaction.created_at >= cutoff,
         )
-        .group_by(sa_func.date(CreditTransaction.created_at))
-        .order_by(sa_func.date(CreditTransaction.created_at))
+        .group_by(date_col)
+        .order_by(date_col)
     )
     rows = result.all()
     return [{"date": str(r.date), "total": round(float(r.total or 0), 2)} for r in rows]
