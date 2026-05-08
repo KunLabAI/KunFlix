@@ -22,6 +22,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: Asia/Shanghai
       LANG: en_US.utf8
+      # PG18+ 要求数据必须位于挂载点的子目录（配合 pg_upgrade --link）
+      # 这里保持历史挂载路径，仅将数据放到 /var/lib/postgresql/data/pgdata 子目录
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
