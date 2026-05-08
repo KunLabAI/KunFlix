@@ -38,7 +38,7 @@
     "@tiptap/extension-typography": "^3.20.4",
     "@tiptap/extension-underline": "^3.20.4",
     "@tiptap/extensions": "^3.20.4",
-    "@tiptap/pm": "^3.20.4",
+    "@tiptap/pm": "^3.22.5",
     "@tiptap/react": "^3.20.4",
     "@tiptap/starter-kit": "^3.20.4",
     "@types/dagre": "^0.7.54",
