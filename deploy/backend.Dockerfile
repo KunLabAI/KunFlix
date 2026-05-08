@@ -34,12 +34,17 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# pip 镜像源（国内服务器默认用清华，外网环境可通过 --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖）
+# pip 镜像源（主：清华；备：阿里云；兜底：PyPI 官方）
+# 清华单源抖动时通过 extra-index 自动回退，避免 "from versions: none" 假象
+# 外网环境可通过 --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+ARG PIP_EXTRA_INDEX_URL="https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple"
+ARG PIP_TRUSTED_HOST="pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com pypi.org files.pythonhosted.org"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
-    PIP_DEFAULT_TIMEOUT=120
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10
 
 # 先拷依赖清单以充分利用构建缓存
 COPY backend/requirements.txt /app/requirements.txt
