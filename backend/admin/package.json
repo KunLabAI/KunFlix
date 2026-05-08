@@ -71,7 +71,7 @@
     "postcss": "^8.5.10",
     "tailwindcss": "^4.2.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.5"
   },
   "overrides": {
     "dompurify": "^3.4.0",
