@@ -65,7 +65,9 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------
     # JWT Auth
     # ---------------------------------------------------------------
-    JWT_SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    # 空值会在 startup 校验时作开发兼容处理：非生产时进程内随机填充，生产时 fail-fast
+    # 安全层面：不再将默认占位字符串入库，规避 Secret Scanning / CodeQL hard-coded-credentials 告警
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

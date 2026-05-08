@@ -1,0 +1,122 @@
+# =============================================================================
+# Dependabot 自动依赖更新配置
+# 文档：https://docs.github.com/code-security/dependabot/dependabot-version-updates
+# -----------------------------------------------------------------------------
+# 覆盖范围：
+#   - Python 后端        (backend/requirements.txt)
+#   - 前端 Next.js       (frontend/package.json)
+#   - 管理后台 Next.js    (backend/admin/package.json)
+#   - Docker 镜像基础     (deploy/*.Dockerfile)
+#   - GitHub Actions 第三方 action 版本
+# =============================================================================
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # Python - 后端 FastAPI
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # 安全类补丁合并为单 PR，降低评审负担
+      security-patches:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # ---------------------------------------------------------------------------
+  # NPM - 前端
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "frontend"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      security-patches:
+        applies-to: security-updates
+        patterns: ["*"]
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # ---------------------------------------------------------------------------
+  # NPM - 管理后台
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/backend/admin"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "admin"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      security-patches:
+        applies-to: security-updates
+        patterns: ["*"]
+      dev-dependencies:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # ---------------------------------------------------------------------------
+  # Docker - 部署镜像基础
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/deploy"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(docker)"
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions - 第三方 action 版本
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "02:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"

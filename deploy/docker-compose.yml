@@ -42,12 +42,12 @@ services:
   redis:
     image: redis:7-alpine
     container_name: kunflix-redis
-    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -67,10 +67,10 @@ services:
     environment:
       # 运行时从 compose env 注入 / 覆盖，保证与 postgres/redis 服务名一致
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CACHE_BACKEND: redis
       QUEUE_BACKEND: arq
-      QUEUE_REDIS_URL: redis://redis:6379/1
+      QUEUE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
       STORAGE_BACKEND: local
       STORAGE_LOCAL_BASE_DIR: /app/media
       RUN_MIGRATIONS: "true"
@@ -86,6 +86,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    # 运行时加固：禁 setuid 提权 + 丢弃全部内核 capabilities（uvicorn 仅需监听非特权端口）
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # 单机 2C4G：后端给足 1C/1G，其余服务平摊剩余资源
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
     restart: unless-stopped
     networks: [kunflix_net]
 
@@ -102,6 +119,21 @@ services:
       BACKEND_INTERNAL_URL: http://backend:8000
     depends_on:
       - backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3666/ > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
     restart: unless-stopped
     networks: [kunflix_net]
 
@@ -118,6 +150,21 @@ services:
       BACKEND_INTERNAL_URL: http://backend:8000
     depends_on:
       - backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3888/admin > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
     restart: unless-stopped
     networks: [kunflix_net]
 
@@ -147,6 +194,27 @@ services:
       - frontend
       - admin
       - backend
+    # Nginx 需保留 NET_BIND_SERVICE 以绑定 80/443 特权端口，其余 caps 全部丢弃
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETGID
+      - SETUID
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ > /dev/null 2>&1 || wget -qO- --no-check-certificate https://127.0.0.1/ > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     restart: unless-stopped
     networks: [kunflix_net]
 

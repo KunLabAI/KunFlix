@@ -52,7 +52,7 @@ def _quick_subject(token: str) -> Optional[str]:
     if not token:
         return None
     try:
-        from jose import jwt  # 局部导入避免无 token 路径上的开销
+        import jwt  # PyJWT 局部导入，避免无 token 路径上的开销
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         return payload.get("sub")
     except Exception:  # noqa: BLE001
