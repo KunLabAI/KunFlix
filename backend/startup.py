@@ -40,6 +40,42 @@ def _run_alembic_upgrade() -> None:
     )
 
 
+def _alembic_stamp_head() -> None:
+    subprocess.check_call(
+        [sys.executable, "-m", "alembic", "stamp", "head"],
+        cwd=str(_BACKEND_DIR),
+    )
+
+
+async def _try_fast_bootstrap() -> bool:
+    """空库快通道：用 Base.metadata.create_all() 直建终态 schema，再
+    alembic stamp head 标记已到最新版本，跳过整条针对 SQLite
+    手写的迁移脚本（PRAGMA、sqlite_master、类型混用等不兼容 PG）。
+
+    返回 True 表示已完成 fast bootstrap；非空库返回 False，由调用方
+    走正常 upgrade head。
+    """
+    from sqlalchemy import inspect
+    from database import Base, engine
+    import models  # noqa: F401 — 触发 Base.metadata 注册所有表
+
+    async with engine.begin() as conn:
+        tables = await conn.run_sync(
+            lambda sync_conn: inspect(sync_conn).get_table_names()
+        )
+        is_fresh = 'alembic_version' not in tables and 'users' not in tables
+        _fresh_action = {
+            True: lambda: conn.run_sync(Base.metadata.create_all),
+        }
+        awaitable = _fresh_action.get(is_fresh, lambda: None)()
+        awaitable and await awaitable
+    is_fresh and _alembic_stamp_head()
+    is_fresh and logger.info(
+        "Fresh database detected — ran create_all + alembic stamp head, skipping migration chain."
+    )
+    return is_fresh
+
+
 def _cleanup_sqlite_tmp_tables() -> None:
     """Alembic 在 SQLite 上失败时常残留 _alembic_tmp_* 表，需清理后重试。"""
     import sqlite3
@@ -74,11 +110,21 @@ def _resolve_dialect(url: str) -> str:
     return next((key for p, key in prefixes.items() if url.startswith(p)), "")
 
 
-def _execute_migrations() -> None:
-    """运行 Alembic 升级；失败时按方言执行清理后重试一次。"""
+def _execute_migrations_upgrade() -> None:
+    _run_alembic_upgrade()
+    logger.info("Database migrations completed.")
+
+
+async def _execute_migrations() -> None:
+    """迁移调度：空库走 fast bootstrap；非空库走 alembic upgrade head；
+    失败时按方言清理后重试一次。"""
     try:
-        _run_alembic_upgrade()
-        logger.info("Database migrations completed.")
+        did_fast = await _try_fast_bootstrap()
+        _post_bootstrap = {
+            True: lambda: None,
+            False: _execute_migrations_upgrade,
+        }
+        _post_bootstrap[did_fast]()
     except subprocess.CalledProcessError as exc:
         logger.error("Migration failed: %s", exc)
         cleanup = _MIGRATION_CLEANUP.get(_resolve_dialect(settings.DATABASE_URL), _noop_cleanup)
@@ -87,10 +133,14 @@ def _execute_migrations() -> None:
         logger.info("Database migrations completed after cleanup.")
 
 
-# 迁移开关 -> 执行策略（映射表替代 if）
-_MIGRATION_STRATEGY: dict[bool, Callable[[], None]] = {
+async def _skip_migrations() -> None:
+    logger.info("Skipping database migrations (RUN_MIGRATIONS=False).")
+
+
+# 迁移开关 -> 执行策略（映射表替代 if，两边统一为 async）
+_MIGRATION_STRATEGY: dict[bool, Callable[[], "asyncio.Future | asyncio.coroutines.Coroutine"]] = {
     True: _execute_migrations,
-    False: lambda: logger.info("Skipping database migrations (RUN_MIGRATIONS=False)."),
+    False: _skip_migrations,
 }
 
 
@@ -191,7 +241,7 @@ async def _close_external_clients() -> None:
 async def run_startup() -> None:
     """Execute the full startup sequence."""
     await _wait_for_database()
-    _MIGRATION_STRATEGY[bool(settings.RUN_MIGRATIONS)]()
+    await _MIGRATION_STRATEGY[bool(settings.RUN_MIGRATIONS)]()
     await _load_narrative_engine()
     _ensure_media_dir()
     _spawn_background_tasks()
