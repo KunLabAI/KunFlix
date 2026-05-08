@@ -12,6 +12,12 @@ WORKDIR /app
 # 主动升级 alpine 包以吸纳上游已发布的安全补丁
 RUN apk upgrade --no-cache \
     && apk add --no-cache libc6-compat
+# npm 镜像源（国内服务器默认用 npmmirror，外网环境可 --build-arg NPM_REGISTRY=https://registry.npmjs.org 覆盖）
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+RUN npm config set registry ${NPM_REGISTRY} \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000
 COPY backend/admin/package.json backend/admin/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 

@@ -13,6 +13,12 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Asia/Shanghai
 
+# Debian 镜像源（国内服务器默认用清华，外网环境可通过 --build-arg DEBIAN_MIRROR= 清空覆盖）
+ARG DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn
+RUN if [ -n "$DEBIAN_MIRROR" ]; then \
+      sed -i "s@deb.debian.org@${DEBIAN_MIRROR}@g; s@security.debian.org@${DEBIAN_MIRROR}@g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+    fi
+
 # 系统依赖：libpq-dev 供 psycopg2 编译；build-essential 为可选 C 扩展兜底
 # 同步执行 apt-get upgrade 拉取上游已发布的安全补丁，降低基础镜像 CVE 告警
 RUN apt-get update \
@@ -27,6 +33,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 WORKDIR /app
+
+# pip 镜像源（国内服务器默认用清华，外网环境可通过 --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖）
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PIP_TRUSTED_HOST=pypi.tuna.tsinghua.edu.cn
+ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
+    PIP_DEFAULT_TIMEOUT=120
 
 # 先拷依赖清单以充分利用构建缓存
 COPY backend/requirements.txt /app/requirements.txt
