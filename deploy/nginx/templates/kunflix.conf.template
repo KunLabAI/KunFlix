@@ -75,12 +75,10 @@ server {
     }
 
     # -------------------------------------------------------------------------
-    # /admin/*  —— Admin Dashboard（Next.js basePath=/admin）
+    # /admin  —— Admin Dashboard（Next.js basePath=/admin）
+    # 不带尾斜杠的 prefix 匹配，同时覆盖 /admin、/admin/、/admin/xxx
     # -------------------------------------------------------------------------
-    location = /admin {
-        return 301 /admin/;
-    }
-    location /admin/ {
+    location /admin {
         proxy_pass         http://admin:3888;
         proxy_http_version 1.1;
 
