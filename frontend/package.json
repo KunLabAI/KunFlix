@@ -55,7 +55,7 @@
     "konva": "^10.3.0",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
-    "lucide-react": "^1.8.0",
+    "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "pixi.js": "^8.16.0",
     "react": "19.2.3",
