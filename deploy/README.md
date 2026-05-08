@@ -18,6 +18,7 @@ deploy/
 ├── redis/redis.conf             # AOF + maxmemory 256MB
 └── scripts/
     ├── init-letsencrypt.sh      # 一键首签脚本（certbot standalone）
+    ├── update.sh                # 生产一键更新（校验→备份→拉代码→重建→健康检查）
     └── backup-db.sh             # pg_dump 定时备份（可选）
 ```
 
@@ -61,11 +62,15 @@ curl -I https://<DOMAIN>/admin/
 
 ## 日常运维
 ```bash
+# 一键更新（推荐）：内置校验 / 自动备份 / 健康检查
+#   常用参数：--dry-run / --no-pull / --no-backup
+sudo bash scripts/update.sh
+
 # 查看状态 / 日志
 docker compose --env-file .env.prod ps
 docker compose --env-file .env.prod logs -f backend
 
-# 更新代码后重建镜像
+# 手动重建（踩坑时用）
 git pull
 docker compose --env-file .env.prod up -d --build
 
