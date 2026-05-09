@@ -603,8 +603,10 @@ async def generate_single_agent(
         # -------- Phase 2: 统计 + 扣费 + compaction（独立事务，失败可容忍） --------
         try:
             async with AsyncSessionLocal() as session:
-                # no_autoflush 避免 query 时触发隐式 flush 与其他写者抢锁
-                async with session.no_autoflush:
+                # no_autoflush 是同步 context manager，必须用 with；
+                # 之前误用 async with 导致 __aenter__ 报错 →
+                # 统计 / 扣费 / compaction 全部未执行。
+                with session.sync_session.no_autoflush:
                     from sqlalchemy import func as sa_func
                     s_result = await session.execute(select(ChatSession).filter(ChatSession.id == session_id))
                     s = s_result.scalars().first()

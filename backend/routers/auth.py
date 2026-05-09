@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 
 from typing import List
@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func as sa_func, cast, Date, text
+from sqlalchemy import func as sa_func
 from user_agents import parse as parse_ua
 
 from auth import (
@@ -300,8 +300,12 @@ async def credits_daily_usage(
     db: AsyncSession = Depends(get_db),
 ):
     """获取当前用户最近N天的每日积分消耗聚合"""
-    date_col = cast(CreditTransaction.created_at, Date)
-    cutoff = sa_func.current_date() - text(f"INTERVAL '{days} days'")
+    # 用 func.date() 而非 cast(..., Date)：
+    #  - SQLite 下 CAST(... AS DATE) 会被当作 NUMERIC 返回整数，触发 fromisoformat 报错
+    #  - func.date() 在 SQLite/PostgreSQL 两端均可用，且不强制类型转换
+    date_col = sa_func.date(CreditTransaction.created_at)
+    # 用 Python 侧计算 cutoff，避开 SQLite/PostgreSQL 的 INTERVAL 语法差异
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     result = await db.execute(
         select(
             date_col.label("date"),

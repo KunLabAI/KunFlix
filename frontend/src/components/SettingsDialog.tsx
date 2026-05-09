@@ -110,7 +110,7 @@ interface SettingsDialogProps {
 // ── main component ──────────────────────────────────────────────────────────
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
@@ -149,9 +149,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 
   useEffect(() => {
     if (!open) return;
+    refreshUser();
     fetchDailyUsage();
     fetchStorageInfo();
-  }, [open, fetchDailyUsage, fetchStorageInfo]);
+  }, [open, refreshUser, fetchDailyUsage, fetchStorageInfo]);
 
   const handleUsagePeriodChange = useCallback((key: string) => {
     setUsagePeriod(key);

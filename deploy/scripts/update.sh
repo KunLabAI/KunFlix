@@ -90,6 +90,9 @@ check_placeholder POSTGRES_PASSWORD "${POSTGRES_PASSWORD}" || FAIL=1
 
 : "${REDIS_PASSWORD:=}"; [[ -n "${REDIS_PASSWORD}" ]] || { err "REDIS_PASSWORD 为空 —— 本次升级起 Redis 强制要求密码"; FAIL=1; }
 check_placeholder REDIS_PASSWORD "${REDIS_PASSWORD}" || FAIL=1
+# REDIS_URL 直接插值密码（redis://:${REDIS_PASSWORD}@redis:6379/0），URL 保留字符会导致 urllib 解析错位
+# 触发 ValueError: Port could not be cast to integer。强制要求密码为 URL 安全字符（字母+数字+_-）。
+[[ "${REDIS_PASSWORD}" =~ [/+=:@?\#\&\ ] ]] && { err "REDIS_PASSWORD 含 URL 保留字符（/ + = : @ ? # & 空格 之一），会让 Redis URL 解析失败。请用 \`openssl rand -hex 32\` 重新生成"; FAIL=1; }
 
 : "${JWT_SECRET_KEY:=}"; [[ -n "${JWT_SECRET_KEY}" ]] || { err "JWT_SECRET_KEY 为空"; FAIL=1; }
 check_placeholder JWT_SECRET_KEY "${JWT_SECRET_KEY}" || FAIL=1
