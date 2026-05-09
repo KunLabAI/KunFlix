@@ -16,10 +16,13 @@ const nextConfig = {
   },
   transpilePackages: ['@ant-design/icons', 'antd'],
   async rewrites() {
+    // basePath: false 避免 /admin 前缀被自动应用到 source，
+    // 使浏览器对 http://localhost:3888/api/* 的请求能正确代理到后端。
     return [
       {
         source: '/api/:path*',
         destination: `${BACKEND_INTERNAL_URL}/api/:path*`, // Proxy to Backend
+        basePath: false,
       },
     ]
   },

@@ -53,24 +53,36 @@ def init_database(python_exec):
         log(f"Database initialization failed: {e}", "[DATABASE]")
         sys.exit(1)
 
+def _ensure_node_deps(project_dir, tag):
+    """幂等安装前端依赖：仅在 node_modules 缺失时跳 npm ci，避免每次启动污染 package-lock.json。
+
+    - node_modules 存在：跳过，直接用现有依赖启动。
+    - node_modules 缺失：用 npm ci（严格按 package-lock.json 安装，不修改 lock）；
+      如果 lock 与 package.json 不一致导致 npm ci 失败，提示开发者手动处理，
+      不自动 fallback 到 npm install（避免污染跨平台 lock，参见 PR #121 教训）。
+    """
+    node_modules = os.path.join(project_dir, "node_modules")
+    if os.path.exists(node_modules):
+        log("node_modules already present, skip install (use `npm ci` manually if you pulled lock changes).", tag)
+        return
+
+    log("Installing dependencies via `npm ci` (first run)...", tag)
+    try:
+        subprocess.check_call("npm ci --no-audit --no-fund", shell=True, cwd=project_dir)
+    except subprocess.CalledProcessError:
+        log(
+            "`npm ci` failed. This usually means package.json is out of sync with package-lock.json.\n"
+            "       Run `npm install` manually in this directory to update the lock file,\n"
+            "       then review the lock diff before committing (preserve cross-platform optional deps).",
+            tag,
+        )
+        sys.exit(1)
+
+
 def setup_frontend():
     """检查并安装前端依赖"""
     log("Checking frontend environment...", "[FRONTEND]")
-    
-    # 简单的检查：如果 node_modules 不存在，肯定要装
-    # 如果存在，为了确保依赖最新，也可以运行 npm install（通常很快）
-    node_modules = os.path.join(FRONTEND_DIR, "node_modules")
-    if not os.path.exists(node_modules):
-        log("Installing dependencies (first run)...", "[FRONTEND]")
-    else:
-        log("Updating dependencies...", "[FRONTEND]")
-
-    try:
-        # 使用 shell=True 以便在 Windows 上找到 npm
-        subprocess.check_call("npm install", shell=True, cwd=FRONTEND_DIR)
-    except subprocess.CalledProcessError:
-        log("Failed to install frontend dependencies. Please check package.json.", "[FRONTEND]")
-        sys.exit(1)
+    _ensure_node_deps(FRONTEND_DIR, "[FRONTEND]")
 
 def run_process(command, cwd, prefix):
     """运行一个子进程并实时打印输出"""
@@ -111,12 +123,8 @@ def main():
     setup_frontend()
     
     # Setup Admin Dashboard
-    if not os.path.exists(os.path.join(ADMIN_DIR, "node_modules")):
-        log("Installing admin dashboard dependencies...", "[ADMIN]")
-        try:
-             subprocess.check_call("npm install", shell=True, cwd=ADMIN_DIR)
-        except subprocess.CalledProcessError:
-             log("Failed to install admin dependencies.", "[ADMIN]")
+    log("Checking admin dashboard environment...", "[ADMIN]")
+    _ensure_node_deps(ADMIN_DIR, "[ADMIN]")
 
     # Initialize database (migrations + seed data), idempotent operation
     init_database(python_exec)

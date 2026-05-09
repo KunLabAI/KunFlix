@@ -103,7 +103,7 @@ docker compose --env-file .env.prod exec certbot certbot certificates
 
 - **密码 / 密钥**：`.env.prod` 中所有 `CHANGE_ME_*` 占位符必须替换为强随机值
   - `JWT_SECRET_KEY`：`openssl rand -hex 32`（小于 32 字符或留占位符时，backend 启动直接 fail-fast）
-  - `REDIS_PASSWORD`：`openssl rand -base64 32`（compose 以 `--requirepass` 注入 Redis）
+  - `REDIS_PASSWORD`：**`openssl rand -hex 32`**（compose 以 `--requirepass` 注入 Redis，并在 `REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` 中直接插值，**严禁使用 `base64` 生成**——其字符集含 `/ + =`，会被 urllib 当作 path 分隔符导致 `ValueError: Port could not be cast to integer`）
   - `POSTGRES_PASSWORD`：高强度随机密码
   - `ENCRYPTION_KEY`：`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 - **容器运行时**：`backend/frontend/admin/nginx` 已启用 `no-new-privileges:true` + `cap_drop: ALL`（Nginx 保留 `NET_BIND_SERVICE` 绑定 80/443）

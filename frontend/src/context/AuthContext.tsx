@@ -8,7 +8,7 @@ import React, {
   useCallback,
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { tokenRefresher } from "@/lib/api";
+import api, { tokenRefresher } from "@/lib/api";
 
 export interface User {
   id: string;
@@ -45,6 +45,7 @@ interface AuthContextType {
   logout: () => void;
   updateCredits: (credits: number) => void;
   refreshToken: () => Promise<boolean>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -54,6 +55,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   updateCredits: () => {},
   refreshToken: async () => false,
+  refreshUser: async () => null,
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -149,6 +151,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [pathname, router]);
 
+  // 从后端拉取最新用户信息并同步到 state + localStorage，
+  // 避免后台管理员改了积分/订阅后前端因缓存不更新。
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    const token = typeof window !== "undefined" && localStorage.getItem("access_token");
+    if (!token) return null;
+    try {
+      const { data } = await api.get<User>("/auth/me");
+      localStorage.setItem("user", JSON.stringify(data));
+      setUser(data);
+      setIsAuthenticated(true);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // 挂载后若已登录，静默拉一次 /auth/me，保证积分、订阅等字段与服务端一致。
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    refreshUser();
+  }, [isAuthenticated, refreshUser]);
+
   // 主动续期：access_token 剩余 < 5 分钟时触发刷新（与跨页签锁共用）
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -196,7 +220,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [logout]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateCredits, refreshToken }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateCredits, refreshToken, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
