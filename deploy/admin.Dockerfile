@@ -19,7 +19,7 @@ RUN npm config set registry ${NPM_REGISTRY} \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000
 COPY backend/admin/package.json backend/admin/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --legacy-peer-deps
 
 # ---------- Stage 2: 构建 ----------
 FROM node:22-alpine AS build
