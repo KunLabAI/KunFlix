@@ -106,7 +106,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
       const currentName = currentData.name || t('canvas.node.unnamedVideoCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
-        id: `video-${uuidv4()}`,
+        id: uuidv4(),
         position: { x: node.position.x + 50, y: node.position.y + 50 },
         selected: false,
         data: {
@@ -206,7 +206,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     droppedOnSelf || (() => {
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const newNode: CanvasNode = {
-        id: `video-${uuidv4()}`,
+        id: uuidv4(),
         type: 'video',
         position: { x: pos.x - 128, y: pos.y - 96 },
         data: {

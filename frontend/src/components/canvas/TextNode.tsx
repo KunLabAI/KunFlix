@@ -93,7 +93,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       const currentTitle = currentData.title || t('canvas.node.unnamedTextCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
-        id: `script-${uuidv4()}`,
+        id: uuidv4(),
         position: {
           x: node.position.x + 50,
           y: node.position.y + 50,

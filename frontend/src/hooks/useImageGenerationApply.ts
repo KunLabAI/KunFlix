@@ -112,7 +112,7 @@ export function useImageGenerationApply(id: string, data: CharacterNodeData) {
       const targetNode = outEdge ? getNode(outEdge.target) : null;
       const isCharTarget = targetNode?.type === 'image';
 
-      const targetId = isCharTarget ? targetNode!.id : `image-${uuidv4()}`;
+      const targetId = isCharTarget ? targetNode!.id : uuidv4();
       const existingImgs = (isCharTarget ? (targetNode!.data as CharacterNodeData)?.images : []) || [];
       const slotsAvailable = MAX_IMAGES - existingImgs.length;
       const urlsToApply = urls.slice(0, Math.max(0, slotsAvailable));

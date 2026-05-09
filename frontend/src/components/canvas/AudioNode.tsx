@@ -88,7 +88,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
       const currentName = currentData.name || t('canvas.node.unnamedAudioCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
-        id: `audio-${uuidv4()}`,
+        id: uuidv4(),
         position: {
           x: node.position.x + 50,
           y: node.position.y + 50,

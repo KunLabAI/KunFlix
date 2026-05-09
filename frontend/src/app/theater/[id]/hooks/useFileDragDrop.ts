@@ -138,7 +138,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     const fileName = file.name.replace(/\.[^/.]+$/, '');
     const dims = NODE_DIMENSIONS.text;
     const newNode: CanvasNode = {
-      id: `text-${uuidv4()}`,
+      id: uuidv4(),
       type: 'text',
       position,
       width: dims.width,
@@ -164,7 +164,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     const objectUrl = URL.createObjectURL(file);
     const dims = NODE_DIMENSIONS.image;
     const newNode: CanvasNode = {
-      id: `image-${uuidv4()}`,
+      id: uuidv4(),
       type: 'image',
       position,
       width: dims.width,
@@ -184,7 +184,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     const objectUrl = URL.createObjectURL(file);
     const dims = NODE_DIMENSIONS.video;
     const newNode: CanvasNode = {
-      id: `video-${uuidv4()}`,
+      id: uuidv4(),
       type: 'video',
       position,
       width: dims.width,
@@ -204,7 +204,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     const objectUrl = URL.createObjectURL(file);
     const dims = NODE_DIMENSIONS.audio;
     const newNode: CanvasNode = {
-      id: `audio-${uuidv4()}`,
+      id: uuidv4(),
       type: 'audio',
       position,
       width: dims.width,
@@ -239,7 +239,7 @@ const NODE_CREATORS: Record<string, (file: File, position: { x: number; y: numbe
     }));
     const dims = NODE_DIMENSIONS.spreadsheet;
     const newNode: CanvasNode = {
-      id: `storyboard-${uuidv4()}`,
+      id: uuidv4(),
       type: 'storyboard',
       position,
       width: dims.width,

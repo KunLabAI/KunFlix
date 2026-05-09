@@ -154,7 +154,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
       const currentName = currentData.name || t('canvas.node.unnamedImageCard');
       const newNode: CanvasNode = {
         ...(node as CanvasNode),
-        id: `character-${uuidv4()}`,
+        id: uuidv4(),
         position: { x: node.position.x + 50, y: node.position.y + 50 },
         selected: false,
         data: {
@@ -246,7 +246,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
     droppedOnSelf || (() => {
       const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const newNode: CanvasNode = {
-        id: `image-${uuidv4()}`,
+        id: uuidv4(),
         type: 'image',
         position: { x: pos.x - 128, y: pos.y - 96 },
         width: 512,
