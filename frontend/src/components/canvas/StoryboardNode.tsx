@@ -73,7 +73,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
     if (node) {
       const newNode = {
         ...(node as CanvasNode),
-        id: `storyboard-${uuidv4()}`,
+        id: uuidv4(),
         position: {
           x: node.position.x + 50,
           y: node.position.y + 50,

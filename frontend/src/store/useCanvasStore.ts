@@ -1,6 +1,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { v4 as uuidv4 } from 'uuid';
 import {
   Connection,
   Edge,
@@ -376,8 +377,8 @@ export const useCanvasStore = create<CanvasState>()(
         if (!validation.ok) return { ok: false, reason: validation.reason };
         void rejectedSilently;
 
-        // 2. 建边
-        const newEdges = addEdge({ ...connection, type: 'custom', animated: true }, edges);
+        // 2. 建边（显式指定短 UUID，避免 xyflow 默认生成 xy-edge__xxx 超长 ID 超过后端 VARCHAR 限制）
+        const newEdges = addEdge({ ...connection, id: uuidv4(), type: 'custom', animated: true }, edges);
         set({ edges: newEdges, isDirty: true });
         get().takeSnapshot();
 
@@ -656,9 +657,36 @@ export const useCanvasStore = create<CanvasState>()(
           // Update title if changed
           await theaterApi.updateTheater(theaterId, { title: theaterTitle });
 
+          // ① 过滤掉临时节点（ghost / streaming / local-前缀）
+          const savableNodes = nodes.filter(
+            (n) => n.type !== 'ghost'
+              && !n.id.startsWith('streaming-')
+              && !n.id.startsWith('local-'),
+          );
+
+          // ② ID 归一化兜底：超过 36 字符的旧 ID（如 localStorage 残留的 image-<uuid>）重映射为纯 UUID，避免后端 VARCHAR 长度越界
+          const nodeIdRemap = new Map<string, string>();
+          const normalizedNodes = savableNodes.map((n) => {
+            if (n.id.length <= 36) return n;
+            const newId = uuidv4();
+            nodeIdRemap.set(n.id, newId);
+            return { ...n, id: newId };
+          });
+          const normalizedNodeIds = new Set(normalizedNodes.map((n) => n.id));
+
+          // ③ 同步过滤孤儿边，并重映射边的 source/target；超长边 ID 一并归一化
+          const savableEdges = edges
+            .map((e) => {
+              const source = nodeIdRemap.get(e.source) ?? e.source;
+              const target = nodeIdRemap.get(e.target) ?? e.target;
+              const id = e.id.length <= 36 ? e.id : uuidv4();
+              return { ...e, id, source, target };
+            })
+            .filter((e) => normalizedNodeIds.has(e.source) && normalizedNodeIds.has(e.target));
+
           const detail = await theaterApi.saveCanvas(theaterId, {
-            nodes: nodes.filter((n) => n.type !== 'ghost' && !n.id.startsWith('streaming-') && !n.id.startsWith('local-')).map(nodeToApi),
-            edges: edges.map(edgeToApi),
+            nodes: normalizedNodes.map(nodeToApi),
+            edges: savableEdges.map(edgeToApi),
             canvas_viewport: viewport as Record<string, number>,
           });
           set({

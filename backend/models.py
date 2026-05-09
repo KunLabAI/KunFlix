@@ -117,7 +117,8 @@ class TheaterNode(Base):
         Index("ix_theater_nodes_theater_type", "theater_id", "node_type"),
     )
 
-    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    # id 放宽至 64，兼容前端 localStorage 残留的带前缀 UUID（如 image-<uuid> 达 41+）
+    id = Column(String(64), primary_key=True, default=generate_uuid, index=True)
     theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="CASCADE"), nullable=False, index=True)
     node_type = Column(String(20), nullable=False)  # script | character | storyboard | video
     position_x = Column(Float, default=0)
@@ -138,10 +139,11 @@ class TheaterEdge(Base):
     """剧场边表 - 节点之间的连接"""
     __tablename__ = "theater_edges"
 
-    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    # id / source_node_id / target_node_id 放宽至 64，与 theater_nodes.id 保持一致
+    id = Column(String(64), primary_key=True, default=generate_uuid, index=True)
     theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="CASCADE"), nullable=False, index=True)
-    source_node_id = Column(String(36), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
-    target_node_id = Column(String(36), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
+    source_node_id = Column(String(64), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
+    target_node_id = Column(String(64), ForeignKey("theater_nodes.id", ondelete="CASCADE"), nullable=False)
     source_handle = Column(String(50), nullable=True)
     target_handle = Column(String(50), nullable=True)
     edge_type = Column(String(20), default="custom")
