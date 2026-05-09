@@ -32,9 +32,31 @@ def setup_backend():
         subprocess.check_call([sys.executable, "-m", "venv", "venv"], cwd=BACKEND_DIR)
     
     python_exec = get_python_exec()
+
+    # 强制 pip 以 UTF-8 读取 requirements.txt，避免 Windows 中文系统默认 GBK 解码失败
+    # （requirements.txt 含中文注释，旧版 pip 在非 UTF-8 locale 下会报 UnicodeDecodeError）
+    pip_env = os.environ.copy()
+    pip_env["PYTHONUTF8"] = "1"
+    pip_env["PYTHONIOENCODING"] = "utf-8"
+
+    # 先升级 pip 自身（旧版 pip 23.x 在 Windows 中文环境读取含非 ASCII 的 requirements 会失败）
+    log("Upgrading pip...", "[BACKEND]")
+    try:
+        subprocess.check_call(
+            [python_exec, "-m", "pip", "install", "--upgrade", "pip"],
+            cwd=BACKEND_DIR,
+            env=pip_env,
+        )
+    except subprocess.CalledProcessError:
+        log("Warning: pip upgrade failed, continuing with current version.", "[BACKEND]")
+
     log("Installing/Updating dependencies...", "[BACKEND]")
     try:
-        subprocess.check_call([python_exec, "-m", "pip", "install", "-r", "requirements.txt"], cwd=BACKEND_DIR)
+        subprocess.check_call(
+            [python_exec, "-m", "pip", "install", "-r", "requirements.txt"],
+            cwd=BACKEND_DIR,
+            env=pip_env,
+        )
     except subprocess.CalledProcessError:
         log("Failed to install backend dependencies. Please check requirements.txt.", "[BACKEND]")
         sys.exit(1)

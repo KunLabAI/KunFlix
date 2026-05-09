@@ -80,7 +80,7 @@
     "rollup": "^4.59.0",
     "follow-redirects": "^1.16.0",
     "picomatch": "^4.0.4",
-    "postcss": "$postcss",
+    "postcss": "^8.5.10",
     "axios": "^1.16.0",
     "lodash": "^4.18.1",
     "prismjs": "^1.30.0"
