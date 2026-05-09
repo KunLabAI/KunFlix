@@ -143,6 +143,11 @@ deploy/
 ```bash
 cd /opt/kunflix/deploy
 
+# 一键更新（推荐）：内置校验 / 自动备份 / 健康检查
+#   常用参数：--dry-run / --no-pull / --no-backup
+sudo bash scripts/update.sh
+
+
 # 查看服务状态
 docker compose --env-file .env.prod ps
 
