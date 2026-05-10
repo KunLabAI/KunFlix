@@ -5,7 +5,7 @@
 #   docker build -f deploy/backend.Dockerfile -t kunflix-backend ..
 # ============================================================================
 # 使用 python:3.12-slim-bookworm（Debian 12）以规避 python:3.11-slim 镜像层的已知 CVE
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.14-slim-bookworm AS base
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
