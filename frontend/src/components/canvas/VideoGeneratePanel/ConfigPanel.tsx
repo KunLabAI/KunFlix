@@ -41,7 +41,6 @@ interface Props {
   setPromptOptimizer: (v: boolean) => void;
   fastPretreatment: boolean;
   setFastPretreatment: (v: boolean) => void;
-  containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 /** 展开式配置面板：mode / duration / quality / aspect / toggles */
@@ -60,7 +59,6 @@ export function ConfigPanel({
   setPromptOptimizer,
   fastPretreatment,
   setFastPretreatment,
-  containerRef,
 }: Props) {
   const { t } = useTranslation();
 
@@ -82,7 +80,6 @@ export function ConfigPanel({
 
   return (
     <div
-      ref={containerRef}
       className="rounded-lg border border-border/50 bg-card p-2.5 space-y-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150"
     >
       {/* Mode */}

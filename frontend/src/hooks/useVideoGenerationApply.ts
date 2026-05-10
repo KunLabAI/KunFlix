@@ -83,7 +83,9 @@ export function useVideoGenerationApply(id: string, data: VideoNodeData) {
       const outEdge = edges.find((e) => e.source === id);
       const targetNode = outEdge ? getNode(outEdge.target) : null;
       const isVideoTarget = targetNode?.type === 'video';
-      const targetId = isVideoTarget ? targetNode!.id : `video-${uuidv4()}`;
+      // 统一使用裸 UUID，避免 `video-<uuid>` 这种带前缀的 42 字符 ID 触发 saveToBackend 的随机重映射，
+      // 进而引发节点/边在同事务内 DELETE+INSERT 错位，产生 theater_edges_target_node_id_fkey 违反。
+      const targetId = isVideoTarget ? targetNode!.id : uuidv4();
 
       isVideoTarget
         ? updateNodeData(targetId, { videoUrl: generatedUrl } as Partial<VideoNodeData>)

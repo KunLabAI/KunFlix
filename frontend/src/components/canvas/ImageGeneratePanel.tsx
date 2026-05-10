@@ -97,7 +97,11 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
           t('canvas.node.image.refLimitReached', '参考图已达上限，无法再添加'),
         );
       },
-      'smart-image-inject': handleSmartImageInject,
+      'smart-image-inject': (event: { sourceNodeId: string; urls: string[]; name?: string }) => {
+        // 消费可能已写入的 pending，避免 drain effect 因 refs 引用变化而重复触发同一事件
+        takePendingSmartInject(nodeId);
+        handleSmartImageInject(event);
+      },
     };
     const unsubscribe = onPanelInject(nodeId, (ev) => {
       handlers[ev.type]?.(ev as unknown as { text: string } & { sourceNodeId: string; url: string; urls: string[]; name?: string });
