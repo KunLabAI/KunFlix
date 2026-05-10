@@ -86,17 +86,78 @@ export function useVideoPanelReferences({
   };
   const unlinkAll = useCallback(() => unlinkAllRef.current(), []);
 
-  // ── 模式变更时清空对应字段并解除连线 ──
-  // 智能注入：标记下一次 videoMode 变更 effect 跳过清空副作用
+  // ── 模式变更时按新模式的槽位形态「迁移」已有参考项，而不是清空+解除连线 ──
+  // 设计与图像面板（useImagePanelReferences）保持一致：
+  //   1) 连线（edges）== 节点间的拓扑关系；参考图/参考视频/参考音频 == 当前模式下的 UI 展示。二者解耦。
+  //   2) 切换 videoMode 不应破坏已有连线，也不应无条件清空参考素材。
+  //   3) 收集现有槽位中所有参考项到一个「池」，按目标模式重新布局：
+  //      - text_to_video      —— 无参考槽位，清空 UI（连线保留以便切回时手动重接）
+  //      - image_to_video     —— 池中首张 image → imageUrl；次张 image → lastFrameImageUrl
+  //      - reference_images   —— 池中所有类型按各自上限截断后合并到 referenceImages
+  //      - edit / video_extension —— 池中首个 video → extensionVideoUrl
+  // 智能注入：标记下一次 videoMode 变更 effect 跳过迁移副作用（applySmartInject 自行处理）
   const skipNextClearRef = useRef(false);
+  const prevModeRef = useRef<string>(videoMode);
   useEffect(() => {
     const skip = skipNextClearRef.current;
     skip && (skipNextClearRef.current = false);
-    !skip && unlinkAll();
-    !skip && videoMode === 'text_to_video' && (setImageUrl(''), setLastFrameImageUrl(''), setReferenceImages([]), setExtensionVideoUrl(''));
-    !skip && videoMode === 'image_to_video' && (setReferenceImages([]), setExtensionVideoUrl(''));
-    !skip && videoMode === 'reference_images' && (setImageUrl(''), setLastFrameImageUrl(''), setExtensionVideoUrl(''));
-    !skip && (videoMode === 'edit' || videoMode === 'video_extension') && (setReferenceImages([]), setImageUrl(''), setLastFrameImageUrl(''));
+    const modeChanged = prevModeRef.current !== videoMode;
+    const needMigrate = !skip && modeChanged;
+    type PoolItem = { url: string; sourceNodeId: string | null; name: string; refType: RefType };
+    needMigrate && (() => {
+      // 1) 汇聚现有参考项到池
+      const pool: PoolItem[] = [];
+      imageUrl && pool.push({ url: imageUrl, sourceNodeId: imageNodeIdRef.current, name: '首帧参考', refType: 'image' });
+      lastFrameImageUrl && pool.push({ url: lastFrameImageUrl, sourceNodeId: lastFrameNodeIdRef.current, name: '尾帧参考', refType: 'image' });
+      extensionVideoUrl && pool.push({ url: extensionVideoUrl, sourceNodeId: extensionVideoNodeIdRef.current, name: '延展视频', refType: 'video' });
+      referenceImages.forEach((r) => pool.push({
+        url: r.url,
+        sourceNodeId: r.sourceNodeId ?? null,
+        name: r.name,
+        refType: r.refType,
+      }));
+      // 2) 清 UI 槽位（注意：不调用 unlinkNode —— 连线作为拓扑关系保留）
+      setImageUrl('');
+      setLastFrameImageUrl('');
+      setExtensionVideoUrl('');
+      setReferenceImages([]);
+      imageNodeIdRef.current = null;
+      lastFrameNodeIdRef.current = null;
+      extensionVideoNodeIdRef.current = null;
+      // 3) 按目标模式回填
+      const migrators: Record<string, () => void> = {
+        text_to_video: () => undefined,
+        image_to_video: () => {
+          const imgs = pool.filter((p) => p.refType === 'image');
+          const first = imgs[0];
+          const second = imgs[1];
+          first && (() => { setImageUrl(first.url); imageNodeIdRef.current = first.sourceNodeId; })();
+          second && (() => { setLastFrameImageUrl(second.url); lastFrameNodeIdRef.current = second.sourceNodeId; })();
+        },
+        reference_images: () => {
+          const imgs = pool.filter((p) => p.refType === 'image').slice(0, maxRefImages);
+          const vids = (supportsRefVideos ? pool.filter((p) => p.refType === 'video') : []).slice(0, maxRefVideos);
+          const auds = (supportsRefAudios ? pool.filter((p) => p.refType === 'audio') : []).slice(0, maxRefAudios);
+          const next: RefImage[] = [...imgs, ...vids, ...auds].map((p) => ({
+            url: p.url,
+            name: p.name,
+            refType: p.refType,
+            sourceNodeId: p.sourceNodeId ?? undefined,
+          }));
+          setReferenceImages(next);
+        },
+        edit: () => {
+          const first = pool.find((p) => p.refType === 'video');
+          first && (() => { setExtensionVideoUrl(first.url); extensionVideoNodeIdRef.current = first.sourceNodeId; })();
+        },
+        video_extension: () => {
+          const first = pool.find((p) => p.refType === 'video');
+          first && (() => { setExtensionVideoUrl(first.url); extensionVideoNodeIdRef.current = first.sourceNodeId; })();
+        },
+      };
+      migrators[videoMode]?.();
+    })();
+    prevModeRef.current = videoMode;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoMode]);
 

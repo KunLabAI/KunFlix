@@ -161,11 +161,14 @@ interface CanvasState {
    * @param connection - ReactFlow 连接对象
    * @param options.fromQuickAdd - 来自 QuickAddMenu，已隐含用户同意，跳过确认
    * @param options.silent - 校验失败不弹 Toast（hook 侧批量处理时用）
+   * @param options.suppressPanelInject - 调用方（面板 picker / applySmartInject）已手动更新 UI，
+   *   跳过下游面板注入事件（smart-image-inject / add-reference-* / prompt-prefix）+ pending，
+   *   避免「UI 写一次 → 连线回调 → 面板事件再写一次」的重入双写。dataPatch / warnings 仍照常应用。
    * @returns { ok, reason } 指示是否成功
    */
   connectAndInject: (
     connection: Connection,
-    options?: { fromQuickAdd?: boolean; silent?: boolean },
+    options?: { fromQuickAdd?: boolean; silent?: boolean; suppressPanelInject?: boolean },
   ) => { ok: boolean; reason?: EdgeRejectReason };
   addNode: (node: CanvasNode) => void;
   deleteNode: (id: string) => void;
@@ -340,7 +343,7 @@ export const useCanvasStore = create<CanvasState>()(
         get().connectAndInject(connection);
       },
 
-      connectAndInject: (connection: Connection, options?: { fromQuickAdd?: boolean; silent?: boolean }) => {
+      connectAndInject: (connection: Connection, options?: { fromQuickAdd?: boolean; silent?: boolean; suppressPanelInject?: boolean }) => {
         const { edges, nodes } = get();
         const sourceNode = nodes.find((n) => n.id === connection.source);
         const targetNode = nodes.find((n) => n.id === connection.target);
@@ -395,10 +398,15 @@ export const useCanvasStore = create<CanvasState>()(
           );
         };
         applyPatch(result.dataPatch);
-        (result.panelEvents || []).forEach((e) => {
-          emitPanelInject(targetNode.id, e);
-          // smart-image-inject 额外写入 pending，覆盖订阅时序丢失 + 新节点模型未就绪的场景
+        // 面板内 picker / applySmartInject 触发的连线已在调用侧手动更新过 UI，跳过事件派发避免双写
+        const skipPanelEvents = !!options?.suppressPanelInject;
+        !skipPanelEvents && (result.panelEvents || []).forEach((e) => {
+          // smart-image-inject 先写入 pending、再 emit：
+          // - 已 mount 的面板会在订阅 handler 入口 takePendingSmartInject 消费掉，
+          //   避免 drain effect 因 refs 引用变化而重复触发（否则同一事件会被处理两次）。
+          // - 未 mount（QuickAdd 新节点）时订阅者不会被调用，pending 保留，等面板 mount 后 drain 一次。
           e.type === 'smart-image-inject' && setPendingSmartInject(targetNode.id, e);
+          emitPanelInject(targetNode.id, e);
         });
         (result.warnings || []).forEach((w) => edgeToast.warn(w));
         // storyboard 媒体列也直接 apply，不再二次确认

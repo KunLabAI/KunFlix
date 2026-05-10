@@ -64,7 +64,8 @@ export function useImageGridExport({ id, gridContainerRef, imageList, data, setU
 
       const currentNode = getNode(id);
       const nodeWidth = currentNode?.width ?? 512;
-      const newNodeId = `image-${uuidv4()}`;
+      // 裸 UUID：避免 `image-<uuid>` 42 字符 ID 被 saveToBackend 重映射导致节点持久化漂移
+      const newNodeId = uuidv4();
       const exportName = t('canvas.node.upload.exportName', {
         name: data.name || t('canvas.node.unnamedImageCard'),
       });

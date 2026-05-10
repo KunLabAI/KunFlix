@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { XCircle } from 'lucide-react';
-import { useDropdownOutside } from '@/hooks/useDropdownOutside';
 import { useVideoPanelForm } from '@/hooks/useVideoPanelForm';
 import { useVideoPanelReferences } from '@/hooks/useVideoPanelReferences';
 import { useVideoPanelResize } from '@/hooks/useVideoPanelResize';
@@ -63,19 +62,58 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
   });
   const { inputContainerRef, inputMaxHeight, resizeHandlers } = useVideoPanelResize();
 
-  // ── 展开配置区（仅主文件自己管） ──
+  // ── 展开配置区（与图像面板对齐：仅由按钮 toggle，不因点击外部（输入框等）而自动关闭）──
   const [showConfig, setShowConfig] = useState(false);
-  const configRef = useRef<HTMLDivElement>(null);
   const [showNodePicker, setShowNodePicker] = useState(false);
 
-  useDropdownOutside([[showConfig, configRef, setShowConfig]]);
-
-  // 智能图像注入 handler（提出以便订阅 + pending drain 共用）
+  // 智能图像注入 handler（订阅 + pending drain 共用）
+  //
+  // 规则（尊重用户已选模式，不强制切换）：
+  //   - 当前 pickerMode 能接受图像（first_last_frame / multi_image / single_image），
+  //     或面板已有参考素材 → 仅「追加」到当前模式，不切换 videoMode。
+  //     这修复了「已切到多模态参考但素材为空时，再拖连线会被强制切回图生视频」的 bug。
+  //     失败时 toast 提示用户手动切模式。
+  //   - 当前 pickerMode 不接受图像（text_to_video / edit / video_extension）且面板空态
+  //     （QuickAdd 新建节点的典型场景）：按 url 数量自选模式
+  //     （1 张 → image_to_video；多张 → reference_images）。
   const handleSmartImageInject = useCallback(
     (event: { sourceNodeId: string; urls: string[]; name?: string }) => {
       const urls = (event.urls || []).filter((u) => typeof u === 'string' && u.length > 0);
       if (urls.length === 0) return;
-      // 1 张 → image_to_video；多张 → reference_images
+      const baseLabel = event.name || '参考图';
+
+      // 当前 pickerMode 是否能接受图像类型
+      const pickerAcceptsImage =
+        refs.pickerMode === 'single_image' ||
+        refs.pickerMode === 'first_last_frame' ||
+        refs.pickerMode === 'multi_image';
+
+      const hasExistingContent =
+        !!refs.imageUrl ||
+        !!refs.lastFrameImageUrl ||
+        !!refs.extensionVideoUrl ||
+        refs.referenceImages.length > 0;
+
+      // 1) 当前模式能接受图像 OR 面板已有素材 → 仅追加，不切模式
+      const appendOnly = pickerAcceptsImage || hasExistingContent;
+      if (appendOnly) {
+        const results = urls.map((url, i) => {
+          const name = urls.length > 1 ? `${baseLabel} ${i + 1}` : baseLabel;
+          return refs.addImageExternal(event.sourceNodeId, url, name);
+        });
+        const okCount = results.filter((r) => r.ok).length;
+        const noSlotHit = results.some((r) => r.ok === false && r.reason === 'no_slot');
+        const limitHit = results.some((r) => r.ok === false && r.reason === 'limit');
+        const dupHit = results.some((r) => r.ok === false && r.reason === 'duplicate');
+        okCount === 0 && noSlotHit && edgeToast.warn('当前模式不接受该参考图，请手动切换模式');
+        okCount === 0 && !noSlotHit && limitHit && edgeToast.warn('参考图已达当前模式上限');
+        okCount === 0 && !noSlotHit && !limitHit && dupHit && edgeToast.info('该参考项已存在');
+        okCount > 0 && (noSlotHit || limitHit) &&
+          edgeToast.info(`已追加 ${okCount} 张，其余因容量/类型不匹配被跳过`);
+        return;
+      }
+
+      // 2) 当前模式不接受图像且空态 → 按数量自选模式（QuickAdd 新节点场景）
       const targetMode = urls.length === 1 ? 'image_to_video' : 'reference_images';
       const modeLabel = targetMode === 'image_to_video' ? '图生视频' : '多模态参考';
       const modes = form.capabilities?.modes || [];
@@ -84,7 +122,6 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
         edgeToast.warn(`当前模型不支持「${modeLabel}」模式，请先手动切换模型`);
         return;
       }
-      const baseLabel = event.name || '参考图';
       const items = urls.map((url, i) => ({
         url,
         name: urls.length > 1 ? `${baseLabel} ${i + 1}` : baseLabel,
@@ -122,7 +159,11 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
       'add-reference-audio': (event: { sourceNodeId: string; url: string; name?: string }) => {
         handleAfter(refs.addAudioExternal(event.sourceNodeId, event.url, event.name));
       },
-      'smart-image-inject': handleSmartImageInject,
+      'smart-image-inject': (event: { sourceNodeId: string; urls: string[]; name?: string }) => {
+        // 消费可能已写入的 pending，避免 drain effect 因 refs 引用变化而重复触发同一事件
+        takePendingSmartInject(nodeId);
+        handleSmartImageInject(event);
+      },
     };
     const unsubscribe = onPanelInject(nodeId, (ev) => {
       handlers[ev.type]?.(ev as unknown as { text: string } & { sourceNodeId: string; url: string; urls: string[]; name?: string; tag?: 'first-frame' });
@@ -310,7 +351,6 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
       {/* 展开配置区 */}
       {showConfig && form.selectedModel && (
         <ConfigPanel
-          containerRef={configRef}
           capabilities={form.capabilities}
           visibility={form.visibility}
           videoMode={form.videoMode}
