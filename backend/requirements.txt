@@ -30,7 +30,7 @@ python-frontmatter>=1.1.0
 packaging>=23.0
 user-agents>=2.2.0
 cachetools>=7.1.1
-cryptography>=47.0.0
+cryptography>=48.0.0
 # --- Phase1+ infra ---
 aioboto3>=12.3.0
 arq>=0.28.0
