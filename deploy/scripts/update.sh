@@ -14,6 +14,7 @@
 #   sudo bash scripts/update.sh              # 完整流程
 #   sudo bash scripts/update.sh --no-pull    # 跳过 git pull（已手动拉好）
 #   sudo bash scripts/update.sh --no-backup  # 跳过数据库备份（不推荐）
+#   sudo bash scripts/update.sh --serial     # 串行构建镜像（小机器 2c4g 防 CPU/内存打满）
 #   sudo bash scripts/update.sh --dry-run    # 只检查不执行
 # =============================================================================
 set -euo pipefail
@@ -34,10 +35,12 @@ HEALTH_TIMEOUT_SEC=180
 DO_PULL=true
 DO_BACKUP=true
 DRY_RUN=false
+SERIAL_BUILD=false
 for arg in "$@"; do
     case "${arg}" in
         --no-pull)   DO_PULL=false ;;
         --no-backup) DO_BACKUP=false ;;
+        --serial)    SERIAL_BUILD=true ;;
         --dry-run)   DRY_RUN=true ;;
         -h|--help)
             sed -n '2,20p' "$0"; exit 0 ;;
@@ -146,7 +149,16 @@ fi
 # ---------------------------------------------------------------------------
 log "Step 4/5 docker compose up -d --build"
 cd "${DEPLOY_DIR}"
-run "${COMPOSE[@]} build --pull"
+# 串行构建：低配机器（2c4g 级别）并行跑 3 个镜像会被 CPU/内存打满，按依赖顺序逐个构建更稳
+# 顺序：backend（纯 Python，最轻） → admin（Next.js） → frontend（Next.js，最重）
+if ${SERIAL_BUILD}; then
+    warn "启用串行构建（--serial），总时长会变长但资源占用低"
+    run "${COMPOSE[@]} build --pull backend"
+    run "${COMPOSE[@]} build --pull admin"
+    run "${COMPOSE[@]} build --pull frontend"
+else
+    run "${COMPOSE[@]} build --pull"
+fi
 run "${COMPOSE[@]} up -d --remove-orphans"
 ok "容器已启动，开始等待 healthcheck"
 
