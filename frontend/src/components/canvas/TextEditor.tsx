@@ -1,4 +1,4 @@
-import { useEditor, EditorContent, EditorContext, JSONContent } from '@tiptap/react';
+import { useEditor, EditorContent, EditorContext, JSONContent, useCurrentEditor } from '@tiptap/react';
 import { Fragment, Slice, Node as PMNode } from '@tiptap/pm/model';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -13,49 +13,177 @@ import TaskItem from '@tiptap/extension-task-item';
 import Highlight from '@tiptap/extension-highlight';
 import { Color } from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
+import { TableKit } from '@tiptap/extension-table/kit';
+import { Minus, Table as TableIcon, Rows2, Columns2, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 /**
- * Convert Markdown string to Tiptap JSON content
- * Simple conversion for basic Markdown syntax
+ * Parse inline Markdown tokens (bold / italic / strike / code / link)
+ * into a list of Tiptap text nodes with marks.
+ */
+function parseInlineMarkdown(raw: string): JSONContent[] {
+  type Token = { text: string; marks: { type: string; attrs?: Record<string, unknown> }[] };
+  // Order matters: code > bold > strike > italic > link (code swallows inner marks)
+  const patterns: { re: RegExp; mark: string; withAttrs?: (m: RegExpExecArray) => Record<string, unknown> }[] = [
+    { re: /`([^`]+)`/, mark: 'code' },
+    { re: /\*\*(.+?)\*\*/, mark: 'bold' },
+    { re: /~~(.+?)~~/, mark: 'strike' },
+    { re: /\*(.+?)\*/, mark: 'italic' },
+    { re: /\[([^\]]+)\]\(([^)]+)\)/, mark: 'link', withAttrs: (m) => ({ href: m[2] }) },
+  ];
+
+  const walk = (text: string, marks: Token['marks']): Token[] => {
+    const hit = patterns
+      .map((p) => ({ p, m: p.re.exec(text) }))
+      .filter((x) => x.m)
+      .sort((a, b) => (a.m!.index - b.m!.index))[0];
+    if (!hit) {
+      return text ? [{ text, marks }] : [];
+    }
+    const { p, m } = hit;
+    const before = text.slice(0, m!.index);
+    const inner = m![1];
+    const after = text.slice(m!.index + m![0].length);
+    const innerMark = { type: p.mark, attrs: p.withAttrs ? p.withAttrs(m!) : undefined };
+    return [
+      ...(before ? walk(before, marks) : []),
+      ...walk(inner, [...marks, innerMark]),
+      ...walk(after, marks),
+    ];
+  };
+
+  return walk(raw, []).map((t) => ({
+    type: 'text',
+    text: t.text,
+    ...(t.marks.length ? { marks: t.marks.map((m) => ({ type: m.type, ...(m.attrs ? { attrs: m.attrs } : {}) })) } : {}),
+  }));
+}
+
+/**
+ * Convert Markdown string to Tiptap JSON content.
+ * Supports: headings, horizontal rules, fenced code blocks, blockquotes,
+ * bullet/ordered lists, paragraphs, and inline marks (bold/italic/strike/code/link).
  */
 function markdownToTiptapJson(markdown: string): JSONContent {
   const lines = markdown.split('\n');
-  const content: JSONContent['content'] = [];
+  const content: NonNullable<JSONContent['content']> = [];
+  let i = 0;
 
-  for (const line of lines) {
-    // Heading: ## Title
-    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length as 1 | 2 | 3;
+  const flushParagraph = (buf: string[]) => {
+    buf.length && content.push({ type: 'paragraph', content: parseInlineMarkdown(buf.join(' ')) });
+  };
+
+  const paraBuf: string[] = [];
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Horizontal rule
+    if (/^(---+|\*\*\*+|___+)$/.test(trimmed)) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      content.push({ type: 'horizontalRule' });
+      i += 1;
+      continue;
+    }
+
+    // Fenced code block
+    const fenceMatch = trimmed.match(/^```(\w*)$/);
+    if (fenceMatch) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      const language = fenceMatch[1] || null;
+      const codeLines: string[] = [];
+      i += 1;
+      while (i < lines.length && !/^```\s*$/.test(lines[i].trim())) {
+        codeLines.push(lines[i]);
+        i += 1;
+      }
+      i += 1; // skip closing fence
       content.push({
-        type: 'heading',
-        attrs: { level },
-        content: [{ type: 'text', text: headingMatch[2] }],
+        type: 'codeBlock',
+        ...(language ? { attrs: { language } } : {}),
+        content: [{ type: 'text', text: codeLines.join('\n') }],
       });
       continue;
     }
 
-    // Empty line - skip
-    const trimmed = line.trim();
-    if (!trimmed) {
+    // Heading (1-6)
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      content.push({
+        type: 'heading',
+        attrs: { level: headingMatch[1].length },
+        content: parseInlineMarkdown(headingMatch[2]),
+      });
+      i += 1;
       continue;
     }
 
-    // Regular paragraph - strip markdown formatting
-    const processed = trimmed
-      .replace(/\*\*(.+?)\*\*/g, '$1')  // bold
-      .replace(/\*(.+?)\*/g, '$1')       // italic
-      .replace(/`(.+?)`/g, '$1');        // code
+    // Blockquote (merge consecutive lines)
+    if (/^>\s?/.test(line)) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      const quoteLines: string[] = [];
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ''));
+        i += 1;
+      }
+      content.push({
+        type: 'blockquote',
+        content: [{ type: 'paragraph', content: parseInlineMarkdown(quoteLines.join(' ')) }],
+      });
+      continue;
+    }
 
-    content.push({
-      type: 'paragraph',
-      content: [{ type: 'text', text: processed }],
-    });
+    // Bullet list
+    if (/^[-*+]\s+/.test(line)) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      const items: JSONContent[] = [];
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^[-*+]\s+/, '');
+        items.push({
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: parseInlineMarkdown(itemText) }],
+        });
+        i += 1;
+      }
+      content.push({ type: 'bulletList', content: items });
+      continue;
+    }
+
+    // Ordered list
+    if (/^\d+\.\s+/.test(line)) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      const items: JSONContent[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\d+\.\s+/, '');
+        items.push({
+          type: 'listItem',
+          content: [{ type: 'paragraph', content: parseInlineMarkdown(itemText) }],
+        });
+        i += 1;
+      }
+      content.push({ type: 'orderedList', content: items });
+      continue;
+    }
+
+    // Empty line - flush paragraph buffer
+    if (!trimmed) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      i += 1;
+      continue;
+    }
+
+    // Paragraph line - accumulate
+    paraBuf.push(trimmed);
+    i += 1;
   }
 
-  // Ensure at least empty paragraph
+  flushParagraph(paraBuf); paraBuf.length = 0;
+
   content.length === 0 && content.push({ type: 'paragraph' });
 
   return { type: 'doc', content };
@@ -130,6 +258,96 @@ import { UndoRedoButton } from '@/components/tiptap-ui/undo-redo-button';
 // --- Styles ---
 import './script-editor.scss';
 
+/**
+ * Inline toolbar button for inserting a horizontal rule.
+ * Uses the current EditorContext provided by ScriptEditor.
+ */
+function HorizontalRuleButton() {
+  const { editor } = useCurrentEditor();
+  const disabled = !editor?.isEditable;
+  const handleClick = () => {
+    editor?.chain().focus().setHorizontalRule().run();
+  };
+  return (
+    <button
+      type="button"
+      className="tiptap-button"
+      data-style="ghost"
+      aria-label="Horizontal rule"
+      title="Horizontal rule"
+      tabIndex={-1}
+      disabled={disabled}
+      data-disabled={disabled}
+      onClick={handleClick}
+    >
+      <Minus className="tiptap-button-icon" />
+    </button>
+  );
+}
+
+/**
+ * Table menu button — inserts a 3x3 table with a header row by default,
+ * and exposes common table operations when cursor is inside a table.
+ */
+function TableMenuButton() {
+  const { editor } = useCurrentEditor();
+  const disabled = !editor?.isEditable;
+  const inTable = !!editor?.isActive('table');
+
+  // Ordered action list — avoids branching blocks.
+  const actions: { key: string; title: string; Icon: React.ComponentType<{ className?: string }>; run: () => void; visible: boolean }[] = [
+    {
+      key: 'insert',
+      title: 'Insert table',
+      Icon: TableIcon,
+      run: () => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+      visible: !inTable,
+    },
+    {
+      key: 'add-row',
+      title: 'Add row below',
+      Icon: Rows2,
+      run: () => editor?.chain().focus().addRowAfter().run(),
+      visible: inTable,
+    },
+    {
+      key: 'add-col',
+      title: 'Add column after',
+      Icon: Columns2,
+      run: () => editor?.chain().focus().addColumnAfter().run(),
+      visible: inTable,
+    },
+    {
+      key: 'del-table',
+      title: 'Delete table',
+      Icon: Trash2,
+      run: () => editor?.chain().focus().deleteTable().run(),
+      visible: inTable,
+    },
+  ];
+
+  return (
+    <>
+      {actions.filter((a) => a.visible).map(({ key, title, Icon, run }) => (
+        <button
+          key={key}
+          type="button"
+          className="tiptap-button"
+          data-style="ghost"
+          aria-label={title}
+          title={title}
+          tabIndex={-1}
+          disabled={disabled}
+          data-disabled={disabled}
+          onClick={run}
+        >
+          <Icon className="tiptap-button-icon" />
+        </button>
+      ))}
+    </>
+  );
+}
+
 interface ScriptEditorProps {
   initialContent?: JSONContent;
   isEditable: boolean;
@@ -160,7 +378,7 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
         bulletList: { keepMarks: true, keepAttributes: false },
         orderedList: { keepMarks: true, keepAttributes: false },
         codeBlock: { languageClassPrefix: 'language-' },
@@ -178,6 +396,11 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
       Highlight.configure({ multicolor: true }),
       TextStyle,
       Color,
+      Subscript,
+      Superscript,
+      TableKit.configure({
+        table: { resizable: true, HTMLAttributes: { class: 'tiptap-table' } },
+      }),
       Placeholder.configure({
         showOnlyWhenEditable: false,
         placeholder: ({ editor }) => {
@@ -279,10 +502,12 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
           <ToolbarSeparator />
 
           <ToolbarGroup>
-            <HeadingDropdownMenu modal={false} levels={[1, 2, 3]} />
+            <HeadingDropdownMenu modal={false} levels={[1, 2, 3, 4, 5, 6]} />
             <ListDropdownMenu modal={false} types={['bulletList', 'orderedList', 'taskList']} />
             <BlockquoteButton />
             <CodeBlockButton />
+            <HorizontalRuleButton />
+            <TableMenuButton />
           </ToolbarGroup>
 
           <ToolbarSeparator />
@@ -293,6 +518,8 @@ export function ScriptEditor({ initialContent, isEditable, onUpdate, onCharCount
             <MarkButton type="strike" />
             <MarkButton type="underline" />
             <MarkButton type="code" />
+            <MarkButton type="superscript" />
+            <MarkButton type="subscript" />
           </ToolbarGroup>
 
           <ToolbarSeparator />
