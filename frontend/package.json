@@ -54,7 +54,7 @@
     "axios": "^1.16.0",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
-    "framer-motion": "^12.34.3",
+    "framer-motion": "^12.38.0",
     "html-to-image": "^1.11.13",
     "i18next": "^26.0.3",
     "konva": "^10.3.0",
