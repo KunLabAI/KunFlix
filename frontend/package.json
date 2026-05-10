@@ -67,6 +67,7 @@
     "react-dom": "19.2.3",
     "react-hotkeys-hook": "^5.2.4",
     "react-i18next": "^17.0.2",
+    "react-is": "^19.2.0",
     "react-konva": "^19.2.4",
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.1",
