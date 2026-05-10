@@ -16,7 +16,7 @@ loguru>=0.7.3
 greenlet>=3.3.1
 alembic>=1.18.4
 psycopg2-binary>=2.9.9
-requests>=2.32.3
+requests>=2.33.1
 Pillow>=12.1.1
 bcrypt>=4.0.0
 # python-jose 上游长期未处理 CVE-2024-33663 / CVE-2024-33664，迁移到 PyJWT
