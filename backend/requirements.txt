@@ -20,7 +20,7 @@ requests>=2.32.3
 Pillow>=12.1.1
 bcrypt>=4.0.0
 # python-jose 上游长期未处理 CVE-2024-33663 / CVE-2024-33664，迁移到 PyJWT
-PyJWT[crypto]>=2.9.0
+PyJWT[crypto]>=2.12.1
 google-genai>=1.65.0
 xai-sdk>=1.7.0
 volcengine-python-sdk[ark]>=5.0.26
