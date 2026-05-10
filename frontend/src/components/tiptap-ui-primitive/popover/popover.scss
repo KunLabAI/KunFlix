@@ -1,21 +1,19 @@
 .tiptap-popover {
-  --tt-popover-bg-color: var(--white);
-  --tt-popover-border-color: var(--tt-gray-light-a-100);
-  --tt-popover-text-color: var(--tt-gray-light-a-600);
-
-  .dark & {
-    --tt-popover-border-color: var(--tt-gray-dark-a-50);
-    --tt-popover-bg-color: var(--tt-gray-dark-50);
-    --tt-popover-text-color: var(--tt-gray-dark-a-600);
-  }
+  --tt-popover-bg-color: var(--popover);
+  --tt-popover-border-color: var(--border);
+  --tt-popover-text-color: var(--popover-foreground);
 }
 
 /* --------------------------------------------
     --------- POPOVER STYLING SETTINGS -----------
     -------------------------------------------- */
 .tiptap-popover {
-  z-index: 50;
+  z-index: 9999;
   outline: none;
+  background-color: var(--tt-popover-bg-color);
+  color: var(--tt-popover-text-color);
+  border: 1px solid var(--tt-popover-border-color);
+  border-radius: 0.5rem;
   transform-origin: var(--radix-popover-content-transform-origin);
   max-height: var(--radix-popover-content-available-height);
 

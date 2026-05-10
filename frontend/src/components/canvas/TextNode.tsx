@@ -1,9 +1,10 @@
 import { memo, useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Handle, Position, NodeProps, Node, NodeResizer, useReactFlow } from '@xyflow/react';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Pencil, Trash2, Wand2, Check, Copy, ScrollText, Quote } from 'lucide-react';
+import { Pencil, Trash2, Wand2, Check, Copy, ScrollText, Quote, Maximize2, X } from 'lucide-react';
 import { useCanvasStore, ScriptNodeData, CanvasNode } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
@@ -20,6 +21,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
   const { getNode } = useReactFlow();
   
   const [isEditing, setIsEditing] = useState(false);
+  const [isImmersive, setIsImmersive] = useState(false);
   const [editData, setEditData] = useState<ScriptNodeData>(data);
   const [charCount, setCharCount] = useState(0);
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -35,42 +37,56 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     }
   }, [data, isEditing]);
 
-  // Click outside to exit edit mode and save
+  // Click outside to exit edit mode and save (disabled while immersive)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       const isInsideNode = nodeRef.current?.contains(target);
       const isInsidePortal = target.closest('[data-radix-popper-content-wrapper], [data-radix-portal], .tiptap-color-picker');
       
-      if (isEditing && !isInsideNode && !isInsidePortal) {
+      if (isEditing && !isImmersive && !isInsideNode && !isInsidePortal) {
         updateNodeData(id, editData);
         setIsEditing(false);
       }
     };
     
-    if (isEditing) {
+    if (isEditing && !isImmersive) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isEditing, editData, id, updateNodeData]);
+  }, [isEditing, isImmersive, editData, id, updateNodeData]);
 
-  // ESC to exit edit mode
+  // ESC to exit edit mode / immersive
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isEditing && e.key === 'Escape') {
+      if (e.key !== 'Escape') return;
+      if (isImmersive) {
+        setIsImmersive(false);
+        updateNodeData(id, editDataRef.current);
+        return;
+      }
+      if (isEditing) {
         setIsEditing(false);
       }
     };
 
-    if (isEditing) {
+    if (isEditing || isImmersive) {
       document.addEventListener('keydown', handleKeyDown);
     }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isEditing]);
+  }, [isEditing, isImmersive, id, updateNodeData]);
+
+  // Lock body scroll while immersive
+  useEffect(() => {
+    if (!isImmersive) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isImmersive]);
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -166,6 +182,19 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
     setIsEditing(false);
   };
 
+  const handleEnterImmersive = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditData(data);
+    setIsEditing(true);
+    setIsImmersive(true);
+  };
+
+  const handleExitImmersive = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    updateNodeData(id, editDataRef.current);
+    setIsImmersive(false);
+  };
+
   return (
     <>
       <NodeResizer 
@@ -237,7 +266,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
           <div className="text-sm text-foreground flex-1 min-h-[40px] flex flex-col">
             <ScriptEditor
               initialContent={editData.content || undefined}
-              isEditable={isEditing}
+              isEditable={isEditing && !isImmersive}
               onUpdate={(content, chars) => {
                 const newData = { ...editDataRef.current, content };
                 setEditData(newData);
@@ -268,7 +297,13 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
 
       {/* 工具条 */}
       <NodeToolbar
+        className="!bottom-auto !-top-[64px] !-translate-y-1 group-hover:!translate-y-0"
         actions={[
+          {
+            icon: <Maximize2 className="h-3.5 w-3.5" />,
+            onClick: handleEnterImmersive,
+            title: t('canvas.node.text.immersive', '沉浸式写作'),
+          },
           {
             icon: <Quote className="h-3.5 w-3.5" />,
             onClick: handleReference,
@@ -310,6 +345,66 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       </div>
 
       </div>
+
+      {/* 沉浸式写作层 */}
+      {isImmersive && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[9998] bg-background nodrag nowheel animate-in fade-in duration-200"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {/* 右上角幽灵关闭按钮 */}
+          <button
+            type="button"
+            onClick={handleExitImmersive}
+            title={t('canvas.node.text.exitImmersive', '返回画布')}
+            aria-label={t('canvas.node.text.exitImmersive', '返回画布')}
+            className="fixed top-5 right-5 z-10 h-10 w-10 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {/* 中间写作区域，最大宽度 1024px */}
+          <div className="h-full w-full overflow-y-auto custom-scrollbar flex justify-center">
+            <div className="w-full max-w-[1024px] px-8 md:px-12 py-14 md:py-16 flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <ScrollText className="w-5 h-5 text-node-blue shrink-0" />
+                  <Input
+                    value={editData.title}
+                    onChange={(e) => {
+                      const newData = { ...editData, title: e.target.value };
+                      setEditData(newData);
+                      updateNodeData(id, newData);
+                    }}
+                    className="font-bold text-2xl md:text-3xl h-auto bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus:border-0 focus:outline-none px-0 shadow-none cursor-text select-text rounded-none leading-tight"
+                    placeholder={t('canvas.node.unnamedTextCard')}
+                  />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground/60 shrink-0 select-none">
+                  {t('canvas.node.charCount', { count: charCount })}
+                </span>
+              </div>
+              <div className="h-px bg-border/50" />
+              <div className="flex-1 min-h-[60vh] flex flex-col text-base">
+                <ScriptEditor
+                  key={`immersive-${id}`}
+                  initialContent={editDataRef.current.content || undefined}
+                  isEditable={true}
+                  onUpdate={(content, chars) => {
+                    const newData = { ...editDataRef.current, content };
+                    setEditData(newData);
+                    updateNodeData(id, newData);
+                    setCharCount(chars);
+                  }}
+                  onCharCountChange={setCharCount}
+                />
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </>
   );
 };

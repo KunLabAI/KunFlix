@@ -17,6 +17,7 @@ import {
   NodeTypes,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { ChevronRight } from 'lucide-react';
 
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
@@ -70,6 +71,7 @@ function InfiniteCanvas() {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { fitView, setCenter } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
+  const [showCanvasTools, setShowCanvasTools] = useState(false);
   const [viewport, setViewportState] = useState({ x: 0, y: 0, zoom: 1 });
   
   const { 
@@ -218,17 +220,30 @@ function InfiniteCanvas() {
           
           <Panel position="bottom-left" className="m-4 z-50">
             <div className="flex items-center gap-2">
-              <ZoomControls 
-                showMap={showMap} 
-                onToggleMap={() => setShowMap(!showMap)} 
-                onAutoLayout={handleAutoLayout}
-                isLayouting={isLayouting}
-                snapToGrid={snapToGrid}
-                onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
-                snapToGuides={snapToGuides}
-                onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
-              />
-              <CanvasHelpButton />
+              <button
+                type="button"
+                onClick={() => setShowCanvasTools((v) => !v)}
+                title={showCanvasTools ? t('canvas.tools.collapse', '收起工具') : t('canvas.tools.expand', '展开工具')}
+                aria-label={showCanvasTools ? t('canvas.tools.collapse', '收起工具') : t('canvas.tools.expand', '展开工具')}
+                className="h-10 w-10 flex items-center justify-center bg-card border border-border/50 rounded-lg text-muted-foreground hover:text-foreground transition-colors pointer-events-auto"
+              >
+                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showCanvasTools ? 'rotate-180' : ''}`} />
+              </button>
+              {showCanvasTools && (
+                <>
+                  <ZoomControls 
+                    showMap={showMap} 
+                    onToggleMap={() => setShowMap(!showMap)} 
+                    onAutoLayout={handleAutoLayout}
+                    isLayouting={isLayouting}
+                    snapToGrid={snapToGrid}
+                    onToggleSnapToGrid={() => setSnapToGrid(!snapToGrid)}
+                    snapToGuides={snapToGuides}
+                    onToggleSnapToGuides={() => setSnapToGuides(!snapToGuides)}
+                  />
+                  <CanvasHelpButton />
+                </>
+              )}
             </div>
           </Panel>
           

@@ -369,6 +369,7 @@ const StoryboardNode = ({ id, data, selected }: NodeProps<Node<StoryboardNodeDat
 
         {/* 工具条 */}
         <NodeToolbar
+          className="!bottom-auto !-top-[64px] !-translate-y-1 group-hover:!translate-y-0"
           actions={[
             ...(hasData ? [{
               icon: <FileSpreadsheet className="h-3.5 w-3.5" />,

@@ -409,7 +409,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
 
         {/* 工具条 */}
         <NodeToolbar
-          className={showAddMenu ? '!opacity-100 !pointer-events-auto !translate-y-0' : undefined}
+          className={`!bottom-auto !-top-[64px] !-translate-y-1 group-hover:!translate-y-0 ${showAddMenu ? '!opacity-100 !pointer-events-auto !translate-y-0' : ''}`}
           actions={[
             {
               icon: <Quote className="h-3.5 w-3.5" />,
@@ -440,8 +440,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         {showAddMenu && (
           <div
             ref={addMenuRef}
-            className="absolute left-1/2 -translate-x-1/2 flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
-            style={{ bottom: '-100px' }}
+            className="absolute left-1/2 -translate-x-1/2 -top-[108px] flex items-center bg-background/95 backdrop-blur-md border border-border/60 rounded-full px-1 py-1 shadow-lg pointer-events-auto nodrag animate-in fade-in zoom-in-95 duration-150 z-30"
           >
             <button
               className="w-7 h-7 flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"

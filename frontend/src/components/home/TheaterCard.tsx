@@ -271,6 +271,9 @@ export default function TheaterCard({
                   sizes="260px"
                   priority={priority}
                   loading={priority ? "eager" : "lazy"}
+                  // 生产 standalone 镜像未打包 sharp，Next.js 图像优化器会对 /api/media/* 返回 500；
+                  // 卡片尺寸固定 260x360，原图已是合适规格，直接跳过优化由后端/nginx 直出即可
+                  unoptimized
                   className="object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
                 />
               )}
