@@ -63,7 +63,7 @@ class GeminiLyriaAdapter(MusicProviderAdapter):
     async def generate(self, ctx: MusicContext) -> MusicResult:
         """调用 Gemini generateContent API 生成音乐。"""
         # ---- 构建 contents.parts ----
-        parts: list[dict] = [{"text": ctx.prompt}]
+        parts: list[dict] = [{"text": _compose_prompt(ctx)}]
 
         # 参考图片（最多 10 张）
         for img in ctx.reference_images[:10]:
@@ -121,6 +121,61 @@ class GeminiLyriaAdapter(MusicProviderAdapter):
                 return MusicResult(status="failed", error=f"HTTP error: {exc}")
 
         return MusicResult(status="failed", error=last_error or "All retry attempts exhausted")
+
+
+# ---------------------------------------------------------------------------
+# Prompt 组装（结构化字段 → 自然语言）
+# ---------------------------------------------------------------------------
+# 字段映射：(字段名, 模板) —— 使用映射表驱动，避免 if 堆叠
+_STRUCTURED_FIELDS: tuple[tuple[str, str], ...] = (
+    ("genre",       "Genre: {}."),
+    ("instruments", "Instruments: {}."),
+    ("bpm",         "Tempo: {} BPM."),
+    ("key_scale",   "Key/Scale: {}."),
+    ("mood",        "Mood: {}."),
+    ("language",    "Write lyrics in {}."),
+)
+
+# 人声开关 -> 指令
+_VOCALS_HINT: dict[bool, str] = {
+    False: "Instrumental only, no vocals.",
+    True:  "Include vocals.",
+}
+
+
+def _format_field(template: str, value: Any) -> str:
+    """渲染单个结构化字段，空值返回空串。支持 list/tuple 自动 join。"""
+    is_seq = isinstance(value, (list, tuple))
+    rendered = ", ".join(str(v) for v in value) if is_seq else str(value or "").strip()
+    return template.format(rendered) if rendered else ""
+
+
+def _compose_prompt(ctx: MusicContext) -> str:
+    """将 MusicContext 中的 prompt + structured 字段拼装为最终 prompt 文本。"""
+    structured = ctx.structured or {}
+    lines: list[str] = [ctx.prompt.strip()] if ctx.prompt and ctx.prompt.strip() else []
+
+    # 结构化基础字段
+    field_lines = [_format_field(tpl, structured.get(key)) for key, tpl in _STRUCTURED_FIELDS]
+    lines.extend(line for line in field_lines if line)
+
+    # 人声开关（仅当显式提供时）
+    vocals = structured.get("vocals")
+    (vocals is not None) and lines.append(_VOCALS_HINT[bool(vocals)])
+
+    # 歌词段（支持 [Verse]/[Chorus]/[Bridge] 结构化标签，直接透传）
+    lyrics = (structured.get("lyrics") or "").strip()
+    lyrics and lines.extend(["Lyrics:", lyrics])
+
+    # 时间轴段（[0:00-0:10] 格式，直接透传）
+    timeline = (structured.get("timeline") or "").strip()
+    timeline and lines.extend(["Timeline:", timeline])
+
+    # 负向提示
+    negative = (ctx.negative_prompt or "").strip()
+    negative and lines.append(f"Avoid: {negative}.")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

@@ -10,12 +10,36 @@ import logging
 
 from database import get_db
 from models import LLMProvider, MusicTask
-from schemas import MusicTaskResponse
+from schemas import MusicTaskResponse, MusicGenerateRequest, MusicGenerateResponse
 from auth import get_current_active_user_or_admin, scoped_query
+from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provider_type
+from services.music_generation import submit_music_task
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/music", tags=["music"])
+
+
+# ---------------------------------------------------------------------------
+# Model capability registry (与 gemini_lyria 保持一致)
+# ---------------------------------------------------------------------------
+_MODEL_CAPS: dict[str, dict] = {
+    "lyria-3-clip-preview": {
+        "formats": ["mp3"],
+        "duration_hint": "固定 30 秒短片",
+        "supports_wav": False,
+        "supports_timeline": False,
+        "display_name": "Lyria 3 Clip",
+    },
+    "lyria-3-pro-preview": {
+        "formats": ["mp3", "wav"],
+        "duration_hint": "完整歌曲（约 1-2 分钟）",
+        "supports_wav": True,
+        "supports_timeline": True,
+        "display_name": "Lyria 3 Pro",
+    },
+}
+
 
 
 # ---------------------------------------------------------------------------
@@ -121,3 +145,107 @@ async def list_music_tasks(
 
     items = [_build_task_response(t, provider_name=provider_name_map.get(t.provider_id)) for t in tasks]
     return {"items": [item.model_dump() for item in items], "total": total, "page": page, "page_size": page_size}
+
+
+# ---------------------------------------------------------------------------
+# Providers & capabilities
+# ---------------------------------------------------------------------------
+
+@router.get("/providers", response_model=list[dict])
+async def list_music_providers(
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """列出所有支持音乐生成的活跃供应商。
+
+    模型名称来源优先级（对齐 /images/providers）：
+      1. provider.model_metadata[model].model_type == 'audio' → 使用 meta.display_name
+      2. 如未配置 audio 元数据（兼容存量）→ gemini 内置的 _MODEL_CAPS 默认列表，display_name 取默认值
+
+    这样管理员在后台修改 display_name 时，前端可立即看到更新。
+    """
+    stmt = select(LLMProvider).where(LLMProvider.is_active == True)
+    providers = (await db.execute(stmt)).scalars().all()
+
+    def _build_models(p: LLMProvider, music_type: str) -> list[dict]:
+        # 优先：从 model_metadata 中读取被管理员标为 audio 的模型
+        tagged = [
+            {
+                "name": model_name,
+                "display_name": (meta or {}).get("display_name") or model_name,
+            }
+            for model_name, meta in (p.model_metadata or {}).items()
+            if (meta or {}).get("model_type") == "audio"
+        ]
+        # 兵底：gemini 供应商未配置元数据时，使用内置 Lyria 默认列表
+        fallback = [
+            {"name": name, "display_name": caps.get("display_name") or name}
+            for name, caps in _MODEL_CAPS.items()
+        ] if (not tagged and music_type == "gemini") else []
+        return tagged or fallback
+
+    out: list[dict] = []
+    for p in providers:
+        music_type = extract_music_provider_type(p.provider_type or "")
+        models = _build_models(p, music_type) if music_type else []
+        models and out.append({
+            "id": p.id,
+            "name": p.name,
+            "provider_type": p.provider_type,
+            "music_provider_type": music_type,
+            "models": models,
+        })
+    return out
+
+
+@router.get("/model-capabilities/{model}", response_model=dict)
+async def get_model_capabilities(
+    model: str,
+    current_user=Depends(get_current_active_user_or_admin),
+):
+    """返回指定模型的能力描述（前端根据此开关面板字段）。"""
+    caps = _MODEL_CAPS.get(model)
+    caps or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Unknown music model"))
+    return {"model": model, **caps}
+
+
+# ---------------------------------------------------------------------------
+# Submit music task (POST /)
+# ---------------------------------------------------------------------------
+
+@router.post("", response_model=MusicGenerateResponse)
+async def create_music_task(
+    payload: MusicGenerateRequest,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """提交一个异步音乐生成任务（画布音频节点调用）。"""
+    structured_dict = payload.structured.model_dump(exclude_none=True) if payload.structured else None
+    ref_images = [r.model_dump() for r in (payload.reference_images or [])]
+
+    # session 优先；若有 session 将 theater_id 通过 session 解析的逻辑交给后台（本接口不强制绑定 theater）
+    result = await submit_music_task(
+        db=db,
+        user_id=current_user.id,
+        prompt=payload.prompt,
+        model=payload.model,
+        provider_id=payload.provider_id,
+        session_id=payload.session_id,
+        theater_id=None,
+        output_format=payload.output_format,
+        negative_prompt=payload.negative_prompt or "",
+        structured=structured_dict,
+        reference_images=ref_images,
+    )
+
+    error = result.get("error")
+    error and (_ for _ in ()).throw(HTTPException(status_code=400, detail=error))
+
+    return MusicGenerateResponse(
+        task_id=result["task_id"],
+        status=result["status"],
+        session_id=payload.session_id,
+        node_id=payload.node_id,
+        model=result["model"],
+        provider_id=result.get("provider_id"),
+    )

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import LLMProvider, MusicTask, ToolConfig
 from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provider_type
 from services.music_providers.base import MusicContext
-from services.music_generation import execute_music_task_background
+from services.music_generation import submit_music_task
 from services.media_utils import resolve_media_filepath
 from tasks_queue import enqueue as enqueue_job
 from dataclasses import asdict
@@ -162,88 +162,40 @@ async def _execute_music_gen_tool(args: dict, ctx: "ToolContext") -> str:
     configured_format = music_cfg.get("output_format")
     final_format = configured_format or output_format or "mp3"
 
-    # 查找 LLMProvider
-    result = await db.execute(
-        select(LLMProvider).where(LLMProvider.id == provider_id, LLMProvider.is_active == True)
-    )
-    provider = result.scalar_one_or_none()
-
-    if not provider:
-        return json.dumps({"error": "Music provider not found or inactive. Please configure music generation in admin tools."})
-
-    # 提取音乐供应商类型
-    music_provider_type = extract_music_provider_type(provider.provider_type)
-    if not music_provider_type:
-        return json.dumps({"error": f"Provider type '{provider.provider_type}' does not support music generation."})
-
-    # 将本地媒体路径转换为 base64 data URI
-    ref_images = []
-    for u in reference_images_raw[:10]:
-        resolved = _resolve_local_media(u)
-        mime, _ = mimetypes.guess_type(u) if not (resolved or "").startswith("data:") else (None, None)
-        ref_images.append({"url": resolved or u, "mime_type": mime or "image/jpeg"})
-
-    # 构建 MusicContext
-    music_ctx = MusicContext(
-        api_key=provider.api_key,
-        model=model,
-        prompt=prompt,
-        provider_type=music_provider_type,
-        output_format=final_format,
-        reference_images=ref_images,
-    )
-
-    # 创建 MusicTask 记录
-    task = MusicTask(
-        session_id=ctx.session_id,
-        provider_id=provider_id,
-        model=model,
+    # 委托 submit_music_task 统一处理 provider 校验 / ctx 构造 / 入队
+    result = await submit_music_task(
+        db=db,
         user_id=ctx.user_id,
         prompt=prompt,
+        model=model,
+        provider_id=provider_id,
+        session_id=ctx.session_id,
+        theater_id=ctx.theater_id,
         output_format=final_format,
-        input_image_count=len(ref_images),
-        status="processing",
+        structured=None,
+        reference_images=list(reference_images_raw or []),
     )
-    db.add(task)
-    await db.commit()
-    await db.refresh(task)
 
-    logger.info("Music task created via tool: %s (%s: %s)", task.id, music_provider_type, model)
+    error = result.get("error")
+    if error:
+        return json.dumps({"error": error})
 
-    # 启动后台任务：优先 arq 入队（跨进程），失败则 fallback 到 asyncio
-    job = await enqueue_job(
-        "run_music_task_job",
-        task.id,
-        asdict(music_ctx),
-        provider_id,
-        ctx.user_id,
-        ctx.session_id,
-        ctx.theater_id,
-    )
-    job is None and asyncio.create_task(
-        execute_music_task_background(
-            task_id=task.id,
-            music_ctx=music_ctx,
-            provider_id=provider_id,
-            user_id=ctx.user_id,
-            session_id=ctx.session_id,
-            theater_id=ctx.theater_id,
-        )
-    )
+    task_id = result["task_id"]
+    logger.info("Music task created via tool: %s (%s)", task_id, model)
 
     # 将任务信息存入 ctx，供 chat_generation 发送 SSE 事件
-    ctx.music_tasks.append({"task_id": task.id, "model": model})
+    ctx.music_tasks.append({"task_id": task_id, "model": model})
 
     # 返回 LLM 可读的结果
     return (
         "Music generation task submitted successfully.\n\n"
-        "**Task ID:** " + task.id + "\n"
+        "**Task ID:** " + task_id + "\n"
         "**Model:** " + model + "\n"
         "**Format:** " + final_format + "\n"
         "**Status:** Processing\n\n"
         "The music is now being generated. This typically takes 30-120 seconds. "
         "The user will be notified when it's ready.\n\n"
-        "<!-- __MUSIC_TASK__|" + task.id + "|" + model + " -->"
+        "<!-- __MUSIC_TASK__|" + task_id + "|" + model + " -->"
     )
 
 
