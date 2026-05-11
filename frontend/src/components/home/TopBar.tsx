@@ -99,10 +99,10 @@ export default function TopBar() {
       {/* Main TopBar */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-16 gap-4">
             
             {/* Left: Logo */}
-            <div className="flex items-center">
+            <div className="flex items-center flex-shrink-0">
               <button 
                 onClick={() => handleNavigate("/")}
                 className="flex items-center gap-2 group"
@@ -114,8 +114,10 @@ export default function TopBar() {
               </button>
             </div>
 
-            {/* Center: Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+            {/* Center: Desktop Navigation
+                采用 flex-1 + justify-center 自然居中，不再用 absolute，避免
+                定位上下文穿透到 fixed header 引发的堂栈与点击遇遮问题。 */}
+            <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">
               {visibleNavLinks.map((link) => {
                 const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
                 return (
@@ -123,7 +125,8 @@ export default function TopBar() {
                     key={link.key}
                     onClick={() => handleNavigate(link.href)}
                     className={cn(
-                      "relative px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200",
+                      // isolate 让按钮自成堆叠上下文，子元素 -z-10 不会穿透到父级
+                      "relative isolate px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200",
                       isActive 
                         ? "text-foreground" 
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary"
@@ -143,7 +146,7 @@ export default function TopBar() {
             </nav>
 
             {/* Right: Search + User */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* Search Container */}
               <div className="search-container relative flex items-center">
                 <AnimatePresence mode="wait">

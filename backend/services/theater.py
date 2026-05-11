@@ -1,9 +1,9 @@
 import uuid
-from sqlalchemy import select, delete, func
+from sqlalchemy import select, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
-from models import Theater, TheaterNode, TheaterEdge, generate_uuid
+from models import Theater, TheaterNode, TheaterEdge, ChatSession, generate_uuid
 from schemas import (
     TheaterCreate, TheaterUpdate, TheaterSaveRequest,
     TheaterNodeCreate, TheaterEdgeCreate,
@@ -102,6 +102,13 @@ class TheaterService:
 
     async def delete_theater(self, theater_id: str, user_id: str) -> None:
         theater = await self._get_owned_theater(theater_id, user_id)
+        # 解绑关联的 chat_sessions.theater_id：保留会话历史，避免外键约束报 500。
+        # 数据库层还未执行 ondelete=SET NULL 的流通旧环境有此兆长保险。
+        await self.db.execute(
+            update(ChatSession)
+            .where(ChatSession.theater_id == theater_id)
+            .values(theater_id=None)
+        )
         await self.db.delete(theater)
         await self.db.commit()
 
