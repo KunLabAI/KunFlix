@@ -14,10 +14,10 @@ import SettingsDialog from "@/components/SettingsDialog";
 import Logo from "@/components/Logo";
 
 
-// 导航链接配置
+// 导航链接配置：是否需要登录才能访问
 const NAV_LINKS = [
-  { key: "home", labelKey: "nav.home", href: "/", icon: Home },
-  { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen },
+  { key: "home", labelKey: "nav.home", href: "/", icon: Home, requireAuth: false },
+  { key: "resources", labelKey: "nav.resources", href: "/resources", icon: FolderOpen, requireAuth: true },
 ];
 
 // 用户菜单配置
@@ -27,9 +27,17 @@ const USER_MENU_ITEMS = [
 
 export default function TopBar() {
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, isAuthenticated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const isGuest = !isAuthenticated;
+  // 游客态隐藏需验证身份的导航入口
+  const visibleNavLinks = isGuest ? NAV_LINKS.filter((l) => !l.requireAuth) : NAV_LINKS;
+  // 游客点击登录/注册时带上当前路径，登录成功后回跳
+  const goLogin = () => {
+    const redirect = pathname && pathname !== "/login" ? pathname : "/";
+    router.push(`/login?redirect=${encodeURIComponent(redirect)}`);
+  };
   
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -108,7 +116,7 @@ export default function TopBar() {
 
             {/* Center: Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
-              {NAV_LINKS.map((link) => {
+              {visibleNavLinks.map((link) => {
                 const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
                 return (
                   <button
@@ -188,24 +196,31 @@ export default function TopBar() {
                 </AnimatePresence>
               </div>
 
-              {/* User Menu */}
+              {/* User Menu / Guest Avatar */}
               <div className="relative" ref={userMenuRef}>
                 <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  onClick={() => {
+                    // 游客态点击头像直接跳转登录，不打开下拉菜单
+                    if (isGuest) {
+                      goLogin();
+                      return;
+                    }
+                    setUserMenuOpen(!userMenuOpen);
+                  }}
                   className={cn(
                     "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
                     userMenuOpen && "bg-secondary text-foreground"
                   )}
-                  aria-label={t("userMenu.label")}
+                  aria-label={isGuest ? t("nav.loginCta") : t("userMenu.label")}
                 >
                   <div className="w-6 h-6 rounded-full bg-amber-800 flex items-center justify-center text-white text-xs font-semibold">
                     {(user?.nickname ?? "U").charAt(0).toLowerCase()}
                   </div>
                 </button>
 
-                {/* User Dropdown */}
+                {/* User Dropdown: 仅已登录用户可开 */}
                 <AnimatePresence>
-                  {userMenuOpen && (
+                  {!isGuest && userMenuOpen && (
                     <motion.div
                       initial={{ opacity: 0, y: 8, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -287,7 +302,7 @@ export default function TopBar() {
 
               {/* Mobile Navigation */}
               <nav className="flex flex-col gap-1">
-                {NAV_LINKS.map((link, index) => {
+                {visibleNavLinks.map((link, index) => {
                   const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
                   return (
                     <motion.button
@@ -313,22 +328,33 @@ export default function TopBar() {
 
               {/* Mobile User Section */}
               <div className="mt-auto pt-6 border-t border-border">
-                <div className="flex items-center gap-3 px-3 py-3">
+                <div
+                  onClick={isGuest ? () => { setMobileMenuOpen(false); goLogin(); } : undefined}
+                  role={isGuest ? "button" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-3",
+                    isGuest && "cursor-pointer hover:bg-secondary/50 rounded-lg transition-colors"
+                  )}
+                >
                   <div className="w-10 h-10 rounded-full bg-amber-800 flex items-center justify-center text-white text-lg font-semibold">
                     {(user?.nickname ?? "U").charAt(0).toLowerCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-foreground truncate">{user?.nickname || t("userMenu.guest")}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email || t("userMenu.notLoggedIn")}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {isGuest ? t("nav.loginCta") : (user?.email || t("userMenu.notLoggedIn"))}
+                    </p>
                   </div>
                 </div>
-                <button
-                  onClick={logout}
-                  className="w-full flex items-center gap-3 px-3 py-3 mt-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span className="font-medium">{t("userMenu.logout")}</span>
-                </button>
+                {!isGuest && (
+                  <button
+                    onClick={logout}
+                    className="w-full flex items-center gap-3 px-3 py-3 mt-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span className="font-medium">{t("userMenu.logout")}</span>
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Mail, Lock, User, ArrowRight,
@@ -196,6 +197,14 @@ export default function LoginPage() {
   const { login } = useAuth();
   const { restoreTheme } = useTheme();
   const { message } = App.useApp();
+  const searchParams = useSearchParams();
+
+  // 登录成功后回跳地址：默认 "/"，仅允许以单 "/" 开头的相对路径（防开放重定向）。
+  const safeRedirect = useMemo(() => {
+    const raw = searchParams?.get("redirect") ?? "";
+    const isSafe = raw.startsWith("/") && !raw.startsWith("//") && !/^\/*https?:/i.test(raw);
+    return isSafe ? raw : "/";
+  }, [searchParams]);
 
   // 登录后恢复用户主题/语言偏好
   const applyUserPreferences = (u: TokenResponse["user"]) => {
@@ -253,7 +262,7 @@ export default function LoginPage() {
       // 恢复用户偏好
       applyUserPreferences(data.user);
       message.success(t("login.loginSuccess", { name: data.user.nickname }));
-      login(data.access_token, data.refresh_token, data.user);
+      login(data.access_token, data.refresh_token, data.user, safeRedirect);
     } catch (err: any) {
       message.error(err.response?.data?.detail || t("login.loginFailed"));
     } finally {
@@ -271,7 +280,7 @@ export default function LoginPage() {
       // 恢复用户偏好
       applyUserPreferences(data.user);
       message.success(t("login.registerSuccess", { name: data.user.nickname }));
-      login(data.access_token, data.refresh_token, data.user);
+      login(data.access_token, data.refresh_token, data.user, safeRedirect);
     } catch (err: any) {
       message.error(err.response?.data?.detail || t("login.registerFailed"));
     } finally {

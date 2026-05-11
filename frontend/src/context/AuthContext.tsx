@@ -41,7 +41,7 @@ export interface TokenResponse {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (accessToken: string, refreshToken: string, user: User) => void;
+  login: (accessToken: string, refreshToken: string, user: User, redirect?: string) => void;
   logout: () => void;
   updateCredits: (credits: number) => void;
   refreshToken: () => Promise<boolean>;
@@ -126,7 +126,8 @@ export function createAuthFetch(refreshToken: () => Promise<boolean>, logout: ()
 }
 
 // Public routes that don't require authentication
-const PUBLIC_ROUTES = ["/login"];
+// "/" 对游客开放首页（社区剧场未开放状态 + 近期剧场登录占位）
+const PUBLIC_ROUTES = ["/", "/login"];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -144,10 +145,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsAuthenticated(!!hasSession);
     setUser(hasSession ? JSON.parse(stored) : null);
 
-    // Redirect unauthenticated users from protected routes
+    // Redirect unauthenticated users from protected routes,
+    // 携带 redirect 参数以便登录成功后回跳原位置。
     const isPublic = PUBLIC_ROUTES.includes(pathname);
     if (!hasSession && !isPublic) {
-      router.push("/login");
+      const target = `/login?redirect=${encodeURIComponent(pathname)}`;
+      router.push(target);
     }
   }, [pathname, router]);
 
@@ -181,13 +184,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [isAuthenticated]);
 
   const login = useCallback(
-    (accessToken: string, refreshToken: string, userData: User) => {
+    (accessToken: string, refreshToken: string, userData: User, redirect?: string) => {
       localStorage.setItem("access_token", accessToken);
       localStorage.setItem("refresh_token", refreshToken);
       localStorage.setItem("user", JSON.stringify(userData));
       setUser(userData);
       setIsAuthenticated(true);
-      router.push("/");
+      router.push(redirect || "/");
     },
     [router]
   );

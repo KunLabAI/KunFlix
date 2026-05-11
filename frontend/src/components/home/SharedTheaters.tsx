@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import TheaterCard from "./TheaterCard";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock } from "lucide-react";
 
 export default function SharedTheaters() {
   const { t } = useTranslation();
@@ -58,14 +58,14 @@ export default function SharedTheaters() {
         </div>
       </div>
       
-      {/* Empty State */}
+      {/* Empty State: 社区剧场暂未开放，对游客与已登录用户均可见 */}
       {theaters.length === 0 && !loading && (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <div className="w-20 h-20 rounded-2xl bg-secondary/50 flex items-center justify-center mb-4">
-            <Loader2 className="w-8 h-8 opacity-30" />
+            <Clock className="w-8 h-8 opacity-40" />
           </div>
-          <p className="text-base font-medium text-foreground">{t("home.noSharedTitle")}</p>
-          <p className="text-sm mt-1">{t("home.noSharedDesc")}</p>
+          <p className="text-base font-medium text-foreground">{t("home.sharedNotOpenTitle")}</p>
+          <p className="text-sm mt-1">{t("home.sharedNotOpenDesc")}</p>
         </div>
       )}
 
