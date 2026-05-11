@@ -19,7 +19,7 @@ from services.music_providers import (
     extract_music_provider_type,
     MUSIC_PROVIDER_TYPES,
 )
-from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT, MEDIA_DIR, get_relative_path, resolve_media_filepath
+from services.media_utils import save_audio_data, MEDIA_DIR, get_relative_path, resolve_media_filepath
 from models import Asset, User, generate_uuid
 from sqlalchemy import func
 

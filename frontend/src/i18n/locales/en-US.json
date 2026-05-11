@@ -2,7 +2,8 @@
   "nav": {
     "home": "Home",
     "resources": "Assets",
-    "community": "Community"
+    "community": "Community",
+    "loginCta": "Sign In"
   },
   "userMenu": {
     "profile": "Profile",
@@ -155,6 +156,11 @@
     "sharedDesc": "Discover and explore outstanding works from the community",
     "noSharedTitle": "No community theaters yet",
     "noSharedDesc": "Community features are coming soon, stay tuned",
+    "sharedNotOpenTitle": "Community theaters are not open yet",
+    "sharedNotOpenDesc": "Coming soon, stay tuned",
+    "guestRecentTitle": "Sign in to start creating theaters",
+    "guestRecentDesc": "Create a free account to build theaters, manage assets and unlock the full experience",
+    "guestRecentCta": "Sign In",
     "createTheater": "Create New Theater",
     "createDesc": "Start your creative journey",
     "renameFailed": "Rename failed",

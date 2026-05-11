@@ -2,7 +2,8 @@
   "nav": {
     "home": "首页",
     "resources": "资产库",
-    "community": "社区"
+    "community": "社区",
+    "loginCta": "登录 / 注册"
   },
   "userMenu": {
     "profile": "个人资料",
@@ -155,6 +156,11 @@
     "sharedDesc": "发现和探索社区中的优秀作品",
     "noSharedTitle": "暂无社区剧场",
     "noSharedDesc": "社区功能即将上线，敬请期待",
+    "sharedNotOpenTitle": "社区剧场暂未开放",
+    "sharedNotOpenDesc": "功能即将上线，敬请期待",
+    "guestRecentTitle": "登录后开始你的剧场创作",
+    "guestRecentDesc": "注册账号即可创建剧场、管理资产库并解锁全部功能",
+    "guestRecentCta": "立即登录",
     "createTheater": "创建新剧场",
     "createDesc": "开始您的创作之旅",
     "renameFailed": "重命名失败",

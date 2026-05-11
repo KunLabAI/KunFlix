@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 import { motion, useAnimation } from "framer-motion";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import TheaterCard from "./TheaterCard";
 import CreateTheaterCard from "./CreateTheaterCard";
 import { useAuth } from "@/context/AuthContext";
@@ -111,12 +112,36 @@ export default function RecentTheaters() {
             {t("home.recentDesc")}
           </p>
         </div>
-        <span className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-full">
-          {t("home.theaterCount", { count: theaters.length })}
-        </span>
+        {isAuthenticated && (
+          <span className="text-sm text-muted-foreground bg-secondary px-3 py-1 rounded-full">
+            {t("home.theaterCount", { count: theaters.length })}
+          </span>
+        )}
       </div>
-      
-      {/* Carousel Container */}
+
+      {/* Guest Placeholder: 游客态展示登录引导大卡，点击跳转 /login */}
+      {!isAuthenticated ? (
+        <div className="px-6">
+          <motion.button
+            type="button"
+            onClick={() => router.push("/login?redirect=%2F")}
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.995 }}
+            className={cn(
+              "group relative w-full overflow-hidden rounded-2xl",
+              "bg-gradient-to-br from-secondary/60 via-secondary/30 to-secondary/10",
+              "border-2 border-dashed border-border hover:border-primary/50",
+              "px-8 py-12 flex flex-col items-center justify-center gap-4 text-center",
+              "transition-colors"
+            )}
+          >
+            <h3 className="text-lg font-semibold text-foreground">
+              {t("home.guestRecentTitle")}
+            </h3>
+          </motion.button>
+        </div>
+      ) : (
+      /* Carousel Container */
       <motion.div 
         ref={carouselRef} 
         className="cursor-grab active:cursor-grabbing overflow-hidden py-6 pl-6 -mr-6 pr-6"
@@ -162,6 +187,7 @@ export default function RecentTheaters() {
           ))}
         </motion.div>
       </motion.div>
+      )}
     </div>
   );
 }

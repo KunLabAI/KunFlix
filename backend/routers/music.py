@@ -12,7 +12,7 @@ from database import get_db
 from models import LLMProvider, MusicTask
 from schemas import MusicTaskResponse, MusicGenerateRequest, MusicGenerateResponse
 from auth import get_current_active_user_or_admin, scoped_query
-from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provider_type
+from services.music_providers import extract_music_provider_type
 from services.music_generation import submit_music_task
 
 logger = logging.getLogger(__name__)
