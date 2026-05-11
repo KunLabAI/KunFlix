@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -186,7 +186,9 @@ function GitHubIcon({ className }: { className?: string }) {
   );
 }
 
-export default function LoginPage() {
+// 内部组件：使用 useSearchParams()，需要外层 Suspense 包裹
+// （Next.js CSR bailout 要求，缺少时预渲染 /login 会报错）
+function LoginPageContent() {
   const { t, i18n } = useTranslation();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
@@ -549,5 +551,14 @@ export default function LoginPage() {
         </motion.div>
       </div>
     </div>
+  );
+}
+
+// 默认导出：用 Suspense 包裹 LoginPageContent，避免预渲染时 useSearchParams() 报错
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
