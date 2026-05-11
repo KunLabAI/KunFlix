@@ -1088,3 +1088,48 @@ class ImageGenerateResponse(BaseModel):
     credit_cost: float = 0.0
     created_at: Any
 
+
+# ---------------------------------------------------------------------------
+# Music Generation (异步任务接口)
+# ---------------------------------------------------------------------------
+class MusicStructured(BaseModel):
+    """Lyria 结构化音乐字段（全部可选，空值忽略）。"""
+    genre: Optional[str] = None                    # 流派/风格，Pop / Rock / Jazz ...
+    instruments: Optional[List[str]] = None        # 乐器列表，piano / drums / guitar ...
+    bpm: Optional[int] = Field(default=None, ge=40, le=240)
+    key_scale: Optional[str] = None                # C Major / D Minor ...
+    mood: Optional[str] = None                     # 情绪描述
+    language: Optional[str] = None                 # 歌词语言
+    vocals: Optional[bool] = None                  # 否包含人声
+    lyrics: Optional[str] = None                   # [Verse]/[Chorus]/[Bridge] 结构化歌词
+    timeline: Optional[str] = None                 # [0:00-0:10] 时间轴结构
+
+
+class MusicReference(BaseModel):
+    """音乐生成的多模态参考图像。"""
+    url: str
+    mime_type: Optional[str] = "image/jpeg"
+
+
+class MusicGenerateRequest(BaseModel):
+    """同步提交的音乐生成请求（返回 task_id，异步处理）。"""
+    provider_id: Optional[str] = None              # 为空时自动选择默认 gemini 供应商
+    model: str = Field(default="lyria-3-clip-preview")
+    prompt: str = Field(..., min_length=1, max_length=4000)
+    session_id: Optional[str] = None
+    node_id: Optional[str] = None                  # 画布节点 id（用于实时推送匹配）
+    output_format: Literal["mp3", "wav"] = "mp3"
+    negative_prompt: Optional[str] = None
+    structured: Optional[MusicStructured] = None
+    reference_images: Optional[List[MusicReference]] = None
+
+
+class MusicGenerateResponse(BaseModel):
+    """提交音乐任务的响应。"""
+    task_id: str
+    status: str
+    session_id: Optional[str] = None
+    node_id: Optional[str] = None
+    model: str
+    provider_id: Optional[str] = None
+

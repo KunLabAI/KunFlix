@@ -110,12 +110,37 @@ export type VideoNodeData = {
   updatedAt?: string;
 };
 
+export type AudioGenHistoryEntry = {
+  url: string;
+  prompt?: string;
+  lyrics?: string;
+  model?: string;
+  provider_id?: string;
+  output_format?: 'mp3' | 'wav';
+  // Lyria 结构化字段（持久化在历史条目中以便从历史回填面板）
+  genre?: string;
+  instruments?: string[];
+  bpm?: number;
+  key_scale?: string;
+  mood?: string;
+  language?: string;
+  vocals?: boolean;
+  timeline?: string;
+  createdAt?: string;
+};
+
 export type AudioNodeData = {
   name: string;
   description: string;
   audioUrl?: string | null;
   uploading?: boolean;
   lyrics?: string;
+  /** 音乐节点历史列表 */
+  generatedAudios?: AudioGenHistoryEntry[];
+  /** 从历史拖拽创建时预填面板 */
+  initialGenConfig?: Partial<AudioGenHistoryEntry>;
+  /** 为 true 时保持 AudioGeneratePanel 始终可见 */
+  pinPanel?: boolean;
   /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
   updatedAt?: string;
 };

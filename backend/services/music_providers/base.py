@@ -17,6 +17,8 @@ class MusicContext:
     provider_type: str = "gemini"
     output_format: str = "mp3"                    # mp3 / wav (wav 仅 Pro)
     reference_images: list[dict] = field(default_factory=list)  # [{"url": "data:...", "mime_type": "image/jpeg"}]
+    structured: dict | None = None                # 结构化字段: genre/instruments/bpm/key_scale/mood/language/vocals/lyrics/timeline
+    negative_prompt: str = ""                     # 反向提示（可选）
 
 
 @dataclass

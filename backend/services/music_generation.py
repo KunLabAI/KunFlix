@@ -17,8 +17,9 @@ from services.music_providers import (
     MusicProviderAdapter,
     GeminiLyriaAdapter,
     extract_music_provider_type,
+    MUSIC_PROVIDER_TYPES,
 )
-from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT, MEDIA_DIR, get_relative_path
+from services.media_utils import save_audio_data, AUDIO_MIME_TO_EXT, MEDIA_DIR, get_relative_path, resolve_media_filepath
 from models import Asset, User, generate_uuid
 from sqlalchemy import func
 
@@ -269,3 +270,136 @@ def _mark_failed(task, error_msg: str) -> None:
     task.status = "failed"
     task.error_message = error_msg
     task.completed_at = datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# 异步提交入口（供 REST / 工具链共同复用）
+# ---------------------------------------------------------------------------
+
+import base64 as _b64
+import mimetypes as _mimetypes
+from dataclasses import asdict as _asdict
+
+
+def _resolve_local_media(url: str | None) -> str | None:
+    """将本地 /api/media/xxx.jpg 路径转换为 base64 data URI。"""
+    is_local = (url or "").startswith("/api/media/")
+    if not is_local:
+        return url
+    filename = url.rsplit("/", 1)[-1]
+    filepath = resolve_media_filepath(filename)
+    if not filepath:
+        logger.warning("Local media file not found: %s", filename)
+        return url
+    mime, _ = _mimetypes.guess_type(str(filepath))
+    mime = mime or "image/jpeg"
+    b64 = _b64.b64encode(filepath.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+def _normalize_reference_images(raw: list) -> list[dict]:
+    """将各种格式的 reference_images 统一为 {url, mime_type}。输入可以是 str 或 dict。"""
+    out: list[dict] = []
+    for item in (raw or [])[:10]:
+        is_dict = isinstance(item, dict)
+        url = item.get("url", "") if is_dict else str(item or "")
+        mime = item.get("mime_type", "") if is_dict else ""
+        resolved = _resolve_local_media(url)
+        has_data_uri = (resolved or "").startswith("data:")
+        guessed, _ = (None, None) if has_data_uri else _mimetypes.guess_type(url)
+        final_mime = mime or guessed or "image/jpeg"
+        resolved and out.append({"url": resolved, "mime_type": final_mime})
+    return out
+
+
+async def submit_music_task(
+    *,
+    db: "AsyncSession",
+    user_id: str,
+    prompt: str,
+    model: str,
+    provider_id: str | None = None,
+    session_id: str | None = None,
+    theater_id: str | None = None,
+    output_format: str = "mp3",
+    negative_prompt: str = "",
+    structured: dict | None = None,
+    reference_images: list | None = None,
+) -> dict:
+    """提交一个音乐生成任务：校验 provider → 创建 MusicTask → 入队 arq / fallback asyncio。
+
+    返回：{task_id, status, model, provider_id} 或 {error}。
+    调用方负责 commit/refresh。
+    """
+    from models import LLMProvider, MusicTask
+    from sqlalchemy import select
+    from tasks_queue import enqueue as enqueue_job
+
+    # ---- 解析 provider ----
+    prov_stmt = select(LLMProvider).where(LLMProvider.is_active == True)
+    prov_stmt = prov_stmt.where(LLMProvider.id == provider_id) if provider_id else prov_stmt
+    provider = (await db.execute(prov_stmt)).scalars().first()
+    if not provider:
+        return {"error": "Music provider not found or inactive"}
+
+    music_provider_type = extract_music_provider_type(provider.provider_type or "")
+    if not music_provider_type:
+        return {"error": f"Provider type '{provider.provider_type}' does not support music generation"}
+
+    # ---- 构造 MusicContext ----
+    ref_images = _normalize_reference_images(reference_images or [])
+    ctx = MusicContext(
+        api_key=provider.api_key,
+        model=model,
+        prompt=prompt,
+        provider_type=music_provider_type,
+        output_format=output_format,
+        reference_images=ref_images,
+        structured=structured or None,
+        negative_prompt=negative_prompt or "",
+    )
+
+    # ---- 写入 MusicTask ----
+    task = MusicTask(
+        session_id=session_id,
+        provider_id=provider.id,
+        model=model,
+        user_id=user_id,
+        prompt=prompt,
+        output_format=output_format,
+        input_image_count=len(ref_images),
+        status="processing",
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    logger.info("Music task submitted: %s (%s: %s)", task.id, music_provider_type, model)
+
+    # ---- 入队或 fallback ----
+    job = await enqueue_job(
+        "run_music_task_job",
+        task.id,
+        _asdict(ctx),
+        provider.id,
+        user_id,
+        session_id,
+        theater_id,
+    )
+    job is None and asyncio.create_task(
+        execute_music_task_background(
+            task_id=task.id,
+            music_ctx=ctx,
+            provider_id=provider.id,
+            user_id=user_id,
+            session_id=session_id,
+            theater_id=theater_id,
+        )
+    )
+
+    return {
+        "task_id": task.id,
+        "status": task.status,
+        "model": task.model,
+        "provider_id": provider.id,
+    }
