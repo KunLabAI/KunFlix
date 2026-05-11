@@ -27,7 +27,7 @@
     "@tiptap/extension-highlight": "^3.20.4",
     "@tiptap/extension-horizontal-rule": "^3.22.5",
     "@tiptap/extension-image": "^3.20.4",
-    "@tiptap/extension-link": "^3.20.4",
+    "@tiptap/extension-link": "^3.23.1",
     "@tiptap/extension-list": "^3.20.4",
     "@tiptap/extension-placeholder": "^3.20.4",
     "@tiptap/extension-subscript": "^3.20.4",
