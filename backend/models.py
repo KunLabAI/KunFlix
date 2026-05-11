@@ -213,7 +213,7 @@ class ChatSession(Base):
     title = Column(String, default="New Chat")
     agent_id = Column(String(36), ForeignKey("agents.id"))
     user_id = Column(String(36), nullable=True, index=True)  # 可存储用户或管理员 ID
-    theater_id = Column(String(36), ForeignKey("theaters.id"), nullable=True, index=True)  # 关联画布/剧场
+    theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="SET NULL"), nullable=True, index=True)  # 关联画布/剧场；剧场删除时置空保留会话历史
 
     # 上下文使用统计（累计 token 使用量）
     total_tokens_used = Column(BigInteger, default=0)
