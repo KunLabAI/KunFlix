@@ -37,8 +37,9 @@ export const tokenRefresher = createTokenRefresh({
   },
 });
 
-// 仅以下 auth 端点不走自动刷新；/auth/me 等仍需要刷新流程
-const NO_REFRESH_AUTH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout", "/auth/register"];
+// 以下 auth 端点不走自动刷新；/auth/me 等仍需要刷新流程。
+// /auth/preferences 通常由语言/主题切换触发，未登录用户也可能调用，不应勠进 refresh 循环。
+const NO_REFRESH_AUTH_PATHS = ["/auth/login", "/auth/refresh", "/auth/logout", "/auth/register", "/auth/preferences"];
 
 const isNoRefreshAuth = (url: string | undefined): boolean => {
   if (!url) return false;
