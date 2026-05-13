@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # ============================================================================
 # KunFlix Backend (FastAPI + uvicorn) - Production Image
 # ----------------------------------------------------------------------------
@@ -34,21 +35,24 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# pip 镜像源（主：清华；备：阿里云；兜底：PyPI 官方）
-# 清华单源抖动时通过 extra-index 自动回退，避免 "from versions: none" 假象
+# pip 镜像源（主：阿里云；备：清华；兜底：PyPI 官方）
+# 经实测国内云服务器（火山/腾讯/阿里）阿里云 PyPI 比清华更稳定，主备调换可显著减少 RST 抖动
+# 单源抖动时通过 extra-index 自动回退，避免 "from versions: none" 假象
 # 外网环境可通过 --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖
-ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ARG PIP_EXTRA_INDEX_URL="https://mirrors.aliyun.com/pypi/simple https://pypi.org/simple"
-ARG PIP_TRUSTED_HOST="pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com pypi.org files.pythonhosted.org"
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+ARG PIP_EXTRA_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple https://pypi.org/simple"
+ARG PIP_TRUSTED_HOST="mirrors.aliyun.com pypi.tuna.tsinghua.edu.cn pypi.org files.pythonhosted.org"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
-    PIP_DEFAULT_TIMEOUT=120 \
-    PIP_RETRIES=10
+    PIP_DEFAULT_TIMEOUT=30 \
+    PIP_RETRIES=3
 
-# 先拷依赖清单以充分利用构建缓存
+# 先拷依赖清单以充分利用构建缓存；--mount=type=cache 让 pip 下载在跨构建时复用，
+# 即使 layer 缓存被判失效（如 requirements.txt 改动）也无需整网重下
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip \
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install --upgrade pip \
     && pip install -r /app/requirements.txt
 
 # 再拷贝项目代码
