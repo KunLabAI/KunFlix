@@ -20,8 +20,9 @@ from services.video_providers.virtual_human_presets import list_presets as list_
 from realtime.dispatcher import push_to_user
 from tasks_queue import enqueue as enqueue_job
 from ratelimit import limiter, ENDPOINT_LIMITS
-from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, check_balance_sufficient, BalanceFrozenError
+from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, require_positive_balance, BalanceFrozenError
 from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
+from errors import BizError
 import base64
 import mimetypes
 
@@ -89,13 +90,15 @@ async def create_video_task(
     """提交视频生成任务"""
     entity_id = current_user.id
 
-    # 余额预检查
+    # 余额预检查（严格：>0）+ lazy 触发月度重置
+    from services.credit_reset import maybe_reset_monthly_credits
+    await maybe_reset_monthly_credits(entity_id, db)
     try:
-        balance_ok = await check_balance_sufficient(entity_id, 0, db)
-        if not balance_ok:
-            raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
+        await require_positive_balance(entity_id, db)
+    except InsufficientCreditsError:
+        raise BizError.insufficient_credits()
     except BalanceFrozenError:
-        raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
+        raise BizError.balance_frozen(user_id=entity_id)
 
     # 查询 LLMProvider
     provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == payload.provider_id))

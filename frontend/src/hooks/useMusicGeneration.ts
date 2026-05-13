@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import api from '@/lib/api';
+import { reportError } from '@/lib/canvas/toast';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -317,8 +318,8 @@ export function useMusicTask() {
       pollingRef.current = setInterval(() => pollStatus(id), POLL_INTERVAL);
       return data;
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || e?.message || 'Unknown error';
-      setError(msg);
+      const normalized = reportError(e);
+      setError(normalized.detail);
       return null;
     } finally {
       setIsSubmitting(false);

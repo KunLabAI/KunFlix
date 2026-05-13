@@ -9,10 +9,12 @@ import logging
 import sys
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from errors import BizError, ErrorCode, STATUS_TO_CODE
 
 # ---------------------------------------------------------------------------
 # Windows 兼容：asyncpg + 控制台 UTF-8
@@ -55,6 +57,7 @@ from routers import (  # noqa: E402
     admin_auth,
     admin_dashboard,
     admin_debug,
+    admin_system_settings,
     admin_tools,
     admin_virtual_humans,
     agents,
@@ -81,12 +84,62 @@ install_rate_limit(app)
 
 
 # ---------------------------------------------------------------------------
-# Exception handler
+# Exception handlers
+#  统一响应结构：{"code": str, "detail": str, "data": any}
+#  前端按 code 查 i18n 字典展示文案，detail 作为 fallback
 # ---------------------------------------------------------------------------
+@app.exception_handler(BizError)
+async def _biz_error_handler(request: Request, exc: BizError):
+    logger.info(
+        "[BizError] %s %s => %s (%d)", request.method, request.url.path, exc.code, exc.status_code
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.code, "detail": exc.detail, "data": exc.data},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def _http_exception_handler(request: Request, exc: HTTPException):
+    """兼容现有 raise HTTPException 调用，自动包装为统一结构。
+
+    - status 反查 code（STATUS_TO_CODE），未命中走 HTTP_ERROR
+    - detail 保留原始文案作为 fallback
+    - 保留 exc.headers（如 WWW-Authenticate）
+    """
+    code = STATUS_TO_CODE.get(exc.status_code, ErrorCode.HTTP_ERROR)
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": code, "detail": detail, "data": None},
+        headers=getattr(exc, "headers", None),
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_handler(request: Request, exc: RequestValidationError):
     logger.error("[422] %s %s => %s", request.method, request.url.path, exc.errors())
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    return JSONResponse(
+        status_code=422,
+        content={
+            "code": ErrorCode.VALIDATION_ERROR,
+            "detail": "Invalid request parameters",
+            "data": {"errors": exc.errors()},
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def _fallback_exception_handler(request: Request, exc: Exception):
+    logger.exception("[500] %s %s => unhandled %s", request.method, request.url.path, type(exc).__name__)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "code": ErrorCode.INTERNAL_ERROR,
+            "detail": "Internal server error",
+            "data": None,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +172,7 @@ _ROUTERS = (
     theaters.router,
     skills_api.router,
     admin_debug.router,
+    admin_system_settings.router,
     admin_tools.router,
     music.router,
     admin_dashboard.router,

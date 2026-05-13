@@ -27,11 +27,14 @@ const USER_MENU_ITEMS = [
 
 export default function TopBar() {
   const { t } = useTranslation();
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, isHydrated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const isGuest = !isAuthenticated;
-  // 游客态隐藏需验证身份的导航入口
+  // 关键策略：hydrate 完成前（含 SSR 与 CSR 首帧）均默认按“已登录”视图渲染，
+  // 这使得最常见场景（已登录用户刷新）上下 SSR/CSR/mount-after 三阶段结构一致，零闪烁。
+  // 游客场景 hydrate 后仅有一处轻微变化（resources 链接隐去），可接受。
+  const isGuest = isHydrated && !isAuthenticated;
+  // 游客态隐藏需验证身份的导航入口；hydrate 前一律显示全量链接。
   const visibleNavLinks = isGuest ? NAV_LINKS.filter((l) => !l.requireAuth) : NAV_LINKS;
   // 游客点击登录/注册时带上当前路径，登录成功后回跳
   const goLogin = () => {
@@ -147,9 +150,11 @@ export default function TopBar() {
 
             {/* Right: Search + User */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Search Container */}
+              {/* Search Container
+                  AnimatePresence initial={false}: 首次挂载不跳 0→1 渐显动画，
+                  避免用户刷新时将按钮渐显误认为“身份状态闪烁”。 */}
               <div className="search-container relative flex items-center">
-                <AnimatePresence mode="wait">
+                <AnimatePresence mode="wait" initial={false}>
                   {searchOpen ? (
                     <motion.form
                       initial={{ width: 0, opacity: 0 }}
@@ -203,6 +208,8 @@ export default function TopBar() {
               <div className="relative" ref={userMenuRef}>
                 <button
                   onClick={() => {
+                    // hydrate 完成前不响应点击，避免身份未知时误跳 login。
+                    if (!isHydrated) return;
                     // 游客态点击头像直接跳转登录，不打开下拉菜单
                     if (isGuest) {
                       goLogin();
@@ -214,10 +221,12 @@ export default function TopBar() {
                     "p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
                     userMenuOpen && "bg-secondary text-foreground"
                   )}
-                  aria-label={isGuest ? t("nav.loginCta") : t("userMenu.label")}
+                  aria-label={isHydrated ? (isGuest ? t("nav.loginCta") : t("userMenu.label")) : t("userMenu.label")}
                 >
+                  {/* 头像圆：hydrate 前不渲染字母（避免“默认 U → 真实首字母”闪烁），
+                      仅保留圆形背景作为占位；mount 后再填字母。 */}
                   <div className="w-6 h-6 rounded-full bg-amber-800 flex items-center justify-center text-white text-xs font-semibold">
-                    {(user?.nickname ?? "U").charAt(0).toLowerCase()}
+                    {isHydrated ? (user?.nickname ?? "U").charAt(0).toLowerCase() : ""}
                   </div>
                 </button>
 
@@ -303,7 +312,7 @@ export default function TopBar() {
                 />
               </div>
 
-              {/* Mobile Navigation */}
+              {/* Mobile Navigation：游客态过滤需验证链接（hydrate 后生效） */}
               <nav className="flex flex-col gap-1">
                 {visibleNavLinks.map((link, index) => {
                   const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
@@ -329,7 +338,8 @@ export default function TopBar() {
                 })}
               </nav>
 
-              {/* Mobile User Section */}
+              {/* Mobile User Section：登录态/游客态结构差异大，在 hydrate 前不渲染以保 SSR↔CSR 一致 */}
+              {isHydrated && (
               <div className="mt-auto pt-6 border-t border-border">
                 <div
                   onClick={isGuest ? () => { setMobileMenuOpen(false); goLogin(); } : undefined}
@@ -359,6 +369,7 @@ export default function TopBar() {
                   </button>
                 )}
               </div>
+              )}
             </div>
           </motion.div>
         )}

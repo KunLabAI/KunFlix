@@ -57,6 +57,36 @@ def is_paid_agent(agent) -> bool:
     )
 
 
+async def require_positive_balance(user_id: str, session: AsyncSession, min_credits: float = 0.0001) -> None:
+    """严格余额检查：用户/管理员 credits <= min_credits 或账户冻结 → 抛异常。
+
+    用于付费 API 的前置拦截，修复 `check_balance_sufficient(uid, 0, db)` 返回 True 的漏洞。
+    min_credits 默认 0.0001，略大于 0 以规避浮点正零边界问题。
+
+    Raises:
+        InsufficientCreditsError: 余额 <= min_credits
+        BalanceFrozenError: 账户被冻结
+    """
+    # 1. User 路径
+    stmt = select(User.credits, User.is_balance_frozen).where(User.id == user_id)
+    row = (await session.execute(stmt)).first()
+    if row:
+        if row.is_balance_frozen:
+            raise BalanceFrozenError(f"User {user_id} balance is frozen")
+        if float(row.credits or 0) <= min_credits:
+            raise InsufficientCreditsError("Insufficient credits. Please recharge to continue.11")
+        return
+
+    # 2. Admin 路径（无冻结字段）
+    stmt_admin = select(Admin.credits).where(Admin.id == user_id)
+    row_admin = (await session.execute(stmt_admin)).first()
+    if row_admin is None:
+        # 身份未知 → 不需要在这里报错，由上层鉴权拦截
+        return
+    if float(row_admin.credits or 0) <= min_credits:
+        raise InsufficientCreditsError("Insufficient credits. Please recharge to continue.")
+
+
 async def check_balance_sufficient(user_id: str, estimated_cost: float, session: AsyncSession) -> bool:
     """
     检查用户余额是否足够支付预估费用，并检查是否冻结。
@@ -95,6 +125,49 @@ async def _check_idempotency(session: AsyncSession, key: str) -> Optional[Credit
     stmt = select(CreditTransaction).where(CreditTransaction.idempotency_key == key)
     result = await session.execute(stmt)
     return result.scalars().first()
+
+
+async def record_credit_grant(
+    user_id: str,
+    amount: float,
+    session: AsyncSession,
+    balance_after: float,
+    metadata: Dict = None,
+    description: str = "Credit grant",
+    idempotency_key: str = None,
+    transaction_type: str = "recharge",
+) -> Optional[CreditTransaction]:
+    """写入积分发放/增加的审计记录，不修改余额（余额已由调用方直接设置）。
+
+    用于注册赠送 / 月度重置等场景：调用方已在 User.credits 上直接赋值，
+    此函数仅负责落地一条 CreditTransaction 作为审计轨迹。
+
+    Args:
+        amount: 变动金额（正=增加，负=扣除；为 0 返回 None）
+        balance_after: 变动后余额
+        transaction_type: recharge | monthly_reset | admin_adjust 等
+    """
+    if amount == 0:
+        return None
+
+    if idempotency_key:
+        existing = await _check_idempotency(session, idempotency_key)
+        if existing:
+            logger.info(f"Idempotent grant hit: key={idempotency_key}")
+            return existing
+
+    transaction = CreditTransaction(
+        user_id=user_id,
+        amount=float(amount),
+        balance_before=float(balance_after) - float(amount),
+        balance_after=float(balance_after),
+        transaction_type=transaction_type,
+        metadata_json=metadata or {},
+        description=description,
+        idempotency_key=idempotency_key,
+    )
+    session.add(transaction)
+    return transaction
 
 
 async def refund_credits_atomic(

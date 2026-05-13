@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator, model_validator
 from typing import Optional, Dict, Any, List, Literal
 from datetime import datetime
 
@@ -47,6 +47,8 @@ class UserResponse(BaseModel):
         return v if v is not None else defaults.get(info.field_name, 0)
     # 订阅信息
     subscription_plan_id: Optional[str] = None
+    subscription_plan_name: Optional[str] = None       # join 自 subscription_plans.name，供前端展示
+    subscription_tier_type: Optional[str] = None       # 'free_tier' | 'paid'，前端标签着色依据
     subscription_status: str = "inactive"
     subscription_start_at: Optional[Any] = None
     subscription_end_at: Optional[Any] = None
@@ -534,13 +536,24 @@ class TaskExecutionResponse(BaseModel):
 class SubscriptionPlanBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
-    price_usd: float = Field(..., gt=0)
+    tier_type: Literal["free_tier", "paid"] = "paid"
+    price_usd: float = Field(..., ge=0)  # 0 表示 Free 套餐
     credits: float = Field(..., gt=0)
     billing_period: Literal["monthly", "yearly", "lifetime"] = "monthly"
     features: List[str] = Field(default_factory=list)
     is_active: bool = True
     sort_order: int = 0
     storage_quota_bytes: int = 2147483648  # 默认 2GB
+
+    @model_validator(mode="after")
+    def _enforce_tier_price_consistency(self) -> "SubscriptionPlanBase":
+        # free_tier 必须 price_usd=0；paid 必须 price_usd>0
+        # 避免“注册套餐”被设置为付费或反之的语义冲突
+        if self.tier_type == "free_tier" and self.price_usd != 0:
+            raise ValueError("free_tier plan must have price_usd == 0")
+        if self.tier_type == "paid" and self.price_usd <= 0:
+            raise ValueError("paid plan must have price_usd > 0")
+        return self
 
 
 class SubscriptionPlanCreate(SubscriptionPlanBase):
@@ -550,7 +563,8 @@ class SubscriptionPlanCreate(SubscriptionPlanBase):
 class SubscriptionPlanUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
-    price_usd: Optional[float] = Field(None, gt=0)
+    tier_type: Optional[Literal["free_tier", "paid"]] = None
+    price_usd: Optional[float] = Field(None, ge=0)  # 0 表示 Free 套餐
     credits: Optional[float] = Field(None, gt=0)
     billing_period: Optional[Literal["monthly", "yearly", "lifetime"]] = None
     features: Optional[List[str]] = None

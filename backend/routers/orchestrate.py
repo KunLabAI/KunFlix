@@ -13,8 +13,9 @@ from models import TaskExecution, SubTask, User
 from schemas import OrchestrationRequest, TaskExecutionResponse, SubTaskResponse
 from auth import get_current_active_user
 from services.orchestrator import DynamicOrchestrator
-from services.billing import check_balance_sufficient, BalanceFrozenError
+from services.billing import require_positive_balance, BalanceFrozenError, InsufficientCreditsError
 from ratelimit import limiter, ENDPOINT_LIMITS
+from errors import BizError
 from realtime import new_stream_id, stream_key, sse_tee
 
 logger = logging.getLogger(__name__)
@@ -41,13 +42,15 @@ async def execute_orchestration(
     响应头 `X-Stream-Id` 为本次 SSE 流的引用 id，客户端断连后可通过
     `GET /api/sse/resume/orchestrate/{X-Stream-Id}` 携带 `Last-Event-ID` 续传。
     """
-    # Check user credits for paid operations
+    # Check user credits for paid operations（严格 >0）+ lazy 触发月度重置
+    from services.credit_reset import maybe_reset_monthly_credits
+    await maybe_reset_monthly_credits(current_user.id, db)
     try:
-        balance_ok = await check_balance_sufficient(current_user.id, 0, db)
-        if not balance_ok:
-            raise HTTPException(status_code=402, detail="Insufficient credits for orchestration task")
+        await require_positive_balance(current_user.id, db)
+    except InsufficientCreditsError:
+        raise BizError.insufficient_credits()
     except BalanceFrozenError:
-        raise HTTPException(status_code=403, detail="Account balance is frozen")
+        raise BizError.balance_frozen(user_id=current_user.id)
 
     orchestrator = DynamicOrchestrator(db)
     ref_id = new_stream_id()

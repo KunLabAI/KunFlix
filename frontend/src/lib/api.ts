@@ -1,5 +1,6 @@
 import axios from "axios";
 import { createTokenRefresh } from "./tokenRefresh";
+import { normalizeError } from "./errors";
 
 const api = axios.create({
   baseURL: "/api",
@@ -67,6 +68,18 @@ api.interceptors.response.use(
     }
     original.headers.set("Authorization", `Bearer ${result.accessToken}`);
     return api(original);
+  }
+);
+
+// 全局错误规范化：所有 reject 的 error 上挂 .normalized 属性，
+// 调用方可直接读 (err as any).normalized 拿到 NormalizedError，
+// 也兼容旧代码继续读 err.response.data.detail。
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const normalized = normalizeError(error);
+    (error as { normalized?: unknown }).normalized = normalized;
+    return Promise.reject(error);
   }
 );
 

@@ -14,6 +14,9 @@ from schemas import MusicTaskResponse, MusicGenerateRequest, MusicGenerateRespon
 from auth import get_current_active_user_or_admin, scoped_query
 from services.music_providers import extract_music_provider_type
 from services.music_generation import submit_music_task
+from services.billing import require_positive_balance, InsufficientCreditsError, BalanceFrozenError
+from services.credit_reset import maybe_reset_monthly_credits
+from errors import BizError
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +223,15 @@ async def create_music_task(
     db: AsyncSession = Depends(get_db),
 ):
     """提交一个异步音乐生成任务（画布音频节点调用）。"""
+    # Lazy 月度重置 + 严格正余额校验（修复 0 余额绕过漏洞）
+    await maybe_reset_monthly_credits(current_user.id, db)
+    try:
+        await require_positive_balance(current_user.id, db)
+    except InsufficientCreditsError:
+        raise BizError.insufficient_credits()
+    except BalanceFrozenError:
+        raise BizError.balance_frozen(user_id=current_user.id)
+
     structured_dict = payload.structured.model_dump(exclude_none=True) if payload.structured else None
     ref_images = [r.model_dump() for r in (payload.reference_images or [])]
 

@@ -313,9 +313,11 @@
     "title": "订阅套餐管理",
     "subtitle": "管理用户订阅套餐和定价策略",
     "newPlan": "新建套餐",
+    "creditPolicyButton": "积分策略",
     "table": {
       "order": "排序",
       "name": "套餐名称",
+      "type": "类型",
       "billingCycle": "计费周期",
       "price": "价格 (USD)",
       "credits": "积分",
@@ -343,10 +345,17 @@
       "namePlaceholder": "例如：基础版",
       "description": "描述",
       "descriptionPlaceholder": "套餐描述（可选）",
+      "tierType": "套餐类型",
+      "tierTypeHint": {
+        "free_tier": "注册套餐：新用户注册时自动分配，价格必须为 0，全局最多 1 个生效",
+        "paid": "付费套餐：用户通过购买获得，价格必须大于 0"
+      },
+      "freeTierPriceLocked": "注册套餐价格固定为 0，已自动锁定",
       "price": "价格 (USD)",
       "credits": "积分数量",
       "billingCycle": "计费周期",
       "sortOrder": "排序",
+      "sortOrderConflict": "序号已被《{{names}}》占用；多个免费套餐序号相同时，注册将按 ID 升序固定选中最早创建的一个",
       "storageQuota": "存储配额 (GB)",
       "features": "套餐特性",
       "featureAdd": "添加",
@@ -387,10 +396,16 @@
     },
     "validation": {
       "nameRequired": "请输入套餐名称",
-      "pricePositive": "价格必须大于 0",
+      "pricePositive": "价格不能为负数（0 代表免费套餐）",
+      "freeTierPriceZero": "注册套餐的价格必须为 0",
+      "paidPricePositive": "付费套餐的价格必须大于 0",
       "creditsPositive": "积分数量必须大于 0",
       "storagePositive": "存储配额必须大于 0",
       "featureRequired": "请输入特性描述"
+    },
+    "tierType": {
+      "free_tier": "注册套餐",
+      "paid": "付费套餐"
     }
   },
   "llm": {
@@ -1354,5 +1369,49 @@
     "orContinueWith": "或通过以下方式登录",
     "continueWithGoogle": "使用 Google 登录",
     "continueWithGitHub": "使用 GitHub 登录"
+  },
+  "systemSettings": {
+    "creditPolicy": {
+      "title": "积分策略",
+      "desc": "订阅/非订阅用户月度重置行为等。新用户初始积分已改为由 Free Tier 套餐开通决定。"
+    },
+    "field": {
+      "subscriptionResetEnabled": "订阅用户月度重置",
+      "subscriptionResetEnabledHint": "激活订阅用户每月按套餐配额重置积分",
+      "resetMode": "重置方式",
+      "freeTierResetEnabled": "非订阅用户月度重置",
+      "freeTierResetEnabledHint": "启用后，非订阅用户每月也会重置（默认关闭）",
+      "freeTierResetCredits": "非订阅用户月度配额"
+    },
+    "resetMode": {
+      "override": "覆盖重置（override）",
+      "overrideHint": "将余额覆盖为订阅配额，未用完余额作废",
+      "accumulate": "累计重置（accumulate）",
+      "accumulateHint": "保留现有余额并加上订阅配额",
+      "floor": "兑底重置（floor）",
+      "floorHint": "取现有余额与订阅配额的较大值"
+    },
+    "resetPanel": {
+      "title": "月度重置控制",
+      "desc": "查看到期用户数量，并可手动强制批量触发重置（正常会在用户访问时惰性执行）",
+      "dueCount": "当前到期用户",
+      "scheduledCount": "已调度重置用户",
+      "activeSubCount": "激活订阅用户",
+      "serverTime": "服务器时间（UTC）"
+    },
+    "action": {
+      "save": "保存配置",
+      "revertDefaults": "恢复默认值",
+      "triggerBatch": "立即批量触发重置"
+    },
+    "toast": {
+      "saveSuccess": "配置已保存",
+      "saveSuccessDesc": "新策略将在 60 秒内缓存过期后全局生效",
+      "saveFail": "保存失败",
+      "reverted": "已重置为默认值（未保存）",
+      "triggerSuccess": "批量触发完成",
+      "triggerSuccessDesc": "到期 {{total}}，已重置 {{reset}}，跳过 {{skipped}}",
+      "triggerFail": "触发失败"
+    }
   }
 }

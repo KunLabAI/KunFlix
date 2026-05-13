@@ -13,7 +13,8 @@ from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.chat_utils import serialize_content, deserialize_content
 from services.chat_generation import generate_single_agent
 from services.chat_multi_agent import generate_multi_agent
-from services.billing import is_paid_agent as check_is_paid_agent, check_balance_sufficient, BalanceFrozenError
+from services.billing import is_paid_agent as check_is_paid_agent, require_positive_balance, BalanceFrozenError, InsufficientCreditsError
+from errors import BizError
 from ratelimit import limiter, ENDPOINT_LIMITS
 
 logger = logging.getLogger(__name__)
@@ -185,14 +186,17 @@ async def send_message(
     entity_id = current_user.id
     is_admin = is_admin_entity(current_user)
 
-    # 3. 积分预检查：付费智能体 + 余额/冻结检查（映射表驱动判定）
+    # 3. 积分预检查：付费智能体 + 余额/冻结严格检查（require_positive_balance 修复 credits>=0 漏洞）
+    # 同时 lazy 触发订阅用户月度积分重置
+    from services.credit_reset import maybe_reset_monthly_credits
+    await maybe_reset_monthly_credits(entity_id, db)
     if check_is_paid_agent(agent):
         try:
-            balance_ok = await check_balance_sufficient(entity_id, 0, db)
-            if not balance_ok:
-                raise HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
+            await require_positive_balance(entity_id, db)
+        except InsufficientCreditsError:
+            raise BizError.insufficient_credits()
         except BalanceFrozenError:
-            raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
+            raise BizError.balance_frozen(user_id=entity_id)
 
     # 4. 判断是否为 Leader 多智能体模式
     is_multi_agent = agent.is_leader and agent.member_agent_ids

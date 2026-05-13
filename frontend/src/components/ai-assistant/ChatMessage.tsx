@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
-import { ToolCallIndicator } from './ToolCallIndicator';
-import { SkillCallIndicator } from './SkillCallIndicator';
 import { CallTimelinePanel } from './CallTimelinePanel';
 import { ThinkPanel } from './ThinkPanel';
 import { DraggableTextWrapper } from './DraggableTextWrapper';
@@ -18,7 +17,7 @@ import { VideoTaskCard } from './VideoTaskCard';
 import { MusicTaskCard } from './MusicTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
 import { CompactionNotice } from './CompactionNotice';
-import type { Message, SkillCall, ToolCall, MultiAgentData, NodeAttachment, HarnessEvent } from '@/store/useAIAssistantStore';
+import type { Message, NodeAttachment, HarnessEvent } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
 // Video marker parsing
@@ -227,9 +226,9 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
 
 interface ChatMessageProps {
   message: Message;
-  isLoading?: boolean;
-  isLast?: boolean;
   className?: string;
+  /** 对话面板内联重试：当 message.error?.retryable 为 true 且传入 onRetry 时展示按钮 */
+  onRetry?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,30 +279,6 @@ function HarnessEventBanner({ events }: { events: HarnessEvent[] }) {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// 浮动跳跃的三点加载动画（用于初始加载）
-function FloatingLoadingDots() {
-  return (
-    <div className="flex items-center gap-1 h-5">
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-[var(--color-icon-thinking)]"
-          animate={{
-            y: [0, -6, 0],
-            opacity: [0.4, 1, 0.4],
-          }}
-          transition={{
-            duration: 0.8,
-            repeat: Infinity,
-            delay: i * 0.15,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -371,7 +346,8 @@ function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] 
   );
 }
 
-export function ChatMessage({ message, isLoading, isLast, className }: ChatMessageProps) {
+export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
+  const { t } = useTranslation();
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   
@@ -570,6 +546,25 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                     )
                   )}
 
+                  {/* 错误提示 + 内联重试按钮：优先走 i18n errors.<code>，缺失时回退 detail */}
+                  {message.error && (
+                    <div className="flex items-center gap-2 mt-1.5 px-3 py-2 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-xs text-red-700 dark:text-red-300">
+                      <span className="shrink-0">⚠</span>
+                      <span className="flex-1">
+                        {t(`errors.${message.error.code}`, { defaultValue: message.error.detail })}
+                      </span>
+                      {message.error.retryable && onRetry && (
+                        <button
+                          type="button"
+                          onClick={onRetry}
+                          className="shrink-0 px-2 py-0.5 rounded border border-red-300 dark:border-red-700 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors text-red-700 dark:text-red-300 font-medium"
+                        >
+                          {t('errors.retry')}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* 视频任务卡片 */}
                   {allVideoCards.map((card) => (
                     <VideoTaskCard key={card.taskId} task={card} />
@@ -595,8 +590,6 @@ export function ChatMessage({ message, isLoading, isLast, className }: ChatMessa
                   )}
                 </>
               )}
-
-              {/* 加载动画 - 浮动跳跃三点 - 已移至 VirtualMessageList */}
             </div>
           </DraggableTextWrapper>
         )}

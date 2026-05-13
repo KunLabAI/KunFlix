@@ -76,6 +76,14 @@ export interface Message {
   compaction_summary?: string;
   // Harness: LLM 重试/熔断事件
   harness_events?: HarnessEvent[];
+  // 错误信息（对话面板内联重试用）
+  error?: {
+    code: string;
+    detail: string;
+    retryable: boolean;
+  };
+  // 重试负载（原始用户输入，点击重试时重新发送）
+  retryContent?: string;
 }
 
 // Harness 事件（LLM 重试、熔断等）

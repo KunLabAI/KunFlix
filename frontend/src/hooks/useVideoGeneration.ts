@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import api from '@/lib/api';
+import { reportError } from '@/lib/canvas/toast';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -338,8 +339,8 @@ export function useVideoTask() {
       pollStatus(id);
       pollingRef.current = setInterval(() => pollStatus(id), POLL_INTERVAL);
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || e?.message || 'Unknown error';
-      setError(msg);
+      const normalized = reportError(e);
+      setError(normalized.detail);
     } finally {
       setIsSubmitting(false);
     }

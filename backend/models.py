@@ -74,6 +74,11 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(45), nullable=True)
 
+    # 积分重置：下次触发月度重置的时间（Lazy 触发）
+    # - 订阅激活时设为下月 1 日 UTC 00:00
+    # - 空值 = 从未启用重置（非订阅用户默认）
+    next_credit_reset_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
     # 用户偏好
     preferred_theme = Column(String(20), default="system")     # light | dark | system
     preferred_language = Column(String(10), default="zh-CN")   # zh-CN | en-US
@@ -439,8 +444,13 @@ class SubscriptionPlan(Base):
     name = Column(String(100), nullable=False, unique=True, index=True)
     description = Column(Text, nullable=True)
 
+    # Plan classification
+    # - free_tier：注册时自动分配的免费套餐（全局应保持至多 1 个 is_active）
+    # - paid：用户购买的付费套餐
+    tier_type = Column(String(32), nullable=False, default="paid", index=True)
+
     # Pricing
-    price_usd = Column(Float, nullable=False)       # 套餐价格 (USD)
+    price_usd = Column(Float, nullable=False)       # 套餐价格 (USD)、free_tier 应为 0
     credits = Column(Numeric(18, 4), nullable=False)          # 包含积分数
     billing_period = Column(String(20), default="monthly")  # monthly | yearly | lifetime
 
@@ -632,3 +642,18 @@ class AuditLog(Base):
     detail = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class SystemSetting(Base):
+    """系统级配置，key-value JSON 存储。
+
+    当前用途：
+    - key='credit_policy' → {subscription_reset_enabled, subscription_reset_mode,
+                              free_tier_reset_enabled, free_tier_reset_credits}
+    """
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(JSON, default=dict)
+    description = Column(String(500), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '@/lib/api';
+import { reportError } from '@/lib/canvas/toast';
 
 // ---------------------------------------------------------------------------
 // Types（与后端 routers/images.py 对齐）
@@ -255,8 +256,8 @@ export function useImageGenerationTask() {
       mountedRef.current && (setResult(data), setLastDurationMs(duration));
       return data;
     } catch (e: any) {
-      const msg = e?.response?.data?.detail || e?.message || 'Unknown error';
-      mountedRef.current && setError(msg);
+      const normalized = reportError(e);
+      mountedRef.current && setError(normalized.detail);
       throw e;
     } finally {
       mountedRef.current && (setIsSubmitting(false), setStartedAt(null));
