@@ -19,7 +19,8 @@ RUN npm config set registry ${NPM_REGISTRY} \
     && npm config set fetch-retry-mintimeout 20000 \
     && npm config set fetch-retry-maxtimeout 120000
 COPY backend/admin/package.json backend/admin/package-lock.json ./
-RUN npm ci --no-audit --no-fund --legacy-peer-deps
+# --include=optional 显式保证 lightningcss 等平台依赖的 native .node 被安装
+RUN npm ci --no-audit --no-fund --legacy-peer-deps --include=optional
 
 # ---------- Stage 2: 构建 ----------
 FROM node:26-alpine AS build
