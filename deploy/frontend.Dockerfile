@@ -9,9 +9,9 @@
 # 使用 node:22-alpine（当前 Active LTS）以规避 node:20-alpine 镜像层的已知 CVE
 FROM node:26-alpine AS deps
 WORKDIR /app
-# 主动升级 alpine 包以吸纳上游已发布的安全补丁
-RUN apk upgrade --no-cache \
-    && apk add --no-cache libc6-compat
+# 不在镜像内跑 apk upgrade：CVE 修复交由上游 node:26-alpine 镜像定期 bump tag 处理，
+# 避免不可重复构建与额外跨网依赖
+RUN apk add --no-cache libc6-compat
 # npm 镜像源（国内服务器默认用 npmmirror，外网环境可 --build-arg NPM_REGISTRY=https://registry.npmjs.org 覆盖）
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 RUN npm config set registry ${NPM_REGISTRY} \
@@ -39,8 +39,7 @@ ENV NODE_ENV=production \
     PORT=3666 \
     HOSTNAME=0.0.0.0
 
-# 运行阶段同样主动升级系统包，消除基础镜像 CVE
-RUN apk upgrade --no-cache
+# 运行阶段不跑 apk upgrade：CVE 交由上游 base 镜像 bump tag 统一处理
 
 # 非 root 运行
 RUN addgroup --system --gid 1001 nodejs \
