@@ -14,22 +14,24 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Asia/Shanghai
 
-# Debian 镜像源（国内服务器默认用清华，外网环境可通过 --build-arg DEBIAN_MIRROR= 清空覆盖）
-ARG DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn
+# Debian 镜像源（主：阿里云；外网环境可通过 --build-arg DEBIAN_MIRROR= 清空覆盖）
+# 原主源清华 TUNA 在部分国内云服务器上 80 端口存在跨网连接超时（IP 101.6.15.130），
+# 改用阿里云后稳定性明显提升
+ARG DEBIAN_MIRROR=mirrors.aliyun.com
 RUN if [ -n "$DEBIAN_MIRROR" ]; then \
       sed -i "s@deb.debian.org@${DEBIAN_MIRROR}@g; s@security.debian.org@${DEBIAN_MIRROR}@g" /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
     fi
 
 # 系统依赖：libpq-dev 供 psycopg2 编译；build-essential 为可选 C 扩展兜底
-# 同步执行 apt-get upgrade 拉取上游已发布的安全补丁，降低基础镜像 CVE 告警
-RUN apt-get update \
-    && apt-get -y upgrade \
+# 说明：不在镜像内跑 apt-get upgrade。CVE 修复交由上游 python:3.14-slim-bookworm
+# 镜像定期 bump tag 处理，避免不可重复构建与额外跨网依赖
+# -o Acquire::Retries=3 限制单次重试次数，-o Acquire::http::Timeout=20 避免单包超时叠加
+RUN apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
         curl \
         tini \
-    && apt-get -y autoremove \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
