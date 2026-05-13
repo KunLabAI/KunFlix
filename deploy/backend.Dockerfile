@@ -37,13 +37,13 @@ RUN apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=20 \
 
 WORKDIR /app
 
-# pip 镜像源（主：阿里云；备：清华；兜底：PyPI 官方）
-# 经实测国内云服务器（火山/腾讯/阿里）阿里云 PyPI 比清华更稳定，主备调换可显著减少 RST 抖动
-# 单源抖动时通过 extra-index 自动回退，避免 "from versions: none" 假象
+# pip 镜像源（主：阿里云；兜底：PyPI 官方）
+# 经实测国内云服务器上阿里云最稳定；清华 TUNA 在部分 IDC 存在
+# 'Network is unreachable'，不再列入 extra-index 避免多余重试耗时
 # 外网环境可通过 --build-arg PIP_INDEX_URL=https://pypi.org/simple 覆盖
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
-ARG PIP_EXTRA_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple https://pypi.org/simple"
-ARG PIP_TRUSTED_HOST="mirrors.aliyun.com pypi.tuna.tsinghua.edu.cn pypi.org files.pythonhosted.org"
+ARG PIP_EXTRA_INDEX_URL="https://pypi.org/simple"
+ARG PIP_TRUSTED_HOST="mirrors.aliyun.com pypi.org files.pythonhosted.org"
 ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL} \
     PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST} \
