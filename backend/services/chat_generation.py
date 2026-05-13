@@ -22,7 +22,7 @@ from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient, is_paid_agent as check_is_paid_agent
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_agent as check_is_paid_agent
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
 
@@ -240,15 +240,16 @@ async def generate_single_agent(
 
     # 调用 LLM 流式接口（含工具调用循环）
     # 二次余额防护：服务层在 LLM 调用前再次验证（防止路由层检查后余额被并发消耗）
+    # 使用 require_positive_balance 修复 credits>=0 漏洞
     if check_is_paid_agent(agent):
         try:
             async with AsyncSessionLocal() as _pre_db:
-                _balance_ok = await check_balance_sufficient(entity_id, 0, _pre_db)
-                if not _balance_ok:
-                    yield sse("error", {"message": "积分余额不足，请充值后继续使用"})
-                    return
+                await require_positive_balance(entity_id, _pre_db)
+        except InsufficientCreditsError:
+            yield sse("error", {"code": "INSUFFICIENT_CREDITS", "message": "积分余额不足，请充值后继续使用"})
+            return
         except BalanceFrozenError:
-            yield sse("error", {"message": "账户资金已冻结，请联系管理员"})
+            yield sse("error", {"code": "BALANCE_FROZEN", "message": "账户资金已冻结，请联系管理员"})
             return
 
     TOOL_PENDING_PREFIX = "__TOOL_PENDING__:"

@@ -16,6 +16,7 @@ import {
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { useAuth, createAuthFetch } from '@/context/AuthContext';
+import { normalizeError, ErrorCode } from '@/lib/errors';
 
 // 导入拆分后的组件
 import { PanelHeader, MessageInput, ChatMessage } from '@/components/ai-assistant';
@@ -230,12 +231,8 @@ export function AIAssistantPanel() {
     return () => abortControllerRef.current?.abort();
   }, []);
 
-  // 错误码 → 翻译键映射表
-  const ERROR_KEY_MAP: Record<number, string> = {
-    402: 'ai.errorCredits',
-    403: 'ai.errorForbidden',
-    429: 'ai.errorRateLimit',
-  };
+  // 错误码 → 翻译键映射表已迁移至 lib/errors.ts + i18n errors 命名空间，
+  // catch 块会直接塑造 message.error 交给 ChatMessage 内联渲染。
 
   // 中断AI生成
   const handleStop = useCallback(() => {
@@ -317,8 +314,20 @@ export function AIAssistantPanel() {
             setShowReloginDialog(true);
             throw new Error('LOGIN_EXPIRED');
           }
-          const errorKey = ERROR_KEY_MAP[response.status];
-          throw new Error(errorKey ? t(errorKey) : t('ai.requestFailed', { message: response.status }));
+          // 尝试解析后端 BizError JSON（{ code, detail, data }）
+          let bodyCode: string | undefined;
+          let bodyDetail: string | undefined;
+          try {
+            const body = await response.clone().json();
+            bodyCode = body?.code;
+            bodyDetail = body?.detail;
+          } catch {
+            // 非 JSON 响应忽略
+          }
+          const httpErr = new Error(bodyDetail || `HTTP ${response.status}`);
+          (httpErr as { __status?: number; __code?: string }).__status = response.status;
+          (httpErr as { __status?: number; __code?: string }).__code = bodyCode;
+          throw httpErr;
         }
 
         const reader = response.body?.getReader();
@@ -351,8 +360,40 @@ export function AIAssistantPanel() {
         const isAbort = (err as Error).name === 'AbortError';
         const isLoginExpired = (err as Error).message === 'LOGIN_EXPIRED';
         // 登录过期不显示错误消息（弹窗已处理）
-        !isAbort && !isLoginExpired &&
-          setMessages((prev) => [...prev, { role: 'ai', content: t('ai.requestFailed', { message: (err as Error).message }), status: 'complete' }]);
+        if (!isAbort && !isLoginExpired) {
+          // 塑造统一的 NormalizedError：
+          //  - HTTP 错误（带 __status/__code）优先使用后端返回的 code
+          //  - 其他走 normalizeError 统一出口
+          const tagged = err as { __status?: number; __code?: string };
+          const normalized = tagged.__code
+            ? {
+                code: tagged.__code,
+                detail: (err as Error).message,
+                status: tagged.__status || 0,
+                data: null,
+                retryable:
+                  tagged.__code !== ErrorCode.INSUFFICIENT_CREDITS &&
+                  tagged.__code !== ErrorCode.BALANCE_FROZEN &&
+                  tagged.__code !== ErrorCode.PERMISSION_DENIED &&
+                  tagged.__code !== ErrorCode.UNAUTHORIZED,
+                cause: err,
+              }
+            : normalizeError(err);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'ai',
+              content: '',
+              status: 'complete',
+              error: {
+                code: normalized.code,
+                detail: normalized.detail || t('ai.requestFailed', { message: (err as Error).message }),
+                retryable: normalized.retryable,
+              },
+              retryContent: content,
+            },
+          ]);
+        }
       } finally {
         setIsLoading(false);
         clearImageEditContext();
@@ -551,12 +592,19 @@ export function AIAssistantPanel() {
                     messages={messages.filter(m => !m.isWelcome)}
                     renderItem={(message, index) => {
                       const realMessages = messages.filter(m => !m.isWelcome);
+                      const handleRetry = message.retryContent
+                        ? () => {
+                            const retryText = message.retryContent!;
+                            // 移除当前错误消息后重发
+                            setMessages((prev) => prev.filter((m) => m !== message));
+                            handleSend(retryText);
+                          }
+                        : undefined;
                       return (
                         <div className="px-4 py-2">
                           <ChatMessage
                             message={message}
-                            isLoading={isLoading}
-                            isLast={index === realMessages.length - 1 && (!isLoading || message.role === 'ai')}
+                            onRetry={handleRetry}
                           />
                         </div>
                       );

@@ -690,5 +690,26 @@
       "dragToCanvas": "拖拽到画布",
       "doubleClickZoom": "双击放大"
     }
+  },
+  "errors": {
+    "UNAUTHORIZED": "登录已过期，请重新登录",
+    "PERMISSION_DENIED": "无权访问该功能",
+    "TOKEN_EXPIRED": "会话已过期，请重新登录",
+    "RESOURCE_NOT_FOUND": "请求的资源不存在",
+    "RESOURCE_CONFLICT": "资源状态冲突，请刷新后重试",
+    "INSUFFICIENT_CREDITS": "积分余额不足，请充值后继续使用",
+    "BALANCE_FROZEN": "账户资金已冻结，请联系管理员",
+    "RATE_LIMITED": "请求过于频繁，请稍后再试",
+    "VALIDATION_ERROR": "请求参数不合法",
+    "INVALID_PARAMETER": "请求参数错误",
+    "INTERNAL_ERROR": "服务器异常，请稍后重试",
+    "SERVICE_UNAVAILABLE": "服务暂不可用，请稍后重试",
+    "UPSTREAM_ERROR": "上游服务响应异常，请稍后重试",
+    "HTTP_ERROR": "请求失败（HTTP）",
+    "NETWORK_ERROR": "网络连接失败，请检查网络后重试",
+    "TIMEOUT": "请求超时，请重试",
+    "REQUEST_CANCELLED": "请求已取消",
+    "UNKNOWN": "未知错误，请重试",
+    "retry": "重试"
   }
 }

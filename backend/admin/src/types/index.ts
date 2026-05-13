@@ -199,6 +199,7 @@ export interface SubscriptionPlan {
   id: string;
   name: string;
   description?: string;
+  tier_type: 'free_tier' | 'paid';
   price_usd: number;
   credits: number;
   billing_period: 'monthly' | 'yearly' | 'lifetime';

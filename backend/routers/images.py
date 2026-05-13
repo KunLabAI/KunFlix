@@ -33,10 +33,11 @@ from services.tool_manager.providers.image_edit import (
 )
 from services.billing import (
     deduct_credits_atomic,
-    check_balance_sufficient,
+    require_positive_balance,
     InsufficientCreditsError,
     BalanceFrozenError,
 )
+from errors import BizError
 from services._retry_utils import is_transient_network_error, friendly_network_error_message
 from ratelimit import limiter, ENDPOINT_LIMITS
 import asyncio
@@ -217,14 +218,15 @@ async def generate_images(
         HTTPException(status_code=403, detail="Image generation is disabled globally")
     )
 
-    # 余额预检查
+    # 余额预检查（严格 >0）+ lazy 触发月度重置
+    from services.credit_reset import maybe_reset_monthly_credits
+    await maybe_reset_monthly_credits(entity_id, db)
     try:
-        balance_ok = await check_balance_sufficient(entity_id, 0, db)
-        balance_ok or (_ for _ in ()).throw(
-            HTTPException(status_code=402, detail="积分余额不足，请充值后继续使用")
-        )
+        await require_positive_balance(entity_id, db)
+    except InsufficientCreditsError:
+        raise BizError.insufficient_credits()
     except BalanceFrozenError:
-        raise HTTPException(status_code=403, detail="账户资金已冻结，请联系管理员")
+        raise BizError.balance_frozen(user_id=entity_id)
 
     # 查询 LLMProvider
     provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == payload.provider_id))
@@ -307,7 +309,7 @@ async def generate_images(
             transaction_type="consumption",
         )
     except InsufficientCreditsError:
-        raise HTTPException(status_code=402, detail="积分余额不足")
+        raise BizError.insufficient_credits()
 
     await db.commit()
 

@@ -170,8 +170,8 @@ function RegistrationTrendChart() {
       </CardHeader>
       <CardContent className="flex-1 pt-0">
         {isLoading ? <LoadingSpinner /> : (
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0">
+            <ResponsiveContainer width="100%" height={220} minWidth={0}>
               <AreaChart data={daily} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="regGrad" x1="0" y1="0" x2="0" y2="1">
@@ -219,8 +219,8 @@ function ActiveTrendChart() {
       </CardHeader>
       <CardContent className="flex-1 pt-0">
         {isLoading ? <LoadingSpinner /> : (
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0">
+            <ResponsiveContainer width="100%" height={220} minWidth={0}>
               <AreaChart data={daily} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="activeGrad" x1="0" y1="0" x2="0" y2="1">
@@ -268,8 +268,8 @@ function ConversionTrendChart() {
       </CardHeader>
       <CardContent className="flex-1 pt-0">
         {isLoading ? <LoadingSpinner /> : (
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full min-w-0">
+            <ResponsiveContainer width="100%" height={220} minWidth={0}>
               <BarChart data={daily} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v: string) => v.slice(5)} className="fill-muted-foreground" />
@@ -443,7 +443,7 @@ export default function AdminDashboard() {
 
       {/* Row 2: Left stack (3 trend charts) | Right (token leaderboard spans full height) */}
       <div className="grid gap-4 lg:grid-cols-5">
-        <div className="flex flex-col gap-4 lg:col-span-3">
+        <div className="flex flex-col gap-4 min-w-0 lg:col-span-3">
           <RegistrationTrendChart />
           <ActiveTrendChart />
           <ConversionTrendChart />

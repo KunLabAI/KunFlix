@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 import logging
+from decimal import Decimal
 
 from typing import List
 
@@ -24,7 +25,7 @@ from services import audit
 from ratelimit import limiter, ip_limiter
 from config import settings
 from database import get_db
-from models import User, CreditTransaction
+from models import User, CreditTransaction, SubscriptionPlan
 from schemas import (
     UserRegister,
     UserLogin,
@@ -42,6 +43,25 @@ router = APIRouter(
     prefix="/api/auth",
     tags=["auth"],
 )
+
+
+async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
+    """构造 UserResponse 并 join 套餐名/类型，供 /register、/login、/me、/preferences 等笔端统一使用。
+
+    设计目标：前端只依赖 User 返回结构即可展示真实套餐名（避免硬编码“Pro/Free”）。
+    - user.subscription_plan_id 为空（非注册或未激活）：返回的 name/tier_type 为 None，前端降级展示“未订阅”
+    - 套餐被删除或移除关联：同上，join 结果为 None，降级逻辑可用
+    """
+    resp = UserResponse.model_validate(user)
+    plan_id = getattr(user, "subscription_plan_id", None)
+    if plan_id:
+        plan = await db.scalar(
+            select(SubscriptionPlan).where(SubscriptionPlan.id == plan_id)
+        )
+        if plan:
+            resp.subscription_plan_name = plan.name
+            resp.subscription_tier_type = plan.tier_type
+    return resp
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -66,7 +86,50 @@ async def register(
         password_hash=hash_password(body.password),
         register_ip=request.client.host if request.client else None,
     )
+
+    # Free Tier 自动开通：按 tier_type='free_tier' 匹配注册套餐
+    # - 初始积分完全由 Free Tier 套餐的 credits 字段决定（不再走 credit_policy.new_user_initial_credits）
+    from services.credit_reset import compute_next_reset_at
+    from services.billing import record_credit_grant
+    # - 价格/分类一致性由 schemas.SubscriptionPlanBase 校验保证
+    # - 排序：sort_order ASC + id ASC tie-breaker，多个同类套餐时稳定命中同一个
+    # - 开始时间 = 注册时刻；结束时间 = +30 天（业务约定）
+    # - next_credit_reset_at = 下月 1 日 UTC 00:00，由已有的 maybe_reset_monthly_credits 懒触发月度重置
+    # - Free plan 不存在时降级为 inactive，不阻塞注册
+    now = datetime.now(timezone.utc)
+    free_plan = await db.scalar(
+        select(SubscriptionPlan)
+        .where(SubscriptionPlan.is_active.is_(True))
+        .where(SubscriptionPlan.tier_type == "free_tier")
+        .order_by(SubscriptionPlan.sort_order, SubscriptionPlan.id)
+        .limit(1)
+    )
+    initial_credits = 0.0
+    if free_plan:
+        user.subscription_plan_id = free_plan.id
+        user.subscription_status = "active"
+        user.subscription_start_at = now
+        user.subscription_end_at = now + timedelta(days=30)
+        user.next_credit_reset_at = compute_next_reset_at(now)
+        # 用 Free Tier 套餐的 credits 作为注册初始余额
+        initial_credits = float(free_plan.credits or 0)
+        initial_credits > 0 and setattr(user, "credits", Decimal(str(initial_credits)))
+
     db.add(user)
+    await db.flush()  # 先拿到 user.id
+
+    # 写入审计轨迹（余额已直接赋值，record_credit_grant 不重复加）
+    initial_credits > 0 and await record_credit_grant(
+        user_id=user.id,
+        amount=initial_credits,
+        session=db,
+        balance_after=initial_credits,
+        description=f"新用户注册赠送（Free Tier：{free_plan.name if free_plan else ''}）",
+        idempotency_key=f"register_bonus:{user.id}",
+        metadata={"kind": "register_bonus", "plan_id": free_plan.id if free_plan else None},
+        transaction_type="recharge",
+    )
+
     await db.commit()
     await db.refresh(user)
     return user
@@ -94,6 +157,13 @@ async def login(
         raise bad_credentials
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
+
+    # Lazy 月度积分重置：登录路径触发（用户可感知）
+    from services.credit_reset import maybe_reset_monthly_credits
+    try:
+        await maybe_reset_monthly_credits(user.id, db)
+    except Exception as _e:
+        logger.warning("monthly reset failed at login user=%s err=%s", user.id, _e)
 
     # Update login metadata
     user.last_login_at = datetime.now(timezone.utc)
@@ -127,7 +197,7 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserResponse.model_validate(user),
+        user=await _build_user_response(user, db),
     )
 
 
@@ -237,9 +307,19 @@ async def _try_revoke(token: str) -> None:
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(current_user: User = Depends(get_current_active_user)):
+async def me(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Return the authenticated user's profile."""
-    return current_user
+    # Lazy 月度重置：/me 是高频用户可感知端点，到期才会真正执行
+    from services.credit_reset import maybe_reset_monthly_credits
+    try:
+        did_reset = await maybe_reset_monthly_credits(current_user.id, db)
+        did_reset and await db.refresh(current_user)
+    except Exception as _e:
+        logger.warning("monthly reset failed at /me user=%s err=%s", current_user.id, _e)
+    return await _build_user_response(current_user, db)
 
 
 @router.patch("/preferences", response_model=UserResponse)
@@ -272,7 +352,7 @@ async def update_preferences(
 
     await db.commit()
     await db.refresh(user)
-    return user
+    return await _build_user_response(user, db)
 
 
 @router.get("/credits/history", response_model=List[CreditTransactionResponse])

@@ -731,10 +731,27 @@ export function useSSEHandler() {
         }, 0);
       },
 
-      // 错误
+      // 错误（SSE 中后端 yield 出的 error 事件，参见 backend/services/chat_generation.py）
+      // 后端已仅仅为余额异常携带 code（INSUFFICIENT_CREDITS / BALANCE_FROZEN），
+      // 其他错误如 LLM 中断 / 工具异常默认可重试。
       error: () => {
-        const msg = (data as { message?: string })?.message || 'Unknown error';
-        setMessages((prev) => [...prev, { role: 'ai', content: `错误: ${msg}`, status: 'complete' }]);
+        const payload = (data as { message?: string; code?: string }) || {};
+        const msg = payload.message || 'Unknown error';
+        const code = payload.code || 'INTERNAL_ERROR';
+        const nonRetryable = code === 'INSUFFICIENT_CREDITS' || code === 'BALANCE_FROZEN' || code === 'PERMISSION_DENIED';
+        setMessages((prev) => {
+          // 如果最后一条是 streaming 的 ai 消息，原地转为错误态；否则追加一条。
+          const last = prev[prev.length - 1];
+          const errorMsg = {
+            role: 'ai' as const,
+            content: last?.role === 'ai' ? last.content : '',
+            status: 'complete' as const,
+            error: { code, detail: msg, retryable: !nonRetryable },
+          };
+          return last?.role === 'ai' && last?.status === 'streaming'
+            ? [...prev.slice(0, -1), errorMsg]
+            : [...prev, errorMsg];
+        });
         resetStreamingState();
       },
     };

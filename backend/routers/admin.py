@@ -16,7 +16,8 @@ from schemas import (
     AdminUpdate,
     AdminResponse,
 )
-from services.billing import refund_credits_atomic
+from services.billing import refund_credits_atomic, record_credit_grant
+from services.credit_reset import compute_next_reset_at
 from services import audit
 
 router = APIRouter(
@@ -395,30 +396,34 @@ async def assign_user_subscription(
     user.subscription_status = "active"
     user.subscription_start_at = body.start_at
     user.subscription_end_at = body.end_at
+    # 订阅激活时设置下次月度重置时间（下月 1 日 UTC 00:00）
+    user.next_credit_reset_at = compute_next_reset_at()
 
     # 自动发放积分
     credits_granted = 0.0
     if body.auto_grant_credits:
         balance_before = float(user.credits or 0)
         credits_granted = float(plan.credits or 0)
-        user.credits = balance_before + credits_granted
+        balance_after = balance_before + credits_granted
+        user.credits = balance_after
 
-        # 记录积分交易
-        transaction = CreditTransaction(
+        # 写入积分交易审计（幂等：subscription_grant:{user}:{plan}:{start_at}）
+        idem_key = f"subscription_grant:{user_id}:{plan.id}:{(body.start_at or '').__str__()[:10]}"
+        await record_credit_grant(
             user_id=user_id,
-            transaction_type="recharge",
             amount=credits_granted,
-            balance_before=balance_before,
-            balance_after=user.credits,
+            session=db,
+            balance_after=balance_after,
             description=f"订阅套餐发放: {plan.name}",
-            metadata_json={
+            idempotency_key=idem_key,
+            metadata={
                 "admin_id": current_admin.id,
                 "plan_id": plan.id,
                 "plan_name": plan.name,
                 "operation": "subscription_grant",
             },
+            transaction_type="recharge",
         )
-        db.add(transaction)
 
     await db.commit()
     await db.refresh(user)
@@ -462,6 +467,8 @@ async def cancel_user_subscription(
     user.subscription_status = "inactive"
     user.subscription_start_at = None
     user.subscription_end_at = None
+    # 取消订阅时清除重置时间，避免非订阅用户被误重置
+    user.next_credit_reset_at = None
 
     await db.commit()
 

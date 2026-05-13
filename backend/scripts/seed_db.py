@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(_BACKEND_DIR, "deps")))
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import AsyncSessionLocal
-from models import LLMProvider, Admin, User, PromptTemplate
+from models import LLMProvider, Admin, User, PromptTemplate, SubscriptionPlan
 from config import settings
 import bcrypt
 # from passlib.context import CryptContext
@@ -125,7 +125,29 @@ async def seed():
         else:
             print("Admin already exists.")
 
-        # 3. Seed Prompt Templates
+        # 3. Seed Free Tier Subscription Plan
+        #    注册时 routers/auth.py 会按 is_active=True 且 price_usd=0 按 sort_order 匹配首个免费套餐
+        #    幂等：已存在同名套餐则跳过，不触发更新
+        result = await session.execute(select(SubscriptionPlan).filter_by(name="Free"))
+        free_plan = result.scalars().first()
+        if not free_plan:
+            print("Creating default Free tier subscription plan...")
+            session.add(SubscriptionPlan(
+                name="Free",
+                description="免费基础套餐，适用于个人试用与轻量创作",
+                tier_type="free_tier",  # 注册时 auth.py 按 tier_type='free_tier' 匹配
+                price_usd=0,
+                credits=100,
+                billing_period="monthly",
+                storage_quota_bytes=2147483648,  # 2GB
+                features=["基础功能", "每月赠送 100 积分", "2GB 存储空间"],
+                is_active=True,
+                sort_order=0,  # 置顶，确保注册时优先匹配
+            ))
+        else:
+            print("Free tier plan already exists.")
+
+        # 4. Seed Prompt Templates
         prompt_templates = load_prompt_templates()
         for template_config in prompt_templates:
             result = await session.execute(select(PromptTemplate).filter_by(name=template_config["name"]))

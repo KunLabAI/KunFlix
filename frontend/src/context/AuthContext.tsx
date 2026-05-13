@@ -25,6 +25,8 @@ export interface User {
   // 订阅信息
   subscription_status: 'inactive' | 'active' | 'expired';
   subscription_plan_id?: string | null;
+  subscription_plan_name?: string | null;        // 后端 join 出的套餐名，前端展示优先级最高
+  subscription_tier_type?: 'free_tier' | 'paid' | null;  // 标签着色依据
   // 用户偏好
   preferred_theme?: string;
   preferred_language?: string;
@@ -41,6 +43,10 @@ export interface TokenResponse {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
+  // 标识客户端是否已完成首次挂载与 localStorage 同步。
+  // SSR 阶段为 false；客户端首帧同步去一次 storage 后置 true。
+  // 需要 “SSR/CSR 严格一致” 的消费方（将来可自选等到 hydrate 后再条件渲染）。
+  isHydrated: boolean;
   login: (accessToken: string, refreshToken: string, user: User, redirect?: string) => void;
   logout: () => void;
   updateCredits: (credits: number) => void;
@@ -51,6 +57,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
+  isHydrated: false,
   login: () => {},
   logout: () => {},
   updateCredits: () => {},
@@ -59,6 +66,21 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const useAuth = () => useContext(AuthContext);
+
+// 同步读取 localStorage 中的登录态；SSR 环境返回默认值（避免 ReferenceError）。
+// 用于 useState 的惰性初始化：让客户端首次渲染即携带真实登录态，
+// 消除 “未登录 → 已登录” 的二次渲染闪烁。
+function readStoredAuth(): { user: User | null; isAuthenticated: boolean } {
+  if (typeof window === "undefined") return { user: null, isAuthenticated: false };
+  const token = localStorage.getItem("access_token");
+  const stored = localStorage.getItem("user");
+  if (!token || !stored) return { user: null, isAuthenticated: false };
+  try {
+    return { user: JSON.parse(stored) as User, isAuthenticated: true };
+  } catch {
+    return { user: null, isAuthenticated: false };
+  }
+}
 
 // 创建一个带有认证和自动刷新的fetch包装器
 export function createAuthFetch(refreshToken: () => Promise<boolean>, logout: () => void) {
@@ -132,26 +154,25 @@ const PUBLIC_ROUTES = ["/", "/login"];
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
+  // 初始状态保持与 SSR 一致（null/false），避免惰性初始化产生 SSR↔CSR 节点差异。
+  // 真实登录态在 useEffect 中同步读取并点亮 isHydrated；
+  // 身份敏感的消费组件（如 TopBar / RecentTheaters）需依据 isHydrated 调整首帧渲染，
+  // 以及“默认按已登录视图”的策略来消除闪烁。
   const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isHydrated, setIsHydrated] = useState<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    const stored = localStorage.getItem("user");
-    const hasSession = token && stored;
+    // 客户端首次挂载：同步读取 localStorage，点亮 isHydrated，走路由守卫。
+    const { user: u, isAuthenticated: auth } = readStoredAuth();
+    setUser(u);
+    setIsAuthenticated(auth);
+    setIsHydrated(true);
 
-    setIsAuthenticated(!!hasSession);
-    setUser(hasSession ? JSON.parse(stored) : null);
-
-    // Redirect unauthenticated users from protected routes,
-    // 携带 redirect 参数以便登录成功后回跳原位置。
     const isPublic = PUBLIC_ROUTES.includes(pathname);
-    if (!hasSession && !isPublic) {
-      const target = `/login?redirect=${encodeURIComponent(pathname)}`;
-      router.push(target);
-    }
+    !auth && !isPublic && router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
   }, [pathname, router]);
 
   // 从后端拉取最新用户信息并同步到 state + localStorage，
@@ -223,7 +244,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [logout]);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated, login, logout, updateCredits, refreshToken, refreshUser }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, isHydrated, login, logout, updateCredits, refreshToken, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

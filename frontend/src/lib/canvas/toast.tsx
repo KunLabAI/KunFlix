@@ -13,6 +13,8 @@
  * Toast 仅作为单向状态提示。
  */
 import { toast } from 'sonner';
+import i18n from '@/i18n';
+import { normalizeError, getErrorMessage, type NormalizedError } from '@/lib/errors';
 
 function showError(message: string) {
   toast.error(message, { duration: 3000 });
@@ -36,3 +38,33 @@ export const edgeToast = {
   warn: showWarn,
   success: showSuccess,
 };
+
+/**
+ * 统一错误上报（画布场景）：
+ *  - 接受任意 error 或 NormalizedError
+ *  - 自动走 normalize + i18n 查字典
+ *  - 可重试错误附带 "重试" 按钮（传 onRetry 才展示）
+ *  - 取消请求 (REQUEST_CANCELLED) 不提示
+ *
+ * 返回规范化对象，供调用方需要时读 code 做额外逻辑。
+ */
+function reportError(
+  err: unknown,
+  options?: { onRetry?: () => void; silent?: boolean }
+): NormalizedError {
+  const normalized = normalizeError(err);
+  // 取消不提示
+  if (normalized.code === 'REQUEST_CANCELLED' || options?.silent) return normalized;
+
+  const msg = getErrorMessage(i18n.t.bind(i18n), normalized);
+  const showRetry = !!options?.onRetry && normalized.retryable;
+  toast.error(msg, {
+    duration: 4000,
+    action: showRetry
+      ? { label: i18n.t('errors.retry') as string, onClick: () => options!.onRetry!() }
+      : undefined,
+  });
+  return normalized;
+}
+
+export { reportError };

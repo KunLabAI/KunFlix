@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -53,7 +53,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Coins } from 'lucide-react';
 import { SubscriptionPlan } from '@/types';
 import {
   useSubscriptions,
@@ -61,12 +61,16 @@ import {
   useUpdatePlan,
   useDeletePlan,
 } from '@/hooks/useSubscriptions';
+import CreditPolicyDialog from '@/components/admin/CreditPolicyDialog';
 
 // 基准积分成本（1 积分 = $0.01 USD）
 const CREDIT_BASE_COST_USD = 0.01;
 
 const BILLING_CYCLE_KEYS = ['monthly', 'yearly', 'lifetime'] as const;
 type BillingCycleKey = typeof BILLING_CYCLE_KEYS[number];
+
+const TIER_TYPE_KEYS = ['free_tier', 'paid'] as const;
+type TierTypeKey = typeof TIER_TYPE_KEYS[number];
 
 function formatStorageQuota(bytes: number): string {
   const gb = bytes / (1024 ** 3);
@@ -84,17 +88,29 @@ export default function SubscriptionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<SubscriptionPlan | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [creditPolicyOpen, setCreditPolicyOpen] = useState(false);
 
   const formSchema = useMemo(() => z.object({
     name: z.string().min(1, t('subscriptions.validation.nameRequired')),
     description: z.string().optional(),
-    price_usd: z.number().positive(t('subscriptions.validation.pricePositive')),
+    tier_type: z.enum(TIER_TYPE_KEYS),
+    price_usd: z.number().min(0, t('subscriptions.validation.pricePositive')),
     credits: z.number().positive(t('subscriptions.validation.creditsPositive')),
     billing_period: z.enum(['monthly', 'yearly', 'lifetime']),
     storage_quota_gb: z.number().min(0.1, t('subscriptions.validation.storagePositive')),
     features: z.array(z.object({ value: z.string().min(1, t('subscriptions.validation.featureRequired')) })),
     is_active: z.boolean(),
     sort_order: z.number().int().min(0),
+  }).superRefine((val, ctx) => {
+    // 与后端 schemas.SubscriptionPlanBase 一致的语义校验：
+    // - free_tier 套餐 price_usd 必须为 0（后端同步拦截）
+    // - paid 套餐 price_usd 必须大于 0
+    if (val.tier_type === 'free_tier' && val.price_usd !== 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_usd'], message: t('subscriptions.validation.freeTierPriceZero') });
+    }
+    if (val.tier_type === 'paid' && val.price_usd <= 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['price_usd'], message: t('subscriptions.validation.paidPricePositive') });
+    }
   }), [t]);
 
   type FormValues = z.infer<typeof formSchema>;
@@ -104,6 +120,7 @@ export default function SubscriptionsPage() {
     defaultValues: {
       name: '',
       description: '',
+      tier_type: 'paid',
       price_usd: 9.99,
       credits: 1000,
       billing_period: 'monthly',
@@ -121,10 +138,27 @@ export default function SubscriptionsPage() {
 
   const watchPrice = form.watch('price_usd');
   const watchCredits = form.watch('credits');
+  const watchSortOrder = form.watch('sort_order');
+  const watchTierType = form.watch('tier_type');
+
+  // tier_type 切为 free_tier 时，自动将 price_usd 拉为 0（解达“价格不允许为 0”的体验痛点）
+  // - 用户只需选择「注册套餐」，无需再手工归零价格字段
+  useEffect(() => {
+    if (watchTierType === 'free_tier' && watchPrice !== 0) {
+      form.setValue('price_usd', 0, { shouldValidate: true });
+    }
+  }, [watchTierType, watchPrice, form]);
 
   const unitPrice = watchCredits > 0 ? watchPrice / watchCredits : 0;
   const baseCost = watchCredits * CREDIT_BASE_COST_USD;
   const profitMargin = baseCost > 0 ? ((watchPrice - baseCost) / baseCost * 100) : 0;
+
+  // 同 sort_order 软提示：指出已占用该序号的其他套餐名称
+  // - 注册时 auth.py 按 (sort_order ASC, id ASC) 取首个，仍是确定性的，但管理员需感知冲突
+  // - 编辑时排除当前套餐自身
+  const sortOrderConflicts = (plans ?? [])
+    .filter(p => p.sort_order === watchSortOrder && p.id !== editing?.id)
+    .map(p => p.name);
 
   const getCycleLabel = (key: string) =>
     BILLING_CYCLE_KEYS.includes(key as BillingCycleKey) ? t(`subscriptions.billingCycle.${key}`) : key;
@@ -134,6 +168,7 @@ export default function SubscriptionsPage() {
     form.reset({
       name: '',
       description: '',
+      tier_type: 'paid',
       price_usd: 9.99,
       credits: 1000,
       billing_period: 'monthly',
@@ -150,6 +185,7 @@ export default function SubscriptionsPage() {
     form.reset({
       name: plan.name,
       description: plan.description ?? '',
+      tier_type: plan.tier_type,
       price_usd: plan.price_usd,
       credits: plan.credits,
       billing_period: plan.billing_period,
@@ -206,9 +242,14 @@ export default function SubscriptionsPage() {
           <h2 className="text-2xl font-bold tracking-tight">{t('subscriptions.title')}</h2>
           <p className="text-muted-foreground text-sm mt-1">{t('subscriptions.subtitle')}</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="mr-2 h-4 w-4" /> {t('subscriptions.newPlan')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setCreditPolicyOpen(true)}>
+            <Coins className="mr-2 h-4 w-4" /> {t('subscriptions.creditPolicyButton')}
+          </Button>
+          <Button onClick={handleAdd}>
+            <Plus className="mr-2 h-4 w-4" /> {t('subscriptions.newPlan')}
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-card shadow-sm">
@@ -217,6 +258,7 @@ export default function SubscriptionsPage() {
             <TableRow>
               <TableHead className="w-12">{t('subscriptions.table.order')}</TableHead>
               <TableHead>{t('subscriptions.table.name')}</TableHead>
+              <TableHead>{t('subscriptions.table.type')}</TableHead>
               <TableHead>{t('subscriptions.table.billingCycle')}</TableHead>
               <TableHead className="text-right">{t('subscriptions.table.price')}</TableHead>
               <TableHead className="text-right">{t('subscriptions.table.credits')}</TableHead>
@@ -230,12 +272,12 @@ export default function SubscriptionsPage() {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t('subscriptions.table.loading')}</TableCell>
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">{t('subscriptions.table.loading')}</TableCell>
               </TableRow>
             )}
             {!isLoading && (!plans || plans.length === 0) && (
               <TableRow>
-                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">{t('subscriptions.table.empty')}</TableCell>
+                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">{t('subscriptions.table.empty')}</TableCell>
               </TableRow>
             )}
             {plans?.map((plan) => {
@@ -253,6 +295,11 @@ export default function SubscriptionsPage() {
                         <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{plan.description}</p>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={plan.tier_type === 'free_tier' ? 'secondary' : 'default'}>
+                      {t(`subscriptions.tierType.${plan.tier_type}`)}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{getCycleLabel(plan.billing_period)}</Badge>
@@ -348,6 +395,32 @@ export default function SubscriptionsPage() {
                 )}
               />
 
+              <FormField
+                control={form.control}
+                name="tier_type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('subscriptions.form.tierType')}</FormLabel>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TIER_TYPE_KEYS.map((key) => (
+                            <SelectItem key={key} value={key}>{t(`subscriptions.tierType.${key}`)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t(`subscriptions.form.tierTypeHint.${field.value}`)}
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -359,11 +432,15 @@ export default function SubscriptionsPage() {
                         <Input
                           type="number"
                           step={0.01}
-                          min={0.01}
+                          min={0}
                           value={field.value}
                           onChange={e => field.onChange(Number(e.target.value))}
+                          disabled={watchTierType === 'free_tier'}
                         />
                       </FormControl>
+                      {watchTierType === 'free_tier' && (
+                        <p className="text-xs text-muted-foreground mt-1">{t('subscriptions.form.freeTierPriceLocked')}</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -451,6 +528,11 @@ export default function SubscriptionsPage() {
                           onChange={e => field.onChange(Number(e.target.value))}
                         />
                       </FormControl>
+                      {sortOrderConflicts.length > 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                          {t('subscriptions.form.sortOrderConflict', { names: sortOrderConflicts.join('、') })}
+                        </p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -550,6 +632,9 @@ export default function SubscriptionsPage() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* 积分策略弹窗：从原系统设置页迁移至此，已移除「新用户初始积分」字段 */}
+      <CreditPolicyDialog open={creditPolicyOpen} onOpenChange={setCreditPolicyOpen} />
     </div>
   );
 }

@@ -32,6 +32,21 @@ async def create_plan(
     if existing.scalars().first():
         raise HTTPException(status_code=400, detail="Plan name already exists")
 
+    # free_tier 语义唯一：全局至多允许 1 个 is_active 的注册套餐
+    # - 避免注册时有多个候选造成行为漂移；硬拦截优于软提示
+    if plan.tier_type == "free_tier" and plan.is_active:
+        conflict = await db.scalar(
+            select(SubscriptionPlan)
+            .where(SubscriptionPlan.tier_type == "free_tier")
+            .where(SubscriptionPlan.is_active.is_(True))
+            .limit(1)
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Active free_tier plan already exists: {conflict.name}",
+            )
+
     new_plan = SubscriptionPlan(**plan.model_dump())
     db.add(new_plan)
     await db.commit()
@@ -105,6 +120,23 @@ async def update_plan(
 
     for key, value in update_data.items():
         setattr(plan, key, value)
+
+    # 更新后复验 free_tier 唯一性：最多 1 个 is_active + free_tier
+    # - 用户把一个 paid 升级为 free_tier、或把原 free_tier 重新激活时，需拦截重复
+    if plan.tier_type == "free_tier" and plan.is_active:
+        conflict = await db.scalar(
+            select(SubscriptionPlan)
+            .where(SubscriptionPlan.tier_type == "free_tier")
+            .where(SubscriptionPlan.is_active.is_(True))
+            .where(SubscriptionPlan.id != plan.id)
+            .limit(1)
+        )
+        if conflict:
+            await db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Active free_tier plan already exists: {conflict.name}",
+            )
 
     await db.commit()
     await db.refresh(plan)

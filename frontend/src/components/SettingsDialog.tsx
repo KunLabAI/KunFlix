@@ -96,10 +96,17 @@ const TAB_ICONS: Record<TabKey, React.ElementType> = {
   about: Info,
 };
 
-const SUB_BADGE: Record<string, { label: string; cls: string }> = {
-  active: { label: "Pro", cls: "bg-primary text-primary-foreground" },
-  expired: { label: "Expired", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400" },
-  inactive: { label: "Free", cls: "bg-muted text-muted-foreground border border-border" },
+// 标签样式映射：仅负责不同类型的色盘/修饰
+// - 文案不在这里硬编码，走 user.subscription_plan_name 真实套餐名，降级上回通用 i18n key
+// - 不再将 subscription_status 直接映射到“Pro/Free”文字
+const TIER_BADGE_CLASS: Record<string, string> = {
+  free_tier: "bg-muted text-muted-foreground border border-border",
+  paid: "bg-primary text-primary-foreground",
+};
+const STATUS_FALLBACK_CLASS: Record<string, string> = {
+  active: "bg-primary text-primary-foreground",
+  expired: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+  inactive: "bg-muted text-muted-foreground border border-border",
 };
 
 interface SettingsDialogProps {
@@ -124,7 +131,17 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { releases, loading: releasesLoading, error: releasesError, refetch: refetchReleases } =
     useGitHubReleases(open && currentTab === "about");
 
-  const badge = SUB_BADGE[user?.subscription_status ?? "inactive"] ?? SUB_BADGE.inactive;
+  // 标签显示规则（优先级从高到低）：
+  // 1. 有真实 subscription_plan_name → 显示套餐名（如 "Free"、"Pro"），色盘按 tier_type 区分
+  // 2. 无套餐关联但状态为 expired → 显示已过期
+  // 3. 彻底未订阅（无套餐且状态非 expired）→ 显示未订阅占位
+  const planName = user?.subscription_plan_name || '';
+  const tierType = user?.subscription_tier_type || undefined;
+  const subStatus = user?.subscription_status ?? 'inactive';
+  const badgeLabel = planName
+    || (subStatus === 'expired' ? t('settings.subscription.badge.expired', { defaultValue: 'Expired' }) : t('settings.subscription.badge.none', { defaultValue: 'Free' }));
+  const badgeClass = (tierType && TIER_BADGE_CLASS[tierType]) || STATUS_FALLBACK_CLASS[subStatus] || STATUS_FALLBACK_CLASS.inactive;
+  const badge = { label: badgeLabel, cls: badgeClass };
 
   // ── data fetching ──────────────────────────────────────────────────────
   const usageDays = USAGE_PERIOD_OPTIONS.find((o) => o.key === usagePeriod)?.days ?? 30;
@@ -192,7 +209,9 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5 mb-1">
-                  <span className="text-xl font-bold text-foreground">{t("settings.subscription.freePlan")}</span>
+                  <span className="text-xl font-bold text-foreground">
+                    {user?.subscription_plan_name || t("settings.subscription.freePlan")}
+                  </span>
                   <span className="px-2 py-0.5 rounded text-xs font-medium text-orange-600 bg-orange-100 dark:text-orange-400 dark:bg-orange-900/30">
                     {t("settings.subscription.currentPlan")}
                   </span>

@@ -313,9 +313,11 @@
     "title": "Subscription Plans",
     "subtitle": "Manage subscription plans and pricing",
     "newPlan": "New Plan",
+    "creditPolicyButton": "Credit Policy",
     "table": {
       "order": "Order",
       "name": "Plan Name",
+      "type": "Type",
       "billingCycle": "Billing Cycle",
       "price": "Price (USD)",
       "credits": "Credits",
@@ -343,10 +345,17 @@
       "namePlaceholder": "e.g. Basic",
       "description": "Description",
       "descriptionPlaceholder": "Plan description (optional)",
+      "tierType": "Plan Type",
+      "tierTypeHint": {
+        "free_tier": "Registration plan: auto-assigned to new users on signup. Price must be 0. At most one active globally.",
+        "paid": "Paid plan: obtained through purchase. Price must be greater than 0."
+      },
+      "freeTierPriceLocked": "Registration plan price is fixed at 0 and has been locked",
       "price": "Price (USD)",
       "credits": "Credits",
       "billingCycle": "Billing Cycle",
       "sortOrder": "Sort Order",
+      "sortOrderConflict": "Order number is also used by: {{names}}. When multiple free plans share a sort order, registration picks the earliest-created one (by id).",
       "storageQuota": "Storage Quota (GB)",
       "features": "Plan Features",
       "featureAdd": "Add",
@@ -387,10 +396,16 @@
     },
     "validation": {
       "nameRequired": "Please enter a plan name",
-      "pricePositive": "Price must be greater than 0",
+      "pricePositive": "Price cannot be negative (0 means a free plan)",
+      "freeTierPriceZero": "Registration plan price must be 0",
+      "paidPricePositive": "Paid plan price must be greater than 0",
       "creditsPositive": "Credits must be greater than 0",
       "storagePositive": "Storage quota must be greater than 0",
       "featureRequired": "Please enter feature description"
+    },
+    "tierType": {
+      "free_tier": "Registration",
+      "paid": "Paid"
     }
   },
   "llm": {
@@ -1354,5 +1369,49 @@
     "orContinueWith": "Or continue with",
     "continueWithGoogle": "Continue with Google",
     "continueWithGitHub": "Continue with GitHub"
+  },
+  "systemSettings": {
+    "creditPolicy": {
+      "title": "Credit Policy",
+      "desc": "Monthly reset behavior for subscribed/free-tier users. New user initial credits are now determined by the Free Tier plan."
+    },
+    "field": {
+      "subscriptionResetEnabled": "Monthly reset for subscribed users",
+      "subscriptionResetEnabledHint": "Active subscribers get credits reset to plan quota every month",
+      "resetMode": "Reset mode",
+      "freeTierResetEnabled": "Monthly reset for free-tier users",
+      "freeTierResetEnabledHint": "When enabled, non-subscribers also get monthly reset (off by default)",
+      "freeTierResetCredits": "Free-tier monthly quota"
+    },
+    "resetMode": {
+      "override": "Override",
+      "overrideHint": "Replace balance with plan quota; unused credits are forfeited",
+      "accumulate": "Accumulate",
+      "accumulateHint": "Keep existing balance and add the plan quota",
+      "floor": "Floor",
+      "floorHint": "Use max(current balance, plan quota)"
+    },
+    "resetPanel": {
+      "title": "Monthly Reset Control",
+      "desc": "View users due for reset. Batch trigger manually (normally executed lazily on user access)",
+      "dueCount": "Currently due users",
+      "scheduledCount": "Scheduled users",
+      "activeSubCount": "Active subscribers",
+      "serverTime": "Server time (UTC)"
+    },
+    "action": {
+      "save": "Save settings",
+      "revertDefaults": "Revert to defaults",
+      "triggerBatch": "Trigger batch reset now"
+    },
+    "toast": {
+      "saveSuccess": "Settings saved",
+      "saveSuccessDesc": "New policy will take effect globally after the 60s cache expires",
+      "saveFail": "Save failed",
+      "reverted": "Reverted to defaults (unsaved)",
+      "triggerSuccess": "Batch trigger complete",
+      "triggerSuccessDesc": "Due {{total}}, reset {{reset}}, skipped {{skipped}}",
+      "triggerFail": "Trigger failed"
+    }
   }
 }

@@ -19,7 +19,10 @@ interface TheaterWithNodes extends TheaterResponse {
 export default function RecentTheaters() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isHydrated } = useAuth();
+  // hydrate 完成前（含 SSR 与 CSR 首帧）均默认按“已登录”视图渲染（轮播 + 加载占位），
+  // 避免已登录用户刷新时看到“游客引导卡 → 轮播”的倒转闪烁。
+  const isGuest = isHydrated && !isAuthenticated;
   const carouselRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [theaters, setTheaters] = useState<TheaterWithNodes[]>([]);
@@ -119,8 +122,9 @@ export default function RecentTheaters() {
         )}
       </div>
 
-      {/* Guest Placeholder: 游客态展示登录引导大卡，点击跳转 /login */}
-      {!isAuthenticated ? (
+      {/* Guest Placeholder: 仅在已 hydrate 且确定为游客时才展示登录引导卡。
+          hydrate 前统一走轮播分支，已登录用户首帧不会被误示为游客。 */}
+      {isGuest ? (
         <div className="px-6">
           <motion.button
             type="button"
@@ -141,10 +145,13 @@ export default function RecentTheaters() {
           </motion.button>
         </div>
       ) : (
-      /* Carousel Container */
+      /* Carousel Container
+         移除原“-mr-6 pr-6”（负右外边距）。负外边距会让该元素自身外边界超出父容器 24px，
+         触发顶层页面横向滚动条；overflow-hidden 只隔离内部拖拽溢出，对自身负外边距无效。
+         改用对称 px-6 即可。 */
       <motion.div 
         ref={carouselRef} 
-        className="cursor-grab active:cursor-grabbing overflow-hidden py-6 pl-6 -mr-6 pr-6"
+        className="cursor-grab active:cursor-grabbing overflow-hidden py-6 px-6"
         whileTap={{ cursor: "grabbing" }}
       >
         <motion.div

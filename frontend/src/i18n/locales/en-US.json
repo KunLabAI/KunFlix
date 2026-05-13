@@ -690,5 +690,26 @@
       "dragToCanvas": "Drag to canvas",
       "doubleClickZoom": "Double-click to zoom"
     }
+  },
+  "errors": {
+    "UNAUTHORIZED": "Session expired, please sign in again",
+    "PERMISSION_DENIED": "You don't have permission to access this feature",
+    "TOKEN_EXPIRED": "Session expired, please sign in again",
+    "RESOURCE_NOT_FOUND": "The requested resource was not found",
+    "RESOURCE_CONFLICT": "Resource state conflict, please refresh and retry",
+    "INSUFFICIENT_CREDITS": "Insufficient credits, please top up to continue",
+    "BALANCE_FROZEN": "Account balance is frozen, please contact administrator",
+    "RATE_LIMITED": "Too many requests, please try again later",
+    "VALIDATION_ERROR": "Invalid request parameters",
+    "INVALID_PARAMETER": "Invalid parameter",
+    "INTERNAL_ERROR": "Server error, please try again later",
+    "SERVICE_UNAVAILABLE": "Service temporarily unavailable, please try again later",
+    "UPSTREAM_ERROR": "Upstream service error, please try again later",
+    "HTTP_ERROR": "Request failed (HTTP)",
+    "NETWORK_ERROR": "Network connection failed, please check your network and retry",
+    "TIMEOUT": "Request timed out, please retry",
+    "REQUEST_CANCELLED": "Request cancelled",
+    "UNKNOWN": "Unknown error, please try again",
+    "retry": "Retry"
   }
 }
