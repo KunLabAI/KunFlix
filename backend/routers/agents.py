@@ -1,9 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, update
 from typing import List, Optional
 from database import get_db
-from models import Agent, LLMProvider, Admin
+from models import (
+    Agent,
+    LLMProvider,
+    Admin,
+    ChatSession,
+    TheaterNode,
+    CreditTransaction,
+    PromptTemplate,
+    ToolExecution,
+    TaskExecution,
+    SubTask,
+    AdminDebugSession,
+    AdminDebugMessage,
+)
 from schemas import AgentCreate, AgentUpdate, AgentResponse
 from auth import get_current_active_user_or_admin, require_admin
 
@@ -141,10 +155,42 @@ async def delete_agent(agent_id: str, _admin: Admin = Depends(require_admin), db
     agent = result.scalars().first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     # Log deletion (In a real app, this might go to a dedicated audit log table)
     print(f"AUDIT: Agent {agent.name} (ID: {agent.id}) deleted.")
-    
+
+    # 外键依赖清理：优先 SET NULL 保留历史，NOT NULL 外键才走级联删除
+    # 1) 可空外键——解绑使业务历史保留
+    await db.execute(
+        update(ChatSession).where(ChatSession.agent_id == agent_id).values(agent_id=None)
+    )
+    await db.execute(
+        update(TheaterNode).where(TheaterNode.created_by_agent_id == agent_id).values(created_by_agent_id=None)
+    )
+    await db.execute(
+        update(CreditTransaction).where(CreditTransaction.agent_id == agent_id).values(agent_id=None)
+    )
+    await db.execute(
+        update(PromptTemplate).where(PromptTemplate.default_agent_id == agent_id).values(default_agent_id=None)
+    )
+    await db.execute(
+        update(ToolExecution).where(ToolExecution.agent_id == agent_id).values(agent_id=None)
+    )
+
+    # 2) NOT NULL 外键——级联删除依赖记录
+    # 2a) admin_debug_sessions 及其消息
+    debug_session_ids = select(AdminDebugSession.id).where(AdminDebugSession.agent_id == agent_id)
+    await db.execute(delete(AdminDebugMessage).where(AdminDebugMessage.session_id.in_(debug_session_ids)))
+    await db.execute(delete(AdminDebugSession).where(AdminDebugSession.agent_id == agent_id))
+
+    # 2b) task_executions(leader=agent) 及其 subtasks
+    leader_task_ids = select(TaskExecution.id).where(TaskExecution.leader_agent_id == agent_id)
+    await db.execute(delete(SubTask).where(SubTask.task_execution_id.in_(leader_task_ids)))
+    await db.execute(delete(TaskExecution).where(TaskExecution.leader_agent_id == agent_id))
+
+    # 2c) subtasks 中直接指向该 agent 的子任务
+    await db.execute(delete(SubTask).where(SubTask.agent_id == agent_id))
+
     await db.delete(agent)
     await db.commit()
     return {"message": "Agent deleted successfully"}
