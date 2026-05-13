@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func, update
 from typing import List
 import httpx
 
 from database import get_db
-from models import LLMProvider, Admin
+from models import LLMProvider, Admin, Agent, VideoTask, MusicTask
 from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
 from auth import require_admin
 from agents import narrative_engine
@@ -245,8 +246,28 @@ async def delete_llm_provider(
     provider = result.scalars().first()
     if provider is None:
         raise HTTPException(status_code=404, detail="Provider not found")
-        
+
+    # 拒绝删除：仍有智能体依赖该供应商（避免静默丢失 LLM 路由信息）
+    agent_ref = await db.execute(
+        select(func.count(Agent.id)).where(Agent.provider_id == provider_id)
+    )
+    agent_count = int(agent_ref.scalar() or 0)
+    if agent_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"该供应商仍被 {agent_count} 个智能体使用，请先删除或修改关联智能体",
+        )
+
     snapshot = {"name": provider.name, "provider_type": provider.provider_type, "model": provider.model}
+
+    # 历史任务记录中的 provider_id 采取 SET NULL，保留任务记录
+    await db.execute(
+        update(VideoTask).where(VideoTask.provider_id == provider_id).values(provider_id=None)
+    )
+    await db.execute(
+        update(MusicTask).where(MusicTask.provider_id == provider_id).values(provider_id=None)
+    )
+
     await db.delete(provider)
     await db.commit()
     await publish_invalidate("provider", provider_id)

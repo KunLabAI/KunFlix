@@ -5,7 +5,22 @@ from sqlalchemy import func, delete
 from typing import List, Dict, Any, Optional
 
 from database import get_db
-from models import User, LLMProvider, Asset, Admin, CreditTransaction, SubscriptionPlan, ChatSession, Theater, generate_uuid
+from models import (
+    User,
+    LLMProvider,
+    Asset,
+    Admin,
+    CreditTransaction,
+    SubscriptionPlan,
+    ChatSession,
+    ChatMessage,
+    Theater,
+    TaskExecution,
+    SubTask,
+    VideoTask,
+    MusicTask,
+    generate_uuid,
+)
 from auth import require_admin, hash_password
 from schemas import (
     CreditAdjustRequest,
@@ -201,10 +216,33 @@ async def delete_user(
         raise HTTPException(status_code=404, detail="User not found")
 
     user_email = user.email
-    # 级联删除关联数据
-    await db.execute(delete(CreditTransaction).where(CreditTransaction.user_id == user_id))
+
+    # 级联删除关联数据：按外键依赖深度从子到父依次清理，规避 PG 外键约束报 500
+    session_ids_subq = select(ChatSession.id).where(ChatSession.user_id == user_id)
+    task_exec_ids_subq = select(TaskExecution.id).where(TaskExecution.user_id == user_id)
+
+    # 1) 任务执行的子任务（subtasks -> task_executions）
+    await db.execute(delete(SubTask).where(SubTask.task_execution_id.in_(task_exec_ids_subq)))
+    # 2) 视频/音乐任务（依赖 chat_sessions、chat_messages）
+    await db.execute(delete(VideoTask).where(VideoTask.session_id.in_(session_ids_subq)))
+    await db.execute(delete(MusicTask).where(MusicTask.session_id.in_(session_ids_subq)))
+    # 3) 任务执行（依赖 chat_sessions、users，不能晚于 chat_sessions/users）
+    await db.execute(delete(TaskExecution).where(TaskExecution.user_id == user_id))
+    # 4) 聊天消息（依赖 chat_sessions，FK 无 cascade，必须显式删除）
+    await db.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(session_ids_subq)))
+    # 5) 积分交易（同时引用 users 与 chat_sessions，需先于二者删除）
+    await db.execute(
+        delete(CreditTransaction).where(
+            (CreditTransaction.user_id == user_id)
+            | (CreditTransaction.session_id.in_(session_ids_subq))
+        )
+    )
+    # 6) 聊天会话
     await db.execute(delete(ChatSession).where(ChatSession.user_id == user_id))
+    # 7) 剧场（theater_nodes/theater_edges 已在 FK 层 ON DELETE CASCADE）
     await db.execute(delete(Theater).where(Theater.user_id == user_id))
+    # 8) 资源文件（assets）
+    await db.execute(delete(Asset).where(Asset.user_id == user_id))
 
     await db.delete(user)
     await db.commit()
