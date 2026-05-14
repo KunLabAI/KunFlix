@@ -13,12 +13,10 @@ from models import (
     CreditTransaction,
     SubscriptionPlan,
     ChatSession,
-    ChatMessage,
     Theater,
-    TaskExecution,
-    SubTask,
     VideoTask,
     MusicTask,
+    ToolExecution,
     generate_uuid,
 )
 from auth import require_admin, hash_password
@@ -217,33 +215,17 @@ async def delete_user(
 
     user_email = user.email
 
-    # 级联删除关联数据：按外键依赖深度从子到父依次清理，规避 PG 外键约束报 500
-    session_ids_subq = select(ChatSession.id).where(ChatSession.user_id == user_id)
-    task_exec_ids_subq = select(TaskExecution.id).where(TaskExecution.user_id == user_id)
-
-    # 1) 任务执行的子任务（subtasks -> task_executions）
-    await db.execute(delete(SubTask).where(SubTask.task_execution_id.in_(task_exec_ids_subq)))
-    # 2) 视频/音乐任务（依赖 chat_sessions、chat_messages）
-    await db.execute(delete(VideoTask).where(VideoTask.session_id.in_(session_ids_subq)))
-    await db.execute(delete(MusicTask).where(MusicTask.session_id.in_(session_ids_subq)))
-    # 3) 任务执行（依赖 chat_sessions、users，不能晚于 chat_sessions/users）
-    await db.execute(delete(TaskExecution).where(TaskExecution.user_id == user_id))
-    # 4) 聊天消息（依赖 chat_sessions，FK 无 cascade，必须显式删除）
-    await db.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(session_ids_subq)))
-    # 5) 积分交易（同时引用 users 与 chat_sessions，需先于二者删除）
-    await db.execute(
-        delete(CreditTransaction).where(
-            (CreditTransaction.user_id == user_id)
-            | (CreditTransaction.session_id.in_(session_ids_subq))
-        )
-    )
-    # 6) 聊天会话
+    # 仅清理「无 FK 关联」的孤儿数据；其余关联表已在 FK 层声明
+    # ondelete=CASCADE/SET NULL，由数据库自动级联处理。
+    # 无 FK 列：chat_sessions.user_id / video_tasks.user_id /
+    #         music_tasks.user_id / tool_executions.user_id
+    await db.execute(delete(VideoTask).where(VideoTask.user_id == user_id))
+    await db.execute(delete(MusicTask).where(MusicTask.user_id == user_id))
+    await db.execute(delete(ToolExecution).where(ToolExecution.user_id == user_id))
     await db.execute(delete(ChatSession).where(ChatSession.user_id == user_id))
-    # 7) 剧场（theater_nodes/theater_edges 已在 FK 层 ON DELETE CASCADE）
-    await db.execute(delete(Theater).where(Theater.user_id == user_id))
-    # 8) 资源文件（assets）
-    await db.execute(delete(Asset).where(Asset.user_id == user_id))
 
+    # FK 层自动级联：theaters/assets/task_executions/subtasks (CASCADE),
+    # credit_transactions (SET NULL 保留审计)
     await db.delete(user)
     await db.commit()
     audit.record(

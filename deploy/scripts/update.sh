@@ -162,6 +162,14 @@ fi
 run "${COMPOSE[@]} up -d --remove-orphans"
 ok "容器已启动，开始等待 healthcheck"
 
+# nginx 容器本身往往未重建（镜像未变），但 backend/frontend/admin
+# 的容器 IP 在 up -d 后已轮换。nginx 在启动时缓存了 upstream 的
+# DNS 解析，不重启会持续 502 直到其自动重试。强制 restart
+# 令其重新解析 upstream，避免Step 5 健康检查期间的间歇性 502。
+log "重启 nginx 刷新 upstream DNS 解析"
+run "${COMPOSE[@]} restart nginx"
+ok "nginx 已重启"
+
 # ---------------------------------------------------------------------------
 # 5. 健康检查
 # ---------------------------------------------------------------------------
