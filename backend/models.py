@@ -53,7 +53,7 @@ class User(Base):
     is_balance_frozen = Column(Boolean, default=False)  # 资金冻结状态
 
     # Subscription (订阅系统)
-    subscription_plan_id = Column(String(36), ForeignKey("subscription_plans.id"), nullable=True)
+    subscription_plan_id = Column(String(36), ForeignKey("subscription_plans.id", ondelete="SET NULL"), nullable=True)
     subscription_status = Column(String(20), default="inactive")  # inactive | active | expired
     subscription_start_at = Column(DateTime(timezone=True), nullable=True)
     subscription_end_at = Column(DateTime(timezone=True), nullable=True)
@@ -102,7 +102,7 @@ class Theater(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title = Column(String(200), nullable=False, default="未命名剧场")
     description = Column(Text, nullable=True)
     thumbnail_url = Column(String, nullable=True)
@@ -134,7 +134,7 @@ class TheaterNode(Base):
     data = Column(JSON, default=dict)  # 节点业务数据（title, content, imageUrl 等）
 
     # 创建此节点的 Agent（可选）
-    created_by_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
+    created_by_agent_id = Column(String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -166,7 +166,7 @@ class Asset(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     filename = Column(String(255), nullable=False)        # UUID 文件名 (xxx.png)
     original_name = Column(String(255), nullable=True)     # 用户原始文件名
     file_path = Column(String(500), nullable=False)        # 存储路径 (同 filename)
@@ -216,7 +216,7 @@ class ChatSession(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     title = Column(String, default="New Chat")
-    agent_id = Column(String(36), ForeignKey("agents.id"))
+    agent_id = Column(String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(String(36), nullable=True, index=True)  # 可存储用户或管理员 ID
     theater_id = Column(String(36), ForeignKey("theaters.id", ondelete="SET NULL"), nullable=True, index=True)  # 关联画布/剧场；剧场删除时置空保留会话历史
 
@@ -239,7 +239,7 @@ class ChatMessage(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    session_id = Column(String(36), ForeignKey("chat_sessions.id"), index=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True)
     role = Column(String)  # user, assistant, system
     content = Column(Text)
 
@@ -254,7 +254,7 @@ class Agent(Base):
     description = Column(String(500))
 
     # Provider Association
-    provider_id = Column(String(36), ForeignKey("llm_providers.id"))
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True)
     model = Column(String)  # The specific model name under the provider
 
     # Agent Type: text | image | multimodal | video
@@ -328,10 +328,10 @@ class CreditTransaction(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
-    admin_id = Column(String(36), ForeignKey("admins.id"), nullable=True, index=True)
-    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
-    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    admin_id = Column(String(36), ForeignKey("admins.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
 
     transaction_type = Column(String(20), nullable=False)  # deduction | recharge | admin_adjust | refund
     amount = Column(Numeric(18, 4), nullable=False)          # 负数=扣费, 正数=充值
@@ -355,9 +355,9 @@ class TaskExecution(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    leader_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False)
-    user_id = Column(String(36), ForeignKey("users.id"), nullable=False, index=True)
-    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
+    leader_agent_id = Column(String(36), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
 
     task_description = Column(Text, nullable=False)
     coordination_mode = Column(String(20))  # auto, pipeline, plan, discussion
@@ -378,9 +378,9 @@ class SubTask(Base):
     __tablename__ = "subtasks"
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    task_execution_id = Column(String(36), ForeignKey("task_executions.id"), nullable=False, index=True)
-    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False)
-    parent_subtask_id = Column(String(36), ForeignKey("subtasks.id"), nullable=True)
+    task_execution_id = Column(String(36), ForeignKey("task_executions.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False)
+    parent_subtask_id = Column(String(36), ForeignKey("subtasks.id", ondelete="SET NULL"), nullable=True)
 
     description = Column(Text, nullable=False)
     order_index = Column(Integer, default=0)
@@ -427,7 +427,7 @@ class PromptTemplate(Base):
     variables_schema = Column(JSON, default=list)
     
     # 关联的智能体（可选，指定默认使用哪个智能体）
-    default_agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True)
+    default_agent_id = Column(String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
     
     is_active = Column(Boolean, default=True)
     is_default = Column(Boolean, default=False)  # 是否为该类型的默认模板
@@ -475,9 +475,9 @@ class VideoTask(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     xai_task_id = Column(String(255), index=True)           # xAI 返回的外部任务ID
-    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True)
-    message_id = Column(String(36), ForeignKey("chat_messages.id"), nullable=True)
-    provider_id = Column(String(36), ForeignKey("llm_providers.id"))
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True)
+    message_id = Column(String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), nullable=True)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True)
     model = Column(String, nullable=True)
     user_id = Column(String(36), index=True)
 
@@ -510,8 +510,8 @@ class MusicTask(Base):
     )
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    session_id = Column(String(36), ForeignKey("chat_sessions.id"), nullable=True, index=True)
-    provider_id = Column(String(36), ForeignKey("llm_providers.id"), nullable=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True)
     model = Column(String(100), nullable=False)
     user_id = Column(String(36), nullable=False, index=True)
 
@@ -537,8 +537,8 @@ class AdminDebugSession(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     title = Column(String, default="Debug Chat")
-    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=False, index=True)
-    admin_id = Column(String(36), ForeignKey("admins.id"), nullable=False, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True)
+    admin_id = Column(String(36), ForeignKey("admins.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # 上下文压缩
     compressed_summary = Column(Text, nullable=True)
@@ -553,7 +553,7 @@ class AdminDebugMessage(Base):
     __tablename__ = "admin_debug_messages"
 
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
-    session_id = Column(String(36), ForeignKey("admin_debug_sessions.id"), nullable=False, index=True)
+    session_id = Column(String(36), ForeignKey("admin_debug_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     role = Column(String)  # user, assistant, system
     content = Column(Text)
 
@@ -604,7 +604,7 @@ class ToolExecution(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
     tool_name = Column(String(100), nullable=False, index=True)
     provider_name = Column(String(50), nullable=False, index=True)
-    agent_id = Column(String(36), ForeignKey("agents.id"), nullable=True, index=True)
+    agent_id = Column(String(36), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True, index=True)
     session_id = Column(String(36), nullable=True, index=True)
     user_id = Column(String(36), nullable=True, index=True)
     is_admin = Column(Boolean, default=False)

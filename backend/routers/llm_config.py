@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, update
+from sqlalchemy import func
 from typing import List
 import httpx
 
 from database import get_db
-from models import LLMProvider, Admin, Agent, VideoTask, MusicTask
+from models import LLMProvider, Admin, Agent
 from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
 from auth import require_admin
 from agents import narrative_engine
@@ -258,16 +258,10 @@ async def delete_llm_provider(
             detail=f"该供应商仍被 {agent_count} 个智能体使用，请先删除或修改关联智能体",
         )
 
-    snapshot = {"name": provider.name, "provider_type": provider.provider_type, "model": provider.model}
+    snapshot = {"name": provider.name, "provider_type": provider.provider_type, "models": provider.models}
 
-    # 历史任务记录中的 provider_id 采取 SET NULL，保留任务记录
-    await db.execute(
-        update(VideoTask).where(VideoTask.provider_id == provider_id).values(provider_id=None)
-    )
-    await db.execute(
-        update(MusicTask).where(MusicTask.provider_id == provider_id).values(provider_id=None)
-    )
-
+    # FK 层自动 SET NULL：agents.provider_id / video_tasks.provider_id /
+    # music_tasks.provider_id（上面预检已拦截 agent 引用场景）
     await db.delete(provider)
     await db.commit()
     await publish_invalidate("provider", provider_id)
