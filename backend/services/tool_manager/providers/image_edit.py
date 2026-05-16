@@ -462,6 +462,7 @@ async def _maybe_create_edit_node(
             created_by_agent_id=ctx.agent.id,
         )
         db.add(new_node)
+        await db.flush()  # 先持久化 node，确保 FK 引用有效
 
         # 创建连线：源节点右侧输出 → 新节点左侧输入
         edge = TheaterEdge(

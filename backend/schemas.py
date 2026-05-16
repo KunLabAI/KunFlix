@@ -410,6 +410,10 @@ class ChatSessionUpdate(BaseModel):
 
 class ChatSessionResponse(ChatSessionBase):
     id: str
+    # agent_id 在数据库为 nullable（ondelete="SET NULL"）：
+    # 当关联 Agent 被删除后，旧会话的 agent_id 会被置为 NULL，
+    # 响应侧必须允许 None，否则触发 ResponseValidationError → 500。
+    agent_id: Optional[str] = None
     user_id: Optional[str] = None
     theater_id: Optional[str] = None
     total_tokens_used: int = 0  # 累计 token 使用量
