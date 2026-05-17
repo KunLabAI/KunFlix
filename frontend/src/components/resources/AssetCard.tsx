@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Image as ImageIcon, Video, Music, File, MoreHorizontal, Pencil, Replace, Trash2, ExternalLink, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AssetItem } from "@/lib/resourceApi";
+import { toThumbUrl } from "@/lib/mediaUrl";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -43,7 +44,8 @@ function formatDate(dateStr: string): string {
 // ---------------------------------------------------------------------------
 
 function ImagePreview({ url }: { url: string }) {
-  return <img src={url} alt="" loading="lazy" className="w-full h-full object-cover" />;
+  // 列表场景使用缩略图，原图仅在预览/下载时加载
+  return <img src={toThumbUrl(url)} alt="" loading="lazy" className="w-full h-full object-cover" />;
 }
 
 function VideoPreview({ url }: { url: string }) {

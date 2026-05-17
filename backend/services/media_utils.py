@@ -8,6 +8,15 @@ logger = logging.getLogger(__name__)
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
+# 缩略图缓存目录（首页/列表场景使用，原图保持不变）
+THUMB_DIR_NAME = "_thumbs"
+THUMB_DIR = MEDIA_DIR / THUMB_DIR_NAME
+THUMB_MAX_SIZE = 480  # 长边像素，覆盖 2x dpr 下卡片 ~240px 显示宽度
+
+# 媒体 API 前缀（用于 URL 改写）
+MEDIA_URL_PREFIX = "/api/media/"
+THUMB_URL_PREFIX = "/api/media/thumb/"
+
 # MIME -> 扩展名映射
 MIME_TO_EXT = {
     "image/png": "png",
@@ -161,3 +170,88 @@ async def save_audio_data(audio_bytes: bytes, mime_type: str, user_id: str | Non
     await asyncio.to_thread(filepath.write_bytes, audio_bytes)
     logger.info("Saved audio: %s (%d bytes, %s)", filename, len(audio_bytes), mime_type)
     return f"/api/media/{filename}"
+
+
+# ---------------------------------------------------------------------------
+# 缩略图：按需生成 + 落盘缓存（仅本地后端使用，S3 后端走原图重定向）
+# ---------------------------------------------------------------------------
+
+# Pillow 保存参数：扩展名 -> (format, save_kwargs)
+_PIL_SAVE_PARAMS = {
+    "jpg":  ("JPEG", {"quality": 82, "optimize": True, "progressive": True}),
+    "jpeg": ("JPEG", {"quality": 82, "optimize": True, "progressive": True}),
+    "png":  ("PNG",  {"optimize": True}),
+    "webp": ("WEBP", {"quality": 82, "method": 6}),
+    "gif":  ("GIF",  {}),
+}
+
+# JPEG 不支持透明通道，需要先转换的 mode 集合
+_JPEG_NON_RGB_MODES = {"RGBA", "LA", "P"}
+
+# 是否需要在保存前转 RGB（表驱动避免 if-else）
+_NEEDS_RGB_CONVERT = {
+    ("jpg",  True): True,  ("jpg",  False): False,
+    ("jpeg", True): True,  ("jpeg", False): False,
+}
+
+
+def to_thumb_url(url: str) -> str:
+    """将媒体 URL 改写为缩略图 URL；非本地媒体或已是 thumb 时原样返回。
+
+    /api/media/abc.png      → /api/media/thumb/abc.png
+    /api/media/thumb/x.png  → 原样
+    https://cdn.x/y.png     → 原样
+    """
+    is_media = url.startswith(MEDIA_URL_PREFIX)
+    is_thumb = url.startswith(THUMB_URL_PREFIX)
+    rewriters = {
+        (True,  False): lambda u: THUMB_URL_PREFIX + u[len(MEDIA_URL_PREFIX):],
+        (True,  True):  lambda u: u,
+        (False, False): lambda u: u,
+    }
+    return rewriters[(is_media, is_thumb)](url)
+
+
+def _generate_image_thumbnail(src: Path, dst: Path, max_size: int) -> None:
+    """同步生成等比缩略图：长边 ≤ max_size。写入临时文件再原子替换，避免并发读到半成品。"""
+    from PIL import Image, ImageOps
+
+    ext = dst.suffix.lstrip(".").lower()
+    fmt, save_kwargs = _PIL_SAVE_PARAMS.get(ext, _PIL_SAVE_PARAMS["jpg"])
+    tmp = dst.with_suffix(dst.suffix + f".{uuid.uuid4().hex}.tmp")
+
+    with Image.open(src) as img:
+        # 按 EXIF orientation 修正方向（手机拍摄常见）
+        img = ImageOps.exif_transpose(img)
+        # JPEG 不支持透明，需要时先合到白底
+        needs_rgb = _NEEDS_RGB_CONVERT.get((ext, img.mode in _JPEG_NON_RGB_MODES), False)
+        needs_rgb and (img := img.convert("RGB"))
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        img.save(tmp, format=fmt, **save_kwargs)
+
+    tmp.replace(dst)
+
+
+async def ensure_thumbnail(filename: str, max_size: int = THUMB_MAX_SIZE) -> Path | None:
+    """确保 filename 的缩略图已存在，返回缩略图磁盘路径；原文件缺失返回 None。
+
+    缓存命中：直接返回；未命中：在线程池里调用 Pillow 生成。
+    """
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    thumb_path = THUMB_DIR / filename
+
+    # 已落盘 → 命中，直接返回
+    if thumb_path.is_file():
+        return thumb_path
+
+    src = resolve_media_filepath(filename)
+    if src is None:
+        return None
+
+    try:
+        await asyncio.to_thread(_generate_image_thumbnail, src, thumb_path, max_size)
+    except Exception as exc:
+        logger.warning("Thumbnail generation failed for %s: %s", filename, exc)
+        return None
+
+    return thumb_path

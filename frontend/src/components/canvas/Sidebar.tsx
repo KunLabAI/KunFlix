@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resourceApi, AssetItem } from '@/lib/resourceApi';
+import { toThumbUrl } from '@/lib/mediaUrl';
 
 const NODE_TYPES = [
   { 
@@ -327,7 +328,7 @@ export const Sidebar = () => {
                       className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-green/50 transition-colors h-[80px] flex items-center justify-center"
                     >
                       <img 
-                        src={asset.url} 
+                        src={toThumbUrl(asset.url)} 
                         alt={asset.original_name || asset.filename} 
                         loading="lazy"
                         draggable={false}

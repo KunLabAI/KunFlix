@@ -9,6 +9,8 @@ import React, {
 } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import api, { tokenRefresher } from "@/lib/api";
+import { theaterListCache } from "@/lib/theaterListCache";
+import { useResourceStore } from "@/store/useResourceStore";
 
 export interface User {
   id: string;
@@ -222,6 +224,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     localStorage.removeItem("user");
     setUser(null);
     setIsAuthenticated(false);
+    // 退出后清除首页「最近剧场」内存缓存与资产库缓存，避免下一位用户看到上一人的快照
+    theaterListCache.invalidate();
+    useResourceStore.getState().reset();
     router.push("/login");
   }, [router]);
 
