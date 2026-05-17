@@ -79,6 +79,12 @@ export default function TopBar() {
     setMobileMenuOpen(false);
   };
 
+  // 在 mount 时预取所有可见导航目标的 chunks，等价于 next/link 的 prefetch；
+  // 这样保留 <button> 原视觉的同时，路由切换仍然几乎零延迟。
+  useEffect(() => {
+    visibleNavLinks.forEach((link) => router.prefetch(link.href));
+  }, [router, visibleNavLinks]);
+
   // 用户菜单处理
   const handleUserMenuClick = (key: string) => {
     const handlers: Record<string, () => void> = {
@@ -127,11 +133,13 @@ export default function TopBar() {
                   <button
                     key={link.key}
                     onClick={() => handleNavigate(link.href)}
+                    onMouseEnter={() => router.prefetch(link.href)}
+                    onFocus={() => router.prefetch(link.href)}
                     className={cn(
                       // isolate 让按钮自成堆叠上下文，子元素 -z-10 不会穿透到父级
                       "relative isolate px-3 py-1.5 text-sm font-medium rounded-md transition-all duration-200",
-                      isActive 
-                        ? "text-foreground" 
+                      isActive
+                        ? "text-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
@@ -317,23 +325,28 @@ export default function TopBar() {
                 {visibleNavLinks.map((link, index) => {
                   const isActive = pathname === link.href || (link.href !== "/" && pathname?.startsWith(link.href));
                   return (
-                    <motion.button
+                    <motion.div
                       key={link.key}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      onClick={() => handleNavigate(link.href)}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-3 rounded-lg text-left",
-                        "transition-colors duration-200",
-                        isActive 
-                          ? "bg-secondary text-foreground" 
-                          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-                      )}
                     >
-                      <link.icon className="w-5 h-5" />
-                      <span className="font-medium">{t(link.labelKey)}</span>
-                    </motion.button>
+                      <button
+                        onClick={() => handleNavigate(link.href)}
+                        onMouseEnter={() => router.prefetch(link.href)}
+                        onFocus={() => router.prefetch(link.href)}
+                        className={cn(
+                          "w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left",
+                          "transition-colors duration-200",
+                          isActive
+                            ? "bg-secondary text-foreground"
+                            : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                        )}
+                      >
+                        <link.icon className="w-5 h-5" />
+                        <span className="font-medium">{t(link.labelKey)}</span>
+                      </button>
+                    </motion.div>
                   );
                 })}
               </nav>

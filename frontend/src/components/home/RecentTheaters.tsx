@@ -9,12 +9,7 @@ import { cn } from "@/lib/utils";
 import TheaterCard from "./TheaterCard";
 import CreateTheaterCard from "./CreateTheaterCard";
 import { useAuth } from "@/context/AuthContext";
-import { theaterApi, type TheaterResponse, type TheaterDetailResponse } from "@/lib/theaterApi";
-
-// 剧场数据包含节点信息
-interface TheaterWithNodes extends TheaterResponse {
-  nodes?: TheaterDetailResponse["nodes"];
-}
+import { theaterApi, type TheaterResponse } from "@/lib/theaterApi";
 
 export default function RecentTheaters() {
   const { t } = useTranslation();
@@ -25,9 +20,8 @@ export default function RecentTheaters() {
   const isGuest = isHydrated && !isAuthenticated;
   const carouselRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  const [theaters, setTheaters] = useState<TheaterWithNodes[]>([]);
+  const [theaters, setTheaters] = useState<TheaterResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const fetched = useRef(false);
   const controls = useAnimation();
 
   useEffect(() => {
@@ -43,34 +37,35 @@ export default function RecentTheaters() {
   }, [theaters]);
 
   useEffect(() => {
-    if (!isAuthenticated || fetched.current) return;
-    fetched.current = true;
-    
-    const loadTheatersWithNodes = async () => {
-      try {
-        const listRes = await theaterApi.listTheaters(1, 20);
-        const theatersWithNodes = await Promise.all(
-          listRes.items.map(async (theater) => {
-            if (!theater.thumbnail_url) {
-              try {
-                const detail = await theaterApi.getTheater(theater.id);
-                return { ...theater, nodes: detail.nodes };
-              } catch {
-                return theater;
-              }
-            }
-            return theater;
-          })
-        );
-        setTheaters(theatersWithNodes);
-      } catch {
-        setTheaters([]);
-      } finally {
-        setLoading(false);
-      }
+    if (!isAuthenticated) return;
+
+    // 仅拉列表，不再为「补封面」拉完整画布详情。
+    // 后端在 save_canvas 时会自动维护 thumbnail_url；未生成的剧场直接留白占位。
+    //
+    // 不再用 fetched ref 做去重守卫：StrictMode 下双调用会让守卫位与取消逻辑互锁，
+    // 导致 loading 永远不释放。cancelled + AbortController 已足够防止竟态并发。
+    const controller = new AbortController();
+    let cancelled = false;
+
+    setLoading(true);
+
+    theaterApi
+      .listTheaters(1, 20, undefined, controller.signal)
+      .then((listRes) => {
+        cancelled || setTheaters(listRes.items);
+      })
+      .catch(() => {
+        // 被 abort 时 cancelled 已为 true，这里不会误清空列表
+        cancelled || setTheaters([]);
+      })
+      .finally(() => {
+        cancelled || setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
     };
-    
-    loadTheatersWithNodes();
   }, [isAuthenticated]);
 
   const handleRename = async (id: string, newTitle: string) => {
@@ -183,7 +178,6 @@ export default function RecentTheaters() {
                 status={th.status}
                 nodeCount={th.node_count}
                 updatedAt={th.updated_at}
-                nodes={th.nodes}
                 onClick={() => router.push(`/theater/${th.id}`)}
                 onRename={handleRename}
                 onDuplicate={handleDuplicate}

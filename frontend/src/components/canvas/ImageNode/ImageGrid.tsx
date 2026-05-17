@@ -32,6 +32,9 @@ export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPrevie
           src={imageList[0]}
           alt={name}
           className="w-full h-full object-contain"
+          loading="lazy"
+          decoding="async"
+          draggable={false}
           onLoad={onImageLoad}
           onPointerDown={(e) => e.stopPropagation()}
         />
@@ -63,6 +66,9 @@ export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPrevie
             src={imageList[0]}
             alt={`${name}-1`}
             className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => { e.stopPropagation(); onOpenPreview(imageList[0]); }}
           />
@@ -80,6 +86,9 @@ export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPrevie
                 src={url}
                 alt={`${name}-${i + 2}`}
                 className="w-full h-full object-cover"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
                 onPointerDown={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => { e.stopPropagation(); onOpenPreview(url); }}
               />
@@ -110,6 +119,9 @@ export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPrevie
             src={url}
             alt={`${name}-${i + 1}`}
             className="w-full h-full object-cover"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
             onPointerDown={(e) => e.stopPropagation()}
             onDoubleClick={(e) => { e.stopPropagation(); onOpenPreview(url); }}
           />

@@ -20,6 +20,7 @@ export function VideoDisplay({ videoUrl, fitMode, quality, onLoadedMetadata }: P
       <video
         src={videoUrl}
         controls
+        preload="none"
         className={`w-full h-full rounded-sm nodrag ${fitMode === 'cover' ? 'object-cover' : 'object-contain'}`}
         onPointerDown={(e) => e.stopPropagation()}
         onLoadedMetadata={onLoadedMetadata}

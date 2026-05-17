@@ -1,4 +1,6 @@
 import uuid
+from typing import Iterable, Optional
+
 from sqlalchemy import select, delete, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
@@ -8,6 +10,29 @@ from schemas import (
     TheaterCreate, TheaterUpdate, TheaterSaveRequest,
     TheaterNodeCreate, TheaterEdgeCreate,
 )
+
+
+# 节点类型 -> 从 node.data 中提取封面候选 URL 的取值器。
+# 表驱动避免 if 分支，新增类型只需追加一行。
+_THUMBNAIL_EXTRACTORS = {
+    "image": lambda data: data.get("imageUrl"),
+    "video": lambda data: data.get("thumbnail") or data.get("videoUrl"),
+}
+
+
+def _iter_media_urls(nodes: Iterable[TheaterNodeCreate]) -> Iterable[str]:
+    """按 z_index 升序遍历媒体节点，产出非空 URL。"""
+    sorted_nodes = sorted(nodes, key=lambda n: (n.z_index or 0))
+    for node in sorted_nodes:
+        extractor = _THUMBNAIL_EXTRACTORS.get(node.node_type)
+        data = node.data or {}
+        url = extractor and extractor(data)
+        url and (yield url)
+
+
+def _pick_thumbnail_from_nodes(nodes: Iterable[TheaterNodeCreate]) -> Optional[str]:
+    """取首张媒体节点 URL 作为剧场封面候选。无则返回 None。"""
+    return next(_iter_media_urls(nodes), None)
 
 
 class TheaterService:
@@ -233,6 +258,16 @@ class TheaterService:
             theater.node_count = len(incoming_node_ids)
             if data.canvas_viewport is not None:
                 theater.canvas_viewport = data.canvas_viewport
+
+            # 自动维护 thumbnail_url：
+            # 1) 当前为空 → 从新节点中挑首张媒体 URL；
+            # 2) 当前已存在但目标 URL 已不在新节点的媒体集合内（说明被删除）→ 重新挑。
+            # 仅在节点媒体集合发生变化时写入，避免无谓的脏字段。
+            current_thumb = theater.thumbnail_url
+            media_urls = set(_iter_media_urls(incoming_nodes.values()))
+            should_repick = (not current_thumb) or (current_thumb not in media_urls)
+            if should_repick:
+                theater.thumbnail_url = _pick_thumbnail_from_nodes(incoming_nodes.values())
 
         await self.db.commit()
         await self.db.refresh(theater)

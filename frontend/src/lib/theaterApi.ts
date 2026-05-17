@@ -114,10 +114,11 @@ export const theaterApi = {
     page = 1,
     pageSize = 20,
     status?: string,
+    signal?: AbortSignal,
   ): Promise<TheaterListResponse> {
     const params: Record<string, unknown> = { page, page_size: pageSize };
     if (status) params.status = status;
-    const res = await api.get<TheaterListResponse>("/theaters", { params });
+    const res = await api.get<TheaterListResponse>("/theaters", { params, signal });
     return res.data;
   },
 
