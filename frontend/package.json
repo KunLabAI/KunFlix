@@ -50,7 +50,7 @@
     "@types/lodash.debounce": "^4.0.9",
     "@types/react-window": "^1.8.8",
     "@xyflow/react": "^12.10.1",
-    "antd": "^6.3.0",
+    "antd": "^6.4.2",
     "axios": "^1.16.0",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
