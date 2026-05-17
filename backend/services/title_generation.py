@@ -20,6 +20,13 @@ from models import ChatMessage, LLMProvider
 
 logger = logging.getLogger(__name__)
 
+
+def _sanitize_for_log(value: Any) -> str:
+    """Sanitize untrusted values before logging to prevent log injection."""
+    text = str(value)
+    text = text.replace("\r", "").replace("\n", "")
+    return "".join(ch if ch.isprintable() else "?" for ch in text)
+
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
@@ -209,14 +216,15 @@ async def maybe_generate_title(
        （即刚完成第 N 轮 assistant 持久化，N 可配范围 1-10）
     """
     cfg = load_title_gen_config_from_agent(agent)
+    safe_session_id = _sanitize_for_log(session_id)
     if not cfg.enabled:
-        logger.debug(f"[TitleGen] session={session_id} skipped: enabled=False")
+        logger.debug(f"[TitleGen] session={safe_session_id} skipped: enabled=False")
         return None
 
     cur_title = getattr(session_obj, "title", None) if session_obj else None
     if not session_obj or not is_default_title(cur_title):
         logger.info(
-            f"[TitleGen] session={session_id} skipped: "
+            f"[TitleGen] session={safe_session_id} skipped: "
             f"session_obj={bool(session_obj)} title={cur_title!r} (非默认占位不覆盖)"
         )
         return None
@@ -227,7 +235,7 @@ async def maybe_generate_title(
     )
     if msg_count != expected:
         logger.info(
-            f"[TitleGen] session={session_id} skipped: "
+            f"[TitleGen] session={safe_session_id} skipped: "
             f"msg_count={msg_count} != expected={expected} "
             f"(trigger_rounds={cfg.trigger_rounds})"
         )
