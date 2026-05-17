@@ -10,6 +10,7 @@ import TheaterCard from "./TheaterCard";
 import CreateTheaterCard from "./CreateTheaterCard";
 import { useAuth } from "@/context/AuthContext";
 import { theaterApi, type TheaterResponse } from "@/lib/theaterApi";
+import { theaterListCache } from "@/lib/theaterListCache";
 
 export default function RecentTheaters() {
   const { t } = useTranslation();
@@ -42,21 +43,36 @@ export default function RecentTheaters() {
     // 仅拉列表，不再为「补封面」拉完整画布详情。
     // 后端在 save_canvas 时会自动维护 thumbnail_url；未生成的剧场直接留白占位。
     //
-    // 不再用 fetched ref 做去重守卫：StrictMode 下双调用会让守卫位与取消逻辑互锁，
-    // 导致 loading 永远不释放。cancelled + AbortController 已足够防止竟态并发。
+    // 缓存策略（stale-while-revalidate）：
+    //   1. 命中缓存 → 立即渲染并关闭 loading，避免「进首页都转一下」
+    //   2. 新鲜期内（1 分钟）不发请求；超期后台静默重拉
+    //   3. 静默重拉失败不清空原有列表，避免闪空
+    //
+    // 不再用 fetched ref 做去重守卫：StrictMode 下双调用会让守卫位与取消逻辑互锁。
+    const cached = theaterListCache.peek();
+    const hasCache = cached !== null;
+    hasCache && setTheaters(cached);
+    hasCache && setLoading(false);
+
+    // 新鲜期内跳过后台刷新
+    if (theaterListCache.isFresh()) return;
+
     const controller = new AbortController();
     let cancelled = false;
 
-    setLoading(true);
+    // 无缓存才展示 loading；有缓存静默后台刷新
+    hasCache || setLoading(true);
 
     theaterApi
       .listTheaters(1, 20, undefined, controller.signal)
       .then((listRes) => {
-        cancelled || setTheaters(listRes.items);
+        if (cancelled) return;
+        setTheaters(listRes.items);
+        theaterListCache.set(listRes.items);
       })
       .catch(() => {
-        // 被 abort 时 cancelled 已为 true，这里不会误清空列表
-        cancelled || setTheaters([]);
+        // 失败时：有缓存 → 保留旧数据；无缓存 → 置空
+        cancelled || hasCache || setTheaters([]);
       })
       .finally(() => {
         cancelled || setLoading(false);
@@ -72,6 +88,8 @@ export default function RecentTheaters() {
     try {
       const updatedTheater = await theaterApi.updateTheater(id, { title: newTitle });
       setTheaters((prev) => prev.map((th) => (th.id === id ? { ...th, title: updatedTheater.title } : th)));
+      // 同步缓存：下次进首页不会看到老标题闪现
+      theaterListCache.upsert({ ...updatedTheater } as TheaterResponse);
     } catch (err) {
       console.error("Failed to rename theater:", err);
       alert(t("home.renameFailed"));
@@ -82,6 +100,7 @@ export default function RecentTheaters() {
     try {
       const newTheater = await theaterApi.duplicateTheater(id);
       setTheaters((prev) => [newTheater, ...prev]);
+      theaterListCache.upsert(newTheater, "head");
     } catch (err) {
       console.error("Failed to duplicate theater:", err);
       alert(t("home.duplicateFailed"));
@@ -94,6 +113,7 @@ export default function RecentTheaters() {
       // 先重置拖拽位置到起始点，再更新列表，避免约束冲突
       controls.set({ x: 0 });
       setTheaters((prev) => prev.filter((th) => th.id !== id));
+      theaterListCache.remove(id);
     } catch (err) {
       console.error("Failed to delete theater:", err);
       alert(t("home.deleteFailed"));

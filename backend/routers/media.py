@@ -24,7 +24,7 @@ from schemas import (
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
 from services.image_config_adapter import to_provider_config
-from services.media_utils import build_media_storage_path, resolve_media_filepath, MEDIA_DIR
+from services.media_utils import build_media_storage_path, resolve_media_filepath, MEDIA_DIR, ensure_thumbnail
 from storage import get_storage_backend
 from config import settings
 
@@ -42,6 +42,9 @@ _MAX_UPLOAD_LABELS = { "image": "50MB", "video": "500MB", "audio": "100MB" }
 
 # 安全文件名：UUID + 已知媒体扩展名（图片 + 视频 + 音频）
 _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|mov|mp3|wav|ogg)$')
+
+# 缩略图仅接受图片扩展名
+_SAFE_THUMB_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif)$')
 
 
 async def _fallback_presign_post(
@@ -510,6 +513,44 @@ async def serve_virtual_human_preview(filename: str):
         media_type=_EXT_MIME.get(ext, "application/octet-stream"),
         headers={"Cache-Control": "public, max-age=31536000"},
     )
+
+
+# ---------------------------------------------------------------------------
+# 缩略图路由 — 必须放在通配符 /{filename} 之前
+# ---------------------------------------------------------------------------
+
+# 后端分发：s3 后端不生成缩略图，302 回原图端点（后续走其预签名重定向）
+async def _serve_thumb_local(filename: str):
+    """本地后端：按需生成 + 落盘缓存。"""
+    thumb_path = await ensure_thumbnail(filename)
+    thumb_path or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
+    ext = filename.rsplit(".", 1)[-1]
+    return FileResponse(
+        thumb_path,
+        media_type=_EXT_MIME.get(ext, "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+async def _serve_thumb_s3(filename: str):
+    """S3 后端：不生成缩略图，302 回原图端点。"""
+    return RedirectResponse(url=f"/api/media/{filename}", status_code=302)
+
+
+_THUMB_BACKEND_DISPATCH = {
+    "s3":    _serve_thumb_s3,
+    "local": _serve_thumb_local,
+}
+
+
+@router.get("/thumb/{filename}")
+async def serve_media_thumbnail(filename: str):
+    """提供媒体缩略图（首次访问生成，后续命中磁盘缓存）。仅限图片扩展名。"""
+    _SAFE_THUMB_FILENAME.match(filename) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Invalid thumbnail filename")
+    )
+    handler = _THUMB_BACKEND_DISPATCH.get(settings.STORAGE_BACKEND, _serve_thumb_local)
+    return await handler(filename)
 
 
 # ---------------------------------------------------------------------------

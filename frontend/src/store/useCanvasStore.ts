@@ -26,6 +26,7 @@ import {
   type TheaterEdgeCreate,
   type TheaterDetailResponse,
 } from '@/lib/theaterApi';
+import { theaterListCache } from '@/lib/theaterListCache';
 
 // Define Node Data Types
 export type ScriptNodeData = {
@@ -728,6 +729,9 @@ export const useCanvasStore = create<CanvasState>()(
             lastSavedAt: Date.now(),
             // Sync node_count etc from server response (but keep local nodes/edges as source of truth)
           });
+          // 保存画布后，后端可能重新选取 thumbnail_url；node_count / updated_at 也会变。
+          // 失效首页「最近剧场」缓存，给用户下次返回首页拿到最新快照。
+          theaterListCache.invalidate();
           // Optionally sync back IDs for new nodes
           void detail;
         } catch (err) {

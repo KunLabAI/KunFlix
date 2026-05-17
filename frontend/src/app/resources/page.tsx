@@ -852,7 +852,8 @@ export default function ResourcesPage() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ delay: index * 0.03 }}
+                    // 入场延迟封顶：避免翻页后靠后的卡片需等几十秒才出现
+                    transition={{ delay: Math.min(index, 12) * 0.03 }}
                     layout
                     data-asset-id={asset.id}
                   >

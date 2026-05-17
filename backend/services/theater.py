@@ -10,12 +10,15 @@ from schemas import (
     TheaterCreate, TheaterUpdate, TheaterSaveRequest,
     TheaterNodeCreate, TheaterEdgeCreate,
 )
+from services.media_utils import to_thumb_url
 
 
 # 节点类型 -> 从 node.data 中提取封面候选 URL 的取值器。
 # 表驱动避免 if 分支，新增类型只需追加一行。
+# image 节点输出 thumb 路径供首页/列表场景使用；video 节点的 thumbnail 通常是远端
+# 生成供商返回的小图，体积已小，不再限制。
 _THUMBNAIL_EXTRACTORS = {
-    "image": lambda data: data.get("imageUrl"),
+    "image": lambda data: to_thumb_url(data.get("imageUrl") or ""),
     "video": lambda data: data.get("thumbnail") or data.get("videoUrl"),
 }
 
