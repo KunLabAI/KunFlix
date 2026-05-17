@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Save, Settings } from 'lucide-react';
+import { ArrowLeft, Save } from 'lucide-react';
 import AgentForm from '@/components/admin/agents/AgentForm';
 import { useAgent, useCreateAgent, useUpdateAgent } from '@/hooks/useAgents';
 import { Agent } from '@/types';
@@ -79,7 +79,7 @@ export default function AgentDetailPage() {
         <Header title={t('agents.header.newAgent')} saving={saving} onSave={handleSave} onBack={() => router.push('/admin/agents')} />
         <div className="flex-1 overflow-y-auto bg-muted/20">
           <div className="max-w-7xl mx-auto py-12 px-6">
-            <div className="bg-card rounded-xl border shadow-sm p-8">
+            <div className="p-0">
               <AgentForm initialValues={null} onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} twoColumn={true} />
             </div>
           </div>
@@ -97,10 +97,6 @@ export default function AgentDetailPage() {
         <div className="flex-1 lg:flex-none xl:w-[30%] border-r flex flex-col min-h-0 h-full overflow-hidden">
           <ScrollArea className="h-full w-full">
             <div className="p-6  max-w-3xl mx-auto">
-              <div className="flex items-center gap-2 mb-6 font-medium">
-                <Settings className="h-5 w-5" />
-                <span>{t('agents.header.config')}</span>
-              </div>
               <AgentForm initialValues={agent} onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} />
             </div>
           </ScrollArea>

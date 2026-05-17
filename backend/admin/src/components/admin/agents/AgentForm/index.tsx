@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useForm, FormProvider } from 'react-hook-form';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
@@ -12,10 +12,20 @@ import { formatApiError } from '@/lib/api-utils';
 import { createAgentFormSchema, AgentFormValues } from './schema';
 import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
-import Parameters from './Parameters';
+import { GenerationParams, SessionManagement, PricingConfig } from './Parameters';
 import Tools from './Tools';
 import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
+import {
+  UserCircle2,
+  MessageSquareCode,
+  Sliders,
+  History,
+  Wrench,
+  CircleDollarSign,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface AgentFormProps {
   initialValues?: Agent | null;
@@ -25,11 +35,32 @@ interface AgentFormProps {
   twoColumn?: boolean;
 }
 
-const Section = ({ title, children, className }: { title: string, children: React.ReactNode, className?: string }) => (
-  <div className={`mb-8 ${className || ''}`}>
-    <h3 className="text-lg font-semibold mb-4 text-foreground">{title}</h3>
-    {children}
-  </div>
+// 统一的板块卡片：图标 + 标题 + 副标题描述
+const SectionCard = ({
+  icon: Icon,
+  title,
+  subtitle,
+  children,
+  className,
+}: {
+  icon: LucideIcon;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <section className={`rounded-xl border bg-card p-5 ${className || ''}`}>
+    <header className="flex items-start gap-3 mb-5 pb-4 border-b">
+      <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+      </div>
+    </header>
+    <div>{children}</div>
+  </section>
 );
 
 const defaultGeminiConfig = {
@@ -327,63 +358,86 @@ export default function AgentForm({
     }
   };
 
-  const formContent = (
-    <>
-      {twoColumn ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          <div className="lg:col-span-6 xl:col-span-7">
-            <Section title={t('agents.form.sections.basic')}>
-              <BasicInfo 
-                providers={activeProviders || []} 
-                loading={providersLoading || loading}
-                isFormInitialized={isFormInitialized}
-              />
-            </Section>
-            <div className="h-px bg-border my-8"></div>
-            <Section title={t('agents.form.sections.system')}>
-               <SystemPrompt disabled={loading} />
-            </Section>
-          </div>
-          <div className="lg:col-span-6 xl:col-span-5">
-            <div className="space-y-6 pb-4">
-              <Section title={t('agents.form.sections.params')}>
-                <Parameters disabled={loading} providers={activeProviders || []} />
-              </Section>
-              <Section title={t('agents.form.sections.capabilities')}>
-                <Tools disabled={loading} />
-              </Section>
-              <Section title={t('agents.form.sections.leader')} className="mb-0">
-                <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
-              </Section>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-8">
-            <BasicInfo 
-              providers={activeProviders || []} 
-              loading={providersLoading || loading}
-              isFormInitialized={isFormInitialized}
-            />
-            
-            <div className="h-px bg-border"></div>
-            
-            <SystemPrompt disabled={loading} />
-            
-            <div className="h-px bg-border"></div>
+  // 左列：身份与提示
+  const leftColumn = (
+    <div className="space-y-6">
+      <SectionCard
+        icon={UserCircle2}
+        title={t('agents.form.sections.basic')}
+        subtitle={t('agents.form.sections.basicDesc')}
+      >
+        <BasicInfo
+          providers={activeProviders || []}
+          loading={providersLoading || loading}
+          isFormInitialized={isFormInitialized}
+        />
+      </SectionCard>
 
-            <Parameters disabled={loading} providers={activeProviders || []} />
+      <SectionCard
+        icon={MessageSquareCode}
+        title={t('agents.form.sections.system')}
+        subtitle={t('agents.form.sections.systemDesc')}
+      >
+        <SystemPrompt disabled={loading} />
+      </SectionCard>
+    </div>
+  );
 
-            <div className="h-px bg-border"></div>
+  // 右列：行为、能力、计费、协作
+  const rightColumn = (
+    <div className="space-y-6">
+      <SectionCard
+        icon={Sliders}
+        title={t('agents.form.sections.generation')}
+        subtitle={t('agents.form.sections.generationDesc')}
+      >
+        <GenerationParams disabled={loading} />
+      </SectionCard>
 
-            <Tools disabled={loading} />
+      <SectionCard
+        icon={History}
+        title={t('agents.form.sections.session')}
+        subtitle={t('agents.form.sections.sessionDesc')}
+      >
+        <SessionManagement disabled={loading} providers={activeProviders || []} />
+      </SectionCard>
 
-            <div className="h-px bg-border"></div>
+      <SectionCard
+        icon={Wrench}
+        title={t('agents.form.sections.capabilities')}
+        subtitle={t('agents.form.sections.capabilitiesDesc')}
+      >
+        <Tools disabled={loading} />
+      </SectionCard>
 
-            <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
-        </div>
-      )}
-    </>
+      <SectionCard
+        icon={CircleDollarSign}
+        title={t('agents.form.sections.pricing')}
+        subtitle={t('agents.form.sections.pricingDesc')}
+      >
+        <PricingConfig disabled={loading} providers={activeProviders || []} />
+      </SectionCard>
+
+      <SectionCard
+        icon={Users}
+        title={t('agents.form.sections.leader')}
+        subtitle={t('agents.form.sections.leaderDesc')}
+      >
+        <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
+      </SectionCard>
+    </div>
+  );
+
+  const formContent = twoColumn ? (
+    <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 xl:gap-8">
+      <div className="xl:col-span-7">{leftColumn}</div>
+      <div className="xl:col-span-5">{rightColumn}</div>
+    </div>
+  ) : (
+    <div className="space-y-6">
+      {leftColumn}
+      {rightColumn}
+    </div>
   );
 
   return (
