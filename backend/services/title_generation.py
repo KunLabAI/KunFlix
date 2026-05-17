@@ -242,7 +242,7 @@ async def maybe_generate_title(
         return None
 
     logger.info(
-        f"[TitleGen] session={session_id} triggering: "
+        f"[TitleGen] session={safe_session_id} triggering: "
         f"trigger_rounds={cfg.trigger_rounds} msg_count={msg_count}"
     )
 
@@ -256,7 +256,7 @@ async def maybe_generate_title(
     rows = rows_result.scalars().all()
     if len(rows) < expected:
         logger.warning(
-            f"[TitleGen] session={session_id} aborted: rows={len(rows)} < expected={expected}"
+            f"[TitleGen] session={safe_session_id} aborted: rows={len(rows)} < expected={expected}"
         )
         return None
 
@@ -279,10 +279,10 @@ async def maybe_generate_title(
         return None
 
     if not title:
-        logger.warning(f"[TitleGen] session={session_id} got empty title from LLM, skip")
+        logger.warning(f"[TitleGen] session={safe_session_id} got empty title from LLM, skip")
         return None
 
     session_obj.title = title
     await db.flush()
-    logger.info(f"[TitleGen] session={session_id} title generated: {title!r}")
+    logger.info(f"[TitleGen] session={safe_session_id} title generated: {title!r}")
     return title
