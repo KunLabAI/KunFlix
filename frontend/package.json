@@ -49,7 +49,7 @@
     "@types/dagre": "^0.7.54",
     "@types/lodash.debounce": "^4.0.9",
     "@types/react-window": "^1.8.8",
-    "@xyflow/react": "^12.10.1",
+    "@xyflow/react": "^12.10.2",
     "antd": "^6.3.0",
     "axios": "^1.16.0",
     "clsx": "^2.1.1",
