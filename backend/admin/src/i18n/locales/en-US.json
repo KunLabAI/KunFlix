@@ -577,11 +577,21 @@
     },
     "form": {
       "sections": {
-        "basic": "Basic Info",
+        "basic": "Identity & Model",
+        "basicDesc": "Agent name, description and underlying model selection",
         "system": "System Prompt",
+        "systemDesc": "Define the agent's role, behavior rules and output style",
         "params": "Parameters",
+        "generation": "Generation",
+        "generationDesc": "Thinking mode, context window and sampling temperature",
+        "session": "Session Management",
+        "sessionDesc": "Context compaction, title generation and tool-call limits",
         "capabilities": "Capabilities",
-        "leader": "Collaboration"
+        "capabilitiesDesc": "Skills, MCP clients and canvas node abilities",
+        "pricing": "Pricing",
+        "pricingDesc": "Credit unit price and profit accounting",
+        "leader": "Collaboration",
+        "leaderDesc": "Multi-agent coordination and leader mode"
       },
       "fieldLabels": {
         "name": "Name",

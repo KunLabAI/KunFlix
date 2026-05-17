@@ -577,11 +577,21 @@
     },
     "form": {
       "sections": {
-        "basic": "基础信息",
-        "system": "系统设定",
+        "basic": "身份与模型",
+        "basicDesc": "智能体的名称、描述与底层模型选择",
+        "system": "系统提示词",
+        "systemDesc": "定义智能体的角色、行为准则与输出风格",
         "params": "参数设置",
-        "capabilities": "能力",
-        "leader": "协作配置"
+        "generation": "生成参数",
+        "generationDesc": "思考模式、上下文窗口与采样温度",
+        "session": "会话管理",
+        "sessionDesc": "上下文压缩、标题生成与工具调用上限",
+        "capabilities": "能力配置",
+        "capabilitiesDesc": "技能、MCP 客户端与画布节点能力",
+        "pricing": "计费定价",
+        "pricingDesc": "积分单价与利润核算",
+        "leader": "协作配置",
+        "leaderDesc": "多智能体协作与领导模式"
       },
       "fieldLabels": {
         "name": "名称",

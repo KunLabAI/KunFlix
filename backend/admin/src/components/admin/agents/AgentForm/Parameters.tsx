@@ -20,6 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { HelpCircle } from 'lucide-react';
 import { LLMProvider } from '@/types';
 import { getModelDisplayName } from '@/lib/api-utils';
 
@@ -45,35 +52,173 @@ const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; searchEnabled:
   video: ({ agentType }) => agentType === 'video',
 };
 
-interface ParametersProps {
+// 二级分组小标题（板块内的子区块视觉分隔）
+// 描述以帮助图标呈现，hover 显示 tooltip
+const SubGroup: React.FC<{
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
+  first?: boolean;
+}> = ({ title, description, action, children, first }) => (
+  <div className={first ? '' : 'pt-5 mt-5 border-t'}>
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <Label className="text-sm font-medium">{title}</Label>
+        {description && (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-muted-foreground hover:text-foreground transition-colors shrink-0" aria-label={description}>
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p className="text-xs leading-relaxed">{description}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </div>
+    {children}
+  </div>
+);
+
+interface ParamsProps {
   disabled?: boolean;
+}
+
+interface PricingProps extends ParamsProps {
   providers?: LLMProvider[];
 }
 
-const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
+// ============================================================================
+// 1. 生成参数：思考模式 / 上下文窗口 / 温度
+// ============================================================================
+export const GenerationParams: React.FC<ParamsProps> = ({ disabled }) => {
+  const { control } = useFormContext();
+  const { t } = useTranslation();
+
+  return (
+    <div className="space-y-0">
+      {/* 思考模式 */}
+      <SubGroup
+        title={t('agents.form.parameters.thinkingMode')}
+        description={t('agents.form.parameters.thinkingModeDesc')}
+        first
+        action={
+          <FormField
+            control={control}
+            name="thinking_mode"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={disabled} />
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        }
+      />
+
+      {/* 上下文窗口 */}
+      <SubGroup title={t('agents.form.parameters.contextWindow')}>
+        <FormField
+          control={control}
+          name="context_window"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <div className="flex items-center gap-4">
+                  <Slider
+                    min={4096}
+                    max={1048576}
+                    step={4096}
+                    value={[field.value ?? 4096]}
+                    onValueChange={(vals) => field.onChange(vals[0])}
+                    disabled={disabled}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    value={field.value ?? 4096}
+                    onChange={e => {
+                      const val = e.target.value;
+                      field.onChange(val === '' ? 4096 : Number(val));
+                    }}
+                    step={4096}
+                    min={4096}
+                    max={1048576}
+                    className="w-24 font-mono"
+                    disabled={disabled}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+          <span>{t('agents.form.parameters.contextWindowMin')}</span>
+          <span>{t('agents.form.parameters.contextWindowMax')}</span>
+        </div>
+      </SubGroup>
+
+      {/* 温度 */}
+      <SubGroup title={t('agents.form.parameters.temperature')}>
+        <FormField
+          control={control}
+          name="temperature"
+          render={({ field }) => (
+            <FormItem>
+              <FormControl>
+                <div className="flex items-center gap-4">
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={[field.value]}
+                    onValueChange={(vals) => field.onChange(vals[0])}
+                    disabled={disabled}
+                    className="flex-1"
+                  />
+                  <Input
+                    type="number"
+                    value={field.value}
+                    onChange={e => field.onChange(Number(e.target.value))}
+                    step={0.1}
+                    min={0}
+                    max={1}
+                    className="w-16 font-mono"
+                    disabled={disabled}
+                  />
+                </div>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="flex justify-between text-xs text-muted-foreground mt-2">
+          <span>{t('agents.form.parameters.temperatureLow')}</span>
+          <span>{t('agents.form.parameters.temperatureHigh')}</span>
+        </div>
+      </SubGroup>
+    </div>
+  );
+};
+
+// ============================================================================
+// 2. 会话管理：上下文压缩 / 标题生成 / 工具调用轮次上限
+// ============================================================================
+export const SessionManagement: React.FC<PricingProps> = ({ disabled, providers }) => {
   const { control, watch, setValue } = useFormContext();
   const { t } = useTranslation();
-  const temperature = watch('temperature');
-  const contextWindow = watch('context_window');
-  const providerId = watch('provider_id');
-  const model = watch('model');
-  const searchEnabled = watch('gemini_config.google_search_enabled');
-  const imageEnabled = watch('image_config.image_generation_enabled');
   const compactionEnabled = watch('compaction_config.enabled');
   const compactionProviderId = watch('compaction_config.provider_id');
   const titleGenEnabled = watch('title_gen_config.enabled');
   const titleGenProviderId = watch('title_gen_config.provider_id');
-  const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
-
-  // 当前选中的供应商
-  const currentProvider = useMemo(() =>
-    providers?.find(p => p.id === providerId),
-    [providerId, providers]
-  );
-
-  // 供应商类型判断
-  const providerType = currentProvider?.provider_type?.toLowerCase() || '';
-  const isGeminiProvider = providerType === 'gemini';
 
   // 压缩供应商的模型列表
   const compactionModelList = useMemo(() => {
@@ -99,127 +244,29 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
     }));
   }, [titleGenProviderId, providers]);
 
-  // 获取当前模型的 API 成本数据
-  const modelCosts: Record<string, number> = currentProvider?.model_costs?.[model] ?? {};
-  const hasAnyCost = Object.keys(modelCosts).length > 0;
-
-  // 根据可见性规则过滤定价维度（映射表驱动，避免 if-else）
-  const visibilityCtx = { isGemini: !!isGeminiProvider, searchEnabled: !!searchEnabled, imageEnabled: !!imageEnabled, agentType: watch('agent_type') || 'text' };
-  const visibleDimensions = COST_DIMENSIONS.filter(
-    dim => GROUP_VISIBILITY[dim.group]?.(visibilityCtx) ?? true
-  );
-
-  // 格式化显示 context_window (如 128K)
-  const formatContextWindow = (value: number) => {
-    return value >= 1048576 ? `${(value / 1048576).toFixed(1)}M` : value >= 1024 ? `${Math.round(value / 1024)}K` : value.toString();
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="rounded-xl border bg-card p-5">
-         <div className="flex justify-between items-center mb-4">
-           <Label className="text-sm font-medium">{t('agents.form.parameters.thinkingMode')}</Label>
-           <FormField
-              control={control}
-              name="thinking_mode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={disabled}
-                      />
-                      <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.on') : t('agents.form.parameters.off')}</span>
-                    </div>
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-         </div>
-         <p className="text-xs text-muted-foreground">{t('agents.form.parameters.thinkingModeDesc')}</p>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5">
-         <div className="mb-4">
-           <div className="flex justify-between items-center mb-2">
-             <Label className="text-sm font-medium">{t('agents.form.parameters.contextWindow')}</Label>
-             <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
-               {t('agents.form.parameters.contextWindowValue', { display: formatContextWindow(contextWindow || 4096), tokens: contextWindow || 4096 })}
-             </span>
-           </div>
-           <FormField
-              control={control}
-              name="context_window"
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <div className="flex items-center gap-4">
-                      <Slider
-                        min={4096}
-                        max={1048576}
-                        step={4096}
-                        value={[field.value ?? 4096]}
-                        onValueChange={(vals) => field.onChange(vals[0])}
-                        disabled={disabled}
-                        className="flex-1"
-                      />
-                      <Input 
-                        type="number" 
-                        value={field.value ?? 4096}
-                        onChange={e => {
-                          const val = e.target.value;
-                          field.onChange(val === '' ? 4096 : Number(val));
-                        }}
-                        step={4096}
-                        min={4096}
-                        max={1048576}
-                        className="w-24 font-mono"
-                        disabled={disabled}
-                      />
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-           <div className="flex justify-between text-xs text-muted-foreground mt-2">
-             <span>{t('agents.form.parameters.contextWindowMin')}</span>
-             <span>{t('agents.form.parameters.contextWindowMax')}</span>
-           </div>
-         </div>
-      </div>
-
-      {/* 上下文压缩配置 */}
-      <div className="rounded-xl border bg-card p-5">
-        <div className="flex justify-between items-center mb-2">
-          <div>
-            <Label className="text-sm font-medium">{t('agents.form.parameters.compaction.title')}</Label>
-            <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.compaction.desc')}</p>
-          </div>
+    <div className="space-y-0">
+      {/* 上下文压缩 */}
+      <SubGroup
+        title={t('agents.form.parameters.compaction.title')}
+        description={t('agents.form.parameters.compaction.desc')}
+        first
+        action={
           <FormField
             control={control}
             name="compaction_config.enabled"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={disabled}
-                    />
-                    <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.compaction.on') : t('agents.form.parameters.compaction.off')}</span>
-                  </div>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={disabled} />
                 </FormControl>
               </FormItem>
             )}
           />
-        </div>
-
+        }
+      >
         {compactionEnabled && (
-          <div className="space-y-4 pt-3 border-t mt-3">
+          <div className="space-y-4">
             {/* 压缩供应商 */}
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.compaction.compactionProvider')}</Label>
@@ -389,38 +436,28 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             />
           </div>
         )}
-      </div>
+      </SubGroup>
 
-      {/* 对话标题自动生成 */}
-      <div className="rounded-xl border bg-card p-5">
-        <div className="flex justify-between items-center mb-2">
-          <div>
-            <Label className="text-sm font-medium">{t('agents.form.parameters.titleGen.title')}</Label>
-            <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.titleGen.desc')}</p>
-          </div>
+      {/* 标题自动生成 */}
+      <SubGroup
+        title={t('agents.form.parameters.titleGen.title')}
+        description={t('agents.form.parameters.titleGen.desc')}
+        action={
           <FormField
             control={control}
             name="title_gen_config.enabled"
             render={({ field }) => (
               <FormItem>
                 <FormControl>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={disabled}
-                    />
-                    <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.titleGen.on') : t('agents.form.parameters.titleGen.off')}</span>
-                  </div>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} disabled={disabled} />
                 </FormControl>
               </FormItem>
             )}
           />
-        </div>
-
+        }
+      >
         {titleGenEnabled && (
-          <div className="space-y-4 pt-3 border-t mt-3">
-            {/* 标题生成供应商 */}
+          <div className="space-y-4">
             <div className="space-y-1.5">
               <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.titleGenProvider')}</Label>
               <FormField
@@ -453,7 +490,6 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               />
             </div>
 
-            {/* 标题生成模型 */}
             {titleGenProviderId && (
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.titleGenModel')}</Label>
@@ -480,7 +516,6 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               </div>
             )}
 
-            {/* 标题最大长度 */}
             <FormField
               control={control}
               name="title_gen_config.max_length"
@@ -502,7 +537,6 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
               )}
             />
 
-            {/* 触发轮数 */}
             <FormField
               control={control}
               name="title_gen_config.trigger_rounds"
@@ -525,95 +559,41 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
             />
           </div>
         )}
-      </div>
+      </SubGroup>
 
-      {/* 工具调用轮次限制 */}
-      <div className="rounded-xl border bg-card p-5">
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              <Label className="text-sm font-medium">{t('agents.form.parameters.maxToolRounds.title')}</Label>
-              <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.maxToolRounds.desc')}</p>
-            </div>
-            <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
-              {watch('max_tool_rounds') ?? 100} {t('agents.form.parameters.maxToolRounds.times')}
-            </span>
-          </div>
-          <FormField
-            control={control}
-            name="max_tool_rounds"
-            render={({ field }) => (
-              <FormItem>
-                <FormControl>
-                  <div className="flex items-center gap-4">
-                    <Slider
-                      min={10}
-                      max={200}
-                      step={10}
-                      value={[field.value ?? 100]}
-                      onValueChange={(vals) => field.onChange(vals[0])}
-                      disabled={disabled}
-                      className="flex-1"
-                    />
-                    <Input
-                      type="number"
-                      value={field.value ?? 100}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const num = val === '' ? 100 : Number(val);
-                        field.onChange(Math.max(10, Math.min(200, num)));
-                      }}
-                      step={10}
-                      min={10}
-                      max={200}
-                      className="w-20 font-mono"
-                      disabled={disabled}
-                    />
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground mt-2">
-            <span>{t('agents.form.parameters.maxToolRounds.min')}</span>
-            <span>{t('agents.form.parameters.maxToolRounds.max')}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5">
-        <div className="flex justify-between items-center mb-4">
-          <Label className="text-sm font-medium">{t('agents.form.parameters.temperature')}</Label>
-          <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded text-muted-foreground">
-             {temperature}
-          </span>
-        </div>
-        
+      {/* 工具调用轮次上限 */}
+      <SubGroup
+        title={t('agents.form.parameters.maxToolRounds.title')}
+        description={t('agents.form.parameters.maxToolRounds.desc')}
+      >
         <FormField
           control={control}
-          name="temperature"
+          name="max_tool_rounds"
           render={({ field }) => (
             <FormItem>
               <FormControl>
                 <div className="flex items-center gap-4">
                   <Slider
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={[field.value]}
+                    min={10}
+                    max={200}
+                    step={10}
+                    value={[field.value ?? 100]}
                     onValueChange={(vals) => field.onChange(vals[0])}
                     disabled={disabled}
                     className="flex-1"
                   />
-                  <Input 
-                    type="number" 
-                    value={field.value}
-                    onChange={e => field.onChange(Number(e.target.value))}
-                    step={0.1}
-                    min={0}
-                    max={1}
-                    className="w-16 font-mono"
+                  <Input
+                    type="number"
+                    value={field.value ?? 100}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const num = val === '' ? 100 : Number(val);
+                      field.onChange(Math.max(10, Math.min(200, num)));
+                    }}
+                    step={10}
+                    min={10}
+                    max={200}
+                    className="w-20 font-mono"
                     disabled={disabled}
                   />
                 </div>
@@ -623,130 +603,157 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
           )}
         />
         <div className="flex justify-between text-xs text-muted-foreground mt-2">
-          <span>{t('agents.form.parameters.temperatureLow')}</span>
-          <span>{t('agents.form.parameters.temperatureHigh')}</span>
+          <span>{t('agents.form.parameters.maxToolRounds.min')}</span>
+          <span>{t('agents.form.parameters.maxToolRounds.max')}</span>
         </div>
-      </div>
-
-      <div className="rounded-xl border bg-card p-5">
-        <Label className="text-sm font-medium mb-2 block">{t('agents.form.parameters.pricing.title')}</Label>
-
-        {/* 成本倍率 - 仅在有 API 成本数据时显示 */}
-        {hasAnyCost && (
-          <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-            <Label className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">{t('agents.form.parameters.pricing.markupMultiplier')}</Label>
-            <Input
-              type="number"
-              value={markupMultiplier}
-              onChange={e => setMarkupMultiplier(Math.max(1.0, Number(e.target.value) || 1.0))}
-              step={0.1}
-              min={1.0}
-              className="w-20 font-mono"
-              disabled={disabled}
-            />
-            <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">×</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs h-7 flex-shrink-0"
-              disabled={disabled}
-              onClick={() => {
-                visibleDimensions.forEach(dim => {
-                  const cost = modelCosts[dim.key];
-                  cost != null && setValue(dim.formField, Math.round(cost * markupMultiplier * 100 * 100) / 100);
-                });
-              }}
-            >
-              {t('agents.form.parameters.pricing.applyAll')}
-            </Button>
-          </div>
-        )}
-
-        {/* 动态渲染可见的定价维度（映射表驱动，避免 if-else） */}
-        <div className="space-y-4">
-          {visibleDimensions.map((dim) => {
-            const apiCost = modelCosts[dim.key] as number | undefined;
-            const suggestedCredit = apiCost != null ? Math.round(apiCost * markupMultiplier * 100 * 100) / 100 : undefined;
-            return (
-              <FormField
-                key={dim.key}
-                control={control}
-                name={dim.formField}
-                render={({ field }) => (
-                  <FormItem>
-                    <div className="flex items-center justify-between">
-                      <FormLabel className="text-xs text-muted-foreground">{t(dim.labelKey)} ({t(dim.unitKey)})</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          value={field.value ?? 0}
-                          onChange={e => field.onChange(Number(e.target.value))}
-                          step={dim.step}
-                          min={0}
-                          className="w-24 font-mono"
-                          disabled={disabled}
-                        />
-                      </FormControl>
-                    </div>
-                    {apiCost != null && (
-                      <div className="flex items-center justify-between mt-1 px-1">
-                        <span className="text-xs text-blue-600 dark:text-blue-400">
-                          {t('agents.form.parameters.pricing.apiCost', { cost: apiCost, unit: t(dim.costUnitKey) })}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-xs text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-200 disabled:opacity-50"
-                          onClick={() => setValue(dim.formField, suggestedCredit!)}
-                          disabled={disabled}
-                        >
-                          {t('agents.form.parameters.pricing.suggestion', { value: suggestedCredit })}
-                        </button>
-                      </div>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            );
-          })}
-        </div>
-
-        <p className="text-xs text-muted-foreground mt-3">{t('agents.form.parameters.pricing.freeDesc')}</p>
-
-        {/* 利润概览 */}
-        {hasAnyCost && (
-          <div className="mt-4 pt-4 border-t">
-            <Label className="text-xs font-medium mb-2 block text-muted-foreground">{t('agents.form.parameters.pricing.profitOverview')}</Label>
-            <div className="space-y-1.5">
-              {visibleDimensions.map(dim => {
-                const apiCost = modelCosts[dim.key] as number | undefined;
-                const creditRate = watch(dim.formField) ?? 0;
-                const revenueUsd = creditRate * 0.01;
-                const margin = apiCost && apiCost > 0 ? ((revenueUsd - apiCost) / apiCost * 100) : null;
-                return apiCost != null ? (
-                  <div key={dim.key} className="flex justify-between items-center text-xs">
-                    <span className="text-muted-foreground">{t(dim.labelKey)}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground font-mono">${apiCost} → {creditRate}{t('agents.form.parameters.pricing.credits')} → ${revenueUsd.toFixed(2)}</span>
-                      <span className={
-                        margin == null ? 'text-muted-foreground' :
-                        margin > 0 ? 'text-green-600 dark:text-green-400 font-medium' :
-                        margin < 0 ? 'text-red-600 dark:text-red-400 font-medium' :
-                        'text-yellow-600 dark:text-yellow-400'
-                      }>
-                        {margin != null ? `${margin > 0 ? '+' : ''}${margin.toFixed(1)}%` : t('agents.form.parameters.pricing.naLabel')}
-                      </span>
-                    </div>
-                  </div>
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      </SubGroup>
     </div>
   );
 };
 
-export default Parameters;
+// ============================================================================
+// 3. 计费定价：倍率 + 维度循环 + 利润概览
+// ============================================================================
+export const PricingConfig: React.FC<PricingProps> = ({ disabled, providers }) => {
+  const { control, watch, setValue } = useFormContext();
+  const { t } = useTranslation();
+  const providerId = watch('provider_id');
+  const model = watch('model');
+  const searchEnabled = watch('gemini_config.google_search_enabled');
+  const imageEnabled = watch('image_config.image_generation_enabled');
+  const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
+
+  const currentProvider = useMemo(() =>
+    providers?.find(p => p.id === providerId),
+    [providerId, providers]
+  );
+
+  const providerType = currentProvider?.provider_type?.toLowerCase() || '';
+  const isGeminiProvider = providerType === 'gemini';
+
+  const modelCosts: Record<string, number> = currentProvider?.model_costs?.[model] ?? {};
+  const hasAnyCost = Object.keys(modelCosts).length > 0;
+
+  const visibilityCtx = { isGemini: !!isGeminiProvider, searchEnabled: !!searchEnabled, imageEnabled: !!imageEnabled, agentType: watch('agent_type') || 'text' };
+  const visibleDimensions = COST_DIMENSIONS.filter(
+    dim => GROUP_VISIBILITY[dim.group]?.(visibilityCtx) ?? true
+  );
+
+  return (
+    <div>
+      {/* 成本倍率 - 仅在有 API 成本数据时显示 */}
+      {hasAnyCost && (
+        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+          <Label className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">{t('agents.form.parameters.pricing.markupMultiplier')}</Label>
+          <Input
+            type="number"
+            value={markupMultiplier}
+            onChange={e => setMarkupMultiplier(Math.max(1.0, Number(e.target.value) || 1.0))}
+            step={0.1}
+            min={1.0}
+            className="w-20 font-mono"
+            disabled={disabled}
+          />
+          <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">×</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs h-7 flex-shrink-0"
+            disabled={disabled}
+            onClick={() => {
+              visibleDimensions.forEach(dim => {
+                const cost = modelCosts[dim.key];
+                cost != null && setValue(dim.formField, Math.round(cost * markupMultiplier * 100 * 100) / 100);
+              });
+            }}
+          >
+            {t('agents.form.parameters.pricing.applyAll')}
+          </Button>
+        </div>
+      )}
+
+      {/* 动态渲染可见的定价维度（映射表驱动，避免 if-else） */}
+      <div className="space-y-4">
+        {visibleDimensions.map((dim) => {
+          const apiCost = modelCosts[dim.key] as number | undefined;
+          const suggestedCredit = apiCost != null ? Math.round(apiCost * markupMultiplier * 100 * 100) / 100 : undefined;
+          return (
+            <FormField
+              key={dim.key}
+              control={control}
+              name={dim.formField}
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel className="text-xs text-muted-foreground">{t(dim.labelKey)} ({t(dim.unitKey)})</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        value={field.value ?? 0}
+                        onChange={e => field.onChange(Number(e.target.value))}
+                        step={dim.step}
+                        min={0}
+                        className="w-24 font-mono"
+                        disabled={disabled}
+                      />
+                    </FormControl>
+                  </div>
+                  {apiCost != null && (
+                    <div className="flex items-center justify-between mt-1 px-1">
+                      <span className="text-xs text-blue-600 dark:text-blue-400">
+                        {t('agents.form.parameters.pricing.apiCost', { cost: apiCost, unit: t(dim.costUnitKey) })}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-200 disabled:opacity-50"
+                        onClick={() => setValue(dim.formField, suggestedCredit!)}
+                        disabled={disabled}
+                      >
+                        {t('agents.form.parameters.pricing.suggestion', { value: suggestedCredit })}
+                      </button>
+                    </div>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-muted-foreground mt-3">{t('agents.form.parameters.pricing.freeDesc')}</p>
+
+      {/* 利润概览 */}
+      {hasAnyCost && (
+        <div className="mt-4 pt-4 border-t">
+          <Label className="text-xs font-medium mb-2 block text-muted-foreground">{t('agents.form.parameters.pricing.profitOverview')}</Label>
+          <div className="space-y-1.5">
+            {visibleDimensions.map(dim => {
+              const apiCost = modelCosts[dim.key] as number | undefined;
+              const creditRate = watch(dim.formField) ?? 0;
+              const revenueUsd = creditRate * 0.01;
+              const margin = apiCost && apiCost > 0 ? ((revenueUsd - apiCost) / apiCost * 100) : null;
+              return apiCost != null ? (
+                <div key={dim.key} className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground">{t(dim.labelKey)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-mono">${apiCost} → {creditRate}{t('agents.form.parameters.pricing.credits')} → ${revenueUsd.toFixed(2)}</span>
+                    <span className={
+                      margin == null ? 'text-muted-foreground' :
+                      margin > 0 ? 'text-green-600 dark:text-green-400 font-medium' :
+                      margin < 0 ? 'text-red-600 dark:text-red-400 font-medium' :
+                      'text-yellow-600 dark:text-yellow-400'
+                    }>
+                      {margin != null ? `${margin > 0 ? '+' : ''}${margin.toFixed(1)}%` : t('agents.form.parameters.pricing.naLabel')}
+                    </span>
+                  </div>
+                </div>
+              ) : null;
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

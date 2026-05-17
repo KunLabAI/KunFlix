@@ -17,7 +17,7 @@ const Tools: React.FC<{ disabled?: boolean }> = ({ disabled }) => {
   const toolsEnabled = watch('tools_enabled');
 
   return (
-    <div className="rounded-xl border bg-card p-5">
+    <div>
       <div className="flex justify-between items-center mb-4">
         <div>
           <span className="text-sm font-medium">{t('agents.form.tools.title')}</span>
