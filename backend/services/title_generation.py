@@ -263,7 +263,6 @@ async def maybe_generate_title(
     msgs = [{"role": r.role, "content": r.content} for r in rows]
 
     # 解析使用的 provider/model：优先 cfg 指定，否则回退 agent 自身
-    title_provider, title_model = provider, agent.model
     use_custom = bool(cfg.provider_id and cfg.model)
     custom = (await db.execute(
         select(LLMProvider).filter(LLMProvider.id == cfg.provider_id)
