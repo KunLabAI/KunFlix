@@ -36,7 +36,7 @@ const TIME_KEY_MAP: Record<number, string> = {
   1: "theater.yesterday",
 };
 
-// 画布节点类型
+// 画布节点类型（保留导出以便外部调用方过渡使用，本组件不再消费）
 interface TheaterNode {
   id: string;
   node_type: string;
@@ -55,6 +55,7 @@ interface TheaterCardProps {
   status?: string;
   nodeCount?: number;
   updatedAt?: string | null;
+  /** @deprecated 封面统一由后端 thumbnail_url 提供，已不再从画布节点提取 */
   nodes?: TheaterNode[];
   onClick?: () => void;
   onRename?: (id: string, newTitle: string) => void;
@@ -70,7 +71,6 @@ export default function TheaterCard({
   status = "draft",
   nodeCount = 0,
   updatedAt,
-  nodes = [],
   onClick,
   onRename,
   onDuplicate,
@@ -81,7 +81,7 @@ export default function TheaterCard({
   const [isLoading, setIsLoading] = useState(false);
   const { confirm, dialog: confirmDialog, setLoading: setConfirmLoading } = useConfirmDialog();
   const { input, dialog: inputDialog, setLoading: setInputLoading } = useInputDialog();
-  
+
   const statusConfig = STATUS_CONFIG[status] ?? STATUS_CONFIG.draft;
   const StatusIcon = statusConfig.icon;
 
@@ -90,29 +90,9 @@ export default function TheaterCard({
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const isSwipingRef = useRef(false);
 
-  // 从画布节点中提取图片/视频作为背景
-  const extractBackgroundFromNodes = (): string | null => {
-    const mediaNodes = nodes.filter((node) => 
-      node.node_type === "image" || node.node_type === "video"
-    );
-    
-    for (const node of mediaNodes) {
-      const data = node.data;
-      if (!data) continue;
-      
-      if (node.node_type === "image" && data.imageUrl) {
-        return data.imageUrl;
-      }
-      
-      if (node.node_type === "video" && data.videoUrl) {
-        return data.thumbnail || data.videoUrl;
-      }
-    }
-    
-    return null;
-  };
-
-  const backgroundImage = image || extractBackgroundFromNodes();
+  // 封面统一使用后端 thumbnail_url；为空则显示占位块，
+  // 不再同步扫画布节点拉原图，避免首页带宽与主线程解码风暴。
+  const backgroundImage = image || null;
 
   // 格式化时间
   const formatTime = (dateStr: string | null | undefined): string => {
@@ -252,31 +232,23 @@ export default function TheaterCard({
       >
         {/* Card Container */}
         <div className="relative w-full h-full rounded-2xl overflow-hidden">
-          {/* Background Image/Video */}
+          {/* Background Image */}
           {backgroundImage ? (
             <div className="absolute inset-0">
-              {backgroundImage.match(/\.(mp4|webm|mov|avi)$/i) ? (
-                <video
-                  src={backgroundImage}
-                  className="w-full h-full object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
-                  preload="metadata"
-                  muted
-                  playsInline
-                />
-              ) : (
-                <Image
-                  src={backgroundImage}
-                  alt={title}
-                  fill
-                  sizes="260px"
-                  priority={priority}
-                  loading={priority ? "eager" : "lazy"}
-                  // 生产 standalone 镜像未打包 sharp，Next.js 图像优化器会对 /api/media/* 返回 500；
-                  // 卡片尺寸固定 260x360，原图已是合适规格，直接跳过优化由后端/nginx 直出即可
-                  unoptimized
-                  className="object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
-                />
-              )}
+              <Image
+                src={backgroundImage}
+                alt={title}
+                fill
+                sizes="260px"
+                priority={priority}
+                loading={priority ? "eager" : "lazy"}
+                decoding="async"
+                fetchPriority={priority ? "high" : "low"}
+                // 生产 standalone 镜像未打包 sharp，Next.js 图像优化器会对 /api/media/* 返回 500；
+                // 卡片尺寸固定 260x360，原图已是合适规格，直接跳过优化由后端/nginx 直出即可
+                unoptimized
+                className="object-cover transition-transform duration-700 ease-in-out group-hover:scale-110"
+              />
             </div>
           ) : (
             <div className="absolute inset-0 bg-muted transition-transform duration-500 ease-in-out group-hover:scale-110" />
