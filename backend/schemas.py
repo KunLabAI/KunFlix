@@ -303,6 +303,8 @@ class AgentBase(BaseModel):
     video_config: Optional[dict] = None
     # 上下文压缩配置
     compaction_config: Optional[dict] = None
+    # 对话标题自动生成配置
+    title_gen_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: List[str] = Field(default_factory=list)
     # 工具调用轮次限制
@@ -358,6 +360,8 @@ class AgentUpdate(BaseModel):
     video_config: Optional[dict] = None
     # 上下文压缩配置
     compaction_config: Optional[dict] = None
+    # 对话标题自动生成配置
+    title_gen_config: Optional[dict] = None
     # 可控制的画布节点类型
     target_node_types: Optional[List[str]] = None
     # 工具调用轮次限制

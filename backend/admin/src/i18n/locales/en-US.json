@@ -668,6 +668,21 @@
           "maxSummaryTokens": "Max Summary Tokens",
           "maxSummaryTokensDesc": "max_tokens limit when the LLM generates summaries"
         },
+        "titleGen": {
+          "title": "Auto Chat Title Generation",
+          "desc": "After the configured number of rounds, automatically generate a concise title via AI",
+          "on": "On",
+          "off": "Off",
+          "titleGenProvider": "Title generation supplier. Try to choose suppliers that are not based on thinking models.",
+          "useDefault": "Use this agent's provider (default)",
+          "titleGenModel": "Title Generation Model",
+          "selectProvider": "Select provider",
+          "selectModel": "Select model",
+          "maxLength": "Max Title Length (characters)",
+          "maxLengthDesc": "Recommended 8 - 50, default 20 characters",
+          "triggerRounds": "Trigger After Rounds",
+          "triggerRoundsDesc": "Generate title after the Nth conversation round, range 1 - 10, default 1"
+        },
         "maxToolRounds": {
           "title": "Max Tool Rounds",
           "desc": "Max number of tool calls per conversation round",

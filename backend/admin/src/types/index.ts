@@ -39,6 +39,17 @@ export interface CompactionConfig {
   max_summary_tokens: number;
 }
 
+// ---------------------------------------------------------------------------
+// 对话标题自动生成配置
+// ---------------------------------------------------------------------------
+export interface TitleGenConfig {
+  enabled: boolean;
+  provider_id?: string;
+  model?: string;
+  max_length: number;
+  trigger_rounds?: number;
+}
+
 export interface Agent {
   id?: string;
   name: string;
@@ -76,6 +87,8 @@ export interface Agent {
   video_config?: VideoGenToolConfigData;
   // 上下文压缩配置
   compaction_config?: CompactionConfig;
+  // 对话标题自动生成配置
+  title_gen_config?: TitleGenConfig;
   image_credit_per_image?: number;
   // 工具调用轮次限制
   max_tool_rounds?: number;

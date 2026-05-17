@@ -200,6 +200,57 @@ def _format_messages_for_summary(messages: list[dict]) -> str:
     return "\n".join(lines)
 
 
+async def _summary_call_openai_compat(
+    provider: LLMProvider, model: str, system_text: str, user_text: str, max_tokens: int
+) -> str:
+    """OpenAI / DeepSeek / xAI / Ark / Doubao 等 OpenAI 兼容接口。"""
+    from openai import AsyncOpenAI
+    from services.llm_stream import DEFAULT_BASE_URLS
+
+    base_url = provider.base_url or DEFAULT_BASE_URLS.get(
+        (provider.provider_type or "").lower()
+    )
+    client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_text},
+            {"role": "user", "content": user_text},
+        ],
+        temperature=0.3,
+        max_tokens=max_tokens,
+    )
+    msg = resp.choices[0].message
+    # 推理模型可能把输出放在 reasoning_content；优先 content，回退 reasoning_content
+    return (getattr(msg, "content", None) or getattr(msg, "reasoning_content", None) or "").strip()
+
+
+async def _summary_call_gemini(
+    provider: LLMProvider, model: str, system_text: str, user_text: str, max_tokens: int
+) -> str:
+    """Gemini 原生 SDK 调用（不能走 OpenAI 兼容接口）。"""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=provider.api_key)
+    resp = await client.aio.models.generate_content(
+        model=model,
+        contents=user_text,
+        config=types.GenerateContentConfig(
+            system_instruction=system_text,
+            temperature=0.3,
+            max_output_tokens=max_tokens,
+        ),
+    )
+    return (getattr(resp, "text", None) or "").strip()
+
+
+# provider_type → 调用实现（表驱动分发，未命中默认走 OpenAI 兼容接口）
+_SUMMARY_DISPATCH = {
+    "gemini": _summary_call_gemini,
+}
+
+
 async def generate_summary(
     messages_to_compact: list[dict],
     previous_summary: str | None,
@@ -208,12 +259,6 @@ async def generate_summary(
     max_tokens: int = 1024,
 ) -> str:
     """Call LLM (non-streaming) to produce a concise summary of old messages."""
-    from openai import AsyncOpenAI
-    from services.llm_stream import DEFAULT_BASE_URLS
-
-    base_url = provider.base_url or DEFAULT_BASE_URLS.get(provider.provider_type.lower())
-    client = AsyncOpenAI(api_key=provider.api_key, base_url=base_url)
-
     user_content_parts = []
     previous_summary and user_content_parts.append(
         f"## Previous Conversation Summary\n{previous_summary}\n"
@@ -221,18 +266,13 @@ async def generate_summary(
     user_content_parts.append(
         f"## Messages to Summarize\n{_format_messages_for_summary(messages_to_compact)}"
     )
+    user_text = "\n\n".join(user_content_parts)
+
+    pt = (provider.provider_type or "").lower()
+    caller = _SUMMARY_DISPATCH.get(pt, _summary_call_openai_compat)
 
     try:
-        resp = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
-                {"role": "user", "content": "\n\n".join(user_content_parts)},
-            ],
-            temperature=0.3,
-            max_tokens=max_tokens,
-        )
-        return (resp.choices[0].message.content or "").strip()
+        return await caller(provider, model, SUMMARY_SYSTEM_PROMPT, user_text, max_tokens)
     except Exception as e:
         logger.error(f"Summary generation failed: {e}")
         return previous_summary or ""

@@ -561,7 +561,7 @@ async def generate_single_agent(
     }
     final_content = _content_builders[bool(loaded_skills or all_tool_calls)]()
 
-    _persist_state = {"compaction": None}  # mutable container for cross-scope sharing
+    _persist_state = {"compaction": None, "new_title": None}  # mutable container for cross-scope sharing
 
     async def _persist_message_and_billing():
         """Background task: save message, update stats, deduct credits.
@@ -653,6 +653,12 @@ async def generate_single_agent(
                         actual_total_tokens=result.input_tokens + result.output_tokens,
                     )
 
+                    # Post-generation deferred title generation (第 2 轮后仅触发一次)
+                    from services.title_generation import maybe_generate_title
+                    _persist_state["new_title"] = await maybe_generate_title(
+                        agent, provider, session, session_id, session_obj=s,
+                    )
+
                 await session.commit()
                 logger.info("Message/billing saved successfully (background)")
         except Exception as e:
@@ -671,6 +677,13 @@ async def generate_single_agent(
     _compaction = _persist_state.get("compaction")
     _compaction and (yield sse("context_compacted", {
         "summary": _compaction[1],
+    }))
+
+    # 发送标题更新事件（如果 AI 生成了新标题）
+    _new_title = _persist_state.get("new_title")
+    _new_title and (yield sse("title_updated", {
+        "session_id": session_id,
+        "title": _new_title,
     }))
 
     # 发送计费信息和完成事件

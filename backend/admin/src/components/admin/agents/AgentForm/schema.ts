@@ -46,6 +46,15 @@ const compactionConfigSchema = z.object({
   max_summary_tokens: z.number().min(4096).max(131072).optional().default(4096),
 }).optional().nullable();
 
+// 对话标题自动生成配置 schema
+const titleGenConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  provider_id: z.preprocess(emptyStringToNull, z.string().optional().nullable()),
+  model: z.preprocess(emptyStringToNull, z.string().optional().nullable()),
+  max_length: z.number().min(8).max(50).optional().default(20),
+  trigger_rounds: z.number().min(1).max(10).optional().default(1),
+}).optional().nullable();
+
 export const createAgentFormSchema = (t: TFunction) => z.object({
   name: z.string().min(1, t('agents.form.validation.nameRequired')).max(50, t('agents.form.validation.nameMax')),
   description: z.string().min(1, t('agents.form.validation.descRequired')).max(500, t('agents.form.validation.descMax')),
@@ -86,6 +95,8 @@ export const createAgentFormSchema = (t: TFunction) => z.object({
   video_config: videoGenConfigSchema,
   // 上下文压缩配置
   compaction_config: compactionConfigSchema,
+  // 对话标题自动生成配置
+  title_gen_config: titleGenConfigSchema,
   // 工具调用轮次限制
   max_tool_rounds: z.number().min(10).max(200).default(100),
 }).refine((data) => {

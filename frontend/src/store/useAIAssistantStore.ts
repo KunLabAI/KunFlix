@@ -295,6 +295,7 @@ interface AIAssistantState {
   setTheaterChatList: (list: ChatSessionInfo[]) => void;
   addChatToList: (chat: ChatSessionInfo) => void;
   removeChatFromList: (sessionId: string) => void;
+  updateChatTitleInList: (sessionId: string, title: string) => void;
   setIsLoadingChatList: (loading: boolean) => void;
   
   // Virtual scroll settings
@@ -505,6 +506,9 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       })),
       removeChatFromList: (sessionId: string) => set((state) => ({
         theaterChatList: state.theaterChatList.filter(c => c.id !== sessionId)
+      })),
+      updateChatTitleInList: (sessionId: string, title: string) => set((state) => ({
+        theaterChatList: state.theaterChatList.map(c => c.id === sessionId ? { ...c, title } : c)
       })),
       setIsLoadingChatList: (isLoadingChatList: boolean) => set({ isLoadingChatList }),
       
