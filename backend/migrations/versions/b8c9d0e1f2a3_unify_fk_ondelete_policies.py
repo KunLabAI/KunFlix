@@ -145,10 +145,18 @@ def _revert(table: str, column: str, ref_table: str, ref_col: str) -> None:
 
 
 def upgrade() -> None:
+    # SQLite 不强制执行 FK 策略，且 batch_alter_table 处理匿名外键有缺陷，
+    # 本地开发环境跳过整个批量调整，生产 PostgreSQL 仍照常执行。
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return
     for table, column, ref_table, ref_col, ondelete in FK_POLICIES:
         _apply(table, column, ref_table, ref_col, ondelete)
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        return
     for table, column, ref_table, ref_col, _ondelete in FK_POLICIES:
         _revert(table, column, ref_table, ref_col)

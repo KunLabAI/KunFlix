@@ -304,6 +304,9 @@ class Agent(Base):
     # 上下文压缩配置（智能体级别）
     compaction_config = Column(JSON, default=dict)
 
+    # 对话标题自动生成配置（智能体级别）
+    title_gen_config = Column(JSON, default=dict)
+
     # 可控制的画布节点类型: ["script", "character", "storyboard", "video"]
     target_node_types = Column(JSON, default=[])
 

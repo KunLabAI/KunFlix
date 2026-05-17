@@ -61,6 +61,8 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
   const imageEnabled = watch('image_config.image_generation_enabled');
   const compactionEnabled = watch('compaction_config.enabled');
   const compactionProviderId = watch('compaction_config.provider_id');
+  const titleGenEnabled = watch('title_gen_config.enabled');
+  const titleGenProviderId = watch('title_gen_config.provider_id');
   const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
 
   // 当前选中的供应商
@@ -84,6 +86,18 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
       displayName: getModelDisplayName(m, p?.model_metadata),
     }));
   }, [compactionProviderId, providers]);
+
+  // 标题生成供应商的模型列表
+  const titleGenModelList = useMemo(() => {
+    const p = providers?.find(pr => pr.id === titleGenProviderId);
+    const models = p
+      ? (Array.isArray(p.models) ? p.models : (p.models || '').split(',').map((s: string) => s.trim()).filter(Boolean))
+      : [];
+    return models.map((m: string) => ({
+      value: m,
+      displayName: getModelDisplayName(m, p?.model_metadata),
+    }));
+  }, [titleGenProviderId, providers]);
 
   // 获取当前模型的 API 成本数据
   const modelCosts: Record<string, number> = currentProvider?.model_costs?.[model] ?? {};
@@ -370,6 +384,142 @@ const Parameters: React.FC<ParametersProps> = ({ disabled, providers }) => {
                     />
                   </FormControl>
                   <p className="text-[11px] text-muted-foreground">{t('agents.form.parameters.compaction.maxSummaryTokensDesc')}</p>
+                </FormItem>
+              )}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 对话标题自动生成 */}
+      <div className="rounded-xl border bg-card p-5">
+        <div className="flex justify-between items-center mb-2">
+          <div>
+            <Label className="text-sm font-medium">{t('agents.form.parameters.titleGen.title')}</Label>
+            <p className="text-xs text-muted-foreground mt-1">{t('agents.form.parameters.titleGen.desc')}</p>
+          </div>
+          <FormField
+            control={control}
+            name="title_gen_config.enabled"
+            render={({ field }) => (
+              <FormItem>
+                <FormControl>
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={disabled}
+                    />
+                    <span className="text-xs text-muted-foreground">{field.value ? t('agents.form.parameters.titleGen.on') : t('agents.form.parameters.titleGen.off')}</span>
+                  </div>
+                </FormControl>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {titleGenEnabled && (
+          <div className="space-y-4 pt-3 border-t mt-3">
+            {/* 标题生成供应商 */}
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.titleGenProvider')}</Label>
+              <FormField
+                control={control}
+                name="title_gen_config.provider_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Select
+                        value={field.value || '_fallback'}
+                        onValueChange={(val) => {
+                          field.onChange(val === '_fallback' ? '' : val);
+                          setValue('title_gen_config.model', '');
+                        }}
+                        disabled={disabled}
+                      >
+                        <SelectTrigger className="bg-background">
+                          <SelectValue placeholder={t('agents.form.parameters.titleGen.selectProvider')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_fallback">{t('agents.form.parameters.titleGen.useDefault')}</SelectItem>
+                          {providers?.filter(p => p.is_active).map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* 标题生成模型 */}
+            {titleGenProviderId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.titleGenModel')}</Label>
+                <FormField
+                  control={control}
+                  name="title_gen_config.model"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Select value={field.value || ''} onValueChange={field.onChange} disabled={disabled}>
+                          <SelectTrigger className="bg-background">
+                            <SelectValue placeholder={t('agents.form.parameters.titleGen.selectModel')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {titleGenModelList.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>{m.displayName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            {/* 标题最大长度 */}
+            <FormField
+              control={control}
+              name="title_gen_config.max_length"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.maxLength')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={8} max={50} step={1}
+                      value={field.value ?? 20}
+                      onChange={e => field.onChange(Number(e.target.value))}
+                      className="font-mono"
+                      disabled={disabled}
+                    />
+                  </FormControl>
+                  <p className="text-[11px] text-muted-foreground">{t('agents.form.parameters.titleGen.maxLengthDesc')}</p>
+                </FormItem>
+              )}
+            />
+
+            {/* 触发轮数 */}
+            <FormField
+              control={control}
+              name="title_gen_config.trigger_rounds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">{t('agents.form.parameters.titleGen.triggerRounds')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={1} max={10} step={1}
+                      value={field.value ?? 1}
+                      onChange={e => field.onChange(Number(e.target.value))}
+                      className="font-mono"
+                      disabled={disabled}
+                    />
+                  </FormControl>
+                  <p className="text-[11px] text-muted-foreground">{t('agents.form.parameters.titleGen.triggerRoundsDesc')}</p>
                 </FormItem>
               )}
             />

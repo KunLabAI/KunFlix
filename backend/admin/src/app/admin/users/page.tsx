@@ -54,6 +54,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Trash2, Coins, CreditCard, History, HardDrive, Monitor, Eye, Globe, Smartphone, Laptop, Tablet, CircleUser, Mail, RefreshCw } from 'lucide-react';
 import { formatDateTime, formatShortDateTime, formatRelativeTime } from '@/lib/date-utils';
+import { withBasePath } from '@/lib/utils';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/axios';
 import { useToast } from '@/components/ui/use-toast';
@@ -98,8 +99,8 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 // 注册来源标识组件
 function AuthSourceBadge({ user }: { user: User }) {
   const sources: { icon: string; label: string }[] = [];
-  user.google_id && sources.push({ icon: '/provider/gemini-color.svg', label: 'Google' });
-  user.github_id && sources.push({ icon: '/provider/meta-color.svg', label: 'GitHub' });
+  user.google_id && sources.push({ icon: withBasePath('/provider/gemini-color.svg'), label: 'Google' });
+  user.github_id && sources.push({ icon: withBasePath('/provider/meta-color.svg'), label: 'GitHub' });
 
   return (
     <div className="flex items-center gap-1.5">

@@ -66,6 +66,14 @@ const defaultCompactionConfig = {
   max_summary_tokens: 4096,
 };
 
+const defaultTitleGenConfig = {
+  enabled: false,
+  provider_id: '',
+  model: '',
+  max_length: 20,
+  trigger_rounds: 1,
+};
+
 export default function AgentForm({ 
   initialValues, 
   onSubmit, 
@@ -114,6 +122,7 @@ export default function AgentForm({
       image_credit_per_image: 0,
       video_config: defaultVideoConfig,
       compaction_config: defaultCompactionConfig,
+      title_gen_config: defaultTitleGenConfig,
       max_tool_rounds: 100,
     },
   });
@@ -163,6 +172,7 @@ export default function AgentForm({
         image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
         video_config: (initialValues.video_config as any) || defaultVideoConfig,
         compaction_config: initialValues.compaction_config || defaultCompactionConfig,
+        title_gen_config: initialValues.title_gen_config || defaultTitleGenConfig,
         max_tool_rounds: Number(initialValues.max_tool_rounds) || 100,
       };
       
@@ -204,6 +214,7 @@ export default function AgentForm({
         image_credit_per_image: 0,
         video_config: defaultVideoConfig,
         compaction_config: defaultCompactionConfig,
+        title_gen_config: defaultTitleGenConfig,
         max_tool_rounds: 100,
       });
       isFormInitialized.current = true;
@@ -239,7 +250,7 @@ export default function AgentForm({
 
   const handleFinish = async (values: AgentFormValues) => {
     try {
-      const { tools_enabled, gemini_config, image_config, video_config, compaction_config, ...rest } = values;
+      const { tools_enabled, gemini_config, image_config, video_config, compaction_config, title_gen_config, ...rest } = values;
       
       // Clean up gemini_config（仅保留思考、媒体、搜索字段）
       const cleanedGeminiConfig = gemini_config ? {
@@ -281,6 +292,15 @@ export default function AgentForm({
         max_summary_tokens: compaction_config.max_summary_tokens ?? 4096,
       } : { enabled: false, compact_ratio: 0.75, reserve_ratio: 0.15, tool_old_threshold: 500, tool_recent_n: 5, max_summary_tokens: 4096 };
 
+      // Clean up title_gen_config（关闭时仅保留 enabled:false，避免冗余字段）
+      const cleanedTitleGenConfig = title_gen_config?.enabled ? {
+        enabled: true,
+        provider_id: title_gen_config.provider_id || '',
+        model: title_gen_config.model || '',
+        max_length: title_gen_config.max_length ?? 20,
+        trigger_rounds: Math.max(1, Math.min(10, Number(title_gen_config.trigger_rounds) || 1)),
+      } : { enabled: false, max_length: 20, trigger_rounds: 1 };
+
       const payload: Partial<Agent> = {
         ...rest,
         tools: tools_enabled ? values.tools : [],
@@ -288,6 +308,7 @@ export default function AgentForm({
         image_config: cleanedImageConfig,
         video_config: cleanedVideoConfig,
         compaction_config: cleanedCompactionConfig,
+        title_gen_config: cleanedTitleGenConfig,
       };
       
       console.log('Submitting payload:', JSON.stringify(payload, null, 2));

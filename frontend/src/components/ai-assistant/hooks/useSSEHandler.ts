@@ -66,6 +66,7 @@ export function useSSEHandler() {
   const setMessages = useAIAssistantStore((state) => state.setMessages);
   const setIsLoading = useAIAssistantStore((state) => state.setIsOpen);
   const setContextUsage = useAIAssistantStore((state) => state.setContextUsage);
+  const updateChatTitleInList = useAIAssistantStore((state) => state.updateChatTitleInList);
   const { updateCredits } = useAuth();
   
   // Debounced timer for clearing canvas node effects after tool chain completes
@@ -712,6 +713,12 @@ export function useSSEHandler() {
         ]);
       },
 
+      // 对话标题已生成（后端在第二轮 AI 回复后推送）
+      title_updated: () => {
+        const d = data as { session_id?: string; title?: string };
+        d.session_id && d.title && updateChatTitleInList(d.session_id, d.title);
+      },
+
       // 完成（延迟执行，打破 React 18 自动批处理：
       //   当 text + done 事件在同一 reader.read() 中到达时，
       //   同步处理会导致 setMessages 被批处理为一次渲染，
@@ -757,7 +764,7 @@ export function useSSEHandler() {
     };
 
     handlers[eventType]?.();
-  }, [setMessages, resetStreamingState, updateCredits, setContextUsage]);
+  }, [setMessages, resetStreamingState, updateCredits, setContextUsage, updateChatTitleInList]);
 
   return {
     parseSSELine,

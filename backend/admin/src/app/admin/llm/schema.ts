@@ -1,6 +1,7 @@
 
 import * as z from 'zod';
 import type { TFunction } from 'i18next';
+import { withBasePath } from '@/lib/utils';
 
 export const PRESET_COST_DIMENSIONS: Record<string, { labelKey: string; unit: string }> = {
   input:              { labelKey: 'llm.costDimension.input',              unit: 'USD/1M tokens' },
@@ -31,21 +32,21 @@ export const MODEL_TYPE_OPTIONS = [
 ] as const;
 
 export const PROVIDER_ICONS: Record<string, string> = {
-  openai: '/provider/openai.svg',
-  azure: '/provider/azureai-color.svg',
-  dashscope: '/provider/qwen-color.svg',
-  anthropic: '/provider/claude-color.svg',
-  gemini: '/provider/gemini-color.svg',
-  deepseek: '/provider/deepseek-color.svg',
-  minimax: '/provider/minimax-color.svg',
-  xai: '/provider/grok.svg',
-  doubao: '/provider/doubao-color.svg',
-  kling: '/provider/kling-color.svg',
-  meta: '/provider/meta-color.svg',
-  microsoft: '/provider/microsoft-color.svg',
-  openrouter: '/provider/openrouter.svg',
-  sora: '/provider/sora-color.svg',
-  ark: '/provider/volcengine-color.svg',
+  openai: withBasePath('/provider/openai.svg'),
+  azure: withBasePath('/provider/azureai-color.svg'),
+  dashscope: withBasePath('/provider/qwen-color.svg'),
+  anthropic: withBasePath('/provider/claude-color.svg'),
+  gemini: withBasePath('/provider/gemini-color.svg'),
+  deepseek: withBasePath('/provider/deepseek-color.svg'),
+  minimax: withBasePath('/provider/minimax-color.svg'),
+  xai: withBasePath('/provider/grok.svg'),
+  doubao: withBasePath('/provider/doubao-color.svg'),
+  kling: withBasePath('/provider/kling-color.svg'),
+  meta: withBasePath('/provider/meta-color.svg'),
+  microsoft: withBasePath('/provider/microsoft-color.svg'),
+  openrouter: withBasePath('/provider/openrouter.svg'),
+  sora: withBasePath('/provider/sora-color.svg'),
+  ark: withBasePath('/provider/volcengine-color.svg'),
 };
 
 // Provider brand labels come from the vendor itself (proper nouns), not translated.

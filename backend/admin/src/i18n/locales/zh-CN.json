@@ -668,6 +668,21 @@
           "maxSummaryTokens": "最大摘要 Token 数",
           "maxSummaryTokensDesc": "LLM 生成摘要时的 max_tokens 限制"
         },
+        "titleGen": {
+          "title": "自动标题命名",
+          "desc": "在指定轮数的对话结束后，自动用 AI 概括出简洁标题",
+          "on": "开启",
+          "off": "关闭",
+          "titleGenProvider": "标题生成供应商，尽量选择非思考模型",
+          "useDefault": "使用当前智能体的供应商（默认）",
+          "titleGenModel": "标题生成模型",
+          "selectProvider": "选择供应商",
+          "selectModel": "选择模型",
+          "maxLength": "标题最大长度（字符）",
+          "maxLengthDesc": "建议 8 - 50 之间，默认 20 字符",
+          "triggerRounds": "触发轮数",
+          "triggerRoundsDesc": "第几轮对话结束后触发标题生成，范围 1 - 10，默认 1"
+        },
         "maxToolRounds": {
           "title": "工具调用轮次限制",
           "desc": "单轮对话中最大工具调用次数",
