@@ -198,7 +198,7 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
   return (
     <div
       className={cn(
-        'rounded-lg border overflow-hidden transition-all duration-300 my-2',
+        'rounded-lg overflow-hidden transition-all duration-300 my-2',
         isActive
           ? 'bg-[var(--color-status-processing-bg)] border-[var(--color-status-processing-border)]'
           : status === 'completed'

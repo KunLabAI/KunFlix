@@ -243,6 +243,29 @@ interface CanvasState {
 
 const MAX_HISTORY = 50;
 
+// --- Debounced snapshot for data updates ---
+// 文本节点等数据更新会逐字触发 updateNodeData，若每次都打快照，50 条 MAX_HISTORY
+// 会被瞬间填满。这里用模块作用域 timer（不进 zustand state，避免渲染抖动）
+// 把连续的数据更新合并为一次快照。结构性入口（拖拽结束、删除、连线等）会在
+// 自身打快照前先 flush，保证历史顺序：先输入快照入栈，再结构性快照入栈。
+let dataSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
+const DATA_SNAPSHOT_DEBOUNCE_MS = 500;
+
+const scheduleDataSnapshot = (snapshot: () => void) => {
+  dataSnapshotTimer && clearTimeout(dataSnapshotTimer);
+  dataSnapshotTimer = setTimeout(() => {
+    dataSnapshotTimer = null;
+    snapshot();
+  }, DATA_SNAPSHOT_DEBOUNCE_MS);
+};
+
+const flushPendingDataSnapshot = () => {
+  if (!dataSnapshotTimer) return;
+  clearTimeout(dataSnapshotTimer);
+  dataSnapshotTimer = null;
+  useCanvasStore.getState().takeSnapshot();
+};
+
 // --- Mapping helpers: frontend <-> backend ---
 
 function nodeToApi(node: CanvasNode): TheaterNodeCreate {
@@ -296,17 +319,20 @@ function apiToEdge(e: { id: string; source_node_id: string; target_node_id: stri
 }
 
 function applyDetail(detail: TheaterDetailResponse) {
+  const initialNodes = detail.nodes.map(apiToNode);
+  const initialEdges = detail.edges.map(apiToEdge);
   return {
     theaterId: detail.id,
     theaterTitle: detail.title,
-    nodes: detail.nodes.map(apiToNode),
-    edges: detail.edges.map(apiToEdge),
+    nodes: initialNodes,
+    edges: initialEdges,
     viewport: (detail.canvas_viewport as Viewport) || { x: 0, y: 0, zoom: 1 },
     isLoading: false,
     isDirty: false,
     lastSavedAt: Date.now(),
-    history: [] as HistoryState[],
-    historyIndex: -1,
+    // 写入初始快照，确保首次结构性变更后 undo 能回到加载时的状态
+    history: [{ nodes: initialNodes, edges: initialEdges }] as HistoryState[],
+    historyIndex: 0,
   };
 }
 
@@ -338,30 +364,47 @@ export const useCanvasStore = create<CanvasState>()(
       onNodesChange: (changes: NodeChange[]) => {
         const { nodes } = get();
         const nextNodes = applyNodeChanges(changes, nodes) as CanvasNode[];
-        
+
         // Flag as dirty for relevant changes (position, dimension, remove)
         const isSignificant = changes.some(
           (c) => c.type === 'position' || c.type === 'dimensions' || c.type === 'remove' || c.type === 'add'
         );
 
-        set({ 
+        // 结束帧才打快照：拖拽释放 / 缩放释放 / 节点删除（含 React Flow Delete 键）
+        // - dimensions 在节点首次 measure 时也会触发，但不带 resizing 字段（undefined），
+        //   严格 === false 判定可避开 measure 噪音，仅捕获 NodeResizer 真正释放的那一帧。
+        // - add 由 addNode 已经 snapshot，这里跳过避免重复。
+        const shouldSnapshot = changes.some(
+          (c) =>
+            (c.type === 'position' && c.dragging === false) ||
+            (c.type === 'dimensions' && c.resizing === false) ||
+            c.type === 'remove'
+        );
+
+        set({
           nodes: nextNodes,
           ...(isSignificant ? { isDirty: true } : {})
         });
+
+        shouldSnapshot && (flushPendingDataSnapshot(), get().takeSnapshot());
       },
 
       onEdgesChange: (changes: EdgeChange[]) => {
         const { edges } = get();
         const nextEdges = applyEdgeChanges(changes, edges);
-        
+
         const isSignificant = changes.some(
           (c) => c.type === 'remove' || c.type === 'add'
         );
+        // 仅 remove 由这里触发快照（add 由 connectAndInject 负责）
+        const shouldSnapshot = changes.some((c) => c.type === 'remove');
 
-        set({ 
+        set({
           edges: nextEdges,
           ...(isSignificant ? { isDirty: true } : {})
         });
+
+        shouldSnapshot && (flushPendingDataSnapshot(), get().takeSnapshot());
       },
 
       onConnect: (connection: Connection) => {
@@ -409,6 +452,7 @@ export const useCanvasStore = create<CanvasState>()(
         // 2. 建边（显式指定短 UUID，避免 xyflow 默认生成 xy-edge__xxx 超长 ID 超过后端 VARCHAR 限制）
         const newEdges = addEdge({ ...connection, id: uuidv4(), type: 'custom', animated: true }, edges);
         set({ edges: newEdges, isDirty: true });
+        flushPendingDataSnapshot();
         get().takeSnapshot();
 
         // 3. 构建 payload（空则不注入，但连线已建立）
@@ -457,6 +501,7 @@ export const useCanvasStore = create<CanvasState>()(
           ? node
           : { ...node, data: { ...node.data, updatedAt: new Date().toISOString() } };
         set({ nodes: [...nodes, stamped], isDirty: true });
+        flushPendingDataSnapshot();
         get().takeSnapshot();
       },
 
@@ -467,6 +512,7 @@ export const useCanvasStore = create<CanvasState>()(
           (edge) => edge.source !== id && edge.target !== id
         );
         set({ nodes: newNodes, edges: newEdges, isDirty: true });
+        flushPendingDataSnapshot();
         get().takeSnapshot();
       },
 
@@ -475,6 +521,7 @@ export const useCanvasStore = create<CanvasState>()(
         const edgeToDelete = edges.find((edge) => edge.id === id);
         const newEdges = edges.filter((edge) => edge.id !== id);
         set({ edges: newEdges, isDirty: true });
+        flushPendingDataSnapshot();
         get().takeSnapshot();
         
         if (edgeToDelete) {
@@ -491,11 +538,12 @@ export const useCanvasStore = create<CanvasState>()(
           position: { x: 100, y: 100 },
           data: { title: '我的文本卡', tags: [] },
         };
+        // 写入初始快照，确保首次结构性变更后 undo 能回到 reset 时的状态
         set({
           nodes: [initialNode],
           edges: [],
-          history: [],
-          historyIndex: -1,
+          history: [{ nodes: [initialNode], edges: [] }],
+          historyIndex: 0,
           viewport: { x: 0, y: 0, zoom: 1 },
           theaterId: null,
           theaterTitle: '未命名剧场',
@@ -512,7 +560,9 @@ export const useCanvasStore = create<CanvasState>()(
           ),
           isDirty: true,
         });
-        get().takeSnapshot();
+        // 数据更新（含 Tiptap 文本输入）走去抖合并，避免逐字打满 50 步历史。
+        // 任何结构性入口在自己 takeSnapshot 前会先 flush，保证历史顺序正确。
+        scheduleDataSnapshot(() => get().takeSnapshot());
       },
 
       updateNodeDimensions: (id: string, width: number, height: number) => {
@@ -522,8 +572,8 @@ export const useCanvasStore = create<CanvasState>()(
           ),
           isDirty: true,
         });
-        // We might not want to take a snapshot for every dimension change
-        // get().takeSnapshot();
+        // 不在此处打快照：NodeResizer 触发的尺寸变化由 onNodesChange 的
+        // resize 结束帧（dimensions + resizing===false）统一负责，避免双写。
       },
 
       setViewport: (viewport: Viewport) => {
@@ -546,6 +596,9 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       undo: () => {
+        // 先 flush 待打的数据快照，避免「连续输入 → Ctrl+Z 时去抖快照尚未落地」
+        // 造成跳两步的错觉。
+        flushPendingDataSnapshot();
         const { historyIndex, history } = get();
         if (historyIndex > 0) {
           const prevIndex = historyIndex - 1;
@@ -560,6 +613,7 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       redo: () => {
+        flushPendingDataSnapshot();
         const { historyIndex, history } = get();
         if (historyIndex < history.length - 1) {
           const nextIndex = historyIndex + 1;

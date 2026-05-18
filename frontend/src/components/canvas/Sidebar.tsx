@@ -87,6 +87,44 @@ const EMPTY_STATE_CONFIG: Record<string, { icon: React.ElementType; labelKey: st
   audio: { icon: Headphones, labelKey: 'sidebar.noAudio' },
 };
 
+// 悬停预览渲染器映射表（避免 if-else 分支）
+const HOVER_PREVIEW_RENDERERS: Record<string, React.FC<{ asset: AssetItem }>> = {
+  image: ({ asset }) => (
+    <img
+      src={asset.url}
+      alt={asset.original_name || asset.filename}
+      draggable={false}
+      className="w-full h-full object-contain bg-black/5"
+    />
+  ),
+  video: ({ asset }) => (
+    <video
+      src={asset.url}
+      autoPlay
+      muted
+      controls
+      playsInline
+      className="w-full h-full object-contain bg-black"
+    />
+  ),
+  audio: ({ asset }) => (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-5 p-6 bg-secondary/30">
+      <div className="w-24 h-24 rounded-full bg-amber-500/10 flex items-center justify-center">
+        <Headphones className="w-12 h-12 text-amber-500/60" />
+      </div>
+      <span className="text-sm font-medium text-foreground truncate max-w-[90%] text-center">
+        {asset.original_name || asset.filename}
+      </span>
+      <audio src={asset.url} autoPlay controls className="w-[80%]" />
+    </div>
+  ),
+};
+
+const HOVER_DELAY_MS = 1000;
+const PREVIEW_W = 768;
+const PREVIEW_H = 384;
+const PREVIEW_GAP = 12;
+
 // Tab key -> API file_type 映射
 const TAB_TYPE_MAP: Record<string, string> = { images: 'image', videos: 'video', audio: 'audio' };
 const PAGE_SIZE = 20;
@@ -114,6 +152,42 @@ export const Sidebar = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabDataRef = useRef(tabData);
   tabDataRef.current = tabData;
+
+  // ── 悬停预览状态 ──
+  const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
+  const [previewPos, setPreviewPos] = useState({ top: 0, left: 0 });
+  const previewHoverRef = useRef<NodeJS.Timeout | null>(null);
+  const previewCloseRef = useRef<NodeJS.Timeout | null>(null);
+  const previewAssetRef = useRef<AssetItem | null>(null);
+  previewAssetRef.current = previewAsset;
+
+  const handleAssetHoverEnter = useCallback((e: React.MouseEvent, asset: AssetItem) => {
+    previewCloseRef.current && clearTimeout(previewCloseRef.current);
+    previewHoverRef.current && clearTimeout(previewHoverRef.current);
+    const el = e.currentTarget as HTMLElement;
+    // 已有预览时立即切换；否则延迟 1s
+    const delay = previewAssetRef.current ? 0 : HOVER_DELAY_MS;
+    previewHoverRef.current = setTimeout(() => {
+      const rect = el.getBoundingClientRect();
+      const top = Math.max(8, Math.min(rect.top, window.innerHeight - PREVIEW_H - 8));
+      const left = Math.min(rect.right + PREVIEW_GAP, window.innerWidth - PREVIEW_W - 8);
+      setPreviewPos({ top, left });
+      setPreviewAsset(asset);
+    }, delay);
+  }, []);
+
+  const handleAssetHoverLeave = useCallback(() => {
+    previewHoverRef.current && clearTimeout(previewHoverRef.current);
+    previewCloseRef.current = setTimeout(() => setPreviewAsset(null), 200);
+  }, []);
+
+  const handlePreviewEnter = useCallback(() => {
+    previewCloseRef.current && clearTimeout(previewCloseRef.current);
+  }, []);
+
+  const handlePreviewLeave = useCallback(() => {
+    setPreviewAsset(null);
+  }, []);
 
   // 加载指定 tab 的下一页（通过 ref 读取最新状态，避免闭包陈旧值）
   const loadPage = useCallback(async (tab: string) => {
@@ -149,6 +223,19 @@ export const Sidebar = () => {
   useEffect(() => {
     activeMenu !== 'assets' && setTabData({ images: { ...INIT_TAB }, videos: { ...INIT_TAB }, audio: { ...INIT_TAB } });
   }, [activeMenu]);
+
+  // 面板关闭 / 切换 tab 时清理悬停预览
+  useEffect(() => {
+    setPreviewAsset(null);
+    previewHoverRef.current && clearTimeout(previewHoverRef.current);
+    previewCloseRef.current && clearTimeout(previewCloseRef.current);
+  }, [activeMenu, activeAssetTab]);
+
+  // 组件卸载时清理定时器
+  useEffect(() => () => {
+    previewHoverRef.current && clearTimeout(previewHoverRef.current);
+    previewCloseRef.current && clearTimeout(previewCloseRef.current);
+  }, []);
 
   // 滚动到底部时加载更多
   const handleScroll = useCallback(() => {
@@ -222,7 +309,10 @@ export const Sidebar = () => {
     onDragStart(event, info.nodeType, info.data);
   };
 
+  const PreviewRenderer = previewAsset ? HOVER_PREVIEW_RENDERERS[previewAsset.file_type ?? ''] : null;
+
   return (
+    <>
     <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50">
       <div 
         className="flex flex-col gap-2 p-1.5 rounded-xl bg-background border border-border/50 shadow-none"
@@ -308,7 +398,7 @@ export const Sidebar = () => {
             </div>
 
             {/* Content Area */}
-            <div ref={scrollRef} onScroll={handleScroll} className="max-h-[300px] min-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+            <div ref={scrollRef} onScroll={handleScroll} className="max-h-[500px] min-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
               
               {/* Loading state - 首次加载 */}
               {isLoading && (
@@ -325,6 +415,8 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onAssetDragStart(e, asset)}
+                      onMouseEnter={(e) => handleAssetHoverEnter(e, asset)}
+                      onMouseLeave={handleAssetHoverLeave}
                       className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-green/50 transition-colors h-[80px] flex items-center justify-center"
                     >
                       <img 
@@ -360,6 +452,8 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onAssetDragStart(e, asset)}
+                      onMouseEnter={(e) => handleAssetHoverEnter(e, asset)}
+                      onMouseLeave={handleAssetHoverLeave}
                       className="group relative rounded-lg border border-border/50 overflow-hidden cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-yellow/50 transition-colors h-[80px] flex items-center justify-center bg-black/80"
                     >
                       <video 
@@ -400,6 +494,8 @@ export const Sidebar = () => {
                       key={asset.id} 
                       draggable
                       onDragStart={(e) => onAssetDragStart(e, asset)}
+                      onMouseEnter={(e) => handleAssetHoverEnter(e, asset)}
+                      onMouseLeave={handleAssetHoverLeave}
                       className="group flex items-center gap-3 p-2.5 rounded-lg border border-border/50 cursor-grab active:cursor-grabbing bg-secondary/50 hover:border-node-blue/50 transition-colors"
                     >
                       <div className="p-1.5 rounded-md bg-node-blue/10 shrink-0">
@@ -440,5 +536,23 @@ export const Sidebar = () => {
         </div>
       </div>
     </div>
+
+    {/* 悬停预览浮层 */}
+    {previewAsset && PreviewRenderer && (
+      <div
+        className="fixed z-[60] bg-background border border-border/50 rounded-xl overflow-hidden shadow-xl animate-in fade-in zoom-in-95 duration-150"
+        style={{
+          top: previewPos.top,
+          left: previewPos.left,
+          width: PREVIEW_W,
+          height: PREVIEW_H,
+        }}
+        onMouseEnter={handlePreviewEnter}
+        onMouseLeave={handlePreviewLeave}
+      >
+        <PreviewRenderer asset={previewAsset} />
+      </div>
+    )}
+    </>
   );
 };
