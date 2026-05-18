@@ -61,7 +61,7 @@
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
     "lucide-react": "^1.14.0",
-    "next": "16.2.4",
+    "next": "16.2.6",
     "pixi.js": "^8.16.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
