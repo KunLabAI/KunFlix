@@ -167,12 +167,16 @@ export function createAudioDragPreview(name: string, maxWidth = 160): HTMLElemen
     display: 'flex', alignItems: 'center', gap: '10px',
   });
 
-  preview.innerHTML = `
-    <div style="width:28px;height:28px;border-radius:50%;background:rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-    </div>
-    <span style="color:#fff;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
-  `;
+  const iconWrap = document.createElement('div');
+  iconWrap.style.cssText = 'width:28px;height:28px;border-radius:50%;background:rgba(245,158,11,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0';
+  iconWrap.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
+
+  const textSpan = document.createElement('span');
+  textSpan.style.cssText = 'color:#fff;font-size:11px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  textSpan.textContent = name;
+
+  preview.appendChild(iconWrap);
+  preview.appendChild(textSpan);
 
   document.body.appendChild(preview);
   return preview;
@@ -190,12 +194,21 @@ export function createTextDragPreview(text: string, maxWidth = 180): HTMLElement
   });
 
   const displayText = text.length > 60 ? text.slice(0, 60) + '...' : text;
-  preview.innerHTML = `
-    <div style="display:flex;align-items:flex-start;gap:8px">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
-      <span style="color:#e2e8f0;font-size:11px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${displayText}</span>
-    </div>
-  `;
+
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:flex-start;gap:8px';
+
+  const icon = document.createElement('span');
+  icon.style.cssText = 'flex-shrink:0;margin-top:1px;display:inline-flex';
+  icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+
+  const textSpan = document.createElement('span');
+  textSpan.style.cssText = 'color:#e2e8f0;font-size:11px;line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical';
+  textSpan.textContent = displayText;
+
+  row.appendChild(icon);
+  row.appendChild(textSpan);
+  preview.appendChild(row);
 
   document.body.appendChild(preview);
   return preview;
