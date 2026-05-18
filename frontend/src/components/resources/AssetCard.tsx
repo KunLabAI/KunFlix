@@ -45,13 +45,31 @@ function formatDate(dateStr: string): string {
 
 function ImagePreview({ url }: { url: string }) {
   // 列表场景使用缩略图，原图仅在预览/下载时加载
-  return <img src={toThumbUrl(url)} alt="" loading="lazy" className="w-full h-full object-cover" />;
+  // 禁用原生拖拽，避免用户从缩略图拖出后被页面拖拽上传区误推为文件上传
+  return (
+    <img
+      src={toThumbUrl(url)}
+      alt=""
+      loading="lazy"
+      draggable={false}
+      onDragStart={(e) => e.preventDefault()}
+      className="w-full h-full object-cover"
+    />
+  );
 }
 
 function VideoPreview({ url }: { url: string }) {
   return (
     <div className="relative w-full h-full bg-black/80">
-      <video src={`${url}#t=0.5`} preload="metadata" muted playsInline className="w-full h-full object-cover opacity-60" />
+      <video
+        src={`${url}#t=0.5`}
+        preload="metadata"
+        muted
+        playsInline
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        className="w-full h-full object-cover opacity-60"
+      />
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-8 h-8 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
           <div className="w-0 h-0 border-t-[5px] border-t-transparent border-l-[8px] border-l-white border-b-[5px] border-b-transparent ml-0.5" />
@@ -65,7 +83,14 @@ function AudioPreview({ url }: { url: string }) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-secondary/50 p-4">
       <Music className="w-10 h-10 text-muted-foreground/30" />
-      <audio src={url} controls preload="metadata" className="w-full max-w-full h-8 [&::-webkit-media-controls-panel]:bg-transparent" />
+      <audio
+        src={url}
+        controls
+        preload="metadata"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+        className="w-full max-w-full h-8 [&::-webkit-media-controls-panel]:bg-transparent"
+      />
     </div>
   );
 }

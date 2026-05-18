@@ -162,6 +162,8 @@ export default function ResourcesPage() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
+    // 仅接受 OS 文件拖拽；过滤页面内元素（如预览图片）冒泡过来的拖拽
+    if (!Array.from(e.dataTransfer.types).includes("Files")) return;
     handleFiles(e.dataTransfer.files);
   };
 
@@ -784,7 +786,12 @@ export default function ResourcesPage() {
         {/* Asset Grid / List with Drag Overlay */}
         <div 
           className="relative"
-          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onDragOver={(e) => {
+            // 仅在拖动 OS 文件时激活上传高亮；页面内元素拖拽直接忽略
+            if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+            e.preventDefault();
+            setIsDragOver(true);
+          }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
         >
@@ -907,6 +914,8 @@ export default function ResourcesPage() {
       {/* Dialogs */}
       <AssetPreviewDialog
         asset={previewTarget}
+        assets={assets}
+        onNavigate={setPreviewTarget}
         onClose={() => setPreviewTarget(null)}
       />
       <AssetEditDialog

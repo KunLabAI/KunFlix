@@ -136,7 +136,12 @@
     "downloading": "下载中...",
     "deleteProgress": "正在删除 {{current}}/{{total}}",
     "deleteComplete": "删除完成，共删除 {{count}} 个资产",
-    "deleteFailed": "部分删除失败，已删除 {{deleted}}/{{total}}"
+    "deleteFailed": "部分删除失败，已删除 {{deleted}}/{{total}}",
+    "preview": {
+      "title": "预览",
+      "prev": "上一张",
+      "next": "下一张"
+    }
   },
   "filter": {
     "all": "全部",

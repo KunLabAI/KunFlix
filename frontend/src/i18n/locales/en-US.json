@@ -136,7 +136,12 @@
     "downloading": "Downloading...",
     "deleteProgress": "Deleting {{current}}/{{total}}",
     "deleteComplete": "Deleted {{count}} assets successfully",
-    "deleteFailed": "Partially failed, deleted {{deleted}}/{{total}}"
+    "deleteFailed": "Partially failed, deleted {{deleted}}/{{total}}",
+    "preview": {
+      "title": "Preview",
+      "prev": "Previous",
+      "next": "Next"
+    }
   },
   "filter": {
     "all": "All",

@@ -42,12 +42,19 @@ services:
   redis:
     image: redis:7-alpine
     container_name: kunflix-redis
+    # 注：REDIS_PASSWORD 既要在编排期被 Compose 注入到 --requirepass，
+    # 也必须以环境变量形式存在于容器内，否则 healthcheck 里的
+    # `redis-cli -a $REDIS_PASSWORD` 在容器 shell 中展开为空，触发 NOAUTH
+    # 导致容器始终 unhealthy（业务实际可用，但 update.sh 健康检查超时）。
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     command: ["redis-server", "/usr/local/etc/redis/redis.conf", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redisdata:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep -q PONG"]
+      # 用单引号包裹 -a 的密码，避免特殊字符被容器 shell 二次解析
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
