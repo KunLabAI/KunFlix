@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import logging
 import string
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -18,8 +17,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import EmailTemplate
-
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
