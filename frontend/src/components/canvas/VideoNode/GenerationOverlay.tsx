@@ -4,10 +4,14 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+interface Props {
+  elapsedMs: number;
+}
+
 /**
- * AI 视频生成中的覆盖层（蓝色发光边框 + 旋转图标 + 文案）
+ * AI 视频生成中的覆盖层（蓝色发光边框 + 旋转图标 + 计时）
  */
-export function GenerationOverlay() {
+export function GenerationOverlay({ elapsedMs }: Props) {
   const { t } = useTranslation();
   return (
     <>
@@ -22,9 +26,12 @@ export function GenerationOverlay() {
         className="absolute inset-0 rounded-xl pointer-events-none z-[19]"
         style={{ backgroundColor: 'rgba(59,130,246,0.08)' }}
       />
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-[21] pointer-events-none">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-400 mb-2" />
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 z-[21] pointer-events-none">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
         <span className="text-sm font-medium text-blue-400">{t('canvas.node.video.generatingHint')}</span>
+        <span className="text-xs font-mono text-blue-300/90 tabular-nums">
+          {(elapsedMs / 1000).toFixed(1)}s
+        </span>
       </div>
     </>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { useReactFlow } from '@xyflow/react';
@@ -31,6 +31,19 @@ export function useAudioGenerationApply(id: string, data: AudioNodeData) {
 
   const prevAudioUrlRef = useRef<string | null>(null);
   const lastSubmitParamsRef = useRef<MusicCreateParams | null>(null);
+
+  // 生成中实时计时（每 100ms），与图像节点对齐
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const start = startedAtRef.current;
+    !taskActive && (startedAtRef.current = null);
+    !start && setElapsedMs(0);
+    const tick = () => start && setElapsedMs(Date.now() - start);
+    tick();
+    const tid = start ? setInterval(tick, 100) : null;
+    return () => { tid && clearInterval(tid); };
+  }, [taskActive]);
 
   // 完成后自动写入当前节点 + 累积历史记录（去重）
   useEffect(() => {
@@ -68,6 +81,7 @@ export function useAudioGenerationApply(id: string, data: AudioNodeData) {
   }, [musicTask.isCompleted, musicTask.status?.audio_url]);
 
   const submit = useCallback((params: MusicCreateParams) => {
+    startedAtRef.current = Date.now();
     prevAudioUrlRef.current = data.audioUrl || null;
     lastSubmitParamsRef.current = params;
     musicTask.submit({ ...params, node_id: id });
@@ -126,6 +140,7 @@ export function useAudioGenerationApply(id: string, data: AudioNodeData) {
     taskActive,
     taskDone,
     taskFailed,
+    elapsedMs,
     prevAudioUrlRef,
     submit,
     applyToNode,

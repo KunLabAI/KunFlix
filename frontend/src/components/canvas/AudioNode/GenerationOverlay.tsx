@@ -4,10 +4,14 @@ import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+interface Props {
+  elapsedMs: number;
+}
+
 /**
- * AI 音乐生成中的覆盖层（紫色发光边框 + 旋转图标 + 文案）
+ * AI 音乐生成中的覆盖层（紫色发光边框 + 旋转图标 + 计时）
  */
-export function GenerationOverlay() {
+export function GenerationOverlay({ elapsedMs }: Props) {
   const { t } = useTranslation();
   return (
     <>
@@ -22,10 +26,13 @@ export function GenerationOverlay() {
         className="absolute inset-0 rounded-xl pointer-events-none z-[19]"
         style={{ backgroundColor: 'rgba(168,85,247,0.08)' }}
       />
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-[21] pointer-events-none">
-        <Loader2 className="w-8 h-8 animate-spin text-purple-400 mb-2" />
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 z-[21] pointer-events-none">
+        <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
         <span className="text-sm font-medium text-purple-400">
           {t('canvas.node.audio.generatingHint', '音乐生成中...')}
+        </span>
+        <span className="text-xs font-mono text-purple-300/90 tabular-nums">
+          {(elapsedMs / 1000).toFixed(1)}s
         </span>
       </div>
     </>
