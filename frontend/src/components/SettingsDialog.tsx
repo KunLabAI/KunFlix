@@ -831,8 +831,10 @@ function ChangePasswordSection({
 
   const handleSubmit = async () => {
     const err = firstError();
-    err && (message.error(err), 0);
-    if (err) return;
+    if (err) {
+      message.error(err);
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post("/auth/password/change", {
