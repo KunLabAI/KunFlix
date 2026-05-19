@@ -20,6 +20,9 @@ import {
   Calendar,
   RefreshCw,
   Globe2,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -34,6 +37,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import api from "@/lib/api";
+import { App } from "antd";
+import EmailCodeField from "@/components/EmailCodeField";
 import { useGitHubReleases } from "@/hooks/useGitHubReleases";
 import {
   Dialog,
@@ -117,9 +122,10 @@ interface SettingsDialogProps {
 // ── main component ──────────────────────────────────────────────────────────
 export default function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const { t, i18n } = useTranslation();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const { message } = App.useApp();
 
   const [currentTab, setCurrentTab] = useState<TabKey>("subscription");
   const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([]);
@@ -334,6 +340,20 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
             </div>
           </div>
         </section>
+
+        <hr className="border-border" />
+
+        {/* account & security: change password */}
+        <ChangePasswordSection
+          email={user?.email || ""}
+          t={t}
+          onSuccess={() => {
+            onOpenChange(false);
+            logout();
+            router.push("/login");
+          }}
+          message={message}
+        />
 
         <hr className="border-border" />
 
@@ -764,6 +784,197 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Change Password Section (3-step flow) ───────────────────────────────
+function ChangePasswordSection({
+  email,
+  t,
+  onSuccess,
+  message,
+}: {
+  email: string;
+  t: (key: string, opts?: any) => string;
+  onSuccess: () => void;
+  message: { success: (s: string) => void; error: (s: string) => void };
+}) {
+  const [opened, setOpened] = useState(false);
+  const [verifyToken, setVerifyToken] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [showOld, setShowOld] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  const reset = () => {
+    setOpened(false);
+    setVerifyToken("");
+    setOldPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowOld(false);
+    setShowNew(false);
+  };
+
+  // 顺序校验，第一个失败即返回；避免 if-elif 链
+  const validations: Array<() => string | null> = [
+    () => (verifyToken ? null : t("settings.general.changePassword.verifyFirst")),
+    () => (oldPassword.length >= 6 ? null : t("settings.general.changePassword.tooShort")),
+    () => (newPassword.length >= 6 ? null : t("settings.general.changePassword.tooShort")),
+    () => (newPassword === confirmPassword ? null : t("settings.general.changePassword.mismatch")),
+  ];
+
+  const firstError = (): string | null =>
+    validations.reduce<string | null>((acc, fn) => acc ?? fn(), null);
+
+  const handleSubmit = async () => {
+    const err = firstError();
+    err && (message.error(err), 0);
+    if (err) return;
+    setSubmitting(true);
+    try {
+      await api.post("/auth/password/change", {
+        old_password: oldPassword,
+        new_password: newPassword,
+        verify_token: verifyToken,
+      });
+      message.success(t("settings.general.changePassword.success"));
+      reset();
+      onSuccess();
+    } catch (e: any) {
+      message.error(e.response?.data?.detail || t("settings.general.changePassword.failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const passwordReady = !!verifyToken && oldPassword.length >= 6 && newPassword.length >= 6 && newPassword === confirmPassword;
+
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-foreground mb-3">
+        {t("settings.general.changePassword.title")}
+      </h2>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">{t("settings.general.changePassword.label")}</p>
+          <p className="text-xs text-muted-foreground mt-1">{t("settings.general.changePassword.description")}</p>
+        </div>
+        {!opened && (
+          <button
+            onClick={() => setOpened(true)}
+            className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-background hover:bg-muted text-sm font-medium text-foreground transition-colors"
+          >
+            <KeyRound className="w-4 h-4" />
+            {t("settings.general.changePassword.entry")}
+          </button>
+        )}
+      </div>
+
+      {opened && (
+        <div className="mt-4 space-y-5 rounded-xl border border-border bg-muted/20 p-5">
+          {/* Step 1: email verification */}
+          <div>
+            <p className="text-sm font-semibold text-foreground mb-3">
+              {t("settings.general.changePassword.step1")}
+            </p>
+            <EmailCodeField
+              email={email}
+              purpose="change_password"
+              onVerified={setVerifyToken}
+              onInvalidate={() => setVerifyToken("")}
+            />
+          </div>
+
+          {/* Step 2: new password */}
+          <div className={cn("space-y-3", !verifyToken && "opacity-50 pointer-events-none")}>
+            <p className="text-sm font-semibold text-foreground">
+              {t("settings.general.changePassword.step2")}
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1.5">
+                {t("settings.general.changePassword.oldPassword")}
+              </label>
+              <div className="relative">
+                <input
+                  type={showOld ? "text" : "password"}
+                  value={oldPassword}
+                  onChange={(e) => setOldPassword(e.target.value)}
+                  placeholder={t("settings.general.changePassword.oldPasswordPlaceholder")}
+                  className="w-full h-10 px-3 pr-9 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOld((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showOld ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1.5">
+                {t("settings.general.changePassword.newPassword")}
+              </label>
+              <div className="relative">
+                <input
+                  type={showNew ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder={t("settings.general.changePassword.newPasswordPlaceholder")}
+                  className="w-full h-10 px-3 pr-9 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1.5">
+                {t("settings.general.changePassword.confirmNewPassword")}
+              </label>
+              <input
+                type={showNew ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder={t("settings.general.changePassword.confirmPlaceholder")}
+                className="w-full h-10 px-3 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={reset}
+              disabled={submitting}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {t("settings.general.changePassword.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!passwordReady || submitting}
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+            >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {t("settings.general.changePassword.submit")}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

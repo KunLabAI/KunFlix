@@ -81,7 +81,28 @@
       "storageQuota": "总配额",
       "storagePercent": "使用率",
       "manageResources": "管理资源库",
-      "loadingStorage": "加载中..."
+      "loadingStorage": "加载中...",
+      "changePassword": {
+        "title": "账号与安全",
+        "label": "修改密码",
+        "entry": "修改密码",
+        "description": "修改密码需先通过邮箱验证码验证身份",
+        "step1": "第 1 步：邮箱验证",
+        "step2": "第 2 步：设置新密码",
+        "oldPassword": "当前密码",
+        "oldPasswordPlaceholder": "请输入当前密码",
+        "newPassword": "新密码",
+        "newPasswordPlaceholder": "请输入新密码（至少 6 位）",
+        "confirmNewPassword": "确认新密码",
+        "confirmPlaceholder": "请再次输入新密码",
+        "submit": "提交修改",
+        "cancel": "取消",
+        "verifyFirst": "请先完成邮箱验证",
+        "mismatch": "两次输入的新密码不一致",
+        "tooShort": "新密码至少 6 位",
+        "success": "密码修改成功，请重新登录",
+        "failed": "密码修改失败"
+      }
     },
     "billing": {
       "plan": "计划",
@@ -625,7 +646,26 @@
     "termsNotice": "登录即表示您同意我们的服务条款和隐私政策",
     "orContinueWith": "或通过以下方式继续",
     "continueWithGoogle": "Google",
-    "continueWithGitHub": "GitHub"
+    "continueWithGitHub": "GitHub",
+    "forgotPassword": "忘记密码？",
+    "resetPassword": "重置密码",
+    "resetSubtitle": "输入您的邮箱，我们将发送验证码用于重置密码",
+    "newPassword": "新密码",
+    "newPasswordPlaceholder": "至少6位字符",
+    "confirmNewPassword": "确认新密码",
+    "resetSuccess": "密码已重置，请使用新密码登录",
+    "resetFailed": "重置密码失败",
+    "verifyFirst": "请先完成邮箱验证"
+  },
+  "emailCode": {
+    "send": "获取验证码",
+    "sending": "发送中",
+    "sent": "验证码已发送",
+    "sendFailed": "发送验证码失败",
+    "placeholder": "6 位数字验证码",
+    "invalidCode": "验证码错误",
+    "expired": "验证码已过期，请重新发送",
+    "exhausted": "尝试次数过多，请重新发送"
   },
   "ai": {
     "title": "AI 助手",

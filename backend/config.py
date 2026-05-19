@@ -115,6 +115,28 @@ class Settings(BaseSettings):
     SSE_RESUME_MAX_COUNT: int = 500          # /api/sse/resume 单次最多回放
 
     # ---------------------------------------------------------------
+    # Email verification (Resend / 第三方邮件服务商验证码)
+    # ---------------------------------------------------------------
+    # 是否启用邮件验证码：注册 / 改密 / 忘记密码 三场景统一开关
+    EMAIL_VERIFICATION_REQUIRED: bool = False
+    # 验证码有效期（秒）
+    EMAIL_CODE_TTL_SECONDS: int = 600
+    # 单邮箱发送冷却（秒），防止刷接口
+    EMAIL_CODE_RESEND_COOLDOWN: int = 60
+    # 单邮箱单 purpose 每日最大发送次数
+    EMAIL_CODE_DAILY_LIMIT: int = 10
+    # 验证通过后 pass-token 有效期（秒）：用于一次性鉴权下一步
+    EMAIL_VERIFY_TOKEN_TTL_SECONDS: int = 600
+    # HMAC key：留空则进程启动时基于 JWT_SECRET_KEY 派生
+    EMAIL_CODE_HMAC_KEY: str = ""
+    # 默认服务商类型（仅 resend 已实现）
+    EMAIL_PROVIDER_DEFAULT: str = "resend"
+    # Resend HTTP API base URL（一般无需修改）
+    RESEND_API_BASE_URL: str = "https://api.resend.com"
+    # Resend HTTP 调用超时（秒）
+    RESEND_HTTP_TIMEOUT: float = 10.0
+
+    # ---------------------------------------------------------------
     # System
     # ---------------------------------------------------------------
     RUN_MIGRATIONS: bool = False

@@ -90,6 +90,8 @@
       "users": "用户管理",
       "subscriptions": "订阅套餐",
       "admins": "管理员",
+      "system": "系统设置",
+      "emailProviders": "邮件服务商",
       "toggleMenu": "切换菜单"
     },
     "account": {
@@ -408,6 +410,69 @@
       "paid": "付费套餐"
     }
   },
+  "systemEmail": {
+    "title": "邮件服务商",
+    "subtitle": "配置、测试与管理邮件发送服务商与邮件模板",
+    "add": "添加服务商",
+    "providers": "服务商列表",
+    "templates": "邮件模板",
+    "empty": "暂未配置邮件服务商",
+    "emptyHint": "点击右上角「添加服务商」创建你的第一个邮件服务商",
+    "defaultBadge": "默认",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "setDefault": "设为默认",
+    "testSend": "发送测试邮件",
+    "edit": "编辑",
+    "delete": "删除",
+    "deleteConfirmTitle": "确认删除",
+    "deleteConfirmDesc": "删除后不可恢复，是否继续？",
+    "form": {
+      "name": "名称",
+      "namePlaceholder": "例：Resend (生产)",
+      "providerType": "服务商类型",
+      "apiKey": "API 密钥",
+      "apiKeyPlaceholder": "输入新密钥以替换；留空表示保持不变",
+      "showApiKey": "显示密钥",
+      "hideApiKey": "隐藏密钥",
+      "apiBaseUrl": "API 地址（可选）",
+      "fromEmail": "发件人邮箱",
+      "fromName": "发件人名称",
+      "replyTo": "回复地址（可选）",
+      "isDefault": "设为默认服务商",
+      "isEnabled": "启用",
+      "submit": "保存",
+      "cancel": "取消",
+      "createTitle": "添加邮件服务商",
+      "editTitle": "编辑邮件服务商"
+    },
+    "test": {
+      "title": "发送测试邮件",
+      "toEmail": "收件人邮箱",
+      "submit": "发送",
+      "success": "测试邮件发送成功",
+      "failed": "发送失败"
+    },
+    "toast": {
+      "saveSuccess": "保存成功",
+      "saveFailed": "保存失败",
+      "deleteSuccess": "删除成功",
+      "deleteFailed": "删除失败",
+      "setDefaultSuccess": "已设为默认",
+      "setDefaultFailed": "设置失败",
+      "loadFailed": "加载失败。"
+    },
+    "template": {
+      "code": "模板代码",
+      "name": "模板名称",
+      "subject": "邮件主题",
+      "htmlBody": "HTML 正文",
+      "textBody": "纯文本正文（可选）",
+      "variables": "可用变量",
+      "editTitle": "编辑邮件模板",
+      "updated": "模板已更新"
+    }
+  },
   "llm": {
     "title": "AI 供应商",
     "subtitle": "管理和配置 AI 供应商及其模型参数",
@@ -470,6 +535,8 @@
         "baseUrlDescription": "如果使用代理或自定义端点，请填写此项。",
         "apiKey": "API 密钥",
         "apiKeyPlaceholder": "sk-...",
+        "showApiKey": "显示密钥",
+        "hideApiKey": "隐藏密钥",
         "advancedConfig": "高级配置 (JSON)",
         "advancedConfigPlaceholder": "{\"timeout\": 30, \"max_retries\": 3}"
       },

@@ -14,6 +14,9 @@ class UserRegister(BaseModel):
     email: EmailStr
     nickname: str = Field(..., min_length=1, max_length=100)
     password: str = Field(..., min_length=6)
+    # 邮件验证一次性凭证（来自 /api/auth/email-code/verify, purpose=register）
+    # 服务端依据 settings.EMAIL_VERIFICATION_REQUIRED 决定是否强校验，缺省宽松。
+    verify_token: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -1154,4 +1157,126 @@ class MusicGenerateResponse(BaseModel):
     node_id: Optional[str] = None
     model: str
     provider_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Email verification & password reset schemas
+# ---------------------------------------------------------------------------
+EmailVerifyPurpose = Literal["register", "change_password", "reset_password"]
+
+
+class EmailCodeSendRequest(BaseModel):
+    """发送邮件验证码请求。"""
+    email: EmailStr
+    purpose: EmailVerifyPurpose
+
+
+class EmailCodeSendResponse(BaseModel):
+    """发送邮件验证码响应。"""
+    sent: bool = True
+    expires_in: int  # 验证码有效期（秒）
+    cooldown: int    # 下次可重发冷却（秒）
+
+
+class EmailCodeVerifyRequest(BaseModel):
+    """验证邮件验证码请求。"""
+    email: EmailStr
+    purpose: EmailVerifyPurpose
+    code: str = Field(..., min_length=4, max_length=8)
+
+
+class EmailCodeVerifyResponse(BaseModel):
+    """验证成功后返回一次性 pass token。"""
+    ok: bool
+    token: Optional[str] = None
+    expires_in: Optional[int] = None
+    reason: Optional[str] = None  # mismatch | expired | exhausted
+
+
+class PasswordChangeRequest(BaseModel):
+    """已登录用户修改密码（需要 verify_token, purpose=change_password）。"""
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=6)
+    verify_token: str = Field(..., min_length=8)
+
+
+class PasswordResetRequest(BaseModel):
+    """忘密场景重置密码（匿名，需 verify_token, purpose=reset_password）。"""
+    email: EmailStr
+    new_password: str = Field(..., min_length=6)
+    verify_token: str = Field(..., min_length=8)
+
+
+# ---------------------------------------------------------------------------
+# Email Provider (admin) schemas
+# ---------------------------------------------------------------------------
+class EmailProviderBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    provider_type: Literal["resend"] = "resend"  # 预留后续扩展 smtp/sendgrid
+    from_email: Optional[EmailStr] = None
+    from_name: Optional[str] = Field(None, max_length=100)
+    reply_to: Optional[EmailStr] = None
+    is_active: bool = True
+    is_default: bool = False
+    config_json: Dict[str, Any] = Field(default_factory=dict)
+
+
+class EmailProviderCreate(EmailProviderBase):
+    api_key: str = Field(..., min_length=1)
+
+
+class EmailProviderUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    api_key: Optional[str] = None
+    from_email: Optional[EmailStr] = None
+    from_name: Optional[str] = Field(None, max_length=100)
+    reply_to: Optional[EmailStr] = None
+    is_active: Optional[bool] = None
+    is_default: Optional[bool] = None
+    config_json: Optional[Dict[str, Any]] = None
+
+
+class EmailProviderResponse(EmailProviderBase):
+    id: str
+    api_key: str = ""                   # 与 LLMProviderResponse 一致：返回明文，便于编辑回填
+    api_key_masked: str = ""            # 末四位 + ***，仅用于列表展示
+    last_success_at: Optional[Any] = None
+    last_error_at: Optional[Any] = None
+    last_error_message: Optional[str] = None
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EmailProviderTestSendRequest(BaseModel):
+    """管理员发送测试邮件（使用 admin_test 模板）。"""
+    to: EmailStr
+    locale: Optional[str] = "zh-CN"
+
+
+class EmailTemplateBase(BaseModel):
+    code: str = Field(..., min_length=1, max_length=50)
+    locale: str = Field("zh-CN", min_length=2, max_length=10)
+    name: str = Field(..., min_length=1, max_length=100)
+    subject: str = Field(..., min_length=1, max_length=255)
+    html_body: str = Field(..., min_length=1)
+    text_body: Optional[str] = None
+    is_active: bool = True
+
+
+class EmailTemplateUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    subject: Optional[str] = Field(None, min_length=1, max_length=255)
+    html_body: Optional[str] = None
+    text_body: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class EmailTemplateResponse(EmailTemplateBase):
+    id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
 

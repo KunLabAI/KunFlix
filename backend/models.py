@@ -660,3 +660,56 @@ class SystemSetting(Base):
     value = Column(JSON, default=dict)
     description = Column(String(500), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class EmailProvider(Base):
+    """邮件服务商配置 — 多供应商可扩展（resend / smtp / sendgrid 等）。
+
+    设计要点：
+    - api_key 走 EncryptedString 透明加密
+    - 全局保留 1 个 is_default=True && is_active=True 的供应商参与分发
+    - config_json 存放供应商私有配置，避免频繁加列
+    """
+    __tablename__ = "email_providers"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    name = Column(String(100), unique=True, nullable=False, index=True)
+    provider_type = Column(String(50), nullable=False, index=True)  # resend | smtp | sendgrid ...
+    api_key = Column(EncryptedString, nullable=True)
+    from_email = Column(String(255), nullable=True)
+    from_name = Column(String(100), nullable=True)
+    reply_to = Column(String(255), nullable=True)
+    is_active = Column(Boolean, default=True)
+    is_default = Column(Boolean, default=False)
+    config_json = Column(JSON, default=dict)
+    last_success_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class EmailTemplate(Base):
+    """邮件模板 — 按 (code, locale) 维度管理。
+
+    code 取值约定：
+    - register_verify   注册验证码
+    - change_password   修改密码验证码
+    - reset_password    忘记密码验证码
+    - admin_test        管理员测试邮件
+    """
+    __tablename__ = "email_templates"
+    __table_args__ = (
+        Index("ix_email_templates_code_locale", "code", "locale", unique=True),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    code = Column(String(50), nullable=False, index=True)
+    locale = Column(String(10), nullable=False, default="zh-CN")
+    name = Column(String(100), nullable=False)
+    subject = Column(String(255), nullable=False)
+    html_body = Column(Text, nullable=False)
+    text_body = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

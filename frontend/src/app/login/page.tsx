@@ -15,6 +15,7 @@ import api from "@/lib/api";
 import { App } from "antd";
 import { cn } from "@/lib/utils";
 import Logo from "@/components/Logo";
+import EmailCodeField from "@/components/EmailCodeField";
 
 // 本地素材图片
 const EFFECT_IMAGES = [
@@ -145,6 +146,11 @@ function getFormFields(t: (key: string) => string) {
       { name: "password", type: "password", label: t("login.password"), placeholder: t("login.passwordMinPlaceholder"), icon: Lock, required: true, minLength: 6, autoComplete: "new-password" },
       { name: "confirmPassword", type: "password", label: t("login.confirmPassword"), placeholder: t("login.confirmPasswordPlaceholder"), icon: Lock, required: true, autoComplete: "new-password" },
     ],
+    forgot: [
+      { name: "email", type: "email", label: t("login.email"), placeholder: t("login.emailPlaceholder"), icon: Mail, required: true, autoComplete: "email" },
+      { name: "newPassword", type: "password", label: t("login.newPassword"), placeholder: t("login.newPasswordPlaceholder"), icon: Lock, required: true, minLength: 6, autoComplete: "new-password" },
+      { name: "confirmNewPassword", type: "password", label: t("login.confirmNewPassword"), placeholder: t("login.confirmPasswordPlaceholder"), icon: Lock, required: true, autoComplete: "new-password" },
+    ],
   };
 }
 
@@ -156,6 +162,8 @@ function getValidators(t: (key: string) => string): Record<string, (value: strin
       return (value?.length ?? 0) < 6 ? t("login.passwordMin") : null;
     },
     confirmPassword: (value, formData) => value === formData?.password ? null : t("login.confirmPasswordMismatch"),
+    newPassword: (value) => (value?.length ?? 0) < 6 ? t("login.passwordMin") : null,
+    confirmNewPassword: (value, formData) => value === formData?.newPassword ? null : t("login.confirmPasswordMismatch"),
     nickname: (value) => (value?.length ?? 0) >= 1 ? null : t("login.nicknameRequired"),
   };
 }
@@ -188,14 +196,23 @@ function GitHubIcon({ className }: { className?: string }) {
 
 // 内部组件：使用 useSearchParams()，需要外层 Suspense 包裹
 // （Next.js CSR bailout 要求，缺少时预渲染 /login 会报错）
+type AuthMode = "login" | "register" | "forgot";
+
+// 模式 → 验证码 purpose 映射（仅 register/forgot 需要 EmailCodeField）
+const MODE_TO_PURPOSE: Partial<Record<AuthMode, "register" | "reset_password">> = {
+  register: "register",
+  forgot: "reset_password",
+};
+
 function LoginPageContent() {
   const { t, i18n } = useTranslation();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<AuthMode>("login");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [verifyToken, setVerifyToken] = useState<string>("");
   const { login } = useAuth();
   const { restoreTheme } = useTheme();
   const { message } = App.useApp();
@@ -248,12 +265,14 @@ function LoginPageContent() {
     errors[name] && setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
-  // 切换模式
-  const switchMode = () => {
-    setMode((prev) => prev === "login" ? "register" : "login");
+  // 切换模式（在 login/register/forgot 之间任意切换）
+  const goMode = (next: AuthMode) => {
+    setMode(next);
     setFormData({});
     setErrors({});
+    setVerifyToken("");
   };
+  const switchMode = () => goMode(mode === "login" ? "register" : "login");
 
   // 登录处理
   const handleLogin = async () => {
@@ -277,7 +296,7 @@ function LoginPageContent() {
     const { email, nickname, password } = formData;
     setLoading(true);
     try {
-      await api.post("/auth/register", { email, nickname, password });
+      await api.post("/auth/register", { email, nickname, password, verify_token: verifyToken });
       const { data } = await api.post<TokenResponse>("/auth/login", { email, password });
       // 恢复用户偏好
       applyUserPreferences(data.user);
@@ -290,10 +309,35 @@ function LoginPageContent() {
     }
   };
 
+  // 忘记密码处理
+  const handleForgot = async () => {
+    const { email, newPassword } = formData;
+    setLoading(true);
+    try {
+      await api.post("/auth/password/reset", { email, new_password: newPassword, verify_token: verifyToken });
+      message.success(t("login.resetSuccess"));
+      goMode("login");
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || t("login.resetFailed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // mode → handler 映射，避免 if-elif 链
+  const SUBMIT_HANDLERS: Record<AuthMode, () => Promise<void>> = {
+    login: handleLogin,
+    register: handleRegister,
+    forgot: handleForgot,
+  };
+
   // 提交处理
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    validateForm() && (mode === "login" ? handleLogin() : handleRegister());
+    // register/forgot 必须先完成邮箱验证
+    const needsVerify = mode !== "login";
+    needsVerify && !verifyToken && (message.error(t("login.verifyFirst")), 0);
+    validateForm() && (!needsVerify || verifyToken) && SUBMIT_HANDLERS[mode]();
   };
 
   // 切换密码显示
@@ -302,6 +346,14 @@ function LoginPageContent() {
   };
 
   const currentFields = FORM_FIELDS[mode];
+  const currentPurpose = MODE_TO_PURPOSE[mode];
+
+  // 标题/副标题/按钮文案 mode 三态映射
+  const HEADER_TEXT: Record<AuthMode, { title: string; subtitle: string; submit: string }> = {
+    login: { title: t("login.welcomeBack"), subtitle: t("login.loginSubtitle"), submit: t("login.submit") },
+    register: { title: t("login.createAccount"), subtitle: t("login.registerSubtitle"), submit: t("login.register") },
+    forgot: { title: t("login.resetPassword"), subtitle: t("login.resetSubtitle"), submit: t("login.resetPassword") },
+  };
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-background">
@@ -391,10 +443,10 @@ function LoginPageContent() {
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 >
                   <h2 className="text-2xl font-bold text-foreground mb-2">
-                    {mode === "login" ? t("login.welcomeBack") : t("login.createAccount")}
+                    {HEADER_TEXT[mode].title}
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    {mode === "login" ? t("login.loginSubtitle") : t("login.registerSubtitle")}
+                    {HEADER_TEXT[mode].subtitle}
                   </p>
                 </motion.div>
               </AnimatePresence>
@@ -412,48 +464,59 @@ function LoginPageContent() {
                   className="space-y-5"
                 >
                   {currentFields.map((field) => (
-                    <div key={field.name}>
-                      <label className="block text-sm font-medium text-foreground mb-1.5">
-                        {field.label}
-                      </label>
-                      <div className="relative">
-                        <field.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                        <input
-                          type={field.type === "password" && showPassword[field.name] ? "text" : field.type}
-                          name={field.name}
-                          autoComplete={field.autoComplete}
-                          value={formData[field.name] || ""}
-                          onChange={(e) => handleInputChange(field.name, e.target.value)}
-                          placeholder={field.placeholder}
-                          className={cn(
-                            "w-full h-11 pl-10 pr-10 rounded-lg",
-                            "bg-secondary/50 border border-border",
-                            "text-foreground placeholder:text-muted-foreground",
-                            "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                            "transition-all duration-200",
-                            errors[field.name] && "border-destructive focus:border-destructive focus:ring-destructive/20"
+                    <React.Fragment key={field.name}>
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          {field.label}
+                        </label>
+                        <div className="relative">
+                          <field.icon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                          <input
+                            type={field.type === "password" && showPassword[field.name] ? "text" : field.type}
+                            name={field.name}
+                            autoComplete={field.autoComplete}
+                            value={formData[field.name] || ""}
+                            onChange={(e) => handleInputChange(field.name, e.target.value)}
+                            placeholder={field.placeholder}
+                            className={cn(
+                              "w-full h-11 pl-10 pr-10 rounded-lg",
+                              "bg-secondary/50 border border-border",
+                              "text-foreground placeholder:text-muted-foreground",
+                              "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                              "transition-all duration-200",
+                              errors[field.name] && "border-destructive focus:border-destructive focus:ring-destructive/20"
+                            )}
+                          />
+                          {field.type === "password" && (
+                            <button
+                              type="button"
+                              onClick={() => togglePasswordVisibility(field.name)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              {showPassword[field.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
                           )}
-                        />
-                        {field.type === "password" && (
-                          <button
-                            type="button"
-                            onClick={() => togglePasswordVisibility(field.name)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        </div>
+                        {errors[field.name] && (
+                          <motion.p
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-xs text-destructive mt-1.5"
                           >
-                            {showPassword[field.name] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
+                            {errors[field.name]}
+                          </motion.p>
                         )}
                       </div>
-                      {errors[field.name] && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-xs text-destructive mt-1.5"
-                        >
-                          {errors[field.name]}
-                        </motion.p>
+                      {/* 邮箱字段后插入验证码组件（仅 register/forgot 模式） */}
+                      {field.name === "email" && currentPurpose && (
+                        <EmailCodeField
+                          email={formData.email || ""}
+                          purpose={currentPurpose}
+                          onVerified={setVerifyToken}
+                          onInvalidate={() => setVerifyToken("")}
+                        />
                       )}
-                    </div>
+                    </React.Fragment>
                   ))}
                 </motion.div>
               </AnimatePresence>
@@ -476,7 +539,7 @@ function LoginPageContent() {
                   <Loader2 className="w-5 h-5 animate-spin" />
                 ) : (
                   <>
-                    {mode === "login" ? t("login.submit") : t("login.register")}
+                    {HEADER_TEXT[mode].submit}
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -484,17 +547,42 @@ function LoginPageContent() {
             </form>
 
             {/* Switch Mode */}
-            <div className="mt-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                {mode === "login" ? t("login.noAccount") : t("login.hasAccount")}
-                <button
-                  type="button"
-                  onClick={switchMode}
-                  className="ml-1 text-primary hover:underline font-medium transition-colors"
-                >
-                  {mode === "login" ? t("login.registerNow") : t("login.backToLogin")}
-                </button>
-              </p>
+            <div className="mt-6 text-center space-y-2">
+              {mode === "forgot" ? (
+                <p className="text-sm text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => goMode("login")}
+                    className="text-primary hover:underline font-medium transition-colors"
+                  >
+                    {t("login.backToLogin")}
+                  </button>
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {mode === "login" ? t("login.noAccount") : t("login.hasAccount")}
+                    <button
+                      type="button"
+                      onClick={switchMode}
+                      className="ml-1 text-primary hover:underline font-medium transition-colors"
+                    >
+                      {mode === "login" ? t("login.registerNow") : t("login.backToLogin")}
+                    </button>
+                  </p>
+                  {mode === "login" && (
+                    <p className="text-sm text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => goMode("forgot")}
+                        className="text-primary hover:underline font-medium transition-colors"
+                      >
+                        {t("login.forgotPassword")}
+                      </button>
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Divider */}

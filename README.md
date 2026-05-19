@@ -228,6 +228,38 @@ npm run dev
 - 智能体自动调用已开启的技能生成内容
 - 生成的图片、视频、音乐自动保存为可复用资产
 
+### 4. 配置邮件服务商（可选）
+
+KunFlix 使用 **Resend** 作为邮件服务商，用于注册验证、密码重置等场景的验证码邮件下发。在后台管理端 **系统设置 → 邮件服务商** 中创建一条 Resend 配置即可。
+
+#### 🧪 本地联调流程（最快路径，无需域名）
+
+Resend 默认提供 `onboarding@resend.dev` 沙盒发件域，**只能发到你 Resend 账号注册时填写的那个邮箱**，足够本地调试。
+
+| 字段 | 推荐填法 |
+|:---|:---|
+| `from_email` | `onboarding@resend.dev` |
+| `from_name` | 任意，例如 `KunFlix Dev` |
+| `api_base_url` | 留空（默认 `https://api.resend.com`） |
+| `reply_to` | 留空；若希望用户回复落到客服邮箱再填 |
+| `is_default` | ✅ 勾上（必须有且仅有一个默认服务商，验证码才会路由到它） |
+| `is_active` | ✅ 勾上 |
+
+保存后，点 **「测试发送」**，收件人**只能填你自己的 Resend 注册邮箱**，能收到即打通。注册 / 改密走前端流程时，也只能用该邮箱测试。
+
+> 想给任意邮箱发件 → 必须先验证自己的域名（见下文）。
+
+#### 🌐 生产环境：验证自己的域名
+
+要把验证码发给真实用户，需在 Resend 完成域名验证：
+
+1. 进入 [Resend 控制台](https://resend.com/domains) → **Domains** → **Add Domain**（例如 `kunflix.com`）
+2. 按提示在你的 DNS 服务商处添加 **SPF / DKIM / DMARC** 记录
+3. 等待 Resend 验证通过（状态变为绿色 `verified`）
+4. 把 `from_email` 改为该域名下的任意地址，例如 `noreply@kunflix.com`、`hello@mail.kunflix.com`
+
+> 💡 个人本地开发用 `onboarding@resend.dev` 就够；正式上线前再做域名验证即可。
+
 ## 💡 应用场景
 
 <table>

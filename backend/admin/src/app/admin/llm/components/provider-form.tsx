@@ -30,7 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft } from 'lucide-react';
+import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PRESET_COST_DIMENSIONS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, createFormSchema, FormValues, LLMProvider } from '../schema';
 
@@ -47,6 +47,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   const [tagInput, setTagInput] = useState("");
   const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>(initialData?.model_costs || {});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const formSchema = useMemo(() => createFormSchema(t), [t]);
 
@@ -341,7 +342,25 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
                       <FormItem>
                         <FormLabel>{t('llm.form.connection.apiKey')}</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder={t('llm.form.connection.apiKeyPlaceholder')} {...field} />
+                          <div className="relative">
+                            <Input
+                              type={showApiKey ? 'text' : 'password'}
+                              placeholder={t('llm.form.connection.apiKeyPlaceholder')}
+                              autoComplete="off"
+                              className="pr-10"
+                              {...field}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey((v) => !v)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                              tabIndex={-1}
+                              aria-label={showApiKey ? t('llm.form.connection.hideApiKey') : t('llm.form.connection.showApiKey')}
+                              title={showApiKey ? t('llm.form.connection.hideApiKey') : t('llm.form.connection.showApiKey')}
+                            >
+                              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
