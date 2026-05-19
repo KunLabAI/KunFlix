@@ -30,10 +30,7 @@ from schemas import (
     EmailTemplateUpdate,
 )
 from services import audit
-from services.email_providers.base import (
-    EmailProviderError,
-    EmailProviderNotConfigured,
-)
+from services.email_providers.base import EmailProviderError
 from services.email_providers.templates import render_template
 
 router = APIRouter(
