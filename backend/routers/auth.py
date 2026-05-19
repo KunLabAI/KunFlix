@@ -22,6 +22,12 @@ from auth import (
 from auth_revocation import revoke as revoke_jti, is_revoked
 from auth_rotation import try_set_rotated, get_rotated
 from services import audit
+from services import email_verification as ev
+from services.email_providers.base import (
+    EmailProviderError,
+    EmailProviderNotConfigured,
+)
+from services.email_providers.dispatcher import send_email
 from ratelimit import limiter, ip_limiter
 from config import settings
 from database import get_db
@@ -35,6 +41,12 @@ from schemas import (
     UserResponse,
     UserPreferencesUpdate,
     CreditTransactionResponse,
+    EmailCodeSendRequest,
+    EmailCodeSendResponse,
+    EmailCodeVerifyRequest,
+    EmailCodeVerifyResponse,
+    PasswordChangeRequest,
+    PasswordResetRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +84,19 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new user account."""
+    # Email verification gate（settings.EMAIL_VERIFICATION_REQUIRED 控制是否强校验）
+    require_verify = bool(getattr(settings, "EMAIL_VERIFICATION_REQUIRED", False))
+    if require_verify:
+        ok = bool(body.verify_token) and await ev.consume_pass_token(
+            body.email, ev.PURPOSE_REGISTER, body.verify_token
+        )
+        ok or (_ for _ in ()).throw(
+            HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email verification required or token expired",
+            )
+        )
+
     # Check email uniqueness
     existing = await db.scalar(select(User).filter(User.email == body.email))
     if existing:
@@ -401,3 +426,206 @@ async def credits_daily_usage(
     )
     rows = result.all()
     return [{"date": str(r.date), "total": round(float(r.total or 0), 2)} for r in rows]
+
+
+# ===========================================================================
+# Email verification endpoints
+#
+# 安全考量：
+# - send/verify 均按 IP 限流，并在服务层以 60s 冷却为同邮箱二重保护
+# - register 场景：邮箱冲突仍然允许发送（不暴露 enumeration），调用方在表单提交时
+#   反馈 409；但为了避免被利用发邮件，这里仅限流不拦截
+# - reset_password 场景：邮箱不存在也返回 200（避免账号反查），但内部不发邮件
+# ===========================================================================
+_PURPOSE_TO_EV: dict[str, str] = {
+    "register": ev.PURPOSE_REGISTER,
+    "change_password": ev.PURPOSE_CHANGE_PASSWORD,
+    "reset_password": ev.PURPOSE_RESET_PASSWORD,
+}
+
+
+async def _dispatch_code_email(
+    db: AsyncSession,
+    *,
+    to: str,
+    purpose: str,
+    code: str,
+    locale: str,
+) -> None:
+    """调用邮件服务发送验证码；上游异常转换为 HTTP 状态。"""
+    template_code = ev.get_template_code(purpose)
+    variables = {
+        "code": code,
+        "expires_minutes": ev.CODE_TTL_SECONDS // 60,
+        "email": to,
+    }
+    try:
+        await send_email(
+            db,
+            to=to,
+            code=template_code,
+            locale=locale,
+            variables=variables,
+        )
+    except EmailProviderNotConfigured as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email service not configured",
+        ) from exc
+    except EmailProviderError as exc:
+        logger.warning("send code failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send verification email",
+        ) from exc
+
+
+@router.post("/email-code/send", response_model=EmailCodeSendResponse)
+@ip_limiter.limit("5/minute")
+async def send_email_code(
+    body: EmailCodeSendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """发送邮件验证码。Purpose 决定所用模板与后续可消费的业务场景。"""
+    purpose = _PURPOSE_TO_EV.get(body.purpose) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Invalid purpose")
+    )
+
+    # reset_password 场景：静默处理不存在的邮箱，避免 enumeration
+    if purpose == ev.PURPOSE_RESET_PASSWORD:
+        existing = await db.scalar(select(User).filter(User.email == body.email))
+        if not existing:
+            return EmailCodeSendResponse(
+                sent=True,
+                expires_in=ev.CODE_TTL_SECONDS,
+                cooldown=ev.COOLDOWN_SECONDS,
+            )
+
+    try:
+        result = await ev.issue_code(body.email, purpose)
+    except ev.EmailVerificationError as exc:
+        # 冷却中等业务错误
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+        ) from exc
+
+    locale = (request.headers.get("accept-language") or "zh-CN").split(",")[0].strip()
+    locale = locale if locale in ("zh-CN", "en-US") else "zh-CN"
+    await _dispatch_code_email(
+        db, to=body.email, purpose=purpose, code=result.code, locale=locale
+    )
+    return EmailCodeSendResponse(
+        sent=True,
+        expires_in=result.expires_in,
+        cooldown=result.cooldown,
+    )
+
+
+@router.post("/email-code/verify", response_model=EmailCodeVerifyResponse)
+@ip_limiter.limit("10/minute")
+async def verify_email_code(
+    body: EmailCodeVerifyRequest,
+    request: Request,
+):
+    """校验邮件验证码；通过则返回一次性 token。"""
+    purpose = _PURPOSE_TO_EV.get(body.purpose) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Invalid purpose")
+    )
+    res = await ev.verify_code(body.email, purpose, body.code)
+    return EmailCodeVerifyResponse(
+        ok=res.ok,
+        token=res.token,
+        expires_in=ev.PASS_TOKEN_TTL_SECONDS if res.ok else None,
+        reason=res.reason,
+    )
+
+
+@router.post("/password/change", status_code=status.HTTP_204_NO_CONTENT)
+@ip_limiter.limit("5/minute")
+async def change_password(
+    body: PasswordChangeRequest,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+    access_token: str = Depends(oauth2_scheme),
+):
+    """已登录用户修改密码；需提供 verify_token (purpose=change_password)。
+
+    成功后：
+    - 更新 password_hash
+    - 将当前 access token 加入黑名单，强制重新登录
+    """
+    ok = await ev.consume_pass_token(
+        current_user.email, ev.PURPOSE_CHANGE_PASSWORD, body.verify_token
+    )
+    ok or (_ for _ in ()).throw(
+        HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email verification required or token expired",
+        )
+    )
+    verify_password(body.old_password, current_user.password_hash) or (_ for _ in ()).throw(
+        HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect old password",
+        )
+    )
+
+    current_user.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+    # 失效当前 access token（refresh 需前端主动 logout）
+    await _try_revoke(access_token)
+
+    audit.record(
+        action="auth.password_change",
+        actor=current_user,
+        resource_type="user",
+        resource_id=current_user.id,
+        request=request,
+    )
+    return None
+
+
+@router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)
+@ip_limiter.limit("5/minute")
+async def reset_password(
+    body: PasswordResetRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """忘密场景重置密码（匿名）。
+
+    严格要求 verify_token 有效，用于表明用户能读取该邮箱。
+    邮箱不存在时仍报 400（token 验证依然失败），避免不一致跳转逻辑。
+    """
+    ok = await ev.consume_pass_token(
+        body.email, ev.PURPOSE_RESET_PASSWORD, body.verify_token
+    )
+    ok or (_ for _ in ()).throw(
+        HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email verification required or token expired",
+        )
+    )
+    user = await db.scalar(select(User).filter(User.email == body.email))
+    user or (_ for _ in ()).throw(
+        HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    )
+
+    user.password_hash = hash_password(body.new_password)
+    await db.commit()
+
+    audit.record(
+        action="auth.password_reset",
+        actor=user,
+        resource_type="user",
+        resource_id=user.id,
+        request=request,
+    )
+    return None

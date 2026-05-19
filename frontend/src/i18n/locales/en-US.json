@@ -81,7 +81,28 @@
       "storageQuota": "Quota",
       "storagePercent": "Usage",
       "manageResources": "Manage Resources",
-      "loadingStorage": "Loading..."
+      "loadingStorage": "Loading...",
+      "changePassword": {
+        "title": "Account & Security",
+        "label": "Change Password",
+        "entry": "Change Password",
+        "description": "You need to verify your identity via email code before changing the password",
+        "step1": "Step 1: Email Verification",
+        "step2": "Step 2: Set New Password",
+        "oldPassword": "Current Password",
+        "oldPasswordPlaceholder": "Enter current password",
+        "newPassword": "New Password",
+        "newPasswordPlaceholder": "At least 6 characters",
+        "confirmNewPassword": "Confirm New Password",
+        "confirmPlaceholder": "Re-enter new password",
+        "submit": "Submit",
+        "cancel": "Cancel",
+        "verifyFirst": "Please verify email first",
+        "mismatch": "Passwords do not match",
+        "tooShort": "Password must be at least 6 characters",
+        "success": "Password changed successfully, please log in again",
+        "failed": "Failed to change password"
+      }
     },
     "billing": {
       "plan": "Plan",
@@ -625,7 +646,26 @@
     "termsNotice": "By signing in, you agree to our Terms of Service and Privacy Policy",
     "orContinueWith": "Or continue with",
     "continueWithGoogle": "Google",
-    "continueWithGitHub": "GitHub"
+    "continueWithGitHub": "GitHub",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset Password",
+    "resetSubtitle": "Enter your email and we'll send a code to reset your password",
+    "newPassword": "New Password",
+    "newPasswordPlaceholder": "At least 6 characters",
+    "confirmNewPassword": "Confirm New Password",
+    "resetSuccess": "Password reset successful, please sign in with the new password",
+    "resetFailed": "Failed to reset password",
+    "verifyFirst": "Please complete email verification first"
+  },
+  "emailCode": {
+    "send": "Send Code",
+    "sending": "Sending",
+    "sent": "Code sent",
+    "sendFailed": "Failed to send code",
+    "placeholder": "6-digit code",
+    "invalidCode": "Invalid code",
+    "expired": "Code expired, please resend",
+    "exhausted": "Too many attempts, please resend"
   },
   "ai": {
     "title": "AI Assistant",

@@ -90,6 +90,8 @@
       "users": "Users",
       "subscriptions": "Subscriptions",
       "admins": "Administrators",
+      "system": "System Settings",
+      "emailProviders": "Email Providers",
       "toggleMenu": "Toggle Menu"
     },
     "account": {
@@ -408,6 +410,69 @@
       "paid": "Paid"
     }
   },
+  "systemEmail": {
+    "title": "Email Providers",
+    "subtitle": "Configure, test and manage email service providers and templates",
+    "add": "Add Provider",
+    "providers": "Providers",
+    "templates": "Email Templates",
+    "empty": "No email providers configured",
+    "emptyHint": "Click \"Add Provider\" to create your first email provider",
+    "defaultBadge": "Default",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "setDefault": "Set as Default",
+    "testSend": "Send Test Email",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Confirm Delete",
+    "deleteConfirmDesc": "This action cannot be undone. Continue?",
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. Resend (Production)",
+      "providerType": "Provider Type",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter new key to replace; leave empty to keep current",
+      "showApiKey": "Show key",
+      "hideApiKey": "Hide key",
+      "apiBaseUrl": "API Base URL (optional)",
+      "fromEmail": "From Email",
+      "fromName": "From Name",
+      "replyTo": "Reply-To (optional)",
+      "isDefault": "Set as default provider",
+      "isEnabled": "Enabled",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "createTitle": "Add Email Provider",
+      "editTitle": "Edit Email Provider"
+    },
+    "test": {
+      "title": "Send Test Email",
+      "toEmail": "Recipient",
+      "submit": "Send",
+      "success": "Test email sent successfully",
+      "failed": "Failed to send"
+    },
+    "toast": {
+      "saveSuccess": "Saved",
+      "saveFailed": "Failed to save",
+      "deleteSuccess": "Deleted",
+      "deleteFailed": "Failed to delete",
+      "setDefaultSuccess": "Set as default",
+      "setDefaultFailed": "Failed to set",
+      "loadFailed": "Failed to load."
+    },
+    "template": {
+      "code": "Code",
+      "name": "Name",
+      "subject": "Subject",
+      "htmlBody": "HTML Body",
+      "textBody": "Text Body (optional)",
+      "variables": "Available Variables",
+      "editTitle": "Edit Email Template",
+      "updated": "Template updated"
+    }
+  },
   "llm": {
     "title": "AI Providers",
     "subtitle": "Manage and configure AI providers and their model parameters",
@@ -470,6 +535,8 @@
         "baseUrlDescription": "Fill in if you use a proxy or custom endpoint.",
         "apiKey": "API Key",
         "apiKeyPlaceholder": "sk-...",
+        "showApiKey": "Show key",
+        "hideApiKey": "Hide key",
         "advancedConfig": "Advanced Config (JSON)",
         "advancedConfigPlaceholder": "{\"timeout\": 30, \"max_retries\": 3}"
       },

@@ -226,6 +226,38 @@ Once created, frontend users can use this agent in the **Infinite Canvas** for c
 - The agent automatically invokes enabled skills to generate content
 - Generated images, videos, and music are automatically saved as reusable assets
 
+### 4. Configure Email Provider (Optional)
+
+KunFlix uses **Resend** as the email provider for verification-code delivery (signup verification, password reset, etc.). Just create a Resend record under **System Settings → Email Providers** in the Admin Dashboard.
+
+#### 🧪 Local Dev Workflow (Fastest Path, No Domain Needed)
+
+Resend ships a built-in sandbox sender domain `onboarding@resend.dev`, which **can only deliver to the email address you registered your Resend account with** — enough for local debugging.
+
+| Field | Recommended Value |
+|:---|:---|
+| `from_email` | `onboarding@resend.dev` |
+| `from_name` | Anything, e.g. `KunFlix Dev` |
+| `api_base_url` | Leave empty (defaults to `https://api.resend.com`) |
+| `reply_to` | Leave empty; fill it only if you want user replies routed to a support inbox |
+| `is_default` | ✅ Enabled (there must be exactly one default provider for verification codes to be routed to it) |
+| `is_active` | ✅ Enabled |
+
+After saving, click **"Test Send"** — the recipient **must be your own Resend-registered email**. Receiving the message means it works. The signup / password-reset flows on the frontend can also only be tested with that same email.
+
+> Want to send to arbitrary recipients? You must verify your own domain first (see below).
+
+#### 🌐 Production: Verify Your Own Domain
+
+To deliver verification codes to real users, complete domain verification in Resend:
+
+1. Open the [Resend Console](https://resend.com/domains) → **Domains** → **Add Domain** (e.g. `kunflix.com`)
+2. Add **SPF / DKIM / DMARC** records at your DNS provider following the on-screen instructions
+3. Wait for Resend to verify them (status turns green `verified`)
+4. Change `from_email` to any address under that domain, e.g. `noreply@kunflix.com`, `hello@mail.kunflix.com`
+
+> 💡 For personal local development, `onboarding@resend.dev` is sufficient; perform domain verification before going live.
+
 ## 💡 Use Cases
 
 <table>
