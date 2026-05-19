@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from 'react-i18next';
 import { useReactFlow } from '@xyflow/react';
@@ -32,6 +32,19 @@ export function useVideoGenerationApply(id: string, data: VideoNodeData) {
   const prevVideoUrlRef = useRef<string | null>(null);
   const lastSubmitParamsRef = useRef<VideoCreateParams | null>(null);
 
+  // 生成中实时计时（每 100ms），与图像节点对齐
+  const startedAtRef = useRef<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const start = startedAtRef.current;
+    !taskActive && (startedAtRef.current = null);
+    !start && setElapsedMs(0);
+    const tick = () => start && setElapsedMs(Date.now() - start);
+    tick();
+    const tid = start ? setInterval(tick, 100) : null;
+    return () => { tid && clearInterval(tid); };
+  }, [taskActive]);
+
   // 完成后自动写入当前节点 + 累积历史记录（去重）
   useEffect(() => {
     const url = videoTask.status?.video_url;
@@ -60,6 +73,7 @@ export function useVideoGenerationApply(id: string, data: VideoNodeData) {
   }, [videoTask.isCompleted, videoTask.status?.video_url]);
 
   const submit = useCallback((params: VideoCreateParams) => {
+    startedAtRef.current = Date.now();
     prevVideoUrlRef.current = data.videoUrl || null;
     lastSubmitParamsRef.current = params;
     videoTask.submit(params);
@@ -121,6 +135,7 @@ export function useVideoGenerationApply(id: string, data: VideoNodeData) {
     taskActive,
     taskDone,
     taskFailed,
+    elapsedMs,
     prevVideoUrlRef,
     submit,
     applyToNode,

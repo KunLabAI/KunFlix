@@ -54,7 +54,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
   // ── AI 生成 ──
   const gen = useVideoGenerationApply(id, data);
-  const { videoTask, taskActive, taskDone, taskFailed, prevVideoUrlRef } = gen;
+  const { videoTask, taskActive, taskDone, taskFailed, elapsedMs, prevVideoUrlRef } = gen;
 
   // ── 连线维护 ──
   const { linkNode, unlinkNode } = useVideoNodeConnections(id);
@@ -284,7 +284,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
             {!data.videoUrl && !isUploading && !upload.uploadError && !taskActive && <EmptyPlaceholder />}
 
-            {taskActive && <GenerationOverlay />}
+            {taskActive && <GenerationOverlay elapsedMs={elapsedMs} />}
 
             {data.videoUrl && (
               <VideoDisplay

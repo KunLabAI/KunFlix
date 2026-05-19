@@ -311,7 +311,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
               />
             )}
 
-            {gen.taskActive && <GenerationOverlay />}
+            {gen.taskActive && <GenerationOverlay elapsedMs={gen.elapsedMs} />}
           </CardContent>
         </Card>
 
