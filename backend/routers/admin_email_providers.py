@@ -35,7 +35,6 @@ from services.email_providers.base import (
     EmailProviderError,
     EmailProviderNotConfigured,
 )
-from services.email_providers.dispatcher import send_email
 from services.email_providers.templates import render_template
 
 logger = logging.getLogger(__name__)
