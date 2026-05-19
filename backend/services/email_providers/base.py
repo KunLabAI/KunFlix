@@ -42,7 +42,8 @@ class EmailSender(Protocol):
         from_name: Optional[str] = None,
         reply_to: Optional[str] = None,
         extra: Optional[dict[str, Any]] = None,
-    ) -> SendResult: ...
+    ) -> SendResult:
+        raise NotImplementedError
 
 
 __all__ = [
