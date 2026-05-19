@@ -37,8 +37,6 @@ from services.email_providers.base import (
 )
 from services.email_providers.templates import render_template
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(
     prefix="/api/admin/email-providers",
     tags=["admin-email-providers"],
