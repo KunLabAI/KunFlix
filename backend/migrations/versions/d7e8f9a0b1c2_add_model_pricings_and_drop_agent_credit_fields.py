@@ -166,7 +166,7 @@ def upgrade() -> None:
         sa.Column("provider_id", sa.String(length=36), nullable=False),
         sa.Column("model", sa.String(length=200), nullable=False),
         sa.Column("dimensions", sa.JSON(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("notes", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
@@ -200,8 +200,8 @@ def downgrade() -> None:
 
     # 2. 数据回灌（仅恢复维度名能直接对应的几个字段）
     rows = bind.execute(sa.text(
-        "SELECT provider_id, model, dimensions FROM model_pricings WHERE is_active = 1"
-    )).fetchall()
+        "SELECT provider_id, model, dimensions FROM model_pricings WHERE is_active = :active"
+    ), {"active": True}).fetchall()
     for row in rows:
         m = row._mapping if hasattr(row, "_mapping") else {
             "provider_id": row[0], "model": row[1], "dimensions": row[2]
