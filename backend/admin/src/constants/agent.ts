@@ -13,10 +13,6 @@ export const DEFAULT_AGENT_VALUES = {
   thinking_mode: false,
   tools_enabled: false,
   tools: [],
-  input_credit_per_1m: 0,
-  output_credit_per_1m: 0,
-  image_output_credit_per_1m: 0,
-  search_credit_per_query: 0,
   // Leader defaults
   is_leader: false,
   coordination_modes: ['unified'],

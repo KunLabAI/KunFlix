@@ -12,6 +12,7 @@ import {
   Zap,
   Users,
   CreditCard,
+  Coins,
   Shield,
   ChevronLeft,
   ChevronRight,
@@ -69,6 +70,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const items: NavItem[] = [
     { kind: 'leaf', title: t('layout.sidebar.dashboard'), href: '/admin', icon: LayoutDashboard },
     { kind: 'leaf', title: t('layout.sidebar.llm'), href: '/admin/llm', icon: Bot },
+    { kind: 'leaf', title: t('layout.sidebar.pricing', '计费定价'), href: '/admin/pricing', icon: Coins },
     { kind: 'leaf', title: t('layout.sidebar.agents'), href: '/admin/agents', icon: Zap },
     { kind: 'leaf', title: t('layout.sidebar.skills'), href: '/admin/skills', icon: Blocks },
     { kind: 'leaf', title: t('layout.sidebar.mcp'), href: '/admin/mcp', icon: ServerCog },

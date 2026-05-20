@@ -16,7 +16,7 @@ import logging
 
 from models import Agent, TaskExecution, SubTask, User, CreditTransaction
 from services.agent_executor import AgentExecutor, ExecutionResult
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, check_balance_sufficient, load_pricing
 from services.llm_stream import StreamResult
 from services.tool_manager import ToolManager
 from services.tool_manager.context import ToolContext
@@ -198,7 +198,9 @@ class CollaborationStrategy(ABC):
                 subtask.completed_at = sa_func.now()
 
                 agent = self.members.get(subtask.agent_id)
-                subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
+                _target = agent or self.leader
+                _rate_map = await load_pricing(getattr(_target, 'provider_id', None), getattr(_target, 'model', None), self.db)
+                subtask.credit_cost, _ = calculate_credit_cost(result, _rate_map, agent=_target)
 
                 await self.db.flush()
                 return result
@@ -297,7 +299,9 @@ class CollaborationStrategy(ABC):
             subtask.input_tokens = last_result.input_tokens if last_result else 0
             subtask.output_tokens = last_result.output_tokens if last_result else 0
             subtask.completed_at = sa_func.now()
-            subtask.credit_cost, _ = calculate_credit_cost(last_result, agent or self.leader)
+            _target = agent or self.leader
+            _rate_map = await load_pricing(getattr(_target, 'provider_id', None), getattr(_target, 'model', None), self.db)
+            subtask.credit_cost, _ = calculate_credit_cost(last_result, _rate_map, agent=_target)
             await self.db.flush()
 
             subtask._streaming_result = ExecutionResult(
@@ -352,7 +356,9 @@ class CollaborationStrategy(ABC):
                 subtask.input_tokens = result.input_tokens
                 subtask.output_tokens = result.output_tokens
                 subtask.completed_at = sa_func.now()
-                subtask.credit_cost, _ = calculate_credit_cost(result, agent or self.leader)
+                _target = agent or self.leader
+                _rate_map = await load_pricing(getattr(_target, 'provider_id', None), getattr(_target, 'model', None), self.db)
+                subtask.credit_cost, _ = calculate_credit_cost(result, _rate_map, agent=_target)
                 await self.db.flush()
 
                 subtask._streaming_result = ExecutionResult(
@@ -1087,10 +1093,12 @@ Provide a cohesive final result that integrates all outputs:"""
         leader = leader_result.scalars().first()
 
         analysis_cost = 0.0
-        leader and (analysis_cost := (
-            (analysis.analysis_input_tokens / 1_000_000) * (leader.input_credit_per_1m or 0)
-            + (analysis.analysis_output_tokens / 1_000_000) * (leader.output_credit_per_1m or 0)
-        ))
+        if leader:
+            _leader_rates = await load_pricing(getattr(leader, 'provider_id', None), getattr(leader, 'model', None), self.db)
+            analysis_cost = (
+                (analysis.analysis_input_tokens / 1_000_000) * float(_leader_rates.get("input", 0) or 0)
+                + (analysis.analysis_output_tokens / 1_000_000) * float(_leader_rates.get("text_output", 0) or 0)
+            )
 
         total_cost = subtask_cost + analysis_cost
 

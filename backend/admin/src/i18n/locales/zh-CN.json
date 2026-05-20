@@ -80,6 +80,7 @@
     "sidebar": {
       "dashboard": "仪表盘",
       "llm": "AI 供应商",
+      "pricing": "计费定价",
       "agents": "智能体管理",
       "skills": "技能管理 (Skills)",
       "mcp": "MCP 客户端",

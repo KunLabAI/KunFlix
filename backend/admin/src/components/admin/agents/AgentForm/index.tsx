@@ -12,7 +12,7 @@ import { formatApiError } from '@/lib/api-utils';
 import { createAgentFormSchema, AgentFormValues } from './schema';
 import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
-import { GenerationParams, SessionManagement, PricingConfig } from './Parameters';
+import { GenerationParams, SessionManagement, PricingOverview } from './Parameters';
 import Tools from './Tools';
 import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
@@ -135,14 +135,6 @@ export default function AgentForm({
       tools_enabled: false,
       tools: [],
       target_node_types: [],
-      input_credit_per_1m: 0,
-      output_credit_per_1m: 0,
-      image_output_credit_per_1m: 0,
-      search_credit_per_query: 0,
-      video_input_image_credit: 0,
-      video_input_second_credit: 0,
-      video_output_480p_credit: 0,
-      video_output_720p_credit: 0,
       is_leader: false,
       coordination_modes: [],
       member_agent_ids: [],
@@ -150,7 +142,6 @@ export default function AgentForm({
       enable_auto_review: true,
       gemini_config: defaultGeminiConfig,
       image_config: defaultImageConfig,
-      image_credit_per_image: 0,
       video_config: defaultVideoConfig,
       compaction_config: defaultCompactionConfig,
       title_gen_config: defaultTitleGenConfig,
@@ -185,14 +176,6 @@ export default function AgentForm({
         tools_enabled: hasTools || hasImageGen || hasVideoGen || hasCanvas,
         tools: initialValues.tools || [],
         target_node_types: (initialValues.target_node_types || []) as ("script" | "character" | "storyboard" | "video")[],
-        input_credit_per_1m: Number(initialValues.input_credit_per_1m) || 0,
-        output_credit_per_1m: Number(initialValues.output_credit_per_1m) || 0,
-        image_output_credit_per_1m: Number(initialValues.image_output_credit_per_1m) || 0,
-        search_credit_per_query: Number(initialValues.search_credit_per_query) || 0,
-        video_input_image_credit: Number(initialValues.video_input_image_credit) || 0,
-        video_input_second_credit: Number(initialValues.video_input_second_credit) || 0,
-        video_output_480p_credit: Number(initialValues.video_output_480p_credit) || 0,
-        video_output_720p_credit: Number(initialValues.video_output_720p_credit) || 0,
         is_leader: Boolean(initialValues.is_leader),
         coordination_modes: initialValues.coordination_modes || [],
         member_agent_ids: initialValues.member_agent_ids || [],
@@ -200,7 +183,6 @@ export default function AgentForm({
         enable_auto_review: initialValues.enable_auto_review !== false,
         gemini_config: initialValues.gemini_config || defaultGeminiConfig,
         image_config: initialValues.image_config || defaultImageConfig,
-        image_credit_per_image: Number(initialValues.image_credit_per_image) || 0,
         video_config: (initialValues.video_config as any) || defaultVideoConfig,
         compaction_config: initialValues.compaction_config || defaultCompactionConfig,
         title_gen_config: initialValues.title_gen_config || defaultTitleGenConfig,
@@ -233,8 +215,6 @@ export default function AgentForm({
         tools_enabled: false,
         tools: [],
         target_node_types: [],
-        input_credit_per_1m: 0,
-        output_credit_per_1m: 0,
         is_leader: false,
         coordination_modes: [],
         member_agent_ids: [],
@@ -242,7 +222,6 @@ export default function AgentForm({
         enable_auto_review: true,
         gemini_config: defaultGeminiConfig,
         image_config: defaultImageConfig,
-        image_credit_per_image: 0,
         video_config: defaultVideoConfig,
         compaction_config: defaultCompactionConfig,
         title_gen_config: defaultTitleGenConfig,
@@ -415,7 +394,7 @@ export default function AgentForm({
         title={t('agents.form.sections.pricing')}
         subtitle={t('agents.form.sections.pricingDesc')}
       >
-        <PricingConfig disabled={loading} providers={activeProviders || []} />
+        <PricingOverview disabled={loading} providers={activeProviders || []} />
       </SectionCard>
 
       <SectionCard

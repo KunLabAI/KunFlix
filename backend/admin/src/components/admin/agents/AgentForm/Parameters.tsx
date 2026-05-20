@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useFormContext } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
+import Link from 'next/link';
 import {
   FormControl,
   FormField,
@@ -26,30 +27,23 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { HelpCircle } from 'lucide-react';
+import { ExternalLink, HelpCircle } from 'lucide-react';
 import { LLMProvider } from '@/types';
 import { getModelDisplayName } from '@/lib/api-utils';
+import api from '@/lib/axios';
 
-// 积分定价维度映射表（避免 if-else），label/unit 改为 i18n key
-const COST_DIMENSIONS = [
-  { key: 'input', labelKey: 'agents.form.parameters.costDimensions.input', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'input_credit_per_1m', step: 0.01, group: 'base' },
-  { key: 'text_output', labelKey: 'agents.form.parameters.costDimensions.text_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'output_credit_per_1m', step: 0.01, group: 'base' },
-  { key: 'image_output', labelKey: 'agents.form.parameters.costDimensions.image_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m', formField: 'image_output_credit_per_1m', step: 0.01, group: 'gemini' },
-  { key: 'search', labelKey: 'agents.form.parameters.costDimensions.search', unitKey: 'agents.form.parameters.units.per_query', costUnitKey: 'agents.form.parameters.costUnits.per_query', formField: 'search_credit_per_query', step: 0.1, group: 'gemini_search' },
-  { key: 'image_generation', labelKey: 'agents.form.parameters.costDimensions.image_generation', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image', formField: 'image_credit_per_image', step: 0.1, group: 'image_gen' },
-  { key: 'video_input_image', labelKey: 'agents.form.parameters.costDimensions.video_input_image', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image', formField: 'video_input_image_credit', step: 0.001, group: 'video' },
-  { key: 'video_input_second', labelKey: 'agents.form.parameters.costDimensions.video_input_second', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_input_second_credit', step: 0.001, group: 'video' },
-  { key: 'video_output_480p', labelKey: 'agents.form.parameters.costDimensions.video_output_480p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_output_480p_credit', step: 0.001, group: 'video' },
-  { key: 'video_output_720p', labelKey: 'agents.form.parameters.costDimensions.video_output_720p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second', formField: 'video_output_720p_credit', step: 0.001, group: 'video' },
-] as const;
-
-// 维度组可见性规则映射（避免 if-else 分支）
-const GROUP_VISIBILITY: Record<string, (ctx: { isGemini: boolean; searchEnabled: boolean; imageEnabled: boolean; agentType: string }) => boolean> = {
-  base: () => true,
-  gemini: ({ isGemini }) => isGemini,
-  gemini_search: ({ isGemini, searchEnabled }) => isGemini && searchEnabled,
-  image_gen: ({ imageEnabled }) => imageEnabled,
-  video: ({ agentType }) => agentType === 'video',
+// 定价维度显示映射（只读展示用，表驱动避免 if-else）
+const PRICING_DIMENSION_LABELS: Record<string, { labelKey: string; unitKey: string; costUnitKey: string }> = {
+  input: { labelKey: 'agents.form.parameters.costDimensions.input', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m' },
+  text_output: { labelKey: 'agents.form.parameters.costDimensions.text_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m' },
+  image_output: { labelKey: 'agents.form.parameters.costDimensions.image_output', unitKey: 'agents.form.parameters.units.per_1m', costUnitKey: 'agents.form.parameters.costUnits.per_1m' },
+  search: { labelKey: 'agents.form.parameters.costDimensions.search', unitKey: 'agents.form.parameters.units.per_query', costUnitKey: 'agents.form.parameters.costUnits.per_query' },
+  image_generation: { labelKey: 'agents.form.parameters.costDimensions.image_generation', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image' },
+  video_input_image: { labelKey: 'agents.form.parameters.costDimensions.video_input_image', unitKey: 'agents.form.parameters.units.per_image', costUnitKey: 'agents.form.parameters.costUnits.per_image' },
+  video_input_second: { labelKey: 'agents.form.parameters.costDimensions.video_input_second', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
+  video_output_480p: { labelKey: 'agents.form.parameters.costDimensions.video_output_480p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
+  video_output_720p: { labelKey: 'agents.form.parameters.costDimensions.video_output_720p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
+  audio_generation: { labelKey: 'agents.form.parameters.costDimensions.audio_generation', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
 };
 
 // 二级分组小标题（板块内的子区块视觉分隔）
@@ -612,148 +606,131 @@ export const SessionManagement: React.FC<PricingProps> = ({ disabled, providers 
 };
 
 // ============================================================================
-// 3. 计费定价：倍率 + 维度循环 + 利润概览
+// 3. 计费定价（只读概览）：实际定价在「计费定价」独立菜单统一维护
 // ============================================================================
-export const PricingConfig: React.FC<PricingProps> = ({ disabled, providers }) => {
-  const { control, watch, setValue } = useFormContext();
+interface PricingDimensionRow {
+  key: string;
+  apiCost?: number;       // USD
+  creditPrice?: number;   // 积分卖价
+}
+
+export const PricingOverview: React.FC<PricingProps> = ({ disabled, providers }) => {
+  const { watch } = useFormContext();
   const { t } = useTranslation();
   const providerId = watch('provider_id');
   const model = watch('model');
-  const searchEnabled = watch('gemini_config.google_search_enabled');
-  const imageEnabled = watch('image_config.image_generation_enabled');
-  const [markupMultiplier, setMarkupMultiplier] = useState(1.5);
 
-  const currentProvider = useMemo(() =>
-    providers?.find(p => p.id === providerId),
+  const currentProvider = useMemo(
+    () => providers?.find(p => p.id === providerId),
     [providerId, providers]
   );
-
-  const providerType = currentProvider?.provider_type?.toLowerCase() || '';
-  const isGeminiProvider = providerType === 'gemini';
-
   const modelCosts: Record<string, number> = currentProvider?.model_costs?.[model] ?? {};
-  const hasAnyCost = Object.keys(modelCosts).length > 0;
 
-  const visibilityCtx = { isGemini: !!isGeminiProvider, searchEnabled: !!searchEnabled, imageEnabled: !!imageEnabled, agentType: watch('agent_type') || 'text' };
-  const visibleDimensions = COST_DIMENSIONS.filter(
-    dim => GROUP_VISIBILITY[dim.group]?.(visibilityCtx) ?? true
-  );
+  const [pricing, setPricing] = useState<Record<string, number> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pricingId, setPricingId] = useState<string | null>(null);
+
+  // 拉取 (provider_id, model) 的积分卖价
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPricing = async () => {
+      if (!providerId || !model) {
+        setPricing(null);
+        setPricingId(null);
+        return;
+      }
+      setLoading(true);
+      const params = { provider_id: providerId, model };
+      const result = await api
+        .get<any[]>('/admin/pricing', { params })
+        .then(res => res.data)
+        .catch(() => [] as any[]);
+      if (cancelled) return;
+      const item = (result || [])[0];
+      setPricing(item?.dimensions ?? null);
+      setPricingId(item?.id ?? null);
+      setLoading(false);
+    };
+    fetchPricing();
+    return () => { cancelled = true; };
+  }, [providerId, model]);
+
+  // 合并两侧维度（API 进价 ⊕ 积分卖价）
+  const dimensions: PricingDimensionRow[] = useMemo(() => {
+    const keys = new Set<string>([
+      ...Object.keys(modelCosts || {}),
+      ...Object.keys(pricing || {}),
+    ]);
+    return Array.from(keys)
+      .filter(k => PRICING_DIMENSION_LABELS[k])
+      .map(k => ({
+        key: k,
+        apiCost: modelCosts?.[k],
+        creditPrice: pricing?.[k],
+      }));
+  }, [modelCosts, pricing]);
+
+  const editHref = pricingId
+    ? `/admin/pricing/${pricingId}`
+    : (providerId && model ? `/admin/pricing/new?provider_id=${providerId}&model=${encodeURIComponent(model)}` : '/admin/pricing');
 
   return (
     <div>
-      {/* 成本倍率 - 仅在有 API 成本数据时显示 */}
-      {hasAnyCost && (
-        <div className="flex items-center gap-3 mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-          <Label className="text-xs text-blue-700 dark:text-blue-300 whitespace-nowrap">{t('agents.form.parameters.pricing.markupMultiplier')}</Label>
-          <Input
-            type="number"
-            value={markupMultiplier}
-            onChange={e => setMarkupMultiplier(Math.max(1.0, Number(e.target.value) || 1.0))}
-            step={0.1}
-            min={1.0}
-            className="w-20 font-mono"
-            disabled={disabled}
-          />
-          <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">×</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-xs h-7 flex-shrink-0"
-            disabled={disabled}
-            onClick={() => {
-              visibleDimensions.forEach(dim => {
-                const cost = modelCosts[dim.key];
-                cost != null && setValue(dim.formField, Math.round(cost * markupMultiplier * 100 * 100) / 100);
-              });
-            }}
-          >
-            {t('agents.form.parameters.pricing.applyAll')}
-          </Button>
-        </div>
-      )}
-
-      {/* 动态渲染可见的定价维度（映射表驱动，避免 if-else） */}
-      <div className="space-y-4">
-        {visibleDimensions.map((dim) => {
-          const apiCost = modelCosts[dim.key] as number | undefined;
-          const suggestedCredit = apiCost != null ? Math.round(apiCost * markupMultiplier * 100 * 100) / 100 : undefined;
-          return (
-            <FormField
-              key={dim.key}
-              control={control}
-              name={dim.formField}
-              render={({ field }) => (
-                <FormItem>
-                  <div className="flex items-center justify-between">
-                    <FormLabel className="text-xs text-muted-foreground">{t(dim.labelKey)} ({t(dim.unitKey)})</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        value={field.value ?? 0}
-                        onChange={e => field.onChange(Number(e.target.value))}
-                        step={dim.step}
-                        min={0}
-                        className="w-24 font-mono"
-                        disabled={disabled}
-                      />
-                    </FormControl>
-                  </div>
-                  {apiCost != null && (
-                    <div className="flex items-center justify-between mt-1 px-1">
-                      <span className="text-xs text-blue-600 dark:text-blue-400">
-                        {t('agents.form.parameters.pricing.apiCost', { cost: apiCost, unit: t(dim.costUnitKey) })}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-xs text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-200 disabled:opacity-50"
-                        onClick={() => setValue(dim.formField, suggestedCredit!)}
-                        disabled={disabled}
-                      >
-                        {t('agents.form.parameters.pricing.suggestion', { value: suggestedCredit })}
-                      </button>
-                    </div>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          );
-        })}
+      {/* 提示横幅 */}
+      <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+        <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+          {t('agents.form.parameters.pricing.managedHint', '积分卖价现由「计费定价」独立菜单按（供应商, 模型）统一维护。以下全量只读。')}
+        </p>
       </div>
 
-      <p className="text-xs text-muted-foreground mt-3">{t('agents.form.parameters.pricing.freeDesc')}</p>
-
-      {/* 利润概览 */}
-      {hasAnyCost && (
-        <div className="mt-4 pt-4 border-t">
-          <Label className="text-xs font-medium mb-2 block text-muted-foreground">{t('agents.form.parameters.pricing.profitOverview')}</Label>
-          <div className="space-y-1.5">
-            {visibleDimensions.map(dim => {
-              const apiCost = modelCosts[dim.key] as number | undefined;
-              const creditRate = watch(dim.formField) ?? 0;
-              const revenueUsd = creditRate * 0.01;
-              const margin = apiCost && apiCost > 0 ? ((revenueUsd - apiCost) / apiCost * 100) : null;
-              return apiCost != null ? (
-                <div key={dim.key} className="flex justify-between items-center text-xs">
-                  <span className="text-muted-foreground">{t(dim.labelKey)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground font-mono">${apiCost} → {creditRate}{t('agents.form.parameters.pricing.credits')} → ${revenueUsd.toFixed(2)}</span>
+      {/* 当前计费概览 */}
+      {(!providerId || !model) ? (
+        <p className="text-xs text-muted-foreground">{t('agents.form.parameters.pricing.selectProviderModelFirst', '请先选择供应商与模型')}</p>
+      ) : loading ? (
+        <p className="text-xs text-muted-foreground">{t('common.loading', '加载中...')}</p>
+      ) : dimensions.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t('agents.form.parameters.pricing.noPricing', '该模型尚未配置积分卖价，点击下方按钮前往计费定价页面创建。')}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {dimensions.map(d => {
+            const meta = PRICING_DIMENSION_LABELS[d.key];
+            const credits = d.creditPrice ?? 0;
+            const revenueUsd = credits * 0.01;
+            const margin = (d.apiCost && d.apiCost > 0) ? ((revenueUsd - d.apiCost) / d.apiCost * 100) : null;
+            return (
+              <div key={d.key} className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">{t(meta.labelKey)}</span>
+                <div className="flex items-center gap-2 font-mono">
+                  <span className="text-muted-foreground">
+                    {d.apiCost != null ? `$${d.apiCost}` : '-'} → {d.creditPrice != null ? `${d.creditPrice}${t('agents.form.parameters.pricing.credits')}` : '-'}
+                  </span>
+                  {margin != null && (
                     <span className={
-                      margin == null ? 'text-muted-foreground' :
-                      margin > 0 ? 'text-green-600 dark:text-green-400 font-medium' :
-                      margin < 0 ? 'text-red-600 dark:text-red-400 font-medium' :
+                      margin > 0 ? 'text-green-600 dark:text-green-400' :
+                      margin < 0 ? 'text-red-600 dark:text-red-400' :
                       'text-yellow-600 dark:text-yellow-400'
                     }>
-                      {margin != null ? `${margin > 0 ? '+' : ''}${margin.toFixed(1)}%` : t('agents.form.parameters.pricing.naLabel')}
+                      {margin > 0 ? '+' : ''}{margin.toFixed(1)}%
                     </span>
-                  </div>
+                  )}
                 </div>
-              ) : null;
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* 跳转计费定价页面 */}
+      <div className="mt-4 pt-3 border-t flex justify-end">
+        <Button asChild type="button" variant="outline" size="sm" disabled={disabled}>
+          <Link href={editHref}>
+            <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+            {pricingId ? t('agents.form.parameters.pricing.gotoEdit', '前往编辑定价') : t('agents.form.parameters.pricing.gotoCreate', '前往计费定价')}
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 };
