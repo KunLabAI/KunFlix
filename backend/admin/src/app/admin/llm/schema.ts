@@ -60,6 +60,7 @@ export const PROVIDER_OPTIONS = [
   { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax },
   { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
   { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
+  { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
 ];
 
 export const createFormSchema = (t: TFunction) => z.object({

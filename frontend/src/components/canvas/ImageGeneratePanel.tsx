@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { XCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { XCircle, FileImage, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useImagePanelForm } from '@/hooks/useImagePanelForm';
 import { useImagePanelReferences } from '@/hooks/useImagePanelReferences';
@@ -145,14 +145,30 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
       prompt: form.prompt.trim().slice(0, TEXT_PROMPT_MAX),
       mode: form.mode,
       reference_images: dataUrls.length > 0 ? dataUrls.map((url) => ({ url })) : undefined,
+      mask_url: (form.mode === 'edit' && form.maskUrl) ? form.maskUrl : undefined,
       config: {
         aspect_ratio: form.aspectRatio || undefined,
         quality: (form.quality as 'standard' | 'hd' | 'ultra') || undefined,
         batch_count: form.batchCount,
         output_format: (form.outputFormat as 'png' | 'jpeg' | 'webp') || undefined,
+        background: (form.background as 'auto' | 'transparent' | 'opaque') || undefined,
+        moderation: (form.moderation as 'auto' | 'low') || undefined,
+        output_compression: form.outputCompression ?? undefined,
       },
     });
   };
+
+  // P2: 蒙版上传（edit 模式且能力允许）
+  const maskInputRef = useRef<HTMLInputElement | null>(null);
+  const handleMaskFile = useCallback((file: File | null) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      typeof result === 'string' && form.setMaskUrl(result);
+    };
+    reader.readAsDataURL(file);
+  }, [form]);
 
   return (
     <div className="w-full space-y-1.5" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
@@ -209,6 +225,33 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
               />
             )}
 
+            {/* P2: edit 模式 + 供应商支持蒙版 → 蒙版上传按钮 */}
+            {form.selectedModel && form.mode === 'edit' && form.visibility.supportsMask && (
+              <>
+                <input
+                  ref={maskInputRef}
+                  type="file"
+                  accept="image/png"
+                  className="hidden"
+                  onChange={(e) => {
+                    handleMaskFile(e.target.files?.[0] || null);
+                    e.target.value = '';
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={taskActive}
+                  onClick={() => form.maskUrl ? form.setMaskUrl('') : maskInputRef.current?.click()}
+                  title={form.maskUrl
+                    ? t('canvas.node.image.maskRemove', '移除蒙版')
+                    : t('canvas.node.image.maskUpload', '上传 PNG 蒙版（透明区=被编辑）')}
+                  className={`h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${form.maskUrl ? 'text-primary' : ''}`}
+                >
+                  {form.maskUrl ? <X className="w-4 h-4" /> : <FileImage className="w-4 h-4" />}
+                </button>
+              </>
+            )}
+
             <PanelActionButtons
               taskActive={taskActive}
               canSubmit={canSubmit}
@@ -245,6 +288,12 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
           setBatchCount={form.setBatchCount}
           outputFormat={form.outputFormat}
           setOutputFormat={form.setOutputFormat}
+          background={form.background}
+          setBackground={form.setBackground}
+          moderation={form.moderation}
+          setModeration={form.setModeration}
+          outputCompression={form.outputCompression}
+          setOutputCompression={form.setOutputCompression}
         />
       )}
 

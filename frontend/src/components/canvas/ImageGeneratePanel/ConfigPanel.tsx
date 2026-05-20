@@ -21,6 +21,11 @@ interface Visibility {
   batchMax: number;
   showOutputFormat: boolean;
   supportedModes: string[];
+  // P2
+  backgroundOptions: string[];
+  moderationOptions: string[];
+  supportsMask: boolean;
+  supportsOutputCompression: boolean;
 }
 
 interface Props {
@@ -35,6 +40,13 @@ interface Props {
   setBatchCount: (v: number) => void;
   outputFormat: string;
   setOutputFormat: (v: string) => void;
+  // P2
+  background: string;
+  setBackground: (v: string) => void;
+  moderation: string;
+  setModeration: (v: string) => void;
+  outputCompression: number | null;
+  setOutputCompression: (v: number | null) => void;
 }
 
 export function ConfigPanel({
@@ -49,6 +61,12 @@ export function ConfigPanel({
   setBatchCount,
   outputFormat,
   setOutputFormat,
+  background,
+  setBackground,
+  moderation,
+  setModeration,
+  outputCompression,
+  setOutputCompression,
 }: Props) {
   const { t } = useTranslation();
 
@@ -72,6 +90,21 @@ export function ConfigPanel({
     value: f,
     label: f.toUpperCase(),
   }));
+
+  // P2 下拉选项：空值 '' 代表 「由供应商默认」，不透传给后端
+  const BG_LABELS: Record<string, string> = { auto: '默认', transparent: '透明', opaque: '不透明' };
+  const MOD_LABELS: Record<string, string> = { auto: '默认', low: '宽松' };
+  const backgroundOptions: DropdownOption<string>[] = [
+    { value: '', label: '默认' },
+    ...visibility.backgroundOptions.filter((b) => b !== 'auto').map((b) => ({ value: b, label: BG_LABELS[b] || b })),
+  ];
+  const moderationOptions: DropdownOption<string>[] = [
+    { value: '', label: '默认' },
+    ...visibility.moderationOptions.filter((m) => m !== 'auto').map((m) => ({ value: m, label: MOD_LABELS[m] || m })),
+  ];
+
+  // output_compression 仅在 webp / jpeg 下有意义
+  const showCompression = visibility.supportsOutputCompression && (outputFormat === 'webp' || outputFormat === 'jpeg');
 
   return (
     <div className="rounded-lg border border-border/50 bg-card p-2.5 space-y-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
@@ -152,6 +185,57 @@ export function ConfigPanel({
               </span>
             }
             buttonClassName="justify-between"
+          />
+        </div>
+      )}
+
+      {/* P2: Background / Moderation 双列 */}
+      {(visibility.backgroundOptions.length > 0 || visibility.moderationOptions.length > 0) && (
+        <div className="grid grid-cols-2 gap-2">
+          {visibility.backgroundOptions.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.background', '背景')}</label>
+              <Dropdown
+                value={background}
+                options={backgroundOptions}
+                onChange={setBackground}
+                triggerContent={
+                  <span className="flex-1 text-left">{(BG_LABELS[background] || '默认')}</span>
+                }
+                buttonClassName="justify-between"
+              />
+            </div>
+          )}
+          {visibility.moderationOptions.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.moderation', '安全等级')}</label>
+              <Dropdown
+                value={moderation}
+                options={moderationOptions}
+                onChange={setModeration}
+                triggerContent={
+                  <span className="flex-1 text-left">{(MOD_LABELS[moderation] || '默认')}</span>
+                }
+                buttonClassName="justify-between"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* P2: Output Compression 滑块（仅 webp/jpeg） */}
+      {showCompression && (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.compression', '压缩率 (%)')}</label>
+            <span className="text-[11px] font-medium">{outputCompression ?? '默认'}</span>
+          </div>
+          <Slider
+            value={[outputCompression ?? 80]}
+            onValueChange={(v) => setOutputCompression(v[0])}
+            min={0}
+            max={100}
+            step={5}
           />
         </div>
       )}

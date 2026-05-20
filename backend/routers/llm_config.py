@@ -33,6 +33,7 @@ _DEFAULT_BASE_URLS = {
     "xai": "https://api.x.ai/v1",
     "ark": "https://ark.cn-beijing.volces.com/api/v3",
     "doubao": "https://ark.cn-beijing.volces.com/api/v3",
+    "openrouter": "https://openrouter.ai/api/v1",
 }
 
 # Azure uses "azure" client type, all others use "openai"

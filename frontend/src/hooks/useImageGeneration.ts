@@ -21,6 +21,11 @@ export interface ImageModelCapabilities {
   output_formats: string[];   // png / jpeg / webp
   batch_count: { min: number; max: number };
   supported_modes: string[];  // text_to_image / edit / reference_images
+  // P2 扩展（可选，仅 OpenRouter 的 OpenAI gpt-image-* 提供）
+  backgrounds?: string[];                  // auto / transparent / opaque
+  moderations?: string[];                  // auto / low
+  supports_mask?: boolean;                 // edit 模式是否接受蒙版
+  supports_output_compression?: boolean;   // webp/jpeg 压缩率是否可调
 }
 
 export interface ImageGenParams {
@@ -28,6 +33,10 @@ export interface ImageGenParams {
   quality?: 'standard' | 'hd' | 'ultra';
   batch_count?: number;
   output_format?: 'png' | 'jpeg' | 'webp';
+  // P2 新增：OpenAI gpt-image-* 专用端点字段
+  output_compression?: number;                                  // 0–100
+  background?: 'auto' | 'transparent' | 'opaque';
+  moderation?: 'auto' | 'low';
 }
 
 export type ImageMode = 'text_to_image' | 'edit' | 'reference_images';
@@ -44,6 +53,8 @@ export interface ImageCreateParams {
   config?: ImageGenParams;
   mode?: ImageMode;
   reference_images?: ImageReference[];
+  // P2 新增：edit 模式可选蒙版（PNG，透明区 = 被编辑区域）
+  mask_url?: string;
 }
 
 export interface ImageGenerateResponse {
@@ -208,6 +219,11 @@ export function useImageFormVisibility(capabilities: ImageModelCapabilities | nu
     batchMax: 4,
     showOutputFormat: false,
     supportedModes: ['text_to_image'] as string[],
+    // P2 默认都不可见
+    backgroundOptions: [] as string[],
+    moderationOptions: [] as string[],
+    supportsMask: false,
+    supportsOutputCompression: false,
   };
 
   const c = capabilities;
@@ -220,6 +236,10 @@ export function useImageFormVisibility(capabilities: ImageModelCapabilities | nu
         batchMax: c.batch_count.max,
         showOutputFormat: (c.output_formats?.length || 0) > 0,
         supportedModes: c.supported_modes || ['text_to_image'],
+        backgroundOptions: c.backgrounds || [],
+        moderationOptions: c.moderations || [],
+        supportsMask: !!c.supports_mask,
+        supportsOutputCompression: !!c.supports_output_compression,
       }
     : fallback;
 }
