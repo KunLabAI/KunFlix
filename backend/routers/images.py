@@ -69,6 +69,7 @@ async def _dispatch_image_generation(
     adapted: dict,
     n: int,
     user_id: str,
+    mask_url: Optional[str] = None,
 ) -> tuple[list[str], dict]:
     """按 mode 分派到 text-to-image 生成器或 edit handler。
 

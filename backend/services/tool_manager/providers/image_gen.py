@@ -204,9 +204,9 @@ async def _generate_via_ark(
 async def _generate_via_openrouter(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int, user_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], dict]:
     img_cfg = config.get("image_config") or {}
-    return await batch_generate_openrouter_images(
+    urls = await batch_generate_openrouter_images(
         api_key=api_key,
         base_url=base_url,
         model=model,
@@ -220,6 +220,8 @@ async def _generate_via_openrouter(
         n=max(1, n),
         user_id=user_id,
     )
+    # OpenRouter chat 返回的 usage 不含图像 token 估算，统一返回零值
+    return urls, {"input_tokens": 0, "output_tokens": 0}
 
 
 # Handler dispatch map (no if-chains)
