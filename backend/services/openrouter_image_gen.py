@@ -174,14 +174,19 @@ async def batch_generate_openrouter_images(
     prompt: str,
     aspect_ratio: str | None = None,
     quality: str | None = None,
+    output_format: str | None = None,
+    output_compression: int | None = None,
+    background: str | None = None,
+    moderation: str | None = None,
     n: int = 1,
     user_id: str | None = None,
 ) -> list[str]:
     """文生图统一入口。
 
     注：output_format/output_compression/background/moderation 在 OpenRouter 上不生效，
-    保留签名以向上层保持接口兼容。
+    显式声明形参以向上层保持接口兼容（静默忽略）。
     """
+    _ = (output_format, output_compression, background, moderation)  # silently ignored
     return await _dispatch_generate(
         api_key=api_key,
         base_url=base_url,
