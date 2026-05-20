@@ -56,6 +56,7 @@ DEFAULT_BASE_URLS = {
     "xai": "https://api.x.ai/v1",
     "ark": "https://ark.cn-beijing.volces.com/api/v3",
     "doubao": "https://ark.cn-beijing.volces.com/api/v3",
+    "openrouter": "https://openrouter.ai/api/v1",
 }
 
 # 供应商注册表：provider_type -> stream handler
@@ -79,9 +80,9 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 # ============================================================
 # OpenAI 兼容供应商 (openai, azure, deepseek)
 # ============================================================
-@register_provider("openai", "deepseek")
+@register_provider("openai", "deepseek", "openrouter")
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """OpenAI/DeepSeek 流式调用（支持 tool calling）"""
+    """OpenAI/DeepSeek/OpenRouter 流式调用（支持 tool calling）"""
     from openai import AsyncOpenAI
     
     client = AsyncOpenAI(

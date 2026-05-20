@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 IMAGE_EDIT_TOOL_NAME = "edit_image"
 
 # 图片编辑支持的供应商类型（与生成相同）
-_EDIT_CAPABLE_PROVIDERS = {"xai", "gemini"}
+_EDIT_CAPABLE_PROVIDERS = {"xai", "gemini", "openrouter"}
 
 # Fallback aspect ratio enum（与 image_gen.py 的 _ASPECT_RATIO_ENUM 对齐）
 _FALLBACK_ASPECT_RATIOS = [
@@ -37,8 +37,15 @@ _FALLBACK_ASPECT_RATIOS = [
 
 # 供应商特定参数提取器（避免 if 链）
 _EDIT_PARAM_EXTRACTORS: dict[str, callable] = {
-    "xai":    lambda img_cfg: {"resolution": img_cfg.get("resolution")},
-    "gemini": lambda img_cfg: {"image_size": img_cfg.get("image_size")},
+    "xai":        lambda img_cfg: {"resolution": img_cfg.get("resolution")},
+    "gemini":     lambda img_cfg: {"image_size": img_cfg.get("image_size")},
+    "openrouter": lambda img_cfg: {
+        "quality":            img_cfg.get("quality"),
+        "output_format":      img_cfg.get("output_format"),
+        "output_compression": img_cfg.get("output_compression"),
+        "background":         img_cfg.get("background"),
+        "moderation":         img_cfg.get("moderation"),
+    },
 }
 
 
@@ -398,10 +405,50 @@ async def _edit_via_gemini(
     return ""
 
 
+async def _edit_via_openrouter(
+    api_key: str,
+    base_url: str | None,
+    model: str,
+    image_urls: list[str],
+    prompt: str,
+    aspect_ratio: str | None,
+    quality: str | None = None,
+    output_format: str | None = None,
+    output_compression: int | None = None,
+    background: str | None = None,
+    moderation: str | None = None,
+    mask_url: str | None = None,
+    user_id: str | None = None,
+) -> str:
+    """图像编辑统一入口：按模型分派走 OpenAI Image Edits 专用端点或 chat.completions。
+
+    - openai/gpt-image-*：享受 size / quality / output_format / mask 全量能力
+    - 其他模型：只传参考图，其余参数静默忽略
+    """
+    from services.openrouter_image_gen import edit_openrouter_image
+
+    return await edit_openrouter_image(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        image_urls=image_urls,
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        quality=quality,
+        output_format=output_format,
+        output_compression=output_compression,
+        background=background,
+        moderation=moderation,
+        mask_url=mask_url,
+        user_id=user_id,
+    )
+
+
 # 供应商调度表
 _EDIT_HANDLERS = {
     "xai": _edit_via_xai,
     "gemini": _edit_via_gemini,
+    "openrouter": _edit_via_openrouter,
 }
 
 # 编辑后节点位置偏移

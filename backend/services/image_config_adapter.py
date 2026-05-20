@@ -19,44 +19,51 @@ _QUALITY_MAP: dict[str, dict[str, str]] = {
 # Batch count: field name + max per provider
 # ---------------------------------------------------------------------------
 _BATCH_MAP: dict[str, dict[str, Any]] = {
-    "gemini": {"field": "batch_count", "max": 4},
-    "xai":    {"field": "n",           "max": 4},
-    "ark":    {"field": "n",           "max": 4},
+    "gemini":     {"field": "batch_count", "max": 4},
+    "xai":        {"field": "n",           "max": 4},
+    "ark":        {"field": "n",           "max": 4},
+    "openrouter": {"field": "n",           "max": 4},
 }
 
 # ---------------------------------------------------------------------------
 # Supported modes per provider (text_to_image / edit / reference_images)
 # ---------------------------------------------------------------------------
 _SUPPORTED_MODES: dict[str, list[str]] = {
-    "gemini": ["text_to_image", "edit", "reference_images"],
-    "xai":    ["text_to_image", "edit", "reference_images"],
-    "ark":    ["text_to_image"],
+    "gemini":     ["text_to_image", "edit", "reference_images"],
+    "xai":        ["text_to_image", "edit", "reference_images"],
+    "ark":        ["text_to_image"],
+    "openrouter": ["text_to_image", "edit", "reference_images"],
 }
 
 # ---------------------------------------------------------------------------
 # Provider-supported aspect ratios (for validation / fallback)
 # ---------------------------------------------------------------------------
 _ASPECT_RATIO_SUPPORTED: dict[str, set[str]] = {
-    "gemini": {"auto", "16:9", "4:3", "1:1", "3:4", "9:16"},
-    "xai":    {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
-               "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "auto"},
-    "ark":    {"1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "auto"},
+    "gemini":     {"auto", "16:9", "4:3", "1:1", "3:4", "9:16"},
+    "xai":        {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
+                   "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "auto"},
+    "ark":        {"1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "auto"},
+    # OpenRouter 下面模型诡异很大，取官方文档通用集合（模型不支持时凭 prompt 提示软限制）
+    "openrouter": {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"},
 }
 
 _ASPECT_RATIO_DEFAULT: dict[str, str] = {
-    "gemini": "auto",
-    "xai":    "1:1",
-    "ark":    "1:1",
+    "gemini":     "auto",
+    "xai":        "1:1",
+    "ark":        "1:1",
+    "openrouter": "1:1",
 }
 
 # ---------------------------------------------------------------------------
 # Output format mapping
 # ---------------------------------------------------------------------------
 _OUTPUT_FORMAT_SUPPORTED: dict[str, set[str]] = {
-    "gemini": {"png", "jpeg", "webp"},
-    "xai":    set(),  # xAI 不支持用户指定输出格式
-    "ark":    set(),  # Ark Seedream 不支持用户指定输出格式
+    "gemini":     {"png", "jpeg", "webp"},
+    "xai":        set(),  # xAI 不支持用户指定输出格式
+    "ark":        set(),  # Ark Seedream 不支持用户指定输出格式
+    "openrouter": set(),  # OpenRouter 不支持 output_format 透传
 }
+
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +90,19 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
         "output_formats": [],
         "batch_count": {"min": 1, "max": _BATCH_MAP["ark"]["max"]},
         "supported_modes": _SUPPORTED_MODES["ark"],
+    },
+    "openrouter": {
+        "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["openrouter"]),
+        # quality 映射为 OpenRouter image_config.image_size（standard→1K, hd→2K, ultra→4K）
+        "qualities": ["standard", "hd", "ultra"],
+        "output_formats": [],  # OpenRouter 不支持 output_format 透传
+        "batch_count": {"min": 1, "max": _BATCH_MAP["openrouter"]["max"]},
+        "supported_modes": _SUPPORTED_MODES["openrouter"],
+        # OpenRouter 不代理 /images/generations 或 /images/edits，以下能力不可用
+        "backgrounds": [],
+        "moderations": [],
+        "supports_mask": False,
+        "supports_output_compression": False,
     },
 }
 
@@ -175,10 +195,36 @@ def _adapt_to_ark(unified: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Adapter registry (mapping table)
 # ---------------------------------------------------------------------------
+def _adapt_to_openrouter(unified: dict) -> dict:
+    """OpenRouter 适配：透传 aspect_ratio / quality / batch_count。
+
+    OpenRouter 统一走 chat/completions + image_config，仅支持 aspect_ratio 和 image_size。
+    output_format/output_compression/background/moderation 不生效，不再透传。
+    """
+    cfg = unified.get("image_config") or {}
+    result: dict[str, Any] = {
+        "image_generation_enabled": unified.get("image_generation_enabled", False),
+    }
+    img: dict[str, Any] = {}
+
+    ar = cfg.get("aspect_ratio")
+    ar and ar in _ASPECT_RATIO_SUPPORTED["openrouter"] and img.update(aspect_ratio=ar)
+
+    q = cfg.get("quality")
+    q and img.update(quality=q)
+
+    bc = cfg.get("batch_count")
+    bc and img.update(n=min(bc, _BATCH_MAP["openrouter"]["max"]))
+
+    img and result.update(image_config=img)
+    return result
+
+
 _ADAPTERS: dict[str, callable] = {
-    "gemini": _adapt_to_gemini,
-    "xai":    _adapt_to_xai,
-    "ark":    _adapt_to_ark,
+    "gemini":     _adapt_to_gemini,
+    "xai":        _adapt_to_xai,
+    "ark":        _adapt_to_ark,
+    "openrouter": _adapt_to_openrouter,
 }
 
 

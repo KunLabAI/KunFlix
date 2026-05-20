@@ -26,6 +26,7 @@ from services.ark_image_gen import (
     batch_generate_ark_images,
     ArkBatchImageConfig,
 )
+from services.openrouter_image_gen import batch_generate_openrouter_images
 from services.batch_image_gen import (
     batch_generate_images,
     BatchImageConfig,
@@ -51,7 +52,7 @@ _ASPECT_RATIO_ENUM = [
 ]
 
 # Providers that support tool-based image generation
-_TOOL_GEN_PROVIDERS = frozenset({"xai", "gemini", "ark"})
+_TOOL_GEN_PROVIDERS = frozenset({"xai", "gemini", "ark", "openrouter"})
 
 # ---------------------------------------------------------------------------
 # Tool Definition (dynamic per provider)
@@ -190,11 +191,33 @@ async def _generate_via_ark(
     return [url for r in result.results for url in r.image_urls]
 
 
+async def _generate_via_openrouter(
+    api_key: str, base_url: str | None, model: str,
+    prompt: str, config: dict, n: int, user_id: str | None = None,
+) -> list[str]:
+    img_cfg = config.get("image_config") or {}
+    return await batch_generate_openrouter_images(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        prompt=prompt,
+        aspect_ratio=img_cfg.get("aspect_ratio"),
+        quality=img_cfg.get("quality"),
+        output_format=img_cfg.get("output_format"),
+        output_compression=img_cfg.get("output_compression"),
+        background=img_cfg.get("background"),
+        moderation=img_cfg.get("moderation"),
+        n=max(1, n),
+        user_id=user_id,
+    )
+
+
 # Handler dispatch map (no if-chains)
 _IMAGE_GENERATORS: dict[str, Any] = {
     "xai": _generate_via_xai,
     "gemini": _generate_via_gemini,
     "ark": _generate_via_ark,
+    "openrouter": _generate_via_openrouter,
 }
 
 

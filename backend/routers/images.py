@@ -7,10 +7,13 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +69,7 @@ async def _dispatch_image_generation(
     adapted: dict,
     n: int,
     user_id: str,
+    mask_url: Optional[str] = None,
 ) -> list[str]:
     """按 mode 分派到 text-to-image 生成器或 edit handler。"""
     # text_to_image → SDK 生成器
@@ -98,10 +102,14 @@ async def _dispatch_image_generation(
     resolved_urls = await asyncio.gather(
         *[_resolve_image_url(u, max_dimension=compress_dim) for u in raw_urls]
     )
+    # 蒙版也可能是 /api/media/... 本地 URL，同样走一轮解析；为避免损坏透明通道，蒙版不压缩（max_dimension=0）。
+    resolved_mask = await _resolve_image_url(mask_url, max_dimension=0) if mask_url else None
     # 从适配后的配置提取供应商特定参数（resolution / image_size）
     adapted_img = (adapted.get("image_config") or {})
     extractor = _EDIT_PARAM_EXTRACTORS.get(provider_type, lambda c: {})
     extra = extractor(adapted_img)
+    # 仅在取到 mask 时透传（避免为不支持蒙版的 handler 注入多余关键字）
+    resolved_mask and extra.update(mask_url=resolved_mask)
 
     # edit / reference_images 模式下，e个 handler 每次调用仅返回一张图；
     # 若 batch_count > 1 则并行发起 n 次调用合并结果。
@@ -269,6 +277,7 @@ async def generate_images(
             adapted=adapted,
             n=n,
             user_id=entity_id,
+            mask_url=payload.mask_url,
         )
     except HTTPException:
         raise
@@ -327,3 +336,161 @@ async def generate_images(
         credit_cost=credit_cost,
         created_at=datetime.now(timezone.utc),
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/images/generate/stream —— SSE 流式生图（OpenRouter gpt-image-* 专享，其他供应商降级为单帧）
+# ---------------------------------------------------------------------------
+@router.post("/generate/stream")
+@limiter.limit(ENDPOINT_LIMITS["image_generate"])
+async def generate_images_stream(
+    request: Request,
+    payload: ImageGenerateRequest,
+    current_user=Depends(get_current_active_user_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """流式生图 SSE 端点。
+
+    事件 schema (data: <json>):
+      {"type":"partial_image", "index":0, "url":"/api/media/xxx"}
+      {"type":"final_image",   "index":0, "url":"/api/media/xxx", "revised_prompt":"..."}
+      {"type":"error",         "message":"..."}
+      {"type":"done",          "images":["/api/media/..."], "credit_cost":0.05}
+
+    限制：仅 mode=text_to_image；edit/reference_images 请使用同步 /generate 端点。
+    """
+    payload.mode == "text_to_image" or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Streaming only supports mode='text_to_image'")
+    )
+
+    entity_id = current_user.id
+    (await _get_global_image_enabled(db)) or (_ for _ in ()).throw(
+        HTTPException(status_code=403, detail="Image generation is disabled globally")
+    )
+
+    from services.credit_reset import maybe_reset_monthly_credits
+    await maybe_reset_monthly_credits(entity_id, db)
+    try:
+        await require_positive_balance(entity_id, db)
+    except InsufficientCreditsError:
+        raise BizError.insufficient_credits()
+    except BalanceFrozenError:
+        raise BizError.balance_frozen(user_id=entity_id)
+
+    provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == payload.provider_id))
+    provider = provider_result.scalar_one_or_none()
+    provider or (_ for _ in ()).throw(HTTPException(status_code=404, detail="LLM Provider not found"))
+    provider.is_active or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Provider is inactive")
+    )
+
+    provider_type = (provider.provider_type or "").lower()
+    model_meta = (provider.model_metadata or {}).get(payload.model) or {}
+    (model_meta.get("model_type") == "image") or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Model {payload.model} is not an image model")
+    )
+
+    # 适配统一配置 → OpenRouter image_config
+    params = payload.config.model_dump(exclude_none=True) if payload.config else {}
+    n = int(params.pop("batch_count", 1) or 1)
+    unified = {"image_generation_enabled": True, "image_config": params}
+    adapted = to_provider_config(provider_type, unified) or {"image_config": {}}
+    img_cfg = adapted.get("image_config") or {}
+
+    rate = float(((provider.model_costs or {}).get(payload.model, {}) or {}).get("image_generation", 0) or 0)
+
+    return StreamingResponse(
+        _sse_stream_image_events(
+            provider=provider,
+            model=payload.model,
+            prompt=payload.prompt,
+            img_cfg=img_cfg,
+            n=n,
+            user_id=entity_id,
+            rate=rate,
+            db=db,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _sse_format(event: dict) -> bytes:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+
+
+async def _sse_stream_image_events(
+    *,
+    provider,
+    model: str,
+    prompt: str,
+    img_cfg: dict,
+    n: int,
+    user_id: str,
+    rate: float,
+    db: AsyncSession,
+):
+    """包装 stream_generate_openrouter_images，流完后同事务资产注册 + 扣费。"""
+    from services.openrouter_image_gen import stream_generate_openrouter_images
+
+    final_urls: list[str] = []
+    try:
+        async for evt in stream_generate_openrouter_images(
+            api_key=provider.api_key,
+            base_url=provider.base_url,
+            model=model,
+            prompt=prompt,
+            aspect_ratio=img_cfg.get("aspect_ratio"),
+            quality=img_cfg.get("quality"),
+            output_format=img_cfg.get("output_format"),
+            output_compression=img_cfg.get("output_compression"),
+            background=img_cfg.get("background"),
+            moderation=img_cfg.get("moderation"),
+            n=n,
+            partial_images=2,
+            user_id=user_id,
+        ):
+            evt.get("type") == "final_image" and evt.get("url") and final_urls.append(evt["url"])
+            # 'done' 事件交由后续联合资产注册后重新发送
+            evt.get("type") != "done" and (yield _sse_format(evt))
+    except Exception as e:
+        logger.error("image stream error: %s", e, exc_info=True)
+        yield _sse_format({"type": "error", "message": f"Image streaming failed: {e}"})
+        return
+
+    # 资产注册 + 计费
+    credit_cost = 0.0
+    if final_urls:
+        try:
+            await _register_generated_image_assets(final_urls, user_id, db)
+            credit_cost = rate * len(final_urls)
+            (credit_cost > 0) and await deduct_credits_atomic(
+                user_id=user_id,
+                cost=credit_cost,
+                session=db,
+                metadata={
+                    "kind": "image_generation",
+                    "provider_id": provider.id,
+                    "model": model,
+                    "count": len(final_urls),
+                    "rate": rate,
+                    "streaming": True,
+                },
+                transaction_type="consumption",
+            )
+            await db.commit()
+        except InsufficientCreditsError:
+            yield _sse_format({"type": "error", "message": "Insufficient credits"})
+            return
+        except Exception as e:
+            logger.error("image stream finalize error: %s", e, exc_info=True)
+            yield _sse_format({"type": "error", "message": f"Finalize failed: {e}"})
+            return
+
+    yield _sse_format({
+        "type": "done",
+        "images": final_urls,
+        "credit_cost": credit_cost,
+        "model": model,
+        "provider_id": provider.id,
+    })

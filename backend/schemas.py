@@ -1085,6 +1085,10 @@ class ImageGenParams(BaseModel):
     quality: Optional[Literal["standard", "hd", "ultra"]] = None
     batch_count: int = Field(default=1, ge=1, le=4)
     output_format: Optional[Literal["png", "jpeg", "webp"]] = None
+    # P2 新增（OpenAI gpt-image-* 专用端点）：
+    output_compression: Optional[int] = Field(default=None, ge=0, le=100)   # webp/jpeg 压缩率
+    background: Optional[Literal["transparent", "opaque", "auto"]] = None    # 透明层
+    moderation: Optional[Literal["low", "auto"]] = None                       # 内容安全等级
 
 
 class ImageReference(BaseModel):
@@ -1101,6 +1105,8 @@ class ImageGenerateRequest(BaseModel):
     config: Optional[ImageGenParams] = None
     mode: Literal["text_to_image", "edit", "reference_images"] = "text_to_image"
     reference_images: Optional[List[ImageReference]] = None
+    # P2 新增：edit 模式可选蒙版（PNG，透明区 = 被编辑区域）
+    mask_url: Optional[str] = None
 
 
 class ImageGenerateResponse(BaseModel):

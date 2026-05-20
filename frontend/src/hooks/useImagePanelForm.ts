@@ -27,6 +27,11 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
   const [quality, setQuality] = useState('standard');
   const [batchCount, setBatchCount] = useState(1);
   const [outputFormat, setOutputFormat] = useState('');
+  // P2 新增表单状态
+  const [background, setBackground] = useState('');                          // '' / 'auto' / 'transparent' / 'opaque'
+  const [moderation, setModeration] = useState('');                          // '' / 'auto' / 'low'
+  const [outputCompression, setOutputCompression] = useState<number | null>(null); // null = 不透传
+  const [maskUrl, setMaskUrl] = useState<string>('');                         // edit 模式可选蒙版 data/URL
 
   // Derived
   const selectedModel = models.find((m) => `${m.provider_id}::${m.model_name}` === selectedModelKey) || null;
@@ -47,6 +52,15 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
       !hasFmt && outputFormat && setOutputFormat('');
       const modes = caps.supported_modes || ['text_to_image'];
       !modes.includes(mode) && setMode(modes[0] as ImageMode);
+      // P2 能力下架时清除对应状态
+      const bgs = caps.backgrounds || [];
+      bgs.length === 0 && background && setBackground('');
+      bgs.length > 0 && background && !bgs.includes(background) && setBackground('');
+      const mods = caps.moderations || [];
+      mods.length === 0 && moderation && setModeration('');
+      mods.length > 0 && moderation && !mods.includes(moderation) && setModeration('');
+      !caps.supports_output_compression && outputCompression !== null && setOutputCompression(null);
+      !caps.supports_mask && maskUrl && setMaskUrl('');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capabilities]);
@@ -122,6 +136,15 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
     setBatchCount,
     outputFormat,
     setOutputFormat,
+    // P2 新增状态
+    background,
+    setBackground,
+    moderation,
+    setModeration,
+    outputCompression,
+    setOutputCompression,
+    maskUrl,
+    setMaskUrl,
     // actions
     handleModelSelect,
   };
