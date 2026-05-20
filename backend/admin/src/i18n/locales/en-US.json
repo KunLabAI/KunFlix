@@ -80,6 +80,7 @@
     "sidebar": {
       "dashboard": "Dashboard",
       "llm": "AI Providers",
+      "pricing": "Pricing",
       "agents": "Agents",
       "skills": "Skills",
       "mcp": "MCP Clients",

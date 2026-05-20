@@ -69,9 +69,12 @@ async def _dispatch_image_generation(
     adapted: dict,
     n: int,
     user_id: str,
-    mask_url: Optional[str] = None,
-) -> list[str]:
-    """按 mode 分派到 text-to-image 生成器或 edit handler。"""
+) -> tuple[list[str], dict]:
+    """按 mode 分派到 text-to-image 生成器或 edit handler。
+
+    返回：(image_urls, usage_dict)，其中 usage_dict = {"input_tokens": int, "output_tokens": int}。
+    edit 路径不产生 token usage，返回零值。
+    """
     # text_to_image → SDK 生成器
     if mode not in _EDIT_MODES:
         generator = _IMAGE_GENERATORS.get(provider_type)
@@ -130,7 +133,7 @@ async def _dispatch_image_generation(
         ],
         return_exceptions=True,
     )
-    return [u for u in edited_urls if isinstance(u, str) and u]
+    return [u for u in edited_urls if isinstance(u, str) and u], {"input_tokens": 0, "output_tokens": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +270,7 @@ async def generate_images(
 
     # 根据 mode 分派：text_to_image 走 SDK 生成器，edit/reference_images 走 _EDIT_HANDLERS
     try:
-        image_urls: list[str] = await _dispatch_image_generation(
+        image_urls, usage = await _dispatch_image_generation(
             mode=payload.mode,
             provider_type=provider_type,
             provider=provider,
@@ -298,10 +301,20 @@ async def generate_images(
     # 注册 Asset
     await _register_generated_image_assets(image_urls, entity_id, db)
 
-    # 计费：从 provider.model_costs[model].image_generation 读取单价，按张计费
-    rate_map = (provider.model_costs or {}).get(payload.model, {}) or {}
-    rate = float(rate_map.get("image_generation", 0) or 0)
-    credit_cost = rate * len(image_urls)
+    # 计费：同时支持 token 计费（input/image_output 按 1M token）与按张计费（image_generation）
+    # 用户在 ModelPricing 中配了哪个维度就走哪个，避免维度 key 不匹配导致 0 扣费
+    from services.billing import load_pricing, BILLING_DIMENSIONS
+    rate_map = await load_pricing(provider.id, payload.model, db)
+    input_tokens = int(usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    rate_input        = float(rate_map.get("input", 0) or 0)
+    rate_image_output = float(rate_map.get("image_output", 0) or 0)
+    rate_per_image    = float(rate_map.get("image_generation", 0) or 0)
+    credit_cost = (
+        rate_input        * input_tokens  / BILLING_DIMENSIONS["input"]
+        + rate_image_output * output_tokens / BILLING_DIMENSIONS["image_output"]
+        + rate_per_image    * len(image_urls)
+    )
 
     try:
         (credit_cost > 0) and await deduct_credits_atomic(
@@ -313,7 +326,13 @@ async def generate_images(
                 "provider_id": provider.id,
                 "model": payload.model,
                 "count": len(image_urls),
-                "rate": rate,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "rates": {
+                    "input": rate_input,
+                    "image_output": rate_image_output,
+                    "image_generation": rate_per_image,
+                },
             },
             transaction_type="consumption",
         )

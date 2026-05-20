@@ -20,7 +20,7 @@ from services.video_providers.virtual_human_presets import list_presets as list_
 from realtime.dispatcher import push_to_user
 from tasks_queue import enqueue as enqueue_job
 from ratelimit import limiter, ENDPOINT_LIMITS
-from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, require_positive_balance, BalanceFrozenError
+from services.billing import calculate_video_credit_cost, deduct_credits_atomic, InsufficientCreditsError, require_positive_balance, BalanceFrozenError, load_pricing
 from services.media_utils import save_video_from_url, MEDIA_DIR, get_relative_path, resolve_media_filepath
 from errors import BizError
 import base64
@@ -246,8 +246,8 @@ async def get_video_task_status(
             # 将生成的视频注册为用户资产
             await _register_video_asset(local_url, entity_id, db)
 
-            # 计费：从 provider.model_costs[model] 获取费率
-            rate_map = (provider.model_costs or {}).get(task.model, {})
+            # 计费：从 ModelPricing（供应商, 模型）读取积分卖价
+            rate_map = await load_pricing(task.provider_id, task.model, db)
             credit_cost, billing_metadata = calculate_video_credit_cost(task, rate_map)
             task.credit_cost = credit_cost
 

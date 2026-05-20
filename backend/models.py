@@ -269,17 +269,8 @@ class Agent(Base):
     tools = Column(JSON, default=[])  # List of enabled tools
     thinking_mode = Column(Boolean, default=False)
 
-    # Credit pricing (per 1M tokens)
-    input_credit_per_1m = Column(Float, default=0.0, nullable=False)   # 每1M输入tokens积分
-    output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M输出tokens积分
-    image_output_credit_per_1m = Column(Float, default=0.0, nullable=False)  # 每1M图像输出tokens积分
-    search_credit_per_query = Column(Float, default=0.0, nullable=False)     # 每次搜索查询积分
-
-    # Video pricing (per unit)
-    video_input_image_credit = Column(Float, default=0.0, nullable=False)    # 积分/张输入图片
-    video_input_second_credit = Column(Float, default=0.0, nullable=False)   # 积分/秒输入视频(edit)
-    video_output_480p_credit = Column(Float, default=0.0, nullable=False)    # 积分/秒480p输出
-    video_output_720p_credit = Column(Float, default=0.0, nullable=False)    # 积分/秒720p输出
+    # Credit pricing 已迁移至 model_pricings 表 (按 provider_id+model 维度)
+    # 见 ModelPricing 与 services/billing.py:load_pricing
 
     # Multi-Agent Orchestration (Leader Config)
     is_leader = Column(Boolean, default=False)
@@ -293,7 +284,6 @@ class Agent(Base):
 
     # xAI 图像生成配置 (image_generation_enabled, image_config)
     xai_image_config = Column(JSON, default=dict)
-    image_credit_per_image = Column(Float, default=0.0, nullable=False)
 
     # 统一图像生成配置（供应商无关，优先级高于 gemini_config/xai_image_config 中的图像配置）
     image_config = Column(JSON, default=dict)
@@ -711,5 +701,32 @@ class EmailTemplate(Base):
     html_body = Column(Text, nullable=False)
     text_body = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ModelPricing(Base):
+    """模型积分卖价（按 provider_id + model 全局唯一）。
+
+    设计要点：
+    - 进价(USD) 仍存于 LLMProvider.model_costs；本表只承载积分卖价。
+    - dimensions 字段聚合所有维度，键名与 services/billing.py 的
+      BILLING_DIMENSIONS / VIDEO_BILLING_DIMENSIONS / MUSIC_BILLING_DIMENSIONS 完全一致：
+        input / text_output / image_output / search / image_generation /
+        video_input_image / video_input_second / video_output_480p / video_output_720p /
+        audio_generation
+    - 缺失维度按 0（免费）处理；is_active=False 视为整体免费、不扣费。
+    """
+    __tablename__ = "model_pricings"
+    __table_args__ = (
+        Index("ix_model_pricings_provider_model", "provider_id", "model", unique=True),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="CASCADE"), nullable=False, index=True)
+    model = Column(String(200), nullable=False)
+    dimensions = Column(JSON, default=dict, nullable=False)  # {dim_name: rate}
+    is_active = Column(Boolean, default=True, nullable=False)
+    notes = Column(Text, nullable=True)  # 运营备注
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

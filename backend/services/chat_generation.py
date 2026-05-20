@@ -22,7 +22,7 @@ from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_agent as check_is_paid_agent
+from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_model, load_pricing
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
 
@@ -241,7 +241,9 @@ async def generate_single_agent(
     # 调用 LLM 流式接口（含工具调用循环）
     # 二次余额防护：服务层在 LLM 调用前再次验证（防止路由层检查后余额被并发消耗）
     # 使用 require_positive_balance 修复 credits>=0 漏洞
-    if check_is_paid_agent(agent):
+    async with AsyncSessionLocal() as _pre_db:
+        _agent_rate_map = await load_pricing(getattr(agent, 'provider_id', None), getattr(agent, 'model', None), _pre_db)
+    if is_paid_model(_agent_rate_map):
         try:
             async with AsyncSessionLocal() as _pre_db:
                 await require_positive_balance(entity_id, _pre_db)
@@ -626,7 +628,7 @@ async def generate_single_agent(
                     entity and setattr(entity, 'total_output_chars', (entity.total_output_chars or 0) + len(result.full_response))
 
                     # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
-                    credit_cost, billing_metadata = calculate_credit_cost(result, agent)
+                    credit_cost, billing_metadata = calculate_credit_cost(result, _agent_rate_map, agent=agent)
                     billing_event["credit_cost"] = round(credit_cost, 6)
 
                     try:

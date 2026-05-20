@@ -193,16 +193,10 @@ async def _calculate_and_deduct(
     task_id: str,
 ) -> tuple[float, dict]:
     """计算音乐生成费用并原子扣费。"""
-    from models import LLMProvider
-    from sqlalchemy import select
-    from services.billing import deduct_credits_atomic
+    from services.billing import deduct_credits_atomic, load_pricing
 
-    prov_stmt = select(LLMProvider).where(LLMProvider.id == provider_id)
-    provider = (await db.execute(prov_stmt)).scalar_one_or_none()
-
-    rate_map: dict = {}
-    model_costs = (provider.model_costs or {}) if provider else {}
-    rate_map = model_costs.get(model, {})
+    # 从 ModelPricing（供应商, 模型）读取积分卖价
+    rate_map = await load_pricing(provider_id, model, db)
 
     # 按次计费：audio_generation 维度
     rate = rate_map.get("audio_generation", 0) or 0

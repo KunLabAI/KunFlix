@@ -62,15 +62,6 @@ export interface Agent {
   system_prompt: string;
   tools: string[];
   thinking_mode: boolean;
-  input_credit_per_1m: number;
-  output_credit_per_1m: number;
-  image_output_credit_per_1m: number;
-  search_credit_per_query: number;
-  // Video pricing
-  video_input_image_credit: number;
-  video_input_second_credit: number;
-  video_output_480p_credit: number;
-  video_output_720p_credit: number;
   // 画布节点控制
   target_node_types: string[];
   // Leader configuration
@@ -89,7 +80,6 @@ export interface Agent {
   compaction_config?: CompactionConfig;
   // 对话标题自动生成配置
   title_gen_config?: TitleGenConfig;
-  image_credit_per_image?: number;
   // 工具调用轮次限制
   max_tool_rounds?: number;
   created_at?: string;

@@ -280,15 +280,7 @@ class AgentBase(BaseModel):
     system_prompt: str
     tools: List[str] = Field(default_factory=list)
     thinking_mode: bool = False
-    input_credit_per_1m: float = Field(default=0.0, ge=0.0)
-    output_credit_per_1m: float = Field(default=0.0, ge=0.0)
-    image_output_credit_per_1m: float = Field(default=0.0, ge=0.0)
-    search_credit_per_query: float = Field(default=0.0, ge=0.0)
-    # Video pricing (per unit)
-    video_input_image_credit: float = Field(default=0.0, ge=0.0)
-    video_input_second_credit: float = Field(default=0.0, ge=0.0)
-    video_output_480p_credit: float = Field(default=0.0, ge=0.0)
-    video_output_720p_credit: float = Field(default=0.0, ge=0.0)
+    # Credit pricing 已迁移至 ModelPricing 表（按 provider_id+model 维度）
     # Leader configuration
     is_leader: bool = False
     coordination_modes: List[str] = Field(default_factory=list)  # ["pipeline", "plan", "discussion"]
@@ -299,7 +291,6 @@ class AgentBase(BaseModel):
     gemini_config: Optional[GeminiConfig] = None
     # xAI 图像生成配置
     xai_image_config: Optional[XAIImageGenConfig] = None
-    image_credit_per_image: float = Field(default=0.0, ge=0.0)
     # 统一图像生成配置（供应商无关）
     image_config: Optional[UnifiedImageGenConfig] = None
     # 视频生成配置（供应商无关）
@@ -337,15 +328,7 @@ class AgentUpdate(BaseModel):
     system_prompt: Optional[str] = None
     tools: Optional[List[str]] = None
     thinking_mode: Optional[bool] = None
-    input_credit_per_1m: Optional[float] = Field(None, ge=0.0)
-    output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
-    image_output_credit_per_1m: Optional[float] = Field(None, ge=0.0)
-    search_credit_per_query: Optional[float] = Field(None, ge=0.0)
-    # Video pricing
-    video_input_image_credit: Optional[float] = Field(None, ge=0.0)
-    video_input_second_credit: Optional[float] = Field(None, ge=0.0)
-    video_output_480p_credit: Optional[float] = Field(None, ge=0.0)
-    video_output_720p_credit: Optional[float] = Field(None, ge=0.0)
+    # Credit pricing 已迁移至 ModelPricing 表（按 provider_id+model 维度）
     # Leader configuration
     is_leader: Optional[bool] = None
     coordination_modes: Optional[List[str]] = None
@@ -356,7 +339,6 @@ class AgentUpdate(BaseModel):
     gemini_config: Optional[GeminiConfig] = None
     # xAI 图像生成配置
     xai_image_config: Optional[XAIImageGenConfig] = None
-    image_credit_per_image: Optional[float] = Field(None, ge=0.0)
     # 统一图像生成配置（供应商无关）
     image_config: Optional[UnifiedImageGenConfig] = None
     # 视频生成配置（供应商无关）
@@ -1285,4 +1267,58 @@ class EmailTemplateResponse(EmailTemplateBase):
     updated_at: Optional[Any] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Model Pricing schemas (积分卖价按 provider_id+model 唯一)
+# ---------------------------------------------------------------------------
+class ModelPricingDimensions(BaseModel):
+    """全维度积分费率；key 与 billing.py 中的维度名一致。"""
+    input: float = Field(default=0.0, ge=0.0)
+    text_output: float = Field(default=0.0, ge=0.0)
+    image_output: float = Field(default=0.0, ge=0.0)
+    search: float = Field(default=0.0, ge=0.0)
+    image_generation: float = Field(default=0.0, ge=0.0)
+    video_input_image: float = Field(default=0.0, ge=0.0)
+    video_input_second: float = Field(default=0.0, ge=0.0)
+    video_output_480p: float = Field(default=0.0, ge=0.0)
+    video_output_720p: float = Field(default=0.0, ge=0.0)
+    audio_generation: float = Field(default=0.0, ge=0.0)
+
+
+class ModelPricingCreate(BaseModel):
+    provider_id: str
+    model: str = Field(..., max_length=200)
+    dimensions: ModelPricingDimensions = Field(default_factory=ModelPricingDimensions)
+    is_active: bool = True
+    notes: Optional[str] = None
+
+
+class ModelPricingUpdate(BaseModel):
+    dimensions: Optional[ModelPricingDimensions] = None
+    is_active: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class ModelPricingResponse(BaseModel):
+    id: str
+    provider_id: str
+    model: str
+    dimensions: Dict[str, float] = Field(default_factory=dict)
+    is_active: bool = True
+    notes: Optional[str] = None
+    # 联表透出供 UI 利润对比
+    provider_name: Optional[str] = None
+    api_costs: Dict[str, float] = Field(default_factory=dict)
+    created_at: Any
+    updated_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ModelPricingBulkApply(BaseModel):
+    """按倍率一键应用：该供应商下所有 model 用 api_costs * markup_multiplier 写入 dimensions。"""
+    provider_id: str
+    markup_multiplier: float = Field(..., gt=0.0)
+    only_models: Optional[List[str]] = None  # 可选限定某些模型
 

@@ -1,45 +1,56 @@
 """
 多维度积分计费计算器 - 映射表驱动，避免 if 分支
+
+架构说明（与 ModelPricing 模型配套）：
+- 进价(USD) 仍由 LLMProvider.model_costs 承载。
+- 卖价(积分) 由 ModelPricing(provider_id, model).dimensions 统一承载。
+- 计费函数一律以 rate_map: Dict[str, float] 为入参，不再从 Agent 表读取费率。
 """
 from typing import Dict, Tuple, Optional
 from decimal import Decimal
 from sqlalchemy import update, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import logging
-from models import User, Admin, CreditTransaction
+from models import User, Admin, CreditTransaction, ModelPricing
 
 logger = logging.getLogger(__name__)
 
-# 计费维度映射表：dim_name -> (Agent 费率字段, scale)
-# scale=1_000_000 表示每 1M tokens 计费，scale=1 表示每次计费
-BILLING_DIMENSIONS = {
-    "input":            ("input_credit_per_1m",         1_000_000),
-    "text_output":      ("output_credit_per_1m",        1_000_000),
-    "image_output":     ("image_output_credit_per_1m",  1_000_000),
-    "search":           ("search_credit_per_query",     1),
-    "image_generation": ("image_credit_per_image",      1),  # xAI 按张计费
+# 计费维度映射表：dim_name -> scale
+# scale=1_000_000 表示每 1M tokens 计费，scale=1 表示每次/张/秒计费
+# 费率从 ModelPricing.dimensions[dim_name] 读取
+BILLING_DIMENSIONS: Dict[str, int] = {
+    "input":            1_000_000,
+    "text_output":      1_000_000,
+    "image_output":     1_000_000,
+    "search":           1,
+    "image_generation": 1,
 }
 
 # 视频计费维度映射表：dim_name -> scale
-# scale=1 表示每单位（张/秒）计费，费率从 provider.model_costs[model] 字典中按 dim_name 读取
-VIDEO_BILLING_DIMENSIONS = {
-    "video_input_image":  1,  # 每张输入图片
-    "video_input_second": 1,  # 每秒输入视频(edit)
-    "video_output_480p":  1,  # 每秒480p输出
-    "video_output_720p":  1,  # 每秒720p输出
+VIDEO_BILLING_DIMENSIONS: Dict[str, int] = {
+    "video_input_image":  1,
+    "video_input_second": 1,
+    "video_output_480p":  1,
+    "video_output_720p":  1,
 }
 
-# 视频质量 -> 输出计费维度映射（避免 if-else）
-QUALITY_BILLING_FIELD = {
+# 视频质量 -> 输出计费维度映射
+QUALITY_BILLING_FIELD: Dict[str, str] = {
     "480p": "video_output_480p",
     "720p": "video_output_720p",
 }
 
-# 音乐计费维度映射表：dim_name -> scale
-# scale=1 表示按次计费（每次音乐生成），费率从 provider.model_costs[model] 字典中按 dim_name 读取
-MUSIC_BILLING_DIMENSIONS = {
-    "audio_generation": 1,  # 每次音乐生成
+# 音乐计费维度映射表
+MUSIC_BILLING_DIMENSIONS: Dict[str, int] = {
+    "audio_generation": 1,
 }
+
+# 进程级定价缓存：(provider_id, model) -> {dim_name: rate}
+# 由 admin_pricing CRUD 调用 invalidate_pricing_cache 或 Redis Pub/Sub 失效事件清理
+_PRICING_CACHE: Dict[Tuple[str, str], Dict[str, float]] = {}
+_PRICING_CACHE_LOCK = asyncio.Lock()
+
 
 class InsufficientCreditsError(Exception):
     """用户积分不足异常"""
@@ -49,12 +60,74 @@ class BalanceFrozenError(Exception):
     """用户资金已冻结异常"""
     pass
 
-def is_paid_agent(agent) -> bool:
-    """映射表驱动判定 agent 是否为付费模型（任一计费维度费率 > 0）"""
-    return any(
-        (getattr(agent, field, 0) or 0) > 0
-        for field, _scale in BILLING_DIMENSIONS.values()
-    )
+
+async def load_pricing(
+    provider_id: Optional[str],
+    model: Optional[str],
+    session: AsyncSession,
+) -> Dict[str, float]:
+    """读取 (provider, model) 的卖价字典；未配置返回空 dict（视为免费）。
+
+    进程级缓存命中后不查表；is_active=False 也返回空 dict。
+    """
+    if not provider_id or not model:
+        return {}
+
+    cache_key = (provider_id, model)
+    cached = _PRICING_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    async with _PRICING_CACHE_LOCK:
+        # double-checked locking
+        cached = _PRICING_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        stmt = select(ModelPricing.dimensions, ModelPricing.is_active).where(
+            ModelPricing.provider_id == provider_id,
+            ModelPricing.model == model,
+        )
+        row = (await session.execute(stmt)).first()
+        rate_map: Dict[str, float] = {}
+        if row and row.is_active and isinstance(row.dimensions, dict):
+            rate_map = {k: float(v or 0) for k, v in row.dimensions.items()}
+        _PRICING_CACHE[cache_key] = rate_map
+        return rate_map
+
+
+def invalidate_pricing_cache(provider_id: Optional[str] = None, model: Optional[str] = None) -> None:
+    """清理进程级定价缓存。
+
+    - 不传参数：清空所有。
+    - 只传 provider_id：清除该供应商下所有条目。
+    - 传 (provider_id, model)：只清除单条。
+    """
+    drop_all = provider_id is None and model is None
+    drop_all and _PRICING_CACHE.clear()
+    if drop_all:
+        return
+    if model is None:
+        for k in [k for k in _PRICING_CACHE if k[0] == provider_id]:
+            _PRICING_CACHE.pop(k, None)
+        return
+    _PRICING_CACHE.pop((provider_id, model), None)
+
+
+def is_paid_model(rate_map: Dict[str, float]) -> bool:
+    """映射表驱动判定是否为付费模型（任一维度费率 > 0）。"""
+    return any((v or 0) > 0 for v in rate_map.values())
+
+
+def is_paid_agent(agent, rate_map: Optional[Dict[str, float]] = None) -> bool:
+    """向后兼容别名：供遗留调用点使用。优先使用 is_paid_model(rate_map)。
+
+    rate_map 不为 None 时以它为准；agent 仅用于诊断/日志。
+    没有传 rate_map 的调用在无 session 路径上无法查表，保守返回 False。
+    """
+    if rate_map is not None:
+        return is_paid_model(rate_map)
+    return False
 
 
 async def require_positive_balance(user_id: str, session: AsyncSession, min_credits: float = 0.0001) -> None:
@@ -398,7 +471,7 @@ async def deduct_credits_atomic(
         
     raise Exception("Failed to deduct credits (unknown reason)")
 
-def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
+def calculate_credit_cost(result, rate_map: Dict[str, float], agent=None) -> Tuple[float, Dict]:
     """
     计算总积分费用和明细（映射表驱动）。
 
@@ -407,8 +480,9 @@ def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
     - 无 text_output_tokens 时将全部 output_tokens 视为文本输出（向后兼容）
 
     Args:
-        result: StreamResult 或 ExecutionResult 对象，包含 token 统计
-        agent:  Agent 对象，包含各维度费率
+        result:   StreamResult 或 ExecutionResult 对象，包含 token 统计
+        rate_map: ModelPricing.dimensions 字典 (dim_name -> rate)。
+        agent:    仅用于填充 metadata（名称/模型），不参与费率计算。
 
     Returns:
         (total_cost, metadata_dict)
@@ -430,9 +504,9 @@ def calculate_credit_cost(result, agent) -> Tuple[float, Dict]:
     total = 0.0
     metadata = {"agent_name": getattr(agent, 'name', ''), "model": getattr(agent, 'model', '')}
 
-    for dim_name, (agent_field, scale) in BILLING_DIMENSIONS.items():
+    for dim_name, scale in BILLING_DIMENSIONS.items():
         quantity = quantities[dim_name]
-        rate = getattr(agent, agent_field, 0) or 0
+        rate = rate_map.get(dim_name, 0) or 0
         cost = quantity / scale * rate
         total += cost
         metadata[f"{dim_name}_tokens"] = quantity
@@ -447,7 +521,7 @@ def calculate_video_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
 
     Args:
         task:     VideoTask 对象，包含 input_image_count, output_duration_seconds, quality
-        rate_map: provider.model_costs[model] 字典，dim_name -> rate
+        rate_map: ModelPricing.dimensions 字典（从 load_pricing 打包读取），dim_name -> credits-per-unit
 
     Returns:
         (total_cost, metadata_dict)
@@ -484,7 +558,7 @@ def calculate_music_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
 
     Args:
         task:     MusicTask 对象
-        rate_map: provider.model_costs[model] 字典，dim_name -> rate
+        rate_map: ModelPricing.dimensions 字典（从 load_pricing 打包读取），dim_name -> credits-per-unit
 
     Returns:
         (total_cost, metadata_dict)

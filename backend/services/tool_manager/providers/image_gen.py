@@ -125,7 +125,7 @@ async def _get_global_image_config(db: AsyncSession) -> dict:
 async def _generate_via_xai(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int, user_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], dict]:
     img_cfg = config.get("image_config") or {}
     # 采用「多份 prompt、每份 n=1」模式，统一合并 各供应商对 n 参数支持不一的差异，
     # 保证 batch_count 总与返回图数一致。
@@ -143,13 +143,15 @@ async def _generate_via_xai(
         base_url=base_url,
         user_id=user_id,
     )
-    return [url for r in result.results for url in r.image_urls]
+    urls = [url for r in result.results for url in r.image_urls]
+    # xai 不返回 token usage，统一结构返回零值
+    return urls, {"input_tokens": 0, "output_tokens": 0}
 
 
 async def _generate_via_gemini(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int, user_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], dict]:
     img_cfg = config.get("image_config") or {}
     gemini_config = BatchImageConfig(
         aspect_ratio=img_cfg.get("aspect_ratio") or "auto",
@@ -164,13 +166,19 @@ async def _generate_via_gemini(
         config=gemini_config,
         user_id=user_id,
     )
-    return [r.image_url for r in result.results if r.image_url]
+    urls = [r.image_url for r in result.results if r.image_url]
+    # 汇总所有 prompt 的 token 使用量（image_output 计在 output_tokens 中）
+    usage = {
+        "input_tokens":  sum((r.input_tokens or 0) for r in result.results),
+        "output_tokens": sum((r.output_tokens or 0) for r in result.results),
+    }
+    return urls, usage
 
 
 async def _generate_via_ark(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int, user_id: str | None = None,
-) -> list[str]:
+) -> tuple[list[str], dict]:
     img_cfg = config.get("image_config") or {}
     # 采用「多份 prompt、每份 n=1」模式：Seedream 4 等模型未原生支持 n>1，
     # 统一通过并行调用保证 batch_count 生效。
@@ -188,7 +196,9 @@ async def _generate_via_ark(
         base_url=base_url,
         user_id=user_id,
     )
-    return [url for r in result.results for url in r.image_urls]
+    urls = [url for r in result.results for url in r.image_urls]
+    # ark 不返回 token usage，统一结构返回零值
+    return urls, {"input_tokens": 0, "output_tokens": 0}
 
 
 async def _generate_via_openrouter(
@@ -350,7 +360,7 @@ async def _do_generate(provider, model: str, prompt: str, aspect_ratio: str | No
 
 async def _run_generator(generator, provider, model: str, prompt: str, config: dict, n: int, ctx: ToolContext) -> str:
     try:
-        image_urls = await generator(
+        image_urls, _usage = await generator(
             api_key=provider.api_key,
             base_url=provider.base_url,
             model=model,

@@ -67,15 +67,6 @@ export const createAgentFormSchema = (t: TFunction) => z.object({
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
-  input_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  output_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  image_output_credit_per_1m: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  search_credit_per_query: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  // Video pricing
-  video_input_image_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  video_input_second_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  video_output_480p_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
-  video_output_720p_credit: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
   // 画布节点控制
   target_node_types: z.array(
     z.enum(["script", "character", "storyboard", "video"])
@@ -90,7 +81,6 @@ export const createAgentFormSchema = (t: TFunction) => z.object({
   gemini_config: geminiConfigSchema,
   // 统一图像生成配置
   image_config: unifiedImageGenConfigSchema,
-  image_credit_per_image: z.number().min(0, t('agents.form.validation.creditNonNegative')).default(0),
   // 视频生成配置
   video_config: videoGenConfigSchema,
   // 上下文压缩配置

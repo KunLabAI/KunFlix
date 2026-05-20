@@ -462,16 +462,6 @@ class AgentExecutor:
         self._cache_locks.clear()
 
 
-def calculate_credit_cost(
-    input_tokens: int,
-    output_tokens: int,
-    input_rate: float,
-    output_rate: float,
-) -> float:
-    """Calculate credit cost based on token usage and rates."""
-    return (input_tokens / 1000 * input_rate) + (output_tokens / 1000 * output_rate)
-
-
 # ---------------------------------------------------------------------------
 # L2 cache (config snapshot) + invalidation listener
 # ---------------------------------------------------------------------------
@@ -504,9 +494,23 @@ async def _evict_agent(key: str) -> None:
         ex.invalidate_agent(key)
 
 
+async def _evict_model_pricing(key: str) -> None:
+    """响应 model_pricing 频道失效事件，清理本进程 _PRICING_CACHE。
+
+    key 格式："{provider_id}::{model}" 或 "{provider_id}::*"（通配）。
+    """
+    from services.billing import invalidate_pricing_cache
+
+    parts = key.split("::", 1)
+    provider_id = parts[0] if parts and parts[0] != "*" else None
+    model = parts[1] if len(parts) > 1 and parts[1] != "*" else None
+    invalidate_pricing_cache(provider_id, model)
+
+
 _INVALIDATION_HANDLERS = {
     channel_invalidate("provider"): _evict_provider,
     channel_invalidate("agent"): _evict_agent,
+    channel_invalidate("model_pricing"): _evict_model_pricing,
 }
 
 
