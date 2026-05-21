@@ -25,7 +25,7 @@ export function useVideoGenerationApply(id: string, data: VideoNodeData) {
   const onConnect = useCanvasStore((s) => s.onConnect);
 
   const videoTask = useVideoTask();
-  const taskActive = !!videoTask.taskId && !videoTask.isTerminal;
+  const taskActive = videoTask.isSubmitting || (!!videoTask.taskId && !videoTask.isTerminal);
   const taskDone = videoTask.isCompleted;
   const taskFailed = videoTask.isFailed;
 

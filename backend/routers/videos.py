@@ -205,9 +205,11 @@ async def get_video_task_status(
     task = task_result.scalar_one_or_none()
     task or (_ for _ in ()).throw(HTTPException(status_code=404, detail="Video task not found"))
 
-    # 终态直接返回缓存结果
+    # 终态且已有视频 URL → 直接返回缓存结果
+    # 注意：arq worker 标记 completed 但不执行下载，此时 result_video_url 为空，
+    # 需跳过提前返回，走后续下载逻辑补全。
     terminal_states = {"completed", "failed"}
-    if task.status in terminal_states:
+    if task.status in terminal_states and (task.status == "failed" or task.result_video_url):
         provider_result = await db.execute(select(LLMProvider).where(LLMProvider.id == task.provider_id))
         provider = provider_result.scalar_one_or_none()
         return _build_task_response(task, provider_name=getattr(provider, "name", None))
