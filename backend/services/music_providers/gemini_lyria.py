@@ -51,6 +51,9 @@ _MAX_RETRIES = 2
 _RETRY_BACKOFF = 3.0
 _RETRYABLE_ERRORS = (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError)
 
+# finishReason: OTHER 被视为可重试的瞬态空响应（preview 模型已知问题）
+_RETRYABLE_FINISH_REASONS = frozenset({"OTHER"})
+
 
 # ---------------------------------------------------------------------------
 # Adapter
@@ -63,7 +66,10 @@ class GeminiLyriaAdapter(MusicProviderAdapter):
     async def generate(self, ctx: MusicContext) -> MusicResult:
         """调用 Gemini generateContent API 生成音乐。"""
         # ---- 构建 contents.parts ----
-        parts: list[dict] = [{"text": _compose_prompt(ctx)}]
+        prompt_text = _compose_prompt(ctx)
+        parts: list[dict] = [{"text": prompt_text}]
+
+        logger.info("Lyria3 prompt (model=%s): %s", ctx.model, prompt_text[:200])
 
         # 参考图片（最多 10 张）
         for img in ctx.reference_images[:10]:
@@ -98,19 +104,40 @@ class GeminiLyriaAdapter(MusicProviderAdapter):
             "generationConfig": gen_config,
         }
 
-        url = f"{_API_BASE}/models/{ctx.model}:generateContent"
+        api_url = f"{_API_BASE}/models/{ctx.model}:generateContent"
         headers = {
             "x-goog-api-key": ctx.api_key,
             "Content-Type": "application/json",
         }
 
-        # ---- 发起请求（带重试）----
+        # ---- 发起请求（带重试：网络错误 + finishReason:OTHER 瞬态空响应）----
         last_error: str = ""
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                    resp = await client.post(url, json=payload, headers=headers)
-                return _parse_response(resp, effective_format)
+                    resp = await client.post(api_url, json=payload, headers=headers)
+                result = _parse_response(resp, effective_format)
+                # 对 finishReason:OTHER 产生的空响应进行重试（preview 模型已知瞬态问题）
+                is_empty_retryable = (
+                    result.status == "failed"
+                    and result.error == "No audio data in response"
+                )
+                # 还有重试机会且是可重试的空响应 → 继续重试
+                if is_empty_retryable and attempt < _MAX_RETRIES:
+                    logger.warning(
+                        "Lyria3 empty response (attempt %d/%d), retrying in %.1fs...",
+                        attempt + 1, _MAX_RETRIES + 1, _RETRY_BACKOFF * (2 ** attempt),
+                    )
+                    await asyncio.sleep(_RETRY_BACKOFF * (2 ** attempt))
+                    continue
+                # 最后一次仍然空响应 → 返回友好错误消息
+                if is_empty_retryable:
+                    logger.error("Lyria3 all %d attempts returned empty response", _MAX_RETRIES + 1)
+                    return MusicResult(
+                        status="failed",
+                        error="Music generation temporarily unavailable, please try again",
+                    )
+                return result
             except httpx.TimeoutException:
                 return MusicResult(status="failed", error="Music generation request timed out (300s)")
             except _RETRYABLE_ERRORS as exc:
@@ -120,7 +147,8 @@ class GeminiLyriaAdapter(MusicProviderAdapter):
             except httpx.HTTPError as exc:
                 return MusicResult(status="failed", error=f"HTTP error: {exc}")
 
-        return MusicResult(status="failed", error=last_error or "All retry attempts exhausted")
+        # 所有重试用尽（网络层失败），返回用户友好的错误消息
+        return MusicResult(status="failed", error=last_error or "Music generation temporarily unavailable, please try again")
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +275,17 @@ def _parse_response(resp: httpx.Response, effective_format: str) -> MusicResult:
     if not audio_data:
         block_reason = data.get("promptFeedback", {}).get("blockReason", "")
         safety_ratings = candidates[0].get("safetyRatings", []) if candidates else []
+        model_version = data.get("modelVersion", "unknown")
         logger.warning(
-            "Lyria3 empty response — finishReason=%s, blockReason=%s, safetyRatings=%s, parts=%d",
-            finish_reason, block_reason or "(none)", safety_ratings, len(parts),
+            "Lyria3 empty response — finishReason=%s, blockReason=%s, safetyRatings=%s, parts=%d, modelVersion=%s",
+            finish_reason, block_reason or "(none)", safety_ratings, len(parts), model_version,
         )
-        error_msg = f"Safety filter blocked: {block_reason}" if block_reason else "No audio data in response"
+        # 区分错误类型：安全过滤 vs 瞬态空响应（后者可被上层重试）
+        error_msg = (
+            f"Safety filter blocked: {block_reason}"
+            if block_reason
+            else "No audio data in response"
+        )
         return MusicResult(status="failed", error=error_msg)
 
     logger.info("Lyria3 generation success: %d bytes audio, %d chars lyrics", len(audio_data), len(lyrics))

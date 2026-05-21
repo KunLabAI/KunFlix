@@ -364,7 +364,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               />
             )}
 
-            {taskActive && <GenerationOverlay elapsedMs={elapsedMs} />}
+            <GenerationOverlay active={taskActive} elapsedMs={elapsedMs} />
 
             {isUploading && <UploadingOverlay progress={upload.uploadProgress} />}
 
