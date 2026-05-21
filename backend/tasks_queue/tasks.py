@@ -105,15 +105,10 @@ async def run_music_task_job(
 
     入参都是可序列化原语（免于跨进程传 dataclass）：
     - music_ctx_payload: {api_key, model, prompt, provider_type, output_format, reference_images}
-    生成完成后由 execute_music_task_background 自行将状态回写 DB；
-    进一步 push_to_user 使前端 SSE/WS 能收到终态事件。
+    生成完成后由 execute_music_task_background 自行将状态回写 DB 并推送通知。
     """
     from services.music_providers.base import MusicContext
     from services.music_generation import execute_music_task_background
-    from realtime.dispatcher import push_to_user
-    from sqlalchemy.future import select
-    from database import AsyncSessionLocal
-    from models import MusicTask
 
     music_ctx = MusicContext(**music_ctx_payload)
     await execute_music_task_background(
@@ -124,21 +119,7 @@ async def run_music_task_job(
         session_id=session_id,
         theater_id=theater_id,
     )
-
-    # 读回状态并推送 WS
-    async with AsyncSessionLocal() as db:
-        task = await db.scalar(select(MusicTask).where(MusicTask.id == task_id))
-        task and user_id and await push_to_user(
-            user_id,
-            f"music.{task.status}",
-            {
-                "task_id": task.id,
-                "status": task.status,
-                "audio_url": task.result_audio_url,
-                "lyrics": task.lyrics,
-            },
-        )
-        return {"ok": True, "task_id": task_id, "status": getattr(task, "status", "unknown")}
+    return {"ok": True, "task_id": task_id}
 
 
 # ---------------------------------------------------------------------------

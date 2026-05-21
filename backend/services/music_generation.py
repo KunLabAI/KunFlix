@@ -96,6 +96,28 @@ async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str,
 
 
 # ---------------------------------------------------------------------------
+# 实时通知辅助
+# ---------------------------------------------------------------------------
+
+async def _push_music_event(user_id: str, task) -> None:
+    """将音乐任务终态推送给前端（安静失败）。"""
+    try:
+        from realtime.dispatcher import push_to_user
+        await push_to_user(
+            user_id,
+            f"music.{task.status}",
+            {
+                "task_id": task.id,
+                "status": task.status,
+                "audio_url": task.result_audio_url,
+                "lyrics": task.lyrics,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("push_music_event failed (user=%s): %s", user_id, exc)
+
+
+# ---------------------------------------------------------------------------
 # 后台任务执行器
 # ---------------------------------------------------------------------------
 
@@ -167,6 +189,9 @@ async def execute_music_task_background(
         # ---- 画布音频节点创建（可选） ----
         theater_id and await _create_canvas_audio_node(db, theater_id, audio_url, task)
 
+        # ---- 实时通知前端（兼容 arq worker 和 fallback 路径） ----
+        await _push_music_event(user_id, task)
+
     except Exception:
         logger.exception("Music background task %s crashed", task_id)
         # 尝试标记为失败
@@ -175,6 +200,8 @@ async def execute_music_task_background(
             task = (await db.execute(task_stmt)).scalar_one_or_none()
             task and _mark_failed(task, "Internal error during music generation")
             await db.commit()
+            # 通知前端失败状态
+            task and await _push_music_event(user_id, task)
         except Exception:
             logger.exception("Failed to mark music task %s as failed", task_id)
     finally:
