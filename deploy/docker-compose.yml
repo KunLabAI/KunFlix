@@ -114,6 +114,44 @@ services:
     networks: [kunflix_net]
 
   # ---------------------------------------------------------------------------
+  # Worker —— arq 后台任务消费者（音乐/视频/批量图像生成）
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    container_name: kunflix-worker
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      CACHE_BACKEND: redis
+      QUEUE_BACKEND: arq
+      QUEUE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/1
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_BASE_DIR: /app/media
+    command: ["arq", "tasks_queue.worker.WorkerSettings"]
+    volumes:
+      - mediadata:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    restart: unless-stopped
+    networks: [kunflix_net]
+
+  # ---------------------------------------------------------------------------
   # Frontend —— Next.js (port 3666)
   # ---------------------------------------------------------------------------
   frontend:
