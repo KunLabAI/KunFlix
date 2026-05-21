@@ -284,7 +284,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
             {!data.videoUrl && !isUploading && !upload.uploadError && !taskActive && <EmptyPlaceholder />}
 
-            {taskActive && <GenerationOverlay elapsedMs={elapsedMs} />}
+            <GenerationOverlay active={taskActive} elapsedMs={elapsedMs} />
 
             {data.videoUrl && (
               <VideoDisplay
