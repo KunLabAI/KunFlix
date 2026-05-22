@@ -755,6 +755,7 @@
     "TIMEOUT": "请求超时，请重试",
     "REQUEST_CANCELLED": "请求已取消",
     "UNKNOWN": "未知错误，请重试",
+    "creditsEmpty": "积分余额已用尽，请充值后继续",
     "retry": "重试"
   }
 }

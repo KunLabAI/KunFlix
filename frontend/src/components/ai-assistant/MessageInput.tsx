@@ -34,6 +34,7 @@ import type { CanvasNode } from '@/store/useCanvasStore';
 import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
 import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
 import { NodePickerDropdown, type NodePickerItem } from '@/components/canvas/NodePickerDropdown';
+import { useCreditsGuard } from '@/hooks/useCreditsGuard';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_FILES = 10;
@@ -320,6 +321,7 @@ export function MessageInput({
   maxFileSize = MAX_FILE_SIZE,
 }: MessageInputProps) {
   const { t } = useTranslation();
+  const { creditsExhausted, tooltipText } = useCreditsGuard();
   const resolvedPlaceholder = placeholder ?? t('ai.inputPlaceholder');
   const resolvedAgentName = agentName ?? t('ai.title');
   const [inputValue, setInputValue] = useState('');
@@ -768,14 +770,14 @@ export function MessageInput({
                 <Button
                   type="submit"
                   size="icon"
-                  disabled={!canSend || isDisabled}
+                  disabled={!canSend || isDisabled || creditsExhausted}
                   className={cn(
                     'h-8 w-8 rounded-lg transition-all duration-200',
-                    !canSend || isDisabled
+                    !canSend || isDisabled || creditsExhausted
                       ? 'bg-muted text-muted-foreground cursor-not-allowed'
                       : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
                   )}
-                  title={t('ai.send')}
+                  title={creditsExhausted ? tooltipText : t('ai.send')}
                 >
                   <Send className="h-4 w-4" />
                 </Button>

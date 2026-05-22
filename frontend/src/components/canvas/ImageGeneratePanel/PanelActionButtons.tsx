@@ -4,6 +4,7 @@ import React from 'react';
 import { Settings2, Send, Square, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { useCreditsGuard } from '@/hooks/useCreditsGuard';
 
 interface Props {
   taskActive: boolean;
@@ -25,6 +26,9 @@ export function PanelActionButtons({
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
+  const { creditsExhausted, tooltipText } = useCreditsGuard();
+  const submitDisabled = !canSubmit || creditsExhausted;
+  const submitTitle = creditsExhausted ? tooltipText : t('canvas.node.image.submit', '开始生成');
 
   return (
     <>
@@ -57,14 +61,14 @@ export function PanelActionButtons({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={!canSubmit}
+          disabled={submitDisabled}
           className={cn(
             'h-8 w-8 rounded-lg transition-all duration-200 flex items-center justify-center',
-            canSubmit
-              ? 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md'
-              : 'bg-muted text-muted-foreground cursor-not-allowed',
+            submitDisabled
+              ? 'bg-muted text-muted-foreground cursor-not-allowed'
+              : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md',
           )}
-          title={t('canvas.node.image.submit', '开始生成')}
+          title={submitTitle}
         >
           <Send className="h-4 w-4" />
         </button>

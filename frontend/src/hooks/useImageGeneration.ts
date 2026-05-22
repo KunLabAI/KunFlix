@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import { reportError } from '@/lib/canvas/toast';
+import { useAuth } from '@/context/AuthContext';
 
 // ---------------------------------------------------------------------------
 // Types（与后端 routers/images.py 对齐）
@@ -65,6 +67,10 @@ export interface ImageGenerateResponse {
   provider_name?: string;
   credit_cost: number;
   created_at: string;
+  // 后端扣费不足、余额被兜底扣到 0 时为 true（不持久化，仅本次响应携带）
+  billing_underpaid?: boolean;
+  // 本次扣费后用户余额（不持久化，用于前端同步 user.credits）
+  remaining_credits?: number | null;
 }
 
 export interface ImageModel {
@@ -257,6 +263,7 @@ export function useImageGenerationTask() {
   // 最近一次生成的总耗时（ms），导出给节点显示
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const mountedRef = useRef(true);
+  const { updateCredits } = useAuth();
 
   useEffect(() => {
     mountedRef.current = true;
@@ -274,6 +281,13 @@ export function useImageGenerationTask() {
       const { data } = await api.post<ImageGenerateResponse>('/images/generate', params);
       const duration = Date.now() - start;
       mountedRef.current && (setResult(data), setLastDurationMs(duration));
+      // 后端扣费后同步最新余额到 AuthContext，驱动 useCreditsGuard 即时生效
+      data.remaining_credits != null && updateCredits(data.remaining_credits);
+      // 后端扣费不足、余额被兜底扣到 0 时提示一次
+      data.billing_underpaid && toast.warning(
+        '本次操作已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。',
+        { duration: 4500 },
+      );
       return data;
     } catch (e: any) {
       const normalized = reportError(e);
@@ -282,7 +296,7 @@ export function useImageGenerationTask() {
     } finally {
       mountedRef.current && (setIsSubmitting(false), setStartedAt(null));
     }
-  }, []);
+  }, [updateCredits]);
 
   const reset = useCallback(() => {
     setResult(null);

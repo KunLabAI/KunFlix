@@ -9,7 +9,7 @@ from typing import Optional
 import logging
 
 from database import get_db
-from models import LLMProvider, MusicTask
+from models import LLMProvider, MusicTask, User, Admin
 from schemas import MusicTaskResponse, MusicGenerateRequest, MusicGenerateResponse
 from auth import get_current_active_user_or_admin, scoped_query
 from services.music_providers import extract_music_provider_type
@@ -49,7 +49,7 @@ _MODEL_CAPS: dict[str, dict] = {
 # Response builder
 # ---------------------------------------------------------------------------
 
-def _build_task_response(task: MusicTask, provider_name: str = None) -> MusicTaskResponse:
+def _build_task_response(task: MusicTask, provider_name: str = None, remaining_credits: Optional[float] = None) -> MusicTaskResponse:
     """构建音乐任务响应"""
     return MusicTaskResponse(
         id=task.id,
@@ -66,6 +66,7 @@ def _build_task_response(task: MusicTask, provider_name: str = None) -> MusicTas
         input_image_count=task.input_image_count or 0,
         created_at=task.created_at,
         completed_at=task.completed_at,
+        remaining_credits=remaining_credits,
     )
 
 
@@ -93,7 +94,16 @@ async def get_music_task_status(
         )
     )
 
-    return _build_task_response(task, provider_name=provider_name)
+    # 轮询到 completed 时查一次当前用户余额，供前端同步 user.credits。
+    # 后台任务扣费在另一个 session 中发生，这里补一次查询是让用户拿不到 push event 时仍能同步余额。
+    remaining_credits: Optional[float] = None
+    if task.status == "completed":
+        user_row = (await db.execute(select(User.credits).where(User.id == current_user.id))).scalar()
+        admin_row = user_row is None and (await db.execute(select(Admin.credits).where(Admin.id == current_user.id))).scalar()
+        balance = user_row if user_row is not None else admin_row
+        balance is not None and balance is not False and (remaining_credits := float(balance))
+
+    return _build_task_response(task, provider_name=provider_name, remaining_credits=remaining_credits)
 
 
 @router.get("/session/{session_id}", response_model=list[MusicTaskResponse])

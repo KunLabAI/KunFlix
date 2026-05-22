@@ -738,6 +738,10 @@ class VideoTaskResponse(BaseModel):
     image_url: Optional[str] = None
     created_at: Any
     completed_at: Optional[Any] = None
+    # 仅在本次扣费不足、余额被兜底扣到 0 时为 true（不持久化）
+    billing_underpaid: bool = False
+    # 本次扣费后用户最新余额（不持久化，用于前端即时同步）
+    remaining_credits: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1054,6 +1058,10 @@ class MusicTaskResponse(BaseModel):
     input_image_count: int = 0
     created_at: Any
     completed_at: Optional[Any] = None
+    # 仅在本次扣费不足、余额被兜底扣到 0 时为 true（不持久化）
+    billing_underpaid: bool = False
+    # 用户最新余额（不持久化，用于前端即时同步）
+    remaining_credits: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -1100,6 +1108,10 @@ class ImageGenerateResponse(BaseModel):
     provider_name: Optional[str] = None
     credit_cost: float = 0.0
     created_at: Any
+    # 仅在本次扣费不足、余额被兜底扣到 0 时为 true（不持久化）
+    billing_underpaid: bool = False
+    # 本次扣费后用户最新余额（不持久化，用于前端即时同步）
+    remaining_credits: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import { reportError } from '@/lib/canvas/toast';
+import { useAuth } from '@/context/AuthContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,6 +69,10 @@ export interface VideoTaskStatus {
   video_mode?: string;
   model?: string;
   prompt?: string;
+  // 后端扣费不足、余额被兜底扣到 0 时为 true（不持久化，仅响应携带）
+  billing_underpaid?: boolean;
+  // 本次扣费后用户余额（不持久化，用于前端即时同步 user.credits）
+  remaining_credits?: number | null;
 }
 
 // Label maps
@@ -307,6 +313,9 @@ export function useVideoTask() {
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // 仅提示一次余额被兜底扣到 0 的事件
+  const underpaidNotifiedRef = useRef(false);
+  const { updateCredits } = useAuth();
 
   const stopPolling = useCallback(() => {
     pollingRef.current && clearInterval(pollingRef.current);
@@ -317,16 +326,27 @@ export function useVideoTask() {
     try {
       const { data } = await api.get<VideoTaskStatus>(`/videos/${id}/status`);
       mountedRef.current && setStatus(data);
+      // 后端扣费后同步最新余额到 AuthContext，驱动 useCreditsGuard 即时生效
+      mountedRef.current && data.remaining_credits != null && updateCredits(data.remaining_credits);
+      // 后端扣费不足、余额被兜底扣到 0 时提示一次
+      mountedRef.current && data.billing_underpaid && !underpaidNotifiedRef.current && (
+        (underpaidNotifiedRef.current = true),
+        toast.warning(
+          '本次操作已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。',
+          { duration: 4500 },
+        )
+      );
       TERMINAL_STATES.has(data.status) && stopPolling();
     } catch {
       // keep polling on network error
     }
-  }, [stopPolling]);
+  }, [stopPolling, updateCredits]);
 
   const submit = useCallback(async (params: VideoCreateParams) => {
     setIsSubmitting(true);
     setError(null);
     setStatus(null);
+    underpaidNotifiedRef.current = false;
     stopPolling();
 
     try {
@@ -352,6 +372,7 @@ export function useVideoTask() {
     setStatus(null);
     setError(null);
     setIsSubmitting(false);
+    underpaidNotifiedRef.current = false;
   }, [stopPolling]);
 
   useEffect(() => {

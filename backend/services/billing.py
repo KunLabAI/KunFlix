@@ -147,7 +147,7 @@ async def require_positive_balance(user_id: str, session: AsyncSession, min_cred
         if row.is_balance_frozen:
             raise BalanceFrozenError(f"User {user_id} balance is frozen")
         if float(row.credits or 0) <= min_credits:
-            raise InsufficientCreditsError("Insufficient credits. Please recharge to continue.11")
+            raise InsufficientCreditsError("Insufficient credits. Please recharge to continue.")
         return
 
     # 2. Admin 路径（无冻结字段）
@@ -341,6 +341,52 @@ async def refund_credits_atomic(
     
     return transaction
 
+async def _drain_balance_to_zero(
+    session: AsyncSession,
+    entity_model,
+    entity_id: str,
+    current_balance: Decimal,
+    attempted_cost: Decimal,
+    metadata: Optional[Dict],
+    transaction_type: str,
+    idempotency_key: Optional[str],
+    is_admin: bool,
+) -> None:
+    """生成已发生但余额不足时，把余额清零并落 underpaid 流水。
+
+    使用 WHERE credits == current_balance 的乐观锁，避免与并发扣费冲突；
+    若并发已把余额改动，跳过本次清零（其他请求已处理）。
+    """
+    if current_balance <= 0:
+        return
+    stmt_clear = (
+        update(entity_model)
+        .where(entity_model.id == entity_id)
+        .where(entity_model.credits == current_balance)
+        .values(credits=0)
+        .execution_options(synchronize_session="fetch")
+    )
+    res = await session.execute(stmt_clear)
+    if res.rowcount <= 0:
+        return  # 并发竞争：其他请求已扣，无需重复
+    tx_meta = dict(metadata or {})
+    tx_meta.update({
+        "underpaid": True,
+        "attempted_cost": float(attempted_cost),
+    })
+    transaction = CreditTransaction(
+        user_id=None if is_admin else entity_id,
+        admin_id=entity_id if is_admin else None,
+        amount=-float(current_balance),
+        balance_before=float(current_balance),
+        balance_after=0,
+        transaction_type=transaction_type,
+        metadata_json=tx_meta,
+        idempotency_key=idempotency_key,
+    )
+    session.add(transaction)
+
+
 async def deduct_credits_atomic(
     user_id: str, 
     cost: float, 
@@ -454,8 +500,23 @@ async def deduct_credits_atomic(
     if row:
         if row.is_balance_frozen:
             raise BalanceFrozenError(f"User {user_id} balance is frozen")
-        if float(row.credits or 0) < float(cost_val):
-            logger.warning(f"Insufficient credits for user {user_id}. Cost: {cost}")
+        current_balance_user = float(row.credits or 0)
+        if current_balance_user < float(cost_val):
+            # 兜底：扣到 0，避免生成已发生但用户余额未变的白嫖漏洞
+            await _drain_balance_to_zero(
+                session=session,
+                entity_model=User,
+                entity_id=user_id,
+                current_balance=Decimal(str(row.credits or 0)),
+                attempted_cost=cost_val,
+                metadata=metadata,
+                transaction_type=transaction_type,
+                idempotency_key=idempotency_key,
+                is_admin=False,
+            )
+            logger.warning(
+                f"Insufficient credits for user {user_id}. Cost: {cost}, drained {current_balance_user}"
+            )
             raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
     
     stmt_check_admin = select(Admin.credits).where(Admin.id == user_id)
@@ -463,7 +524,22 @@ async def deduct_credits_atomic(
     row_admin = res_check_admin.scalar()
     
     if row_admin is not None and float(row_admin or 0) < float(cost_val):
-        logger.warning(f"Insufficient credits for admin {user_id}. Cost: {cost}")
+        current_balance_admin = float(row_admin or 0)
+        # 兜底：扣到 0，避免生成已发生但管理员余额未变的白嫖漏洞
+        await _drain_balance_to_zero(
+            session=session,
+            entity_model=Admin,
+            entity_id=user_id,
+            current_balance=Decimal(str(row_admin or 0)),
+            attempted_cost=cost_val,
+            metadata=metadata,
+            transaction_type=transaction_type,
+            idempotency_key=idempotency_key,
+            is_admin=True,
+        )
+        logger.warning(
+            f"Insufficient credits for admin {user_id}. Cost: {cost}, drained {current_balance_admin}"
+        )
         raise InsufficientCreditsError(f"Insufficient credits. Required: {cost}")
     
     if not row and row_admin is None:
