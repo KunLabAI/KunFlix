@@ -265,7 +265,11 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           "flex-1 min-h-0 w-full h-full",
           isFullScreenPage ? "overflow-hidden" : "p-8 overflow-y-auto"
         )}>
-          {children}
+          {isFullScreenPage ? children : (
+            <div className="max-w-[1200px] mx-auto w-full space-y-6">
+              {children}
+            </div>
+          )}
         </main>
       </div>
       <Toaster />

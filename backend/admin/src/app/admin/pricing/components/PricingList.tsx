@@ -1,22 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import useSWR, { mutate } from 'swr';
 import { useTranslation } from 'react-i18next';
 import api from '@/lib/axios';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -37,7 +28,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/components/ui/use-toast';
-import { Pencil, Trash2, Loader2, Plus, Wand2 } from 'lucide-react';
+import { Pencil, Trash2, Loader2, Plus } from 'lucide-react';
 
 // 日期格式化辅助函数
 const formatTime = (iso?: string | null): string => {
@@ -68,13 +59,6 @@ export function PricingList() {
   const { t } = useTranslation();
 
   const { data: items, error, isLoading } = useSWR<PricingItem[]>('/admin/pricing', fetcher);
-  const { data: providers } = useSWR<any[]>('/admin/llm-providers/', fetcher);
-
-  // 倍率快速应用对话框
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkProvider, setBulkProvider] = useState<string>('');
-  const [bulkMultiplier, setBulkMultiplier] = useState<number>(1.5);
-  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const handleDelete = async (id: string) => {
     const result = await api.delete(`/admin/pricing/${id}`)
@@ -86,30 +70,6 @@ export function PricingList() {
       description: result.error?.response?.data?.detail || '未知错误',
     });
     result.ok && (toast({ title: '已删除' }), mutate('/admin/pricing'));
-  };
-
-  const handleBulkApply = async () => {
-    if (!bulkProvider) {
-      toast({ variant: 'destructive', title: '请先选择供应商' });
-      return;
-    }
-    setBulkSubmitting(true);
-    const result = await api.post('/admin/pricing/bulk-apply', {
-      provider_id: bulkProvider,
-      markup_multiplier: bulkMultiplier,
-    }).then(r => ({ ok: true as const, data: r.data }))
-      .catch((err: any) => ({ ok: false as const, error: err }));
-    setBulkSubmitting(false);
-    result.ok || toast({
-      variant: 'destructive',
-      title: '一键应用失败',
-      description: result.error?.response?.data?.detail || '未知错误',
-    });
-    result.ok && (
-      toast({ title: '已应用', description: `更新 ${(result.data as any[]).length} 条定价` }),
-      setBulkOpen(false),
-      mutate('/admin/pricing')
-    );
   };
 
   const renderDimensions = (dims: Record<string, number>) => {
@@ -145,63 +105,6 @@ export function PricingList() {
 
   return (
     <div className="space-y-4">
-      {/* 顶部操作栏 */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Wand2 className="h-4 w-4 text-primary" />
-            按倍率一键应用
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">供应商</Label>
-            <Select value={bulkProvider} onValueChange={setBulkProvider}>
-              <SelectTrigger className="w-[260px]"><SelectValue placeholder="选择供应商" /></SelectTrigger>
-              <SelectContent>
-                {providers?.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name} ({p.provider_type})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">倍率</Label>
-            <Input
-              type="number"
-              value={bulkMultiplier}
-              onChange={e => setBulkMultiplier(Math.max(1.0, Number(e.target.value) || 1.0))}
-              step={0.1}
-              min={1.0}
-              className="w-24 font-mono"
-            />
-          </div>
-          <AlertDialog open={bulkOpen} onOpenChange={setBulkOpen}>
-            <AlertDialogTrigger asChild>
-              <Button disabled={!bulkProvider}>应用至该供应商所有模型</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>确认按倍率应用</AlertDialogTitle>
-                <AlertDialogDescription>
-                  将以 {bulkMultiplier}× 倍率，根据该供应商的 USD 进价覆盖该供应商所有模型的积分卖价（已存在则更新，不存在则新建）。此操作会立刻广播缓存失效。
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={bulkSubmitting}>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={handleBulkApply} disabled={bulkSubmitting}>
-                  {bulkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  确认应用
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <p className="text-xs text-muted-foreground basis-full">
-            提示：本操作仅覆盖已知计费维度（input/text_output/image_output/search/image_generation/video_*/audio_generation）。1 USD ≈ 100 credits。
-          </p>
-        </CardContent>
-      </Card>
-
       {/* 定价表 */}
       {!items || items.length === 0 ? (
         <div className="flex h-[300px] w-full flex-col items-center justify-center space-y-4 rounded-lg border border-dashed bg-muted/50">

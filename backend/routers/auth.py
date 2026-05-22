@@ -57,6 +57,20 @@ router = APIRouter(
 )
 
 
+@router.get("/public-settings")
+async def public_settings(db: AsyncSession = Depends(get_db)):
+    """公开配置：前端可据此动态调整注册/找回密码流程（如跳过邮箱验证码）。
+
+    判定逻辑：数据库中存在至少一个 is_active=True 的邮件服务商 → 需要邮箱验证。
+    管理员在后台启用/禁用邮件服务商后，前端刷新即生效。
+    """
+    from services.email_providers.dispatcher import get_default_provider
+    provider = await get_default_provider(db)
+    return {
+        "email_verification_required": provider is not None,
+    }
+
+
 async def _build_user_response(user: User, db: AsyncSession) -> UserResponse:
     """构造 UserResponse 并 join 套餐名/类型，供 /register、/login、/me、/preferences 等笔端统一使用。
 
@@ -84,8 +98,10 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new user account."""
-    # Email verification gate（settings.EMAIL_VERIFICATION_REQUIRED 控制是否强校验）
-    require_verify = bool(getattr(settings, "EMAIL_VERIFICATION_REQUIRED", False))
+    # Email verification gate：动态检查是否存在活跃邮件服务商
+    from services.email_providers.dispatcher import get_default_provider
+    _active_provider = await get_default_provider(db)
+    require_verify = _active_provider is not None
     if require_verify:
         ok = bool(body.verify_token) and await ev.consume_pass_token(
             body.email, ev.PURPOSE_REGISTER, body.verify_token
