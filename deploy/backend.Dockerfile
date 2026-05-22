@@ -68,11 +68,12 @@ USER app
 
 EXPOSE 8000
 
-# tini 作为 PID 1 负责信号转发与僵尸回收；uvicorn 单进程（2C4G 推荐）
+# tini 作为 PID 1 负责信号转发与僵尸回收；uvicorn 2 进程（双核并行，AI 长连接互不阻塞）
+# 注意：多 worker 依赖 Redis 做跨进程事件路由（dispatcher.py），生产已配置 REDIS_URL
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "1", \
+     "--workers", "2", \
      "--proxy-headers", \
      "--forwarded-allow-ips=*"]
