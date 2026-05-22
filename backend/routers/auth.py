@@ -567,21 +567,30 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
     access_token: str = Depends(oauth2_scheme),
 ):
-    """已登录用户修改密码；需提供 verify_token (purpose=change_password)。
+    """已登录用户修改密码。
+
+    邮箱验证门：动态检查数据库中是否存在活跃邮件服务商。
+    - 有活跃服务商 → 必须提供 verify_token (purpose=change_password)
+    - 无活跃服务商 → 跳过验证码校验，仅靠旧密码验身
 
     成功后：
     - 更新 password_hash
     - 将当前 access token 加入黑名单，强制重新登录
     """
-    ok = await ev.consume_pass_token(
-        current_user.email, ev.PURPOSE_CHANGE_PASSWORD, body.verify_token
-    )
-    ok or (_ for _ in ()).throw(
-        HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email verification required or token expired",
+    from services.email_providers.dispatcher import get_default_provider
+    _active_provider = await get_default_provider(db)
+    require_verify = _active_provider is not None
+
+    if require_verify:
+        ok = bool(body.verify_token) and await ev.consume_pass_token(
+            current_user.email, ev.PURPOSE_CHANGE_PASSWORD, body.verify_token
         )
-    )
+        ok or (_ for _ in ()).throw(
+            HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email verification required or token expired",
+            )
+        )
     verify_password(body.old_password, current_user.password_hash) or (_ for _ in ()).throw(
         HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -614,18 +623,26 @@ async def reset_password(
 ):
     """忘密场景重置密码（匿名）。
 
-    严格要求 verify_token 有效，用于表明用户能读取该邮箱。
-    邮箱不存在时仍报 400（token 验证依然失败），避免不一致跳转逻辑。
+    邮箱验证门：动态检查数据库中是否存在活跃邮件服务商。
+    - 有活跃服务商 → 必须提供 verify_token，表明用户能读取该邮箱
+    - 无活跃服务商 → 跳过验证码校验，仅靠邮箱存在性重置
+
+    邮箱不存在时仍报 404，与 require_verify=True 时的 token 验证失败保持一致跳转逻辑。
     """
-    ok = await ev.consume_pass_token(
-        body.email, ev.PURPOSE_RESET_PASSWORD, body.verify_token
-    )
-    ok or (_ for _ in ()).throw(
-        HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email verification required or token expired",
+    from services.email_providers.dispatcher import get_default_provider
+    _active_provider = await get_default_provider(db)
+    require_verify = _active_provider is not None
+
+    if require_verify:
+        ok = bool(body.verify_token) and await ev.consume_pass_token(
+            body.email, ev.PURPOSE_RESET_PASSWORD, body.verify_token
         )
-    )
+        ok or (_ for _ in ()).throw(
+            HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email verification required or token expired",
+            )
+        )
     user = await db.scalar(select(User).filter(User.email == body.email))
     user or (_ for _ in ()).throw(
         HTTPException(

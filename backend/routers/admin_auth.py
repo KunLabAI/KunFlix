@@ -1,4 +1,10 @@
-"""管理员认证路由 - 独立于用户认证"""
+"""管理员认证路由 - 独立于用户认证。
+
+安全加固：
+- IP 限速（slowapi）：login 5/min、refresh 30/min，生产用 RATE_LIMIT_ENABLED=true 生效
+- 账户锁定（login_lockout）：同一 email 或 IP 连续 5 次失败 → 锁 15 分钟
+- 审计落库（audit.record）：所有登录尝试（成功/失败/锁定）均记入 audit_logs 表
+"""
 import logging
 from datetime import datetime, timezone
 
@@ -25,6 +31,9 @@ from auth import (
 from auth_revocation import revoke as revoke_jti, is_revoked
 from auth_rotation import try_set_rotated, get_rotated
 from config import settings
+from ratelimit import ip_limiter
+from services import audit
+from services import login_lockout
 
 logger = logging.getLogger(__name__)
 
@@ -35,50 +44,119 @@ router = APIRouter(
 )
 
 
+# 统一的认证失败提示（防账户枚举：邮箱不存在与密码错误使用同一文案）
+_AUTH_FAIL_DETAIL = "邮箱或密码错误"
+
+
+async def _record_login_attempt(
+    *,
+    request: Request,
+    email: str,
+    admin: Admin | None,
+    status_str: str,
+    reason: str,
+) -> None:
+    """统一写入登录尝试到 audit_logs（fire-and-forget，不阻塞请求）。"""
+    audit.record(
+        action="admin.login",
+        actor=admin,
+        resource_type="admin",
+        resource_id=(admin.id if admin else None),
+        status=status_str,
+        detail={"email": email, "reason": reason},
+        request=request,
+    )
+
+
 @router.post("/login", response_model=AdminTokenResponse)
+@ip_limiter.limit("5/minute")
 async def admin_login(
     body: AdminLogin,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """管理员登录"""
+    """管理员登录。
+
+    安全门：
+    1. IP 限速 5/min
+    2. 锁定检查：email/ip 任一被锁则拒绝
+    3. 账号验证失败 → 两个维度均 record_failure
+    4. 成功 → 两个维度均 reset + 审计落库
+    """
     client_ip = request.client.host if request.client else None
-    
-    logger.info(f"Admin login attempt: email={body.email}, ip={client_ip}")
-    
-    result = await db.execute(select(Admin).filter(Admin.email == body.email))
+    email = body.email
+
+    # 1. 锁定闸（任一维度锁定都拒绝，避免泄露是哪个维度）
+    email_locked = await login_lockout.is_locked("email", email)
+    ip_locked = await login_lockout.is_locked("ip", client_ip or "")
+    if email_locked or ip_locked:
+        ttl = max(
+            await login_lockout.remaining_ttl("email", email),
+            await login_lockout.remaining_ttl("ip", client_ip or ""),
+        )
+        await _record_login_attempt(
+            request=request, email=email, admin=None,
+            status_str="fail", reason="locked",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"登录尝试过多，请 {max(60, ttl) // 60} 分钟后重试",
+            headers={"Retry-After": str(max(60, ttl))},
+        )
+
+    result = await db.execute(select(Admin).filter(Admin.email == email))
     admin = result.scalars().first()
 
-    # 验证管理员存在
+    # 2. 邮箱不存在
     if not admin:
-        logger.warning(f"Admin login failed: admin not found, email={body.email}, ip={client_ip}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="邮箱或密码错误",
+        await login_lockout.record_failure("email", email)
+        await login_lockout.record_failure("ip", client_ip or "")
+        await _record_login_attempt(
+            request=request, email=email, admin=None,
+            status_str="fail", reason="user_not_found",
         )
-    
-    # 验证密码
-    if not verify_password(body.password, admin.password_hash):
-        logger.warning(f"Admin login failed: invalid password, email={body.email}, ip={client_ip}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="邮箱或密码错误",
+            detail=_AUTH_FAIL_DETAIL,
         )
 
+    # 3. 密码错误
+    if not verify_password(body.password, admin.password_hash):
+        await login_lockout.record_failure("email", email)
+        await login_lockout.record_failure("ip", client_ip or "")
+        await _record_login_attempt(
+            request=request, email=email, admin=admin,
+            status_str="fail", reason="wrong_password",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=_AUTH_FAIL_DETAIL,
+        )
+
+    # 4. 账号被禁用（不计入锁定计数：凭证正确但状态问题，应走人工恢复）
     if not admin.is_active:
-        logger.warning(f"Admin login failed: account disabled, email={body.email}, ip={client_ip}")
+        await _record_login_attempt(
+            request=request, email=email, admin=admin,
+            status_str="fail", reason="account_disabled",
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="账户已被禁用",
         )
-    
-    logger.info(f"Admin login successful: email={body.email}, admin_id={admin.id}")
 
-    # 更新登录信息
+    # 5. 成功：重置失败计数器 + 更新登录信息 + 审计落库
+    await login_lockout.reset("email", email)
+    await login_lockout.reset("ip", client_ip or "")
+
     admin.last_login_at = datetime.now(timezone.utc)
-    admin.last_login_ip = request.client.host if request.client else None
+    admin.last_login_ip = client_ip
     await db.commit()
     await db.refresh(admin)
+
+    await _record_login_attempt(
+        request=request, email=email, admin=admin,
+        status_str="success", reason="ok",
+    )
 
     # 生成 Token（subject_type 为 "admin"）
     access_token = create_access_token(admin.id, "admin", subject_type="admin")
@@ -100,8 +178,10 @@ def _remaining_ttl(payload: dict) -> int:
 
 
 @router.post("/refresh", response_model=AccessTokenResponse)
+@ip_limiter.limit("30/minute")
 async def admin_refresh_token(
     body: TokenRefresh,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """刷新管理员 Access Token

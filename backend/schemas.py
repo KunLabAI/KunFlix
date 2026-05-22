@@ -1194,17 +1194,17 @@ class EmailCodeVerifyResponse(BaseModel):
 
 
 class PasswordChangeRequest(BaseModel):
-    """已登录用户修改密码（需要 verify_token, purpose=change_password）。"""
+    """已登录用户修改密码：verify_token 仅在后端存在活跃邮件服务商时必填（purpose=change_password）。"""
     old_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=6)
-    verify_token: str = Field(..., min_length=8)
+    verify_token: Optional[str] = None
 
 
 class PasswordResetRequest(BaseModel):
-    """忘密场景重置密码（匿名，需 verify_token, purpose=reset_password）。"""
+    """忘密场景重置密码（匿名）。verify_token 仅在后端存在活跃邮件服务商时必填。"""
     email: EmailStr
     new_password: str = Field(..., min_length=6)
-    verify_token: str = Field(..., min_length=8)
+    verify_token: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
