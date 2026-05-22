@@ -645,9 +645,10 @@ export function useSSEHandler() {
           return prev;
         });
         // 积分不足友好提醒（多智能体模式）
+        // 后端在扣费不足时已将剩余余额扣到 0，文案应准确反映该语义
         (d.billing_status === 'insufficient') && setMessages((prev) => [
           ...prev,
-          { role: 'ai', content: '提示：您的积分余额已不足，本次消耗未能完全扣除。请及时充值以继续使用。', status: 'complete' },
+          { role: 'ai', content: '提示：本次消耗已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。', status: 'complete' },
         ]);
       },
 
@@ -668,9 +669,10 @@ export function useSSEHandler() {
         // 实时更新用户积分余额
         (d.remaining_credits !== undefined) && updateCredits(d.remaining_credits);
         // 积分不足友好提醒
+        // 后端在扣费不足时已将剩余余额扣到 0，文案应准确反映该语义
         d.insufficient && setMessages((prev) => [
           ...prev,
-          { role: 'ai', content: '提示：您的积分余额已不足，本次消耗未能扣除。请及时充值以继续使用。', status: 'complete' },
+          { role: 'ai', content: '提示：本次消耗已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。', status: 'complete' },
         ]);
         // 账户冻结提醒
         d.frozen && setMessages((prev) => [

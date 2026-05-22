@@ -1,7 +1,8 @@
 """媒体文件服务路由"""
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Body
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File, Form, Query, Body
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pathlib import Path
+import os
 import re
 import logging
 import uuid
@@ -558,8 +559,8 @@ async def serve_media_thumbnail(filename: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/{filename}")
-async def serve_media(filename: str, db: AsyncSession = Depends(get_db)):
-    """安全地提供媒体文件（支持本地后端 + S3 预签名重定向）"""
+async def serve_media(request: Request, filename: str, db: AsyncSession = Depends(get_db)):
+    """安全地提供媒体文件（支持本地后端 + S3 预签名重定向 + HTTP Range）"""
     # 优先精确匹配（带扩展名）
     matched = _SAFE_FILENAME.match(filename)
     matched or _UUID_ONLY.match(filename) or (_ for _ in ()).throw(
@@ -569,7 +570,7 @@ async def serve_media(filename: str, db: AsyncSession = Depends(get_db)):
     # S3 后端：根据 Asset 查出 key 后重定向到预签名/公网 URL
     s3_handlers = {
         "s3": lambda: _serve_s3(filename, db),
-        "local": lambda: _serve_local(filename),
+        "local": lambda: _serve_local(filename, request),
     }
     handler = s3_handlers.get(settings.STORAGE_BACKEND, s3_handlers["local"])
     return await handler()
@@ -585,31 +586,71 @@ async def _serve_s3(filename: str, db: AsyncSession):
     return RedirectResponse(url=target_url, status_code=302)
 
 
-async def _serve_local(filename: str):
-    """本地后端：保持原有逆向查找逻辑。"""
+_RANGE_RE = re.compile(r"bytes=(\d+)-(\d*)")
+
+
+async def _serve_local(filename: str, request: Request):
+    """本地后端：支持 HTTP Range 请求的文件服务（视频渐进式播放）。"""
+    # 解析文件路径
+    filepath: Path | None = None
+    ext = ""
+
     matched = _SAFE_FILENAME.match(filename)
-    if matched:
-        filepath = resolve_media_filepath(filename)
-        filepath or (_ for _ in ()).throw(HTTPException(status_code=404, detail="File not found"))
-        ext = filename.rsplit(".", 1)[-1]
-        return FileResponse(
-            filepath,
-            media_type=_EXT_MIME.get(ext, "application/octet-stream"),
-            headers={"Cache-Control": "public, max-age=31536000"},
-        )
+    matched and (filepath := resolve_media_filepath(filename))
+    matched and filepath and (ext := filename.rsplit(".", 1)[-1])
 
     # 回退：纯 UUID（LLM 模型可能在回复中截断文件扩展名）
-    if _UUID_ONLY.match(filename):
-        for ext in _FALLBACK_EXTS:
-            candidate = resolve_media_filepath(f"{filename}.{ext}")
-            if candidate:
-                return FileResponse(
-                    candidate,
-                    media_type=_EXT_MIME.get(ext, "application/octet-stream"),
-                    headers={"Cache-Control": "public, max-age=31536000"},
-                )
+    (not filepath) and _UUID_ONLY.match(filename) and next(
+        (
+            (filepath := candidate) and (ext := e)
+            for e in _FALLBACK_EXTS
+            if (candidate := resolve_media_filepath(f"{filename}.{e}"))
+        ),
+        None,
+    )
 
-    raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath or (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail="File not found")
+    )
+
+    media_type = _EXT_MIME.get(ext, "application/octet-stream")
+    file_size = os.path.getsize(filepath)
+    base_headers = {"Cache-Control": "public, max-age=31536000", "Accept-Ranges": "bytes"}
+
+    # Range 请求处理 → 206 Partial Content（视频/音频渐进式播放）
+    range_header = request.headers.get("range", "")
+    range_match = _RANGE_RE.match(range_header) if range_header else None
+
+    if range_match:
+        start = int(range_match.group(1))
+        end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+        end = min(end, file_size - 1)
+        chunk_size = end - start + 1
+
+        def _iter_range():
+            with open(filepath, "rb") as f:
+                f.seek(start)
+                remaining = chunk_size
+                while remaining > 0:
+                    buf = f.read(min(remaining, 65536))
+                    if not buf:
+                        break
+                    remaining -= len(buf)
+                    yield buf
+
+        return StreamingResponse(
+            _iter_range(),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                **base_headers,
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(chunk_size),
+            },
+        )
+
+    # 无 Range → 完整文件 + Accept-Ranges 告知客户端支持分段请求
+    return FileResponse(filepath, media_type=media_type, headers=base_headers)
 
 
 @router.post("/batch-generate", response_model=BatchImageGenerateResponse)

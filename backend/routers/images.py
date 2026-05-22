@@ -317,8 +317,10 @@ async def generate_images(
         + rate_per_image    * len(image_urls)
     )
 
+    _billing_underpaid = False  # 本次扣费是否不足被兜底扣到 0
+    _remaining_credits: Optional[float] = None  # 本次扣费后用户余额
     try:
-        (credit_cost > 0) and await deduct_credits_atomic(
+        tx = (credit_cost > 0) and await deduct_credits_atomic(
             user_id=entity_id,
             cost=credit_cost,
             session=db,
@@ -337,14 +339,23 @@ async def generate_images(
             },
             transaction_type="consumption",
         )
+        # 同步最新余额到响应，前端即时刷新 user.credits
+        tx and hasattr(tx, 'balance_after') and (_remaining_credits := float(tx.balance_after))
     except InsufficientCreditsError:
-        raise BizError.insufficient_credits()
+        # 图像已生成、已注册资产；deduct_credits_atomic 已把余额兜底扣到 0。
+        # 为了让用户拿到已生成的图像，不再抛 402，仅设置 billing_underpaid 标志由响应传递给前端。
+        _billing_underpaid = True
+        _remaining_credits = 0.0
+        logger.warning(
+            "Image generation underpaid: user=%s provider=%s model=%s cost=%.4f, balance drained to 0",
+            entity_id, provider.id, payload.model, credit_cost,
+        )
 
     await db.commit()
 
     logger.info(
-        "Image generated: user=%s provider=%s model=%s count=%d cost=%.4f",
-        entity_id, provider.id, payload.model, len(image_urls), credit_cost,
+        "Image generated: user=%s provider=%s model=%s count=%d cost=%.4f underpaid=%s",
+        entity_id, provider.id, payload.model, len(image_urls), credit_cost, _billing_underpaid,
     )
 
     return ImageGenerateResponse(
@@ -355,6 +366,8 @@ async def generate_images(
         provider_name=provider.name,
         credit_cost=credit_cost,
         created_at=datetime.now(timezone.utc),
+        billing_underpaid=_billing_underpaid,
+        remaining_credits=_remaining_credits,
     )
 
 

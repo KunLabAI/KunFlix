@@ -755,6 +755,7 @@
     "TIMEOUT": "Request timed out, please retry",
     "REQUEST_CANCELLED": "Request cancelled",
     "UNKNOWN": "Unknown error, please try again",
+    "creditsEmpty": "Credits depleted. Please top up to continue.",
     "retry": "Retry"
   }
 }

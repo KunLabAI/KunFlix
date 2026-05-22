@@ -632,7 +632,7 @@ async def generate_single_agent(
                     billing_event["credit_cost"] = round(credit_cost, 6)
 
                     try:
-                        (credit_cost > 0) and await deduct_credits_atomic(
+                        tx = (credit_cost > 0) and await deduct_credits_atomic(
                             user_id=entity_id,
                             cost=credit_cost,
                             session=session,
@@ -640,8 +640,13 @@ async def generate_single_agent(
                             transaction_type="consumption",
                             idempotency_key=f"chat:{assistant_msg_id}",
                         )
+                        # 同步最新余额到 SSE 事件，前端即时刷新顶栏积分
+                        tx and hasattr(tx, 'balance_after') and billing_event.update(
+                            {"remaining_credits": round(float(tx.balance_after), 6)}
+                        )
                     except InsufficientCreditsError:
                         billing_event["insufficient"] = True
+                        billing_event["remaining_credits"] = 0  # 兜底已扣到 0
                         logger.warning(f"Credits depleted for {'admin' if is_admin else 'user'} {entity_id}. Cost: {credit_cost}")
                     except BalanceFrozenError:
                         billing_event["frozen"] = True

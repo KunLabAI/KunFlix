@@ -233,6 +233,8 @@ async def get_video_task_status(
     timed_out and setattr(task, "error_message", poll_result.error or "Timeout")
 
     # 完成处理：下载视频 + 计费
+    _billing_underpaid = False  # 本次扣费是否不足被兜底扣到 0
+    _remaining_credits: Optional[float] = None  # 本次扣费后余额，用于前端即时同步
     if poll_result.status == "completed" and poll_result.video_url:
         try:
             # Gemini 需要 API key 下载视频
@@ -253,22 +255,29 @@ async def get_video_task_status(
             credit_cost, billing_metadata = calculate_video_credit_cost(task, rate_map)
             task.credit_cost = credit_cost
 
-            # 扣费
-            (credit_cost > 0) and await deduct_credits_atomic(
-                user_id=entity_id,
-                cost=credit_cost,
-                session=db,
-                metadata=billing_metadata,
-                transaction_type="consumption",
-                idempotency_key=f"video:{task.id}",
-            )
+            # 扣费：生成已发生，扣费不足时 deduct_credits_atomic 会把余额兜底扣到 0 + 抛 InsufficientCreditsError。
+            # 为了让用户拿到已生成的结果，task.status 保持 completed，仅设置 billing_underpaid 标志由响应/push 渠道传递给前端。
+            try:
+                tx = (credit_cost > 0) and await deduct_credits_atomic(
+                    user_id=entity_id,
+                    cost=credit_cost,
+                    session=db,
+                    metadata=billing_metadata,
+                    transaction_type="consumption",
+                    idempotency_key=f"video:{task.id}",
+                )
+                # 同步最新余额到响应，前端即时刷新 user.credits
+                tx and hasattr(tx, 'balance_after') and (_remaining_credits := float(tx.balance_after))
+            except InsufficientCreditsError:
+                _billing_underpaid = True
+                _remaining_credits = 0.0  # 兜底已扣到 0
+                logger.warning(
+                    f"Video {task.id} underpaid: cost={credit_cost}, user balance drained to 0; delivering result"
+                )
 
             # 在聊天会话中插入视频消息
             task.session_id and await _insert_video_chat_message(db, task)
 
-        except InsufficientCreditsError:
-            task.status = "failed"
-            task.error_message = "Insufficient credits"
         except Exception as e:
             logger.error(f"Video completion processing failed: {e}")
             task.status = "failed"
@@ -285,13 +294,13 @@ async def get_video_task_status(
 
     # 终态实时推送到客户端（有 Redis 跨实例、无 Redis 退化本地）
     _terminal_push = {
-        "completed": lambda: push_to_user(task.user_id, "video.completed", _build_task_response(task, provider_name=provider.name).model_dump()),
+        "completed": lambda: push_to_user(task.user_id, "video.completed", _build_task_response(task, provider_name=provider.name, billing_underpaid=_billing_underpaid, remaining_credits=_remaining_credits).model_dump()),
         "failed":    lambda: push_to_user(task.user_id, "video.failed",    _build_task_response(task, provider_name=provider.name).model_dump()),
     }
     pusher = _terminal_push.get(task.status)
     pusher and task.user_id and await pusher()
 
-    return _build_task_response(task, provider_name=provider.name)
+    return _build_task_response(task, provider_name=provider.name, billing_underpaid=_billing_underpaid, remaining_credits=_remaining_credits)
 
 
 async def _register_video_asset(local_url: str, user_id: str, db: AsyncSession) -> None:
@@ -435,7 +444,7 @@ def _try_delete_local_file(media_url: str):
     logger.info(f"Deleted local file: {filepath}")
 
 
-def _build_task_response(task: VideoTask, provider_name: str = None) -> VideoTaskResponse:
+def _build_task_response(task: VideoTask, provider_name: str = None, billing_underpaid: bool = False, remaining_credits: Optional[float] = None) -> VideoTaskResponse:
     """构建视频任务响应"""
     return VideoTaskResponse(
         id=task.id,
@@ -456,6 +465,8 @@ def _build_task_response(task: VideoTask, provider_name: str = None) -> VideoTas
         image_url=task.image_url,
         created_at=task.created_at,
         completed_at=task.completed_at,
+        billing_underpaid=billing_underpaid,
+        remaining_credits=remaining_credits,
     )
 
 

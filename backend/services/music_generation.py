@@ -99,7 +99,7 @@ async def _do_register_music_asset(audio_url: str, mime_type: str, user_id: str,
 # 实时通知辅助
 # ---------------------------------------------------------------------------
 
-async def _push_music_event(user_id: str, task) -> None:
+async def _push_music_event(user_id: str, task, billing_underpaid: bool = False, remaining_credits: Optional[float] = None) -> None:
     """将音乐任务终态推送给前端（安静失败）。"""
     try:
         from realtime.dispatcher import push_to_user
@@ -111,6 +111,8 @@ async def _push_music_event(user_id: str, task) -> None:
                 "status": task.status,
                 "audio_url": task.result_audio_url,
                 "lyrics": task.lyrics,
+                "billing_underpaid": billing_underpaid,
+                "remaining_credits": remaining_credits,
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -166,8 +168,10 @@ async def execute_music_task_background(
         # ---- 计费 ----
         credit_cost = 0.0
         billing_metadata: dict = {}
+        billing_underpaid = False  # 本次扣费是否不足被兜底扣到 0
+        remaining_credits: Optional[float] = None  # 扣费后用户余额
         try:
-            credit_cost, billing_metadata = await _calculate_and_deduct(
+            credit_cost, billing_metadata, billing_underpaid, remaining_credits = await _calculate_and_deduct(
                 db, provider_id, music_ctx.model, user_id, task_id,
             )
         except Exception as exc:
@@ -182,15 +186,15 @@ async def execute_music_task_background(
         await db.commit()
 
         logger.info(
-            "Music task %s completed: %s (cost=%.4f)",
-            task_id, audio_url, credit_cost,
+            "Music task %s completed: %s (cost=%.4f, underpaid=%s, remaining=%s)",
+            task_id, audio_url, credit_cost, billing_underpaid, remaining_credits,
         )
 
         # ---- 画布音频节点创建（可选） ----
         theater_id and await _create_canvas_audio_node(db, theater_id, audio_url, task)
 
         # ---- 实时通知前端（兼容 arq worker 和 fallback 路径） ----
-        await _push_music_event(user_id, task)
+        await _push_music_event(user_id, task, billing_underpaid=billing_underpaid, remaining_credits=remaining_credits)
 
     except Exception:
         logger.exception("Music background task %s crashed", task_id)
@@ -218,9 +222,14 @@ async def _calculate_and_deduct(
     model: str,
     user_id: str,
     task_id: str,
-) -> tuple[float, dict]:
-    """计算音乐生成费用并原子扣费。"""
-    from services.billing import deduct_credits_atomic, load_pricing
+) -> tuple[float, dict, bool, Optional[float]]:
+    """计算音乐生成费用并原子扣费。
+
+    返回 (cost, metadata, underpaid, remaining_credits)：
+    - underpaid=True 表示本次扣费不足、余额被兜底扣到 0
+    - remaining_credits 为扣费后用户最新余额（免费任务为 None）
+    """
+    from services.billing import deduct_credits_atomic, load_pricing, InsufficientCreditsError
 
     # 从 ModelPricing（供应商, 模型）读取积分卖价
     rate_map = await load_pricing(provider_id, model, db)
@@ -235,17 +244,29 @@ async def _calculate_and_deduct(
         "task_id": task_id,
     }
 
-    # 仅在有费用时扣费
-    total_cost > 0 and await deduct_credits_atomic(
-        user_id=user_id,
-        cost=total_cost,
-        session=db,
-        metadata=metadata,
-        transaction_type="consumption",
-        idempotency_key=f"music:{task_id}",
-    )
+    # 仅在有费用时扣费；扣费不足时 deduct_credits_atomic 会把余额兜底扣到 0 并抛 InsufficientCreditsError
+    underpaid = False
+    remaining_credits: Optional[float] = None
+    try:
+        tx = total_cost > 0 and await deduct_credits_atomic(
+            user_id=user_id,
+            cost=total_cost,
+            session=db,
+            metadata=metadata,
+            transaction_type="consumption",
+            idempotency_key=f"music:{task_id}",
+        )
+        # 同步最新余额供上层推送给前端
+        tx and hasattr(tx, 'balance_after') and (remaining_credits := float(tx.balance_after))
+    except InsufficientCreditsError:
+        underpaid = True
+        remaining_credits = 0.0
+        logger.warning(
+            "Music task %s underpaid: user=%s cost=%.4f, balance drained to 0",
+            task_id, user_id, total_cost,
+        )
 
-    return total_cost, metadata
+    return total_cost, metadata, underpaid, remaining_credits
 
 
 # ---------------------------------------------------------------------------

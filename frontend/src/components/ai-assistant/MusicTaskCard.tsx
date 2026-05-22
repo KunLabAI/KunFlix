@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Music, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { handleAudioDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
+import { useAuth } from '@/context/AuthContext';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,6 +31,10 @@ interface MusicTaskStatus {
   model?: string;
   lyrics?: string;
   output_format?: string;
+  // 后端扣费不足、余额被兜底扣到 0 时为 true（不持久化，仅响应携带）
+  billing_underpaid?: boolean;
+  // 本次扣费后用户余额（不持久化，用于前端同步 user.credits）
+  remaining_credits?: number | null;
 }
 
 // Terminal states that stop polling
@@ -140,6 +146,9 @@ export function MusicTaskCard({ task, className }: MusicTaskCardProps) {
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // 仅提示一次余额被兜底扣到 0 的事件
+  const underpaidNotifiedRef = useRef(false);
+  const { updateCredits } = useAuth();
 
   const pollStatus = useCallback(async () => {
     try {
@@ -158,6 +167,18 @@ export function MusicTaskCard({ task, className }: MusicTaskCardProps) {
     data.error_message && setErrorMsg(data.error_message);
     data.model && setModel(data.model);
     data.lyrics && setLyrics(data.lyrics);
+
+    // 后端扣费后同步最新余额到 AuthContext，驱动 useCreditsGuard 即时生效
+    data.remaining_credits != null && updateCredits(data.remaining_credits);
+
+    // 后端扣费不足、余额被兜底扣到 0 时提示一次
+    data.billing_underpaid && !underpaidNotifiedRef.current && (
+      (underpaidNotifiedRef.current = true),
+      toast.warning(
+        '本次操作已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。',
+        { duration: 4500 },
+      )
+    );
 
     TERMINAL_STATES.has(data.status) && stopPolling();
   };
