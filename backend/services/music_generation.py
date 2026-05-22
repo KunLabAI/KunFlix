@@ -186,8 +186,8 @@ async def execute_music_task_background(
         await db.commit()
 
         logger.info(
-            "Music task %s completed: %s (cost=%.4f, underpaid=%s, remaining=%s)",
-            task_id, audio_url, credit_cost, billing_underpaid, remaining_credits,
+            "Music task %s completed: %s (cost=%.4f, remaining=%s)",
+            task_id, audio_url, credit_cost, remaining_credits,
         )
 
         # ---- 画布音频节点创建（可选） ----
