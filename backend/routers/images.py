@@ -354,8 +354,8 @@ async def generate_images(
     await db.commit()
 
     logger.info(
-        "Image generated: user=...%s model=%s count=%d underpaid=%s",
-        entity_id[-8:], payload.model, len(image_urls), _billing_underpaid,
+        "Image generated: user=...%s model=%s count=%d",
+        entity_id[-8:], payload.model, len(image_urls),
     )
 
     return ImageGenerateResponse(
