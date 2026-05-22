@@ -174,11 +174,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    # 生产模式 next start 轻量，降低配额给 Backend 多进程计算使用
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "0.3"
+          memory: 384M
     restart: unless-stopped
     networks: [kunflix_net]
 
@@ -205,11 +206,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    # Admin 低频内部工具，降低配额给 Backend 多进程计算使用
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "0.2"
+          memory: 256M
     restart: unless-stopped
     networks: [kunflix_net]
 

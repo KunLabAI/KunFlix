@@ -62,6 +62,49 @@ DEFAULT_BASE_URLS = {
 # 供应商注册表：provider_type -> stream handler
 _PROVIDER_REGISTRY: Dict[str, Callable] = {}
 
+# ---------------------------------------------------------------------------
+# 模块级 HTTP 客户端缓存（复用连接池，避免每次请求重建 TLS 握手）
+# 客户端实例在 fork 后惰性创建，各 worker 独立持有自己的连接池
+# ---------------------------------------------------------------------------
+_HTTP_CLIENT_CACHE: Dict[str, Any] = {}
+
+
+def _get_openai_client(api_key: str, base_url: str | None) -> Any:
+    """获取或创建缓存的 AsyncOpenAI 客户端实例。"""
+    from openai import AsyncOpenAI
+    cache_key = f"openai:{api_key[:16]}:{base_url or ''}"
+    client = _HTTP_CLIENT_CACHE.get(cache_key)
+    if not client:
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        _HTTP_CLIENT_CACHE[cache_key] = client
+    return client
+
+
+def _get_azure_client(api_key: str, azure_endpoint: str) -> Any:
+    """获取或创建缓存的 AsyncAzureOpenAI 客户端实例。"""
+    from openai import AsyncAzureOpenAI
+    cache_key = f"azure:{api_key[:16]}:{azure_endpoint}"
+    client = _HTTP_CLIENT_CACHE.get(cache_key)
+    if not client:
+        client = AsyncAzureOpenAI(
+            api_key=api_key,
+            api_version="2023-05-15",
+            azure_endpoint=azure_endpoint,
+        )
+        _HTTP_CLIENT_CACHE[cache_key] = client
+    return client
+
+
+def _get_anthropic_client(api_key: str, base_url: str | None) -> Any:
+    """获取或创建缓存的 AsyncAnthropic 客户端实例。"""
+    from anthropic import AsyncAnthropic
+    cache_key = f"anthropic:{api_key[:16]}:{base_url or ''}"
+    client = _HTTP_CLIENT_CACHE.get(cache_key)
+    if not client:
+        client = AsyncAnthropic(api_key=api_key, base_url=base_url)
+        _HTTP_CLIENT_CACHE[cache_key] = client
+    return client
+
 
 def register_provider(*provider_types: str):
     """装饰器：注册供应商处理器"""
@@ -84,11 +127,8 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """OpenAI/DeepSeek/OpenRouter 流式调用（支持 tool calling）"""
     from openai import AsyncOpenAI
-    
-    client = AsyncOpenAI(
-        api_key=ctx.api_key,
-        base_url=get_effective_base_url(ctx),
-    )
+
+    client = _get_openai_client(ctx.api_key, get_effective_base_url(ctx))
     
     create_params = {
         "model": ctx.model,
@@ -175,10 +215,7 @@ async def _stream_xai_text(ctx: StreamContext, result: StreamResult) -> AsyncGen
     """xAI/Grok 文本模型流式调用（推理模式 + tool calling）"""
     from openai import AsyncOpenAI
 
-    client = AsyncOpenAI(
-        api_key=ctx.api_key,
-        base_url=get_effective_base_url(ctx),
-    )
+    client = _get_openai_client(ctx.api_key, get_effective_base_url(ctx))
 
     create_params = {
         "model": ctx.model,
@@ -325,10 +362,7 @@ async def _stream_xai_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
         return
 
     # 图像生成模式：使用 AsyncOpenAI SDK images.generate()
-    client = AsyncOpenAI(
-        api_key=ctx.api_key,
-        base_url=base_url,
-    )
+    client = _get_openai_client(ctx.api_key, base_url)
 
     generate_params: Dict[str, Any] = {
         "model": ctx.model,
@@ -451,7 +485,7 @@ async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
     from services.media_utils import save_image_from_url
 
     base_url = get_effective_base_url(ctx) or "https://ark.cn-beijing.volces.com/api/v3"
-    client = AsyncOpenAI(api_key=ctx.api_key, base_url=base_url)
+    client = _get_openai_client(ctx.api_key, base_url)
 
     # 从最后一条 user 消息提取 prompt
     prompt_text, _ = _extract_xai_user_input(ctx.messages)
@@ -499,12 +533,8 @@ async def stream_ark(ctx: StreamContext, result: StreamResult) -> AsyncGenerator
 async def stream_azure(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """Azure OpenAI 流式调用"""
     from openai import AsyncAzureOpenAI
-    
-    client = AsyncAzureOpenAI(
-        api_key=ctx.api_key,
-        api_version="2023-05-15",
-        azure_endpoint=ctx.base_url,
-    )
+
+    client = _get_azure_client(ctx.api_key, ctx.base_url)
     
     stream = await client.chat.completions.create(
         model=ctx.model,
@@ -532,11 +562,8 @@ async def stream_azure(ctx: StreamContext, result: StreamResult) -> AsyncGenerat
 async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """Anthropic/MiniMax 流式调用（支持 tool calling）"""
     from anthropic import AsyncAnthropic
-    
-    client = AsyncAnthropic(
-        api_key=ctx.api_key,
-        base_url=get_effective_base_url(ctx),
-    )
+
+    client = _get_anthropic_client(ctx.api_key, get_effective_base_url(ctx))
     
     # 提取 system message
     system_content = ""
