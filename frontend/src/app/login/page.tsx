@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, Suspense } from "react";
+import React, { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -213,10 +213,18 @@ function LoginPageContent() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [verifyToken, setVerifyToken] = useState<string>("");
+  const [emailVerifyRequired, setEmailVerifyRequired] = useState(true);
   const { login } = useAuth();
   const { restoreTheme } = useTheme();
   const { message } = App.useApp();
   const searchParams = useSearchParams();
+
+  // 拉取后端公开配置：是否需要邮箱验证码
+  useEffect(() => {
+    api.get<{ email_verification_required: boolean }>("/auth/public-settings")
+      .then(({ data }) => setEmailVerifyRequired(data.email_verification_required))
+      .catch(() => setEmailVerifyRequired(true));
+  }, []);
 
   // 登录成功后回跳地址：默认 "/"，仅允许以单 "/" 开头的相对路径（防开放重定向）。
   const safeRedirect = useMemo(() => {
@@ -334,8 +342,8 @@ function LoginPageContent() {
   // 提交处理
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // register/forgot 必须先完成邮箱验证
-    const needsVerify = mode !== "login";
+    // 仅当后端启用了邮箱验证且模式为 register/forgot 时才要求 token
+    const needsVerify = mode !== "login" && emailVerifyRequired;
     needsVerify && !verifyToken && (message.error(t("login.verifyFirst")), 0);
     validateForm() && (!needsVerify || verifyToken) && SUBMIT_HANDLERS[mode]();
   };
@@ -507,8 +515,8 @@ function LoginPageContent() {
                           </motion.p>
                         )}
                       </div>
-                      {/* 邮箱字段后插入验证码组件（仅 register/forgot 模式） */}
-                      {field.name === "email" && currentPurpose && (
+                      {/* 邮箱字段后插入验证码组件（仅 register/forgot 模式且后端要求验证） */}
+                      {field.name === "email" && currentPurpose && emailVerifyRequired && (
                         <EmailCodeField
                           email={formData.email || ""}
                           purpose={currentPurpose}

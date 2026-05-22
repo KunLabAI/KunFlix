@@ -258,7 +258,7 @@ async def bulk_apply(
             continue
         new_dims = {}
         for k, v in api_dims.items():
-            k in _KNOWN_DIMS and isinstance(v, (int, float)) and (new_dims.__setitem__(k, float(v) * multiplier))
+            k in _KNOWN_DIMS and isinstance(v, (int, float)) and (new_dims.__setitem__(k, round(float(v) * multiplier * 100, 2)))
         if not new_dims:
             continue
         existing = existing_map.get(model_name)
