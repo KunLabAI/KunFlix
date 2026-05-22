@@ -133,6 +133,14 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const [usagePeriod, setUsagePeriod] = useState("month");
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [storageLoading, setStorageLoading] = useState(false);
+  const [emailVerifyRequired, setEmailVerifyRequired] = useState(true);
+
+  // 拉取后端公开配置：是否需要邮箱验证码（仅在对话框打开时拉取，以反映后台最新开关状态）
+  useEffect(() => {
+    open && api.get<{ email_verification_required: boolean }>("/auth/public-settings")
+      .then(({ data }) => setEmailVerifyRequired(data.email_verification_required))
+      .catch(() => setEmailVerifyRequired(true));
+  }, [open]);
 
   const { releases, loading: releasesLoading, error: releasesError, refetch: refetchReleases } =
     useGitHubReleases(open && currentTab === "about");
@@ -347,6 +355,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
         <ChangePasswordSection
           email={user?.email || ""}
           t={t}
+          emailVerifyRequired={emailVerifyRequired}
           onSuccess={() => {
             onOpenChange(false);
             logout();
@@ -791,11 +800,13 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
 function ChangePasswordSection({
   email,
   t,
+  emailVerifyRequired,
   onSuccess,
   message,
 }: {
   email: string;
   t: (key: string, opts?: any) => string;
+  emailVerifyRequired: boolean;
   onSuccess: () => void;
   message: { success: (s: string) => void; error: (s: string) => void };
 }) {
@@ -819,8 +830,9 @@ function ChangePasswordSection({
   };
 
   // 顺序校验，第一个失败即返回；避免 if-elif 链
+  // 仅在后端启用邮件验证时才要求 verifyToken
   const validations: Array<() => string | null> = [
-    () => (verifyToken ? null : t("settings.general.changePassword.verifyFirst")),
+    () => (!emailVerifyRequired || verifyToken ? null : t("settings.general.changePassword.verifyFirst")),
     () => (oldPassword.length >= 6 ? null : t("settings.general.changePassword.tooShort")),
     () => (newPassword.length >= 6 ? null : t("settings.general.changePassword.tooShort")),
     () => (newPassword === confirmPassword ? null : t("settings.general.changePassword.mismatch")),
@@ -840,7 +852,7 @@ function ChangePasswordSection({
       await api.post("/auth/password/change", {
         old_password: oldPassword,
         new_password: newPassword,
-        verify_token: verifyToken,
+        verify_token: verifyToken || undefined,
       });
       message.success(t("settings.general.changePassword.success"));
       reset();
@@ -852,7 +864,11 @@ function ChangePasswordSection({
     }
   };
 
-  const passwordReady = !!verifyToken && oldPassword.length >= 6 && newPassword.length >= 6 && newPassword === confirmPassword;
+  const passwordReady =
+    (!emailVerifyRequired || !!verifyToken)
+    && oldPassword.length >= 6
+    && newPassword.length >= 6
+    && newPassword === confirmPassword;
 
   return (
     <section>
@@ -877,21 +893,37 @@ function ChangePasswordSection({
 
       {opened && (
         <div className="mt-4 space-y-5 rounded-xl border border-border bg-muted/20 p-5">
-          {/* Step 1: email verification */}
-          <div>
-            <p className="text-sm font-semibold text-foreground mb-3">
-              {t("settings.general.changePassword.step1")}
-            </p>
-            <EmailCodeField
-              email={email}
-              purpose="change_password"
-              onVerified={setVerifyToken}
-              onInvalidate={() => setVerifyToken("")}
-            />
-          </div>
+          {/* Step 1: email verification (仅在后端启用邮件验证时展示) */}
+          {emailVerifyRequired && (
+            <div>
+              <p className="text-sm font-semibold text-foreground mb-3">
+                {t("settings.general.changePassword.step1")}
+              </p>
+              <EmailCodeField
+                email={email}
+                purpose="change_password"
+                onVerified={setVerifyToken}
+                onInvalidate={() => setVerifyToken("")}
+              />
+            </div>
+          )}
 
-          {/* Step 2: new password */}
-          <div className={cn("space-y-3", !verifyToken && "opacity-50 pointer-events-none")}>
+          {/* Step 2: new password (包装在 <form> 中以满足浏览器对密码字段的要求，阻止默认提交) */}
+          <form
+            onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+            className={cn("space-y-3", emailVerifyRequired && !verifyToken && "opacity-50 pointer-events-none")}
+          >
+            {/* 隐藏的 username 字段：供密码管理器关联账号，消除浏览器可访问性告警 */}
+            <input
+              type="text"
+              name="username"
+              value={email}
+              autoComplete="username"
+              readOnly
+              hidden
+              aria-hidden="true"
+              tabIndex={-1}
+            />
             <p className="text-sm font-semibold text-foreground">
               {t("settings.general.changePassword.step2")}
             </p>
@@ -948,32 +980,41 @@ function ChangePasswordSection({
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder={t("settings.general.changePassword.confirmPlaceholder")}
-                className="w-full h-10 px-3 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                className={cn(
+                  "w-full h-10 px-3 rounded-lg bg-background border text-sm outline-none focus:ring-2 transition-colors",
+                  confirmPassword && newPassword !== confirmPassword
+                    ? "border-destructive focus:ring-destructive/30"
+                    : "border-border focus:ring-ring"
+                )}
                 autoComplete="new-password"
               />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p className="mt-1.5 text-xs text-destructive">
+                  {t("settings.general.changePassword.mismatch")}
+                </p>
+              )}
             </div>
-          </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={reset}
-              disabled={submitting}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
-            >
-              {t("settings.general.changePassword.cancel")}
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!passwordReady || submitting}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            >
-              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              {t("settings.general.changePassword.submit")}
-            </button>
-          </div>
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={submitting}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                {t("settings.general.changePassword.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={!passwordReady || submitting}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                {t("settings.general.changePassword.submit")}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </section>

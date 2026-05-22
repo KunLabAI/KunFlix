@@ -244,10 +244,17 @@ function LoginPageContent() {
   const VALIDATORS = useMemo(() => getValidators(t), [t]);
 
   // 表单验证
-  const validateField = (name: string, value: string): string | null => {
+  const validateField = (name: string, value: string, data: Record<string, string> = formData): string | null => {
     const validator = VALIDATORS[name];
-    return validator?.(value, formData) ?? null;
+    return validator?.(value, data) ?? null;
   };
+
+  // confirm 类字段：输入时实时校验；password/newPassword 改变时联动重算 confirm
+  const CONFIRM_FIELDS = useMemo(() => new Set(["confirmPassword", "confirmNewPassword"]), []);
+  const FIELD_DEPENDENTS: Record<string, string> = useMemo(
+    () => ({ password: "confirmPassword", newPassword: "confirmNewPassword" }),
+    []
+  );
 
   const validateForm = (): boolean => {
     const currentFields = FORM_FIELDS[mode];
@@ -267,10 +274,22 @@ function LoginPageContent() {
     return isValid;
   };
 
-  // 输入处理
+  // 输入处理：confirm 字段实时校验；其他字段清除已有错误；password 变动联动重算 confirm
   const handleInputChange = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    errors[name] && setErrors((prev) => ({ ...prev, [name]: "" }));
+    const nextData = { ...formData, [name]: value };
+    setFormData(nextData);
+
+    const updates: Record<string, string> = {};
+    // 当前字段：confirm 类实时校验，其他清除错误
+    updates[name] = CONFIRM_FIELDS.has(name) && value
+      ? (validateField(name, value, nextData) || "")
+      : "";
+    // 联动下游 confirm 字段（仅当 confirm 已有内容时）
+    const dep = FIELD_DEPENDENTS[name];
+    const depValue = dep ? (nextData[dep] || "") : "";
+    dep && depValue && (updates[dep] = validateField(dep, depValue, nextData) || "");
+
+    setErrors((prev) => ({ ...prev, ...updates }));
   };
 
   // 切换模式（在 login/register/forgot 之间任意切换）
