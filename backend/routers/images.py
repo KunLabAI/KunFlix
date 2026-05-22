@@ -347,15 +347,15 @@ async def generate_images(
         _billing_underpaid = True
         _remaining_credits = 0.0
         logger.warning(
-            "Image generation underpaid: user=%s provider=%s model=%s cost=%.4f, balance drained to 0",
-            entity_id, provider.id, payload.model, credit_cost,
+            "Image generation underpaid: user=...%s model=%s, balance drained to 0",
+            entity_id[-8:], payload.model,
         )
 
     await db.commit()
 
     logger.info(
-        "Image generated: user=%s provider=%s model=%s count=%d cost=%.4f underpaid=%s",
-        entity_id, provider.id, payload.model, len(image_urls), credit_cost, _billing_underpaid,
+        "Image generated: user=...%s model=%s count=%d underpaid=%s",
+        entity_id[-8:], payload.model, len(image_urls), _billing_underpaid,
     )
 
     return ImageGenerateResponse(
