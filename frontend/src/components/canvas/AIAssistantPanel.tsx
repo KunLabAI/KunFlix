@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
 import { Sparkles, X, ImageIcon } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -127,7 +128,9 @@ export function AIAssistantPanel() {
   const isDragOverPanel = useAIAssistantStore((state) => state.isDragOverPanel);
 
   // 画布节点列表（用于节点选择器）
-  const canvasNodes = useCanvasStore((state) => state.nodes);
+  // 使用 useShallow 浅比较：当 nodes 数组引用变化但元素引用未变时（如 measure 噪音、
+  // 拖拽中间状态等）避免重新渲染面板。
+  const canvasNodes = useCanvasStore(useShallow((state) => state.nodes));
 
   // 上下文使用统计
   const contextUsage = useAIAssistantStore((state) => state.contextUsage);
@@ -152,6 +155,7 @@ export function AIAssistantPanel() {
     agentName,
     availableAgents,
     isLoadingAgents,
+    isCreatingChat,
     theaterChatList,
     isLoadingChatList,
     loadAgents,
@@ -161,6 +165,7 @@ export function AIAssistantPanel() {
     deleteSession,
     switchAgent,
     clearSession,
+    invalidateSessionCache,
   } = useSessionManager();
 
   // SSE处理
@@ -400,9 +405,13 @@ export function AIAssistantPanel() {
         clearNodeAttachments();
         clearUploadedFiles();
         clearPastedContents();
+        // 失效当前会话缓存：本地 messages 已附加新消息，
+        // 下次切回该会话时应从后端拉取最新状态。
+        const finishedSid = useAIAssistantStore.getState().sessionId;
+        finishedSid && invalidateSessionCache(finishedSid);
       }
     },
-    [theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, clearUploadedFiles, clearPastedContents, t]
+    [theaterId, imageEditContext, nodeAttachments, createSessionForTheater, setMessages, parseSSELine, handleSSEEvent, clearImageEditContext, clearNodeAttachments, clearUploadedFiles, clearPastedContents, invalidateSessionCache, t]
   );
 
   // 调整面板大小
@@ -575,6 +584,7 @@ export function AIAssistantPanel() {
               onSwitchSession={switchToSession}
               onDeleteSession={deleteSession}
               isLoadingChatList={isLoadingChatList}
+              isCreatingChat={isCreatingChat}
             />
 
             {/* 消息列表 - 使用虚拟滚动 */}

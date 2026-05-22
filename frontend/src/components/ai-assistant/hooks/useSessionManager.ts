@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useAIAssistantStore, type AgentInfo, type ChatSessionInfo } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type AgentInfo, type ChatSessionInfo, type ContextUsage } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import api from '@/lib/api';
 
@@ -33,8 +33,15 @@ export function useSessionManager() {
   const addChatToList = useAIAssistantStore((state) => state.addChatToList);
   const removeChatFromList = useAIAssistantStore((state) => state.removeChatFromList);
   const setIsLoadingChatList = useAIAssistantStore((state) => state.setIsLoadingChatList);
+  // 会话级消息缓存（LRU）
+  const getSessionCache = useAIAssistantStore((state) => state.getSessionCache);
+  const setSessionCache = useAIAssistantStore((state) => state.setSessionCache);
+  const invalidateSessionCache = useAIAssistantStore((state) => state.invalidateSessionCache);
   
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  // 新建对话防抖状态（UI 反馈 + 重入拦截）
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const isCreatingChatRef = useRef(false);
   
   // 跟踪是否已恢复过上下文统计
   const restoredSessionRef = useRef<string | null>(null);
@@ -80,46 +87,90 @@ export function useSessionManager() {
   }, [setTheaterChatList, setIsLoadingChatList]);
 
   // 加载指定会话的消息和上下文
+  // 优化：优先读会话缓存；未命中时 messages 请求不依赖 agent，提前启动以叠加并行窗口。
   const loadSessionData = useCallback(async (sid: string, agentIdOverride?: string) => {
     // 提前标记，防止 useEffect 竞态重复调用 restoreContextUsage
     restoredSessionRef.current = sid;
 
-    try {
-      const sessionRes = await api.get(`/chats/${sid}/`);
-      const session = sessionRes.data;
-      const targetAgentId = agentIdOverride || session.agent_id;
-      
-      const agentRes = await api.get(`/agents/${targetAgentId}/`);
-      const agent = agentRes.data;
+    // 1. 优先读缓存（命中则同步返回，不走网络）
+    const cached = getSessionCache(sid);
+    if (cached) {
+      setSessionId(sid);
+      setAgentId(cached.agentId);
+      setAgentName(cached.agentName);
+      setContextUsage(cached.contextUsage);
+      setMessages(cached.messages);
+      return { sessionId: sid, agentId: cached.agentId, agentName: cached.agentName };
+    }
 
+    // 2. 未命中：messages 不依赖 agent，立即启动以叠加并行窗口
+    const messagesPromise = api.get(`/chats/${sid}/messages/`);
+    // 避免未消费的 promise 报错
+    messagesPromise.catch(() => {});
+
+    try {
+      let session: { id: string; agent_id: string; total_tokens_used?: number };
+      let agent: { name?: string; context_window?: number } | undefined;
+      let targetAgentId: string;
+
+      if (agentIdOverride) {
+        // 全并行：session + agent + messages（messages 已启动）
+        const [sessionRes, agentRes] = await Promise.all([
+          api.get(`/chats/${sid}/`),
+          api.get(`/agents/${agentIdOverride}/`),
+        ]);
+        session = sessionRes.data;
+        agent = agentRes.data;
+        targetAgentId = agentIdOverride;
+      } else {
+        // 两阶段：先 session（拿到 agent_id）再 agent；messages 整段并行
+        const sessionRes = await api.get(`/chats/${sid}/`);
+        session = sessionRes.data;
+        targetAgentId = session.agent_id;
+        const agentRes = await api.get(`/agents/${targetAgentId}/`);
+        agent = agentRes.data;
+      }
+
+      const messagesRes = await messagesPromise;
+
+      const resolvedAgentName = agent?.name || 'AI 助手';
       setSessionId(session.id);
       setAgentId(targetAgentId);
-      setAgentName(agent?.name || 'AI 助手');
+      setAgentName(resolvedAgentName);
 
       // 始终重置上下文统计（避免残留旧会话数据）
       const totalTokensUsed = session.total_tokens_used || 0;
       const contextWindow = agent?.context_window || 0;
-      setContextUsage(
+      const resolvedContextUsage: ContextUsage | null =
         (totalTokensUsed > 0 && contextWindow > 0)
           ? { usedTokens: totalTokensUsed, contextWindow }
-          : null
-      );
+          : null;
+      setContextUsage(resolvedContextUsage);
 
-      // 加载消息历史
-      const messagesRes = await api.get(`/chats/${session.id}/messages/`);
+      // 反序列化消息历史
       const historyMessages = messagesRes.data.map((m: { role: string; content: string }) => ({
         role: m.role === 'assistant' ? 'ai' : m.role,
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         status: 'complete' as const,
       }));
-      setMessages(historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES]);
+      const finalMessages = historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES];
+      setMessages(finalMessages);
 
-      return { sessionId: session.id, agentId: targetAgentId, agentName: agent?.name || 'AI 助手' };
+      // 写入会话缓存
+      setSessionCache(sid, {
+        messages: finalMessages,
+        agentId: targetAgentId,
+        agentName: resolvedAgentName,
+        contextUsage: resolvedContextUsage,
+        fetchedAt: Date.now(),
+      });
+
+      return { sessionId: session.id, agentId: targetAgentId, agentName: resolvedAgentName };
     } catch (err) {
       console.error('Failed to load session data:', err);
       return null;
     }
-  }, [setSessionId, setAgentId, setAgentName, setMessages, setContextUsage]);
+  }, [getSessionCache, setSessionCache, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage]);
 
   // 为指定theater创建会话（初始化时使用，加载最近一条或创建新的）
   const createSessionForTheater = useCallback(
@@ -179,8 +230,14 @@ export function useSessionManager() {
   );
 
   // 创建全新对话
+  // 防抖：使用 ref 拦截重入（保证快速连点不会创建多个会话）+ state 驱动 UI 反馈。
   const createNewChat = useCallback(async () => {
     if (!theaterId) return null;
+    // 重入拦截：正在创建中直接返回
+    if (isCreatingChatRef.current) return null;
+
+    isCreatingChatRef.current = true;
+    setIsCreatingChat(true);
 
     try {
       const agents = availableAgents.length > 0 ? availableAgents : await loadAgents();
@@ -200,43 +257,60 @@ export function useSessionManager() {
         theater_id: theaterId,
       });
       const newSessionId = res.data.id as string;
+      const resolvedAgentName = selectedAgent.name || 'AI 助手';
 
       setAgentId(selectedAgent.id);
-      setAgentName(selectedAgent.name || 'AI 助手');
+      setAgentName(resolvedAgentName);
       setSessionId(newSessionId);
       setMessages([...DEFAULT_MESSAGES]);
       setContextUsage(null);
+
+      // 预热会话缓存：新会话初始为默认欢迎消息，避免后续切换过来重拉
+      setSessionCache(newSessionId, {
+        messages: [...DEFAULT_MESSAGES],
+        agentId: selectedAgent.id,
+        agentName: resolvedAgentName,
+        contextUsage: null,
+        fetchedAt: Date.now(),
+      });
 
       // 将新会话加入列表头部
       addChatToList({
         id: newSessionId,
         title: res.data.title || `画布对话 - ${new Date().toLocaleDateString()}`,
         agentId: selectedAgent.id,
-        agentName: selectedAgent.name || 'AI 助手',
+        agentName: resolvedAgentName,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
 
-      return { sessionId: newSessionId, agentId: selectedAgent.id, agentName: selectedAgent.name || 'AI 助手' };
+      return { sessionId: newSessionId, agentId: selectedAgent.id, agentName: resolvedAgentName };
     } catch (err) {
       console.error('Failed to create new chat:', err);
       return null;
+    } finally {
+      isCreatingChatRef.current = false;
+      setIsCreatingChat(false);
     }
-  }, [theaterId, availableAgents, agentId, loadAgents, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage, addChatToList]);
+  }, [theaterId, availableAgents, agentId, loadAgents, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage, addChatToList, setSessionCache]);
 
   // 切换到指定会话
+  // 优化：从 theaterChatList 中取 agentId 作为 override 传入，使 loadSessionData 能走全并行路径
   const switchToSession = useCallback(async (targetSessionId: string) => {
     // 已经是当前会话则跳过
     if (targetSessionId === sessionId) return;
-    
-    await loadSessionData(targetSessionId);
-  }, [sessionId, loadSessionData]);
+
+    const target = theaterChatList.find((c) => c.id === targetSessionId);
+    await loadSessionData(targetSessionId, target?.agentId);
+  }, [sessionId, theaterChatList, loadSessionData]);
 
   // 删除指定会话
   const deleteSession = useCallback(async (targetSessionId: string) => {
     try {
       await api.delete(`/chats/${targetSessionId}`);
       removeChatFromList(targetSessionId);
+      // 同步从缓存中移除
+      invalidateSessionCache(targetSessionId);
 
       // 如果删除的是当前会话，切换到列表中的下一个
       const isCurrentSession = targetSessionId === sessionId;
@@ -256,7 +330,7 @@ export function useSessionManager() {
     } catch (err) {
       console.error('Failed to delete session:', err);
     }
-  }, [sessionId, theaterChatList, removeChatFromList, loadSessionData, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage]);
+  }, [sessionId, theaterChatList, removeChatFromList, loadSessionData, setSessionId, setAgentId, setAgentName, setMessages, setContextUsage, invalidateSessionCache]);
 
   // 切换Agent（更新当前会话的 agent，不创建新会话）
   const switchAgent = useCallback(
@@ -351,6 +425,7 @@ export function useSessionManager() {
     agentName,
     availableAgents,
     isLoadingAgents,
+    isCreatingChat,
     theaterChatList,
     isLoadingChatList,
     loadAgents,
@@ -360,5 +435,6 @@ export function useSessionManager() {
     deleteSession,
     switchAgent,
     clearSession,
+    invalidateSessionCache,
   };
 }

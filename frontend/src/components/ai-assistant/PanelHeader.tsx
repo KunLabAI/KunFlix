@@ -21,6 +21,8 @@ interface PanelHeaderProps {
   onSwitchSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   isLoadingChatList?: boolean;
+  /** 新建对话进行中：按钮 disabled + 显示 spinner */
+  isCreatingChat?: boolean;
 }
 
 export function PanelHeader({
@@ -35,6 +37,7 @@ export function PanelHeader({
   onSwitchSession,
   onDeleteSession,
   isLoadingChatList = false,
+  isCreatingChat = false,
 }: PanelHeaderProps) {
   const { t } = useTranslation();
   return (
@@ -59,14 +62,18 @@ export function PanelHeader({
           variant="ghost"
           size="icon"
           className="h-8 w-8 hover:bg-muted"
+          disabled={isCreatingChat}
           onClick={(e) => {
             e.stopPropagation();
-            onCreateNewChat?.();
+            // 面上防抖，hook 内部也有 ref 拦截（双保险）
+            !isCreatingChat && onCreateNewChat?.();
           }}
           onPointerDown={(e) => e.stopPropagation()}
           title={t('ai.newChat')}
         >
-          <Plus className="h-4 w-4" />
+          {isCreatingChat
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Plus className="h-4 w-4" />}
         </Button>
         <ChatHistoryDropdown
           chatList={chatList}

@@ -202,6 +202,12 @@ interface CanvasState {
   reset: () => void;
   updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => void;
   updateNodeDimensions: (id: string, width: number, height: number) => void;
+  /**
+   * 静默恢复节点位置（不打 isDirty，不入历史快照）。
+   * 用于「拖拽节点到 AI 面板后还原原位置」等纯交互兜底场景：
+   * 节点视觉位置未真正变化，画布也不应被标记为已修改。
+   */
+  restoreNodePositions: (positions: Array<{ id: string; x: number; y: number }>) => void;
   setViewport: (viewport: Viewport) => void;
   
   // Undo/Redo
@@ -360,6 +366,18 @@ export const useCanvasStore = create<CanvasState>()(
       snapToGuides: true,
       setSnapToGrid: (snap: boolean) => set({ snapToGrid: snap }),
       setSnapToGuides: (snap: boolean) => set({ snapToGuides: snap }),
+
+      // 静默恢复节点位置：直接 set，不触发 isSignificant 判定，也不打快照。
+      // 仅用于纯交互兜底（如拖拽到 AI 面板后还原），避免画布被误标 isDirty。
+      restoreNodePositions: (positions) => {
+        if (!positions || positions.length === 0) return;
+        const map = new Map(positions.map((p) => [p.id, { x: p.x, y: p.y }]));
+        set({
+          nodes: get().nodes.map((n) =>
+            map.has(n.id) ? { ...n, position: map.get(n.id)! } : n
+          ),
+        });
+      },
 
       onNodesChange: (changes: NodeChange[]) => {
         const { nodes } = get();
