@@ -76,15 +76,16 @@ export function useNodeDragToAI() {
     // 若拖拽释放在面板上
     const originalPositions = originalPositionsRef.current;
     if (wasOverPanel && originalPositions.size > 0) {
-      // 恢复所有拖拽节点的原始位置
-      const { onNodesChange } = useCanvasStore.getState();
-      const positionChanges = Array.from(originalPositions.entries()).map(([id, position]) => ({
-        type: 'position' as const,
+      // 静默恢复所有拖拽节点的原始位置：
+      // 必须使用 restoreNodePositions 而非 onNodesChange，避免 isSignificant 误判触发 isDirty。
+      // 节点视觉上完全没移动（仅作为附件附加给 AI 面板），画布不应进入 "Unsaved" 状态。
+      const { restoreNodePositions } = useCanvasStore.getState();
+      const positions = Array.from(originalPositions.entries()).map(([id, p]) => ({
         id,
-        position,
-        dragging: false,
+        x: p.x,
+        y: p.y,
       }));
-      onNodesChange(positionChanges);
+      restoreNodePositions(positions);
 
       // 提取所有拖拽节点的附件数据（只取图像节点，最多5个）
       const store = useAIAssistantStore.getState();

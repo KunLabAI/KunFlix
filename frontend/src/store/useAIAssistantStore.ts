@@ -170,6 +170,19 @@ export interface ChatSessionInfo {
   updatedAt: string;
 }
 
+// 会话级消息缓存（LRU，仅内存，不持久化到 localStorage）
+export interface SessionDataCache {
+  messages: Message[];
+  agentId: string;
+  agentName: string;
+  contextUsage: ContextUsage | null;
+  fetchedAt: number;
+}
+
+// 会话缓存上限 + 有效期
+export const SESSION_CACHE_MAX = 10;
+export const SESSION_CACHE_TTL_MS = 5 * 60 * 1000;
+
 interface AIAssistantState {
   // Panel visibility
   isOpen: boolean;
@@ -297,6 +310,13 @@ interface AIAssistantState {
   removeChatFromList: (sessionId: string) => void;
   updateChatTitleInList: (sessionId: string, title: string) => void;
   setIsLoadingChatList: (loading: boolean) => void;
+
+  // Session data cache (LRU，仅内存)
+  sessionDataCache: Record<string, SessionDataCache>;
+  getSessionCache: (sessionId: string) => SessionDataCache | null;
+  setSessionCache: (sessionId: string, data: SessionDataCache) => void;
+  invalidateSessionCache: (sessionId: string) => void;
+  clearAllSessionCache: () => void;
   
   // Virtual scroll settings
   setScrollBehavior: (behavior: ScrollBehavior) => void;
@@ -336,6 +356,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       isLoadingChatList: false,
       scrollBehavior: 'smooth',
       overscanCount: 5,
+      sessionDataCache: {},
 
       // Panel visibility
       setIsOpen: (isOpen: boolean) => set({ isOpen }),
@@ -511,6 +532,36 @@ export const useAIAssistantStore = create<AIAssistantState>()(
         theaterChatList: state.theaterChatList.map(c => c.id === sessionId ? { ...c, title } : c)
       })),
       setIsLoadingChatList: (isLoadingChatList: boolean) => set({ isLoadingChatList }),
+      
+      // Session data cache (LRU，仅内存)
+      // 读取时检查有效期，过期返回 null（调用方会走网络重拉）
+      getSessionCache: (sessionId: string) => {
+        const cache = get().sessionDataCache[sessionId];
+        if (!cache) return null;
+        const expired = Date.now() - cache.fetchedAt > SESSION_CACHE_TTL_MS;
+        return expired ? null : cache;
+      },
+      // 写入缓存。超过上限时按 fetchedAt 升序剔除最早的条目。
+      setSessionCache: (sessionId: string, data: SessionDataCache) => set((state) => {
+        const next: Record<string, SessionDataCache> = { ...state.sessionDataCache, [sessionId]: data };
+        const keys = Object.keys(next);
+        if (keys.length > SESSION_CACHE_MAX) {
+          // 按 fetchedAt 升序排序，删除最早的
+          const sorted = keys.sort((a, b) => next[a].fetchedAt - next[b].fetchedAt);
+          const dropCount = keys.length - SESSION_CACHE_MAX;
+          for (let i = 0; i < dropCount; i++) {
+            delete next[sorted[i]];
+          }
+        }
+        return { sessionDataCache: next };
+      }),
+      invalidateSessionCache: (sessionId: string) => set((state) => {
+        if (!state.sessionDataCache[sessionId]) return state;
+        const next = { ...state.sessionDataCache };
+        delete next[sessionId];
+        return { sessionDataCache: next };
+      }),
+      clearAllSessionCache: () => set({ sessionDataCache: {} }),
       
       // Virtual scroll settings
       setScrollBehavior: (scrollBehavior: ScrollBehavior) => set({ scrollBehavior }),
