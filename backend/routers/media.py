@@ -33,7 +33,6 @@ from services.media_utils import (
     ensure_thumbnail,
     ensure_video_poster,
     schedule_video_poster_generation,
-    is_within_directory,
 )
 from storage import get_storage_backend
 from config import settings
@@ -589,11 +588,12 @@ async def serve_video_poster(filename: str):
     poster_path or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
     )
-    is_within_directory(poster_path, MEDIA_DIR) or (_ for _ in ()).throw(
+    # CodeQL-识别的 path-sanitizer 模式：resolve 后 str.startswith 边界检查
+    str(poster_path.resolve()).startswith(str(MEDIA_DIR.resolve())) or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
     )
     return FileResponse(
-        poster_path,
+        str(poster_path),
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )

@@ -374,7 +374,8 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
 
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
     poster_path = (POSTER_DIR / f"{safe_video_filename}.jpg").resolve()
-    if not is_within_directory(poster_path, POSTER_DIR):
+    # CodeQL-识别的 path-sanitizer 模式：resolve 后做 str.startswith 边界检查
+    if not str(poster_path).startswith(str(POSTER_DIR.resolve())):
         logger.warning("Rejected unsafe poster path for filename: %r", video_filename)
         return None
 
@@ -382,7 +383,7 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     if poster_path.is_file():
         return poster_path
 
-    src = resolve_media_filepath(video_filename)
+    src = resolve_media_filepath(safe_video_filename)
     if src is None:
         return None
 
