@@ -319,7 +319,7 @@ def _generate_video_poster(src: Path, dst: Path, max_size: int) -> bool:
         if not success:
             tmp.exists() and tmp.unlink(missing_ok=True)
             logger.warning(
-                "ffmpeg poster generation failed for %s: rc=%s stderr=%s",
+                "ffmpeg poster generation failed for %r: rc=%s stderr=%s",
                 src.name, result.returncode, (result.stderr or b"").decode(errors="ignore")[:300],
             )
             return False
@@ -327,11 +327,11 @@ def _generate_video_poster(src: Path, dst: Path, max_size: int) -> bool:
         return True
     except subprocess.TimeoutExpired:
         tmp.exists() and tmp.unlink(missing_ok=True)
-        logger.warning("ffmpeg poster generation timeout: %s", src.name)
+        logger.warning("ffmpeg poster generation timeout: %r", src.name)
         return False
     except Exception as exc:
         tmp.exists() and tmp.unlink(missing_ok=True)
-        logger.warning("ffmpeg poster generation error for %s: %s", src.name, exc)
+        logger.warning("ffmpeg poster generation error for %r: %s", src.name, exc)
         return False
 
 
@@ -341,6 +341,8 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     - 缓存路径：MEDIA_DIR / _thumbs / poster / {video_filename}.jpg
     - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
     """
+    # 防御性路径清洗：剥离目录穿越（CodeQL path-injection sanitizer）
+    video_filename = Path(video_filename).name
     ext = video_filename.rsplit(".", 1)[-1].lower() if "." in video_filename else ""
     if ext not in _VIDEO_EXTS:
         return None
@@ -371,4 +373,4 @@ async def schedule_video_poster_generation(video_filename: str) -> None:
     try:
         await ensure_video_poster(video_filename)
     except Exception as exc:
-        logger.warning("Background video poster generation failed for %s: %s", video_filename, exc)
+        logger.warning("Background video poster generation failed for %r: %s", video_filename, exc)

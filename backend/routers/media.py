@@ -582,6 +582,8 @@ async def serve_video_poster(filename: str):
     _SAFE_POSTER_FILENAME.match(filename) or (_ for _ in ()).throw(
         HTTPException(status_code=400, detail="Invalid poster filename")
     )
+    # 防御性路径清洗：剥离目录穿越（CodeQL path-injection sanitizer）
+    filename = Path(filename).name
     poster_path = await ensure_video_poster(filename)
     poster_path or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
