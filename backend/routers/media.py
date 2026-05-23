@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, UploadFile, File, Form, Query, Body
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pathlib import Path
+import asyncio
 import os
 import re
 import logging
@@ -25,7 +26,14 @@ from schemas import (
 from services.batch_image_gen import batch_generate_images, BatchImageConfig
 from services.xai_image_gen import batch_generate_xai_images, XAIBatchImageConfig
 from services.image_config_adapter import to_provider_config
-from services.media_utils import build_media_storage_path, resolve_media_filepath, MEDIA_DIR, ensure_thumbnail
+from services.media_utils import (
+    build_media_storage_path,
+    resolve_media_filepath,
+    MEDIA_DIR,
+    ensure_thumbnail,
+    ensure_video_poster,
+    schedule_video_poster_generation,
+)
 from storage import get_storage_backend
 from config import settings
 
@@ -46,6 +54,9 @@ _SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif|mp4|webm|m
 
 # 缩略图仅接受图片扩展名
 _SAFE_THUMB_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(png|jpg|jpeg|webp|gif)$')
+
+# 视频 poster 仅接受视频扩展名
+_SAFE_POSTER_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(mp4|webm|mov|ogg)$')
 
 
 async def _fallback_presign_post(
@@ -192,6 +203,9 @@ async def upload_media(
 
     await db.commit()
     await db.refresh(asset)
+
+    # 视频上传后 fire-and-forget 预热 poster，首次访问 /api/media/poster/* 即命中缓存
+    file_type == "video" and asyncio.create_task(schedule_video_poster_generation(new_filename))
 
     return {"url": f"/api/media/{new_filename}", "asset": _asset_to_response(asset)}
 
@@ -552,6 +566,31 @@ async def serve_media_thumbnail(filename: str):
     )
     handler = _THUMB_BACKEND_DISPATCH.get(settings.STORAGE_BACKEND, _serve_thumb_local)
     return await handler(filename)
+
+
+# ---------------------------------------------------------------------------
+# 视频 poster（首帧封面）路由 — 必须放在通配符 /{filename} 之前
+# ---------------------------------------------------------------------------
+
+@router.get("/poster/{filename}")
+async def serve_video_poster(filename: str):
+    """提供视频首帧封面（首次访问按需 ffmpeg 抽帧，后续命中磁盘缓存）。
+
+    请求示例：GET /api/media/poster/{uuid}.mp4 → 返回对应的 .jpg 首帧。
+    ffmpeg 不可用 / 抽帧失败 / 原视频不存在 → 404（前端 fallback 到黑底）。
+    """
+    _SAFE_POSTER_FILENAME.match(filename) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail="Invalid poster filename")
+    )
+    poster_path = await ensure_video_poster(filename)
+    poster_path or (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail="Poster not available")
+    )
+    return FileResponse(
+        poster_path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 # ---------------------------------------------------------------------------

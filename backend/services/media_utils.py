@@ -1,5 +1,7 @@
 """媒体文件保存工具 — 支持用户级目录隔离"""
 import asyncio
+import shutil
+import subprocess
 from pathlib import Path
 import uuid
 import logging
@@ -12,6 +14,13 @@ MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 THUMB_DIR_NAME = "_thumbs"
 THUMB_DIR = MEDIA_DIR / THUMB_DIR_NAME
 THUMB_MAX_SIZE = 480  # 长边像素，覆盖 2x dpr 下卡片 ~240px 显示宽度
+
+# 视频 poster（首帧封面）缓存目录
+POSTER_DIR = THUMB_DIR / "poster"
+POSTER_MAX_SIZE = 480
+
+# 视频扩展名集合（用于 poster 生成判定）
+_VIDEO_EXTS = {"mp4", "webm", "mov", "ogg"}
 
 # 媒体 API 前缀（用于 URL 改写）
 MEDIA_URL_PREFIX = "/api/media/"
@@ -143,6 +152,11 @@ async def save_video_from_url(video_url: str, headers: dict | None = None, user_
         await asyncio.to_thread(filepath.write_bytes, resp.content)
 
     logger.info(f"Saved video: {filename} ({len(resp.content)} bytes) from {video_url}")
+
+    # 后台异步预热 poster（fire-and-forget，不阻塞调用方返回）
+    # 不取于 ffmpeg 是否可用 — 不可用时 schedule_video_poster_generation 会静默回退
+    asyncio.create_task(schedule_video_poster_generation(filename))
+
     return f"/api/media/{filename}"
 
 
@@ -255,3 +269,106 @@ async def ensure_thumbnail(filename: str, max_size: int = THUMB_MAX_SIZE) -> Pat
         return None
 
     return thumb_path
+
+
+# ---------------------------------------------------------------------------
+# 视频 poster（首帧封面）：ffmpeg 抽帧 + 落盘缓存
+# ---------------------------------------------------------------------------
+
+def _resolve_ffmpeg_binary() -> str | None:
+    """获取 ffmpeg 可执行文件路径。
+
+    优先使用 imageio-ffmpeg 提供的静态二进制（pip 安装自带，跨平台），
+    回退到系统 PATH 上的 ffmpeg。两者都不存在返回 None。
+    """
+    try:
+        from imageio_ffmpeg import get_ffmpeg_exe
+        return get_ffmpeg_exe()
+    except Exception:
+        return shutil.which("ffmpeg")
+
+
+def _generate_video_poster(src: Path, dst: Path, max_size: int) -> bool:
+    """同步抽取视频首帧作为 poster JPG。写临时文件再原子替换，避免并发读到半成品。
+
+    成功返回 True；ffmpeg 不可用 / 抽帧失败返回 False。
+    """
+    ffmpeg = _resolve_ffmpeg_binary()
+    if not ffmpeg:
+        logger.debug("ffmpeg binary not available, skip poster generation: %s", src.name)
+        return False
+
+    tmp = dst.with_suffix(dst.suffix + f".{uuid.uuid4().hex}.tmp")
+    # -ss 1 跳到 1 秒位置抽帧（避开常见黑帧开场）；视频不足 1 秒 ffmpeg 会回退到首帧。
+    # scale='min(W,iw)':-2 保证长边 ≤ W 且高度为偶数。
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-ss", "1",
+        "-i", str(src),
+        "-frames:v", "1",
+        "-vf", f"scale='min({max_size},iw)':-2",
+        "-q:v", "6",
+        "-loglevel", "error",
+        str(tmp),
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        success = result.returncode == 0 and tmp.is_file() and tmp.stat().st_size > 0
+        if not success:
+            tmp.exists() and tmp.unlink(missing_ok=True)
+            logger.warning(
+                "ffmpeg poster generation failed for %s: rc=%s stderr=%s",
+                src.name, result.returncode, (result.stderr or b"").decode(errors="ignore")[:300],
+            )
+            return False
+        tmp.replace(dst)
+        return True
+    except subprocess.TimeoutExpired:
+        tmp.exists() and tmp.unlink(missing_ok=True)
+        logger.warning("ffmpeg poster generation timeout: %s", src.name)
+        return False
+    except Exception as exc:
+        tmp.exists() and tmp.unlink(missing_ok=True)
+        logger.warning("ffmpeg poster generation error for %s: %s", src.name, exc)
+        return False
+
+
+async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SIZE) -> Path | None:
+    """确保视频 poster 已生成，返回 poster 磁盘路径。
+
+    - 缓存路径：MEDIA_DIR / _thumbs / poster / {video_filename}.jpg
+    - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
+    """
+    ext = video_filename.rsplit(".", 1)[-1].lower() if "." in video_filename else ""
+    if ext not in _VIDEO_EXTS:
+        return None
+
+    POSTER_DIR.mkdir(parents=True, exist_ok=True)
+    poster_path = POSTER_DIR / f"{video_filename}.jpg"
+
+    # 已落盘 → 命中
+    if poster_path.is_file():
+        return poster_path
+
+    src = resolve_media_filepath(video_filename)
+    if src is None:
+        return None
+
+    ok = await asyncio.to_thread(_generate_video_poster, src, poster_path, max_size)
+    return poster_path if ok else None
+
+
+async def schedule_video_poster_generation(video_filename: str) -> None:
+    """fire-and-forget 预热：在后台异步生成视频 poster，失败不抛异常。
+
+    调用位置：
+      - 用户上传视频成功后
+      - AI 生成视频保存完成后
+    提前生成使前端首次访问 /api/media/poster/* 即命中缓存。
+    """
+    try:
+        await ensure_video_poster(video_filename)
+    except Exception as exc:
+        logger.warning("Background video poster generation failed for %s: %s", video_filename, exc)

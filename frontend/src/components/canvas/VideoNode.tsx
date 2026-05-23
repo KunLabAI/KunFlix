@@ -28,7 +28,7 @@ import {
   MIN_HEIGHT,
   VIDEO_ACCEPT,
 } from './VideoNode/constants';
-import { normalizeVideoUrl } from './VideoNode/utils';
+import { normalizeVideoUrl, deriveVideoPosterUrl } from './VideoNode/utils';
 import { NodeHeader } from './VideoNode/NodeHeader';
 import { VideoDisplay } from './VideoNode/VideoDisplay';
 import { GenerationOverlay } from './VideoNode/GenerationOverlay';
@@ -171,9 +171,15 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
   }, [upload]);
 
   // ── 视频尺寸自适应 ──
+  // 防重复触发：记录已经为哪些 videoUrl 同步过节点尺寸，同一 url 只调一次
+  // updateNodeDimensions。避免：进入画布 → N 个视频 metadata 几乎同时完成 → N 次
+  // store 写入 + ReactFlow 重算 layout 冲击主线程。
+  const sizedUrlRef = useRef<string | null>(null);
   const handleLoadedMetadata = useCallback((e: React.SyntheticEvent<HTMLVideoElement>) => {
     const video = e.currentTarget;
     if (!video.videoWidth || !video.videoHeight) return;
+    // 已经为同一 url 同步过尺寸 → 跳过
+    if (sizedUrlRef.current === data.videoUrl) return;
     const aspectRatio = video.videoWidth / video.videoHeight;
     let newWidth: number;
     let newHeight: number;
@@ -191,8 +197,10 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
     const currentWidth = currentNode.width ?? 0;
     const currentHeight = currentNode.height ?? 0;
     const shouldResize = Math.abs(currentWidth - newWidth) > 5 || Math.abs(currentHeight - newHeight) > 5;
+    // 记录已处理该 url（无论尺寸是否实际变化），后续重复事件不再踏入 store
+    sizedUrlRef.current = data.videoUrl || null;
     shouldResize && updateNodeDimensions(id, Math.round(newWidth), Math.round(newHeight));
-  }, [getNode, id, updateNodeDimensions]);
+  }, [data.videoUrl, getNode, id, updateNodeDimensions]);
 
   // ── 历史拖放 ──
   const historyVideos = data.generatedVideos || [];
@@ -289,6 +297,7 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
             {data.videoUrl && (
               <VideoDisplay
                 videoUrl={data.videoUrl}
+                posterUrl={deriveVideoPosterUrl(data.videoUrl)}
                 fitMode={fitMode}
                 quality={videoTask.status?.quality}
                 onLoadedMetadata={handleLoadedMetadata}
