@@ -33,6 +33,7 @@ from services.media_utils import (
     ensure_thumbnail,
     ensure_video_poster,
     schedule_video_poster_generation,
+    is_within_directory,
 )
 from storage import get_storage_backend
 from config import settings
@@ -586,6 +587,9 @@ async def serve_video_poster(filename: str):
     filename = Path(filename).name
     poster_path = await ensure_video_poster(filename)
     poster_path or (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail="Poster not available")
+    )
+    is_within_directory(poster_path, MEDIA_DIR) or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
     )
     return FileResponse(

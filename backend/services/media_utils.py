@@ -5,8 +5,18 @@ import subprocess
 from pathlib import Path
 import uuid
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+def is_within_directory(path: Path, base_dir: Path) -> bool:
+    """检查 path 归一化后是否位于 base_dir 内。"""
+    try:
+        path.resolve().relative_to(base_dir.resolve())
+        return True
+    except ValueError:
+        return False
 
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
@@ -21,6 +31,9 @@ POSTER_MAX_SIZE = 480
 
 # 视频扩展名集合（用于 poster 生成判定）
 _VIDEO_EXTS = {"mp4", "webm", "mov", "ogg"}
+
+# 服务层二次校验：仅允许 UUID + 视频扩展名
+_SAFE_POSTER_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(mp4|webm|mov|ogg)$')
 
 # 媒体 API 前缀（用于 URL 改写）
 MEDIA_URL_PREFIX = "/api/media/"
@@ -341,14 +354,29 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     - 缓存路径：MEDIA_DIR / _thumbs / poster / {video_filename}.jpg
     - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
     """
-    # 防御性路径清洗：剥离目录穿越（CodeQL path-injection sanitizer）
-    video_filename = Path(video_filename).name
-    ext = video_filename.rsplit(".", 1)[-1].lower() if "." in video_filename else ""
-    if ext not in _VIDEO_EXTS:
+    if not _SAFE_POSTER_FILENAME.match(video_filename):
+        logger.warning("Rejected unsafe poster filename: %r", video_filename)
         return None
 
+    if "." not in video_filename:
+        return None
+    stem, ext = video_filename.rsplit(".", 1)
+    ext = ext.lower()
+    if ext not in _VIDEO_EXTS:
+        return None
+    try:
+        safe_stem = str(uuid.UUID(stem))
+    except ValueError:
+        logger.warning("Rejected unsafe poster stem: %r", video_filename)
+        return None
+
+    safe_video_filename = f"{safe_stem}.{ext}"
+
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    poster_path = POSTER_DIR / f"{video_filename}.jpg"
+    poster_path = (POSTER_DIR / f"{safe_video_filename}.jpg").resolve()
+    if not is_within_directory(poster_path, POSTER_DIR):
+        logger.warning("Rejected unsafe poster path for filename: %r", video_filename)
+        return None
 
     # 已落盘 → 命中
     if poster_path.is_file():
