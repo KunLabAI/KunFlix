@@ -356,7 +356,7 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
     """
     if not _SAFE_POSTER_FILENAME.match(video_filename):
-        logger.warning("Rejected unsafe poster filename: %s", re.sub(r'[\x00-\x1f\x7f]', '', video_filename))
+        logger.warning("Rejected unsafe poster filename")
         return None
 
     if "." not in video_filename:
@@ -368,7 +368,7 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     try:
         safe_stem = str(uuid.UUID(stem))
     except ValueError:
-        logger.warning("Rejected unsafe poster stem: %s", re.sub(r'[\x00-\x1f\x7f]', '', video_filename))
+        logger.warning("Rejected unsafe poster stem")
         return None
 
     # os.path.basename 切断 CodeQL 污点链（标准库 path sanitizer）
