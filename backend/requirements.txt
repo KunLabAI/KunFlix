@@ -16,7 +16,7 @@ aiofiles>=23.1.0
 loguru>=0.7.3
 greenlet>=3.3.1
 alembic>=1.18.4
-psycopg2-binary>=2.9.9
+psycopg2-binary>=2.9.12
 requests>=2.33.1
 Pillow>=12.1.1
 # imageio-ffmpeg 提供静态 ffmpeg 二进制，用于视频首帧 poster 抽帧（media_utils.ensure_video_poster）。
