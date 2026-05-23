@@ -8,6 +8,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def is_within_directory(path: Path, base_dir: Path) -> bool:
+    """检查 path 归一化后是否位于 base_dir 内。"""
+    try:
+        path.resolve().relative_to(base_dir.resolve())
+        return True
+    except ValueError:
+        return False
+
 MEDIA_DIR = Path(__file__).resolve().parent.parent / "media"
 
 # 缩略图缓存目录（首页/列表场景使用，原图保持不变）
