@@ -358,12 +358,22 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
         logger.warning("Rejected unsafe poster filename: %s", video_filename)
         return None
 
-    ext = video_filename.rsplit(".", 1)[-1].lower() if "." in video_filename else ""
+    if "." not in video_filename:
+        return None
+    stem, ext = video_filename.rsplit(".", 1)
+    ext = ext.lower()
     if ext not in _VIDEO_EXTS:
         return None
+    try:
+        safe_stem = str(uuid.UUID(stem))
+    except ValueError:
+        logger.warning("Rejected unsafe poster stem: %s", video_filename)
+        return None
+
+    safe_video_filename = f"{safe_stem}.{ext}"
 
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    poster_path = (POSTER_DIR / f"{video_filename}.jpg").resolve()
+    poster_path = (POSTER_DIR / f"{safe_video_filename}.jpg").resolve()
     if not is_within_directory(poster_path, POSTER_DIR):
         logger.warning("Rejected unsafe poster path for filename: %s", video_filename)
         return None
