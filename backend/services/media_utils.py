@@ -1,5 +1,6 @@
 """媒体文件保存工具 — 支持用户级目录隔离"""
 import asyncio
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -355,7 +356,7 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
     """
     if not _SAFE_POSTER_FILENAME.match(video_filename):
-        logger.warning("Rejected unsafe poster filename: %r", video_filename)
+        logger.warning("Rejected unsafe poster filename: %s", re.sub(r'[\x00-\x1f\x7f]', '', video_filename))
         return None
 
     if "." not in video_filename:
@@ -367,28 +368,29 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     try:
         safe_stem = str(uuid.UUID(stem))
     except ValueError:
-        logger.warning("Rejected unsafe poster stem: %r", video_filename)
+        logger.warning("Rejected unsafe poster stem: %s", re.sub(r'[\x00-\x1f\x7f]', '', video_filename))
         return None
 
-    safe_video_filename = f"{safe_stem}.{ext}"
+    # os.path.basename 切断 CodeQL 污点链（标准库 path sanitizer）
+    safe_video_filename = os.path.basename(f"{safe_stem}.{ext}")
 
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    poster_path = (POSTER_DIR / f"{safe_video_filename}.jpg").resolve()
-    # CodeQL-识别的 path-sanitizer 模式：resolve 后做 str.startswith 边界检查
-    if not str(poster_path).startswith(str(POSTER_DIR.resolve())):
-        logger.warning("Rejected unsafe poster path for filename: %r", video_filename)
+    poster_path = os.path.realpath(os.path.join(str(POSTER_DIR), f"{safe_video_filename}.jpg"))
+    # os.path.realpath + startswith 边界检查（CodeQL 识别的标准模式）
+    if not poster_path.startswith(os.path.realpath(str(POSTER_DIR))):
         return None
 
     # 已落盘 → 命中
-    if poster_path.is_file():
-        return poster_path
+    if os.path.isfile(poster_path):
+        return Path(poster_path)
 
     src = resolve_media_filepath(safe_video_filename)
     if src is None:
         return None
 
-    ok = await asyncio.to_thread(_generate_video_poster, src, poster_path, max_size)
-    return poster_path if ok else None
+    dst = Path(poster_path)
+    ok = await asyncio.to_thread(_generate_video_poster, src, dst, max_size)
+    return dst if ok else None
 
 
 async def schedule_video_poster_generation(video_filename: str) -> None:

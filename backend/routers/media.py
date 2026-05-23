@@ -583,17 +583,18 @@ async def serve_video_poster(filename: str):
         HTTPException(status_code=400, detail="Invalid poster filename")
     )
     # 防御性路径清洗：剥离目录穿越（CodeQL path-injection sanitizer）
-    filename = Path(filename).name
+    filename = os.path.basename(filename)
     poster_path = await ensure_video_poster(filename)
     poster_path or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
     )
-    # CodeQL-识别的 path-sanitizer 模式：resolve 后 str.startswith 边界检查
-    str(poster_path.resolve()).startswith(str(MEDIA_DIR.resolve())) or (_ for _ in ()).throw(
+    # os.path.realpath + startswith 边界检查（CodeQL 识别的标准模式）
+    safe_path = os.path.realpath(str(poster_path))
+    safe_path.startswith(os.path.realpath(str(MEDIA_DIR))) or (_ for _ in ()).throw(
         HTTPException(status_code=404, detail="Poster not available")
     )
     return FileResponse(
-        str(poster_path),
+        safe_path,
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
