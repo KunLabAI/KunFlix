@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 import uuid
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ POSTER_MAX_SIZE = 480
 
 # 视频扩展名集合（用于 poster 生成判定）
 _VIDEO_EXTS = {"mp4", "webm", "mov", "ogg"}
+
+# 服务层二次校验：仅允许 UUID + 视频扩展名
+_SAFE_POSTER_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(mp4|webm|mov|ogg)$')
 
 # 媒体 API 前缀（用于 URL 改写）
 MEDIA_URL_PREFIX = "/api/media/"
@@ -350,6 +354,10 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
     - 缓存路径：MEDIA_DIR / _thumbs / poster / {video_filename}.jpg
     - 原文件缺失 / ffmpeg 不可用 / 非视频扩展名 → 返回 None
     """
+    if not _SAFE_POSTER_FILENAME.match(video_filename):
+        logger.warning("Rejected unsafe poster filename: %s", video_filename)
+        return None
+
     ext = video_filename.rsplit(".", 1)[-1].lower() if "." in video_filename else ""
     if ext not in _VIDEO_EXTS:
         return None
