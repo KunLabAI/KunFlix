@@ -355,7 +355,10 @@ async def ensure_video_poster(video_filename: str, max_size: int = POSTER_MAX_SI
         return None
 
     POSTER_DIR.mkdir(parents=True, exist_ok=True)
-    poster_path = POSTER_DIR / f"{video_filename}.jpg"
+    poster_path = (POSTER_DIR / f"{video_filename}.jpg").resolve()
+    if not is_within_directory(poster_path, POSTER_DIR):
+        logger.warning("Rejected unsafe poster path for filename: %s", video_filename)
+        return None
 
     # 已落盘 → 命中
     if poster_path.is_file():
