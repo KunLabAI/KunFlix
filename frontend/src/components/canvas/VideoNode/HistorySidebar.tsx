@@ -4,6 +4,7 @@ import React, { type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { VideoGenHistoryEntry } from '@/store/useCanvasStore';
+import { deriveVideoPosterUrl } from './utils';
 
 interface Props {
   historyVideos: VideoGenHistoryEntry[];
@@ -30,45 +31,58 @@ export function HistorySidebar({
   const { t } = useTranslation();
   if (historyVideos.length === 0) return null;
 
+  // 性能：showHistory 为 false 时整体不渲染缩略图列表，避免 <video preload="metadata">
+  // 在隐藏状态下偷偷加载占用浏览器同源连接池。
   return (
     <>
-      <div
-        className={cn(
-          'absolute right-full top-0 bottom-0 mr-4 flex flex-col nodrag nopan z-10 transition-all duration-200',
-          showHistory ? 'w-[80px] opacity-100' : 'w-0 opacity-0 pointer-events-none',
-        )}
-      >
-        <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1.5 py-1">
-          {historyVideos.map((v, i) => (
-            <div
-              key={`${v.url}-${i}`}
-              draggable
-              onDragStart={(e) => onDragStart(e, v)}
-              onDragEnd={(e) => onDragEnd(e, v)}
-              onClick={() => onClick(v.url)}
-              className={cn(
-                'w-[72px] h-[56px] rounded-md border overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
-                currentVideoUrl === v.url
-                  ? 'border-primary ring-1 ring-primary/50'
-                  : 'border-border/50 hover:border-primary/50',
-              )}
-              title={v.prompt || v.quality || t('canvas.node.video.aiGenerated')}
-            >
-              <video
-                src={v.url}
-                className="w-full h-full object-cover pointer-events-none"
-                muted
-                preload="metadata"
-              />
-              {v.quality && (
-                <span className="absolute bottom-0 right-0 px-1 py-px text-[8px] font-medium bg-black/70 text-white rounded-tl">
-                  {v.quality}
-                </span>
-              )}
-            </div>
-          ))}
+      {showHistory && (
+        <div className="absolute right-full top-0 bottom-0 mr-4 flex flex-col nodrag nopan z-10 w-[80px] transition-all duration-200">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col gap-1.5 py-1">
+            {historyVideos.map((v, i) => {
+              const poster = deriveVideoPosterUrl(v.url);
+              return (
+                <div
+                  key={`${v.url}-${i}`}
+                  draggable
+                  onDragStart={(e) => onDragStart(e, v)}
+                  onDragEnd={(e) => onDragEnd(e, v)}
+                  onClick={() => onClick(v.url)}
+                  className={cn(
+                    'w-[72px] h-[56px] rounded-md border overflow-hidden cursor-grab active:cursor-grabbing shrink-0 relative group/hist transition-all',
+                    currentVideoUrl === v.url
+                      ? 'border-primary ring-1 ring-primary/50'
+                      : 'border-border/50 hover:border-primary/50',
+                  )}
+                  title={v.prompt || v.quality || t('canvas.node.video.aiGenerated')}
+                >
+                  {/* 优先用 poster 静态封面（一张图，比加载视频 metadata 轻得多）；缺失时 fallback 到 <video preload="none"> */}
+                  {poster ? (
+                    <img
+                      src={poster}
+                      alt={v.prompt || ''}
+                      className="w-full h-full object-cover pointer-events-none"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <video
+                      src={v.url}
+                      className="w-full h-full object-cover pointer-events-none"
+                      muted
+                      preload="none"
+                    />
+                  )}
+                  {v.quality && (
+                    <span className="absolute bottom-0 right-0 px-1 py-px text-[8px] font-medium bg-black/70 text-white rounded-tl">
+                      {v.quality}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         type="button"
