@@ -22,7 +22,7 @@ Pillow>=12.1.1
 # imageio-ffmpeg 提供静态 ffmpeg 二进制，用于视频首帧 poster 抽帧（media_utils.ensure_video_poster）。
 # 不安装也不影响主流程——ffmpeg 不可用时后端返回 404，前端 fallback 到黑底。
 imageio-ffmpeg>=0.6.0
-bcrypt>=4.0.0
+bcrypt>=5.0.0
 # python-jose 上游长期未处理 CVE-2024-33663 / CVE-2024-33664，迁移到 PyJWT
 PyJWT[crypto]>=2.12.1
 google-genai>=2.0.1
