@@ -121,10 +121,9 @@ describe('validateEdge 矩阵', () => {
     existingEdges: noEdges,
   } as const;
 
-  it('image→audio：forbid', () => {
+  it('image→audio：allow', () => {
     const r = validateEdge({ ...base, sourceType: 'image', targetType: 'audio' });
-    expect(r.ok).toBe(false);
-    expect(r.reason).toBe('forbidden_type_combination');
+    expect(r.ok).toBe(true);
   });
 
   it('audio→image：forbid', () => {
@@ -162,8 +161,8 @@ describe('validateEdge 矩阵', () => {
 });
 
 describe('getEdgeLegality', () => {
-  it('image→audio = forbid', () => {
-    expect(getEdgeLegality('image', 'audio')).toBe('forbid');
+  it('image→audio = allow', () => {
+    expect(getEdgeLegality('image', 'audio')).toBe('allow');
   });
   it('video→text = deferred', () => {
     expect(getEdgeLegality('video', 'text')).toBe('deferred');

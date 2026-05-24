@@ -43,7 +43,7 @@ export function AttachmentPreviews({
           <img
             src={r.url}
             alt={r.name || ''}
-            className="h-12 w-12 rounded-md object-cover border border-border/50"
+            className="h-14 w-14 rounded-md object-cover"
           />
           <button
             type="button"
