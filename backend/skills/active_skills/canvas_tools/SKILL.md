@@ -119,7 +119,7 @@ Both `create_canvas_edge` and the frontend `onConnect` handler MUST validate aga
 | Source \\ Target | text | image | video | audio | storyboard |
 |---|---|---|---|---|---|
 | **text**       | allow (append/continue) | allow (fill prompt)         | allow (fill prompt)           | allow (fill lyrics/TTS)    | allow (append row / column text) |
-| **image**      | deferred (OCR/caption)  | allow (image-to-image ref)  | allow (first-frame / ref)     | forbid                     | allow (fill media column)        |
+| **image**      | deferred (OCR/caption)  | allow (image-to-image ref)  | allow (first-frame / ref)     | allow (reference image)    | allow (fill media column)        |
 | **video**      | deferred (subtitle)     | allow (frame extract)       | allow (style/continuation)    | deferred (audio extract)   | allow (fill media column)        |
 | **audio**      | deferred (ASR)          | forbid                      | allow (voiceover input)       | deferred (mix)             | allow (fill media column)        |
 | **storyboard** | allow (flatten rows)    | allow (batch generate)      | allow (batch generate)        | allow (batch generate)     | allow (append/merge rows)        |

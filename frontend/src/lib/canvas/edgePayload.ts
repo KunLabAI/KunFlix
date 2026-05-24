@@ -267,8 +267,8 @@ function injectToVideo(_targetNode: CanvasNode, payload: EdgePayload, sourceNode
   return handler ? handler() : emptyResult;
 }
 
-/** 下游 audio：text→lyrics 追加；image 由矩阵拦截；video/audio 为 deferred */
-function injectToAudio(targetNode: CanvasNode, payload: EdgePayload): InjectionResult {
+/** 下游 audio：text→lyrics 追加；image→smart-image-inject（仅多模态音频模型生效）；video/audio 为 deferred */
+function injectToAudio(targetNode: CanvasNode, payload: EdgePayload, sourceNodeId: string): InjectionResult {
   const data = targetNode.data as AudioNodeData;
   const handlers: Partial<Record<EdgePayload['kind'], () => InjectionResult>> = {
     text: () => {
@@ -276,6 +276,18 @@ function injectToAudio(targetNode: CanvasNode, payload: EdgePayload): InjectionR
       const existing = data.lyrics || '';
       const next = existing.trim().length > 0 ? `${existing}\n\n${p.content}` : p.content;
       return { dataPatch: { lyrics: next.slice(0, TEXT_PROMPT_MAX) } };
+    },
+    image: () => {
+      const p = payload as Extract<EdgePayload, { kind: 'image' }>;
+      // 与 image→image / image→video 一致：派发 smart-image-inject，
+      // 面板按 urls.length 自处理（AudioGeneratePanel 已订阅；仅 Lyria 等多模态模型渲染参考图区）
+      return {
+        panelEvents: [{
+          type: 'smart-image-inject',
+          sourceNodeId,
+          urls: p.urls,
+        }],
+      };
     },
   };
   const handler = handlers[payload.kind];
@@ -362,7 +374,7 @@ export function injectPayload(
     text: () => injectToText(targetNode, payload),
     image: () => injectToImage(targetNode, payload, sourceNodeId),
     video: () => injectToVideo(targetNode, payload, sourceNodeId),
-    audio: () => injectToAudio(targetNode, payload),
+    audio: () => injectToAudio(targetNode, payload, sourceNodeId),
     storyboard: () => injectToStoryboard(targetNode, payload),
   };
   const handler = targetNode.type ? dispatch[targetNode.type] : null;
