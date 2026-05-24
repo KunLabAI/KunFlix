@@ -7,6 +7,7 @@ import {
 import { cn } from '@/lib/utils';
 import { resourceApi, AssetItem } from '@/lib/resourceApi';
 import { toThumbUrl } from '@/lib/mediaUrl';
+import { MiniAudioPlayer } from '@/components/ui/MiniAudioPlayer';
 
 const NODE_TYPES = [
   { 
@@ -108,14 +109,14 @@ const HOVER_PREVIEW_RENDERERS: Record<string, React.FC<{ asset: AssetItem }>> = 
     />
   ),
   audio: ({ asset }) => (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-5 p-6 bg-secondary/30">
-      <div className="w-24 h-24 rounded-full bg-amber-500/10 flex items-center justify-center">
-        <Headphones className="w-12 h-12 text-amber-500/60" />
+    <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-4 bg-secondary/30">
+      <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center">
+        <Headphones className="w-10 h-10 text-amber-500/60" />
       </div>
       <span className="text-sm font-medium text-foreground truncate max-w-[90%] text-center">
         {asset.original_name || asset.filename}
       </span>
-      <audio src={asset.url} autoPlay controls className="w-[80%]" />
+      <MiniAudioPlayer src={asset.url} autoPlay className="w-[90%]" />
     </div>
   ),
 };
@@ -503,7 +504,7 @@ export const Sidebar = () => {
                       </div>
                       <div className="flex flex-col min-w-0 flex-1">
                         <span className="text-xs font-medium text-foreground truncate">{asset.original_name || asset.filename}</span>
-                        <audio src={asset.url} preload="none" controls className="w-full h-6 mt-1 [&::-webkit-media-controls-panel]:bg-transparent" />
+                        <MiniAudioPlayer src={asset.url} className="mt-1" />
                       </div>
                     </div>
                   )) : (

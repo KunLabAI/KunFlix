@@ -6,6 +6,7 @@ import { Image as ImageIcon, Video, Music, File, MoreHorizontal, Pencil, Replace
 import { cn } from "@/lib/utils";
 import { AssetItem } from "@/lib/resourceApi";
 import { toThumbUrl } from "@/lib/mediaUrl";
+import { MiniAudioPlayer } from "@/components/ui/MiniAudioPlayer";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
@@ -81,16 +82,9 @@ function VideoPreview({ url }: { url: string }) {
 
 function AudioPreview({ url }: { url: string }) {
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-secondary/50 p-4">
-      <Music className="w-10 h-10 text-muted-foreground/30" />
-      <audio
-        src={url}
-        controls
-        preload="metadata"
-        draggable={false}
-        onDragStart={(e) => e.preventDefault()}
-        className="w-full max-w-full h-8 [&::-webkit-media-controls-panel]:bg-transparent"
-      />
+    <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-secondary/50 p-3">
+      <Music className="w-8 h-8 text-muted-foreground/30" />
+      <MiniAudioPlayer src={url} className="w-full" />
     </div>
   );
 }
