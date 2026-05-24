@@ -338,14 +338,6 @@ export function AudioDisplay({ audioUrl, lyrics }: Props) {
   }, []);
 
   // 音量控制
-  const toggleMute = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.muted = !audio.muted;
-    setIsMuted(!isMuted);
-  }, [isMuted]);
-
   const handleVolumeChange = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     const bar = volumeRef.current;
