@@ -295,7 +295,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         <Card
           className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}
         >
-          <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-4 overflow-hidden">
+          <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden">
             {!audioUrl && !isUploading && !upload.uploadError && <EmptyPlaceholder />}
 
             {audioUrl && !isUploading && (
