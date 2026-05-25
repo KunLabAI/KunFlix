@@ -21,8 +21,16 @@ const MAX_IMAGES = 9;
  * AI 图像生成的提交 + 完成自动应用 + applyToNode / applyToNextNode：
  * - submit 前保存 prevImages 快照以支持"应用到下一节点"回滚
  * - 完成后累计到 generatedImages 历史（去重），并替换当前节点图像
+ * - options.onCustomApply: 返回 true 表示已自行处理结果（跳过默认 apply），
+ *   用于“生成全景图”等需要路由到其他节点类型的一键场景
  */
-export function useImageGenerationApply(id: string, data: CharacterNodeData) {
+export function useImageGenerationApply(
+  id: string,
+  data: CharacterNodeData,
+  options?: {
+    onCustomApply?: (urls: string[], params: ImageCreateParams | null) => boolean;
+  },
+) {
   const { t } = useTranslation();
   const { getNode, getEdges } = useReactFlow();
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
@@ -49,12 +57,14 @@ export function useImageGenerationApply(id: string, data: CharacterNodeData) {
   }, [imageTask.startedAt]);
 
   // 完成后自动合并入 generatedImages 历史并替换当前节点图像
+  // - 若 onCustomApply 返回 true 表示已自行处理（如“生成全景图”路由到全景节点），跳过默认应用
   useEffect(() => {
     const res = imageTask.result;
     (res && imageTask.isCompleted) && (() => {
       const sp = lastSubmitParamsRef.current;
       const urls = res.images || [];
-      urls.length === 0 || (() => {
+      const handled = options?.onCustomApply?.(urls, sp) ?? false;
+      handled || urls.length === 0 || (() => {
         const createdAt = new Date().toISOString();
         const newEntries: ImageGenHistoryEntry[] = urls.map((url) => ({
           url,

@@ -11,6 +11,7 @@ import {
   CharacterNodeData,
   CanvasNode,
   ImageGenHistoryEntry,
+  type PanoramaNodeData,
 } from '@/store/useCanvasStore';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { useResourceStore } from '@/store/useResourceStore';
@@ -65,7 +66,50 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   }, [data.images, data.imageUrl]);
 
   // ── AI 生成 ──
-  const gen = useImageGenerationApply(id, data);
+  // panoramaPendingRef：一键“生成全景图”意图标记。点击全景按钮后置 true；
+  // 生成完成时 onCustomApply 消费该标记并创建全景节点。其他快捷模式点击会重置为 false。
+  const panoramaPendingRef = useRef(false);
+
+  const handleCustomApply = useCallback((urls: string[]): boolean => {
+    const isPanorama = panoramaPendingRef.current;
+    panoramaPendingRef.current = false;
+    if (!isPanorama || urls.length === 0) return false;
+
+    // 创建全景节点（右侧偏移）
+    const currentNode = getNode(id);
+    const posX = (currentNode?.position.x ?? 0) + (currentNode?.measured?.width ?? 512) + 80;
+    const posY = currentNode?.position.y ?? 0;
+    const panoramaNodeId = uuidv4();
+    const panoramaNode: CanvasNode = {
+      id: panoramaNodeId,
+      type: 'panorama',
+      position: { x: posX, y: posY },
+      width: 512,
+      height: 320,
+      data: {
+        name: t('canvas.node.image.panoramaGenName', '生成全景图'),
+        panoramaUrl: urls[0],
+        uploading: false,
+      } as PanoramaNodeData,
+    };
+    addNode(panoramaNode);
+
+    // 程序化连线（绕过 deferred 矩阵校验）
+    const { edges } = useCanvasStore.getState();
+    const newEdge = {
+      id: uuidv4(),
+      source: id,
+      target: panoramaNodeId,
+      sourceHandle: 'right-source',
+      targetHandle: 'left-target',
+      type: 'custom' as const,
+      animated: true,
+    };
+    useCanvasStore.setState({ edges: [...edges, newEdge], isDirty: true });
+    return true;
+  }, [id, addNode, getNode, t]);
+
+  const gen = useImageGenerationApply(id, data, { onCustomApply: handleCustomApply });
   const { imageTask, taskActive, taskDone, taskFailed, elapsedMs, prevImagesRef } = gen;
 
   // ── 连线维护 ──
@@ -93,6 +137,19 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
 
   // ── 快捷模式切换 ──
   const quick = useQuickImageMode(id, data, imageList, normalizeImageUrl);
+
+  // ── 一键生成全景图：填充面板参数，用户手动提交 ──
+  const handleGeneratePanoramaClick = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    panoramaPendingRef.current = true;
+    quick.handleGeneratePanorama(e);
+  }, [quick]);
+
+  // 其他快捷模式点击：重置全景意图标记（避免跨点击变为全景生成）
+  const handleQuickModeWrapped = useCallback((mode: 'text_to_image' | 'edit' | 'reference_images', e?: React.MouseEvent) => {
+    panoramaPendingRef.current = false;
+    quick.handleQuickMode(mode, e);
+  }, [quick]);
 
   // ── 节点级 UI 状态 ──
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -359,8 +416,9 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                 imageList={imageList}
                 showEditPicker={quick.showEditPicker}
                 pickerRef={quick.editPickerRef}
-                onQuickMode={quick.handleQuickMode}
+                onQuickMode={handleQuickModeWrapped}
                 onPickEditImage={quick.handlePickEditImage}
+                onGeneratePanorama={handleGeneratePanoramaClick}
               />
             )}
 

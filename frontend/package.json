@@ -15,6 +15,7 @@
     "@e965/xlsx": "^0.20.3",
     "@floating-ui/react": "^0.27.19",
     "@paper-design/shaders-react": "^0.0.76",
+    "@photo-sphere-viewer/core": "^5.14.1",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

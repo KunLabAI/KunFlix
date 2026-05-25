@@ -9,9 +9,13 @@ Canvas edge rules — mirror of frontend/src/lib/canvas/edgeRules.ts.
  - 前端拒绝 → 后端放行：Agent 工具绕过校验
 
 设计原则：
- 1. 矩阵写死为纯常量；5x5 结构与前端逐字母一致。
+ 1. 矩阵写死为纯常量；6x6 结构与前端逐字母一致。
  2. validate_edge 只判定合法性；不处理内容注入（后端当前版本仅做建边）。
  3. 所有检查走早返回，避免嵌套 if。
+
+Panorama 节点说明：
+ - panorama 行/列在 MVP 阶段全部为 'deferred'（仅自环 allow），表示与其他节点
+   类型的连线注入语义尚未在前端 edgePayload.ts 中实现；后续迭代再按需放行。
 """
 from __future__ import annotations
 
@@ -28,24 +32,27 @@ EdgeRejectReason = Literal[
     "unknown_type",
 ]
 
-NODE_TYPES: tuple[str, ...] = ("text", "image", "video", "audio", "storyboard")
+NODE_TYPES: tuple[str, ...] = ("text", "image", "video", "audio", "storyboard", "panorama")
 
-# 5x5 合法性矩阵（Source → Target）——必须与 edgeRules.md 第 4 节逐格对齐。
+# 6x6 合法性矩阵（Source → Target）——必须与前端 edgeRules.ts 逐格对齐。
 EDGE_LEGALITY_MATRIX: dict[str, dict[str, EdgeLegality]] = {
     "text": {
-        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow",
+        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
     },
     "image": {
-        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow",
+        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
     },
     "video": {
-        "text": "deferred", "image": "allow", "video": "allow", "audio": "deferred", "storyboard": "allow",
+        "text": "deferred", "image": "allow", "video": "allow", "audio": "deferred", "storyboard": "allow", "panorama": "deferred",
     },
     "audio": {
-        "text": "deferred", "image": "forbid", "video": "allow", "audio": "deferred", "storyboard": "allow",
+        "text": "deferred", "image": "forbid", "video": "allow", "audio": "deferred", "storyboard": "allow", "panorama": "deferred",
     },
     "storyboard": {
-        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow",
+        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
+    },
+    "panorama": {
+        "text": "deferred", "image": "deferred", "video": "deferred", "audio": "deferred", "storyboard": "deferred", "panorama": "allow",
     },
 }
 

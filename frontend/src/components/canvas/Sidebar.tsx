@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   VectorSquare, Plus, ScrollText, Image as ImageIcon, Video, 
-  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones
+  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones, Globe
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resourceApi, AssetItem } from '@/lib/resourceApi';
@@ -64,6 +64,17 @@ const NODE_TYPES = [
     titleKey: 'canvas.node.storyboardCard',
     data: { shotNumber: '01', duration: 3, description: '', pivotConfig: { rows: [], cols: [], values: [] } },
     dimensions: { width: 768, height: 512 }
+  },
+  { 
+    type: 'panorama', 
+    nameKey: 'sidebar.panoramaCard', 
+    descKey: 'sidebar.panoramaDesc',
+    icon: Globe, 
+    color: 'text-cyan-500', 
+    bg: 'bg-cyan-500/10',
+    titleKey: 'canvas.node.newPanoramaCard',
+    data: { description: '' },
+    dimensions: { width: 512, height: 320 }
   },
 ];
 

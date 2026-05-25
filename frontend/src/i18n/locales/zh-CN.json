@@ -246,17 +246,44 @@
       "unnamedImageCard": "未命名图片卡",
       "unnamedAudioCard": "未命名音频卡",
       "unnamedVideoCard": "未命名视频卡",
+      "unnamedPanoramaCard": "未命名全景卡",
       "newTextCard": "新文本卡",
       "newImageCard": "新图片卡",
       "newAudioCard": "新音频卡",
       "newVideoCard": "新视频卡",
+      "newPanoramaCard": "新全景卡",
       "copySuffix": "{{name}} (副本)",
       "deleteConfirm": {
         "text": "确定要删除这张文本卡吗？",
         "image": "确定要删除这张图片卡吗？",
         "audio": "确定要删除这张音频卡吗？",
         "storyboard": "确定要删除这张多维表格卡吗？",
-        "video": "确定要删除这张视频卡吗？"
+        "video": "确定要删除这张视频卡吗？",
+        "panorama": "确定要删除这张全景卡吗？"
+      },
+      "panorama": {
+        "enterFullscreen": "进入全屏 720° 浏览",
+        "screenshot": "截图保存",
+        "resetView": "复位视角",
+        "exit": "退出全屏 (ESC)",
+        "uploadPanorama": "上传全景图",
+        "changePanorama": "更换全景图",
+        "emptyHint": "上传或选择 720° 全景图",
+        "doubleClickToFullscreen": "双击进入 720° 全景浏览",
+        "sizeError": "全景图过大（上限 30 MB）",
+        "hint": "拖拽改视角 · 滚轮缩放 · ESC 退出",
+        "noPanorama": "未上传全景图",
+        "loading": "正在加载全景图…",
+        "loadError": "全景图加载失败",
+        "loadErrorHint": "请确认图像可访问且为等距柱状投影（推荐 2:1 长宽比，例如 4096×2048）",
+        "screenshotName": "全景截图",
+        "promptBuilder": {
+          "placeholder": "描述你想要的场景，例如：飞船内部驾驶舱、未来城市天台…",
+          "generate": "生成全景提示词",
+          "copied": "已复制",
+          "copyPrompt": "复制提示词",
+          "hint": "将提示词粘贴到 Midjourney / DALL-E 等工具生成全景图，再上传到此节点"
+        }
       },
       "toolbar": {
         "duplicate": "创建副本",
@@ -468,7 +495,9 @@
         "pickEditImage": "选择要编辑的图片",
         "removeRef": "移除",
         "generatingHint": "图像生成中…",
-        "lastDuration": "本次生成耗时"
+        "lastDuration": "本次生成耗时",
+        "generatePanorama": "生成全景图",
+        "panoramaGenName": "生成全景图"
       },
       "storyboard": {
         "noData": "暂无数据",
@@ -604,6 +633,8 @@
     "storyboardDesc": "分镜、脚本等数据管理",
     "audioCard": "音频卡",
     "audioDesc": "音乐、音效、语音等",
+    "panoramaCard": "全景卡",
+    "panoramaDesc": "720° 全景场景图",
     "dropToAdd": "放置以添加节点",
     "images": "图片",
     "videos": "视频",

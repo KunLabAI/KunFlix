@@ -146,14 +146,29 @@ export type AudioNodeData = {
   updatedAt?: string;
 };
 
+export type PanoramaNodeData = {
+  name: string;
+  description?: string;
+  /** 等距柱状投影的全景图 URL（推荐 2:1 长宽比，例如 4096x2048） */
+  panoramaUrl?: string | null;
+  uploading?: boolean;
+  /** 全屏浏览的默认视角参数（弧度），可选 */
+  defaultYaw?: number;
+  defaultPitch?: number;
+  /** 默认 FOV（度），范围通常 30~100 */
+  defaultFov?: number;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
+};
+
 export type GhostNodeData = {
-  targetNodeType: string;  // The node type being created (text/image/video/audio/storyboard)
+  targetNodeType: string;  // The node type being created (text/image/video/audio/storyboard/panorama)
   label?: string;
 };
 
 export type NodeEffect = 'reading' | 'scanning' | 'updating' | 'deleting' | 'connecting';
 
-export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | GhostNodeData>;
+export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData | GhostNodeData>;
 
 interface HistoryState {
   nodes: CanvasNode[];
@@ -200,7 +215,7 @@ interface CanvasState {
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
   reset: () => void;
-  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => void;
+  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData>) => void;
   updateNodeDimensions: (id: string, width: number, height: number) => void;
   /**
    * 静默恢复节点位置（不打 isDirty，不入历史快照）。
@@ -570,7 +585,7 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>) => {
+      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData>) => {
         const now = new Date().toISOString();
         set({
           nodes: get().nodes.map((node) =>

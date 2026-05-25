@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Wand2, Images } from 'lucide-react';
+import { Wand2, Images, Globe } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { ImageMode } from '@/hooks/useImageGeneration';
@@ -13,6 +13,8 @@ interface Props {
   pickerRef: React.RefObject<HTMLDivElement | null>;
   onQuickMode: (mode: ImageMode, e?: React.MouseEvent) => void;
   onPickEditImage: (url: string, e?: React.MouseEvent) => void;
+  /** 一键生成全景图：填充面板的参数（edit 模式 + 21:9 + 全景提示词） */
+  onGeneratePanorama?: (e?: React.MouseEvent) => void;
 }
 
 /**
@@ -26,6 +28,7 @@ export function QuickModeSwitcher({
   pickerRef,
   onQuickMode,
   onPickEditImage,
+  onGeneratePanorama,
 }: Props) {
   const { t } = useTranslation();
   return (
@@ -93,6 +96,17 @@ export function QuickModeSwitcher({
         >
           <Images className="h-3.5 w-3.5" />
         </button>
+        {onGeneratePanorama && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onGeneratePanorama(e); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            title={t('canvas.node.image.generatePanorama', '生成全景图')}
+            className="h-7 w-7 rounded-full bg-background/90 backdrop-blur-md border border-border/60 shadow-sm text-muted-foreground hover:text-foreground hover:bg-secondary active:scale-90 transition-all flex items-center justify-center"
+          >
+            <Globe className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );

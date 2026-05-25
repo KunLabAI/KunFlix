@@ -12,7 +12,7 @@
 import type { Edge } from '@xyflow/react';
 import { hasCycle } from '@/lib/graphUtils';
 
-export type NodeType = 'text' | 'image' | 'video' | 'audio' | 'storyboard';
+export type NodeType = 'text' | 'image' | 'video' | 'audio' | 'storyboard' | 'panorama';
 
 export type EdgeLegality = 'allow' | 'deferred' | 'forbid';
 
@@ -32,8 +32,11 @@ export interface EdgeValidationResult {
 }
 
 /**
- * 5x5 合法性矩阵（Source → Target）。
- * 必须与 edgeRules.md 第 4 节、SKILL.md Edge Compatibility Matrix 三方对齐。
+ * 6x6 合法性矩阵（Source → Target）。
+ * 必须与 SKILL.md Edge Compatibility Matrix 与后端 _canvas_edge_rules.py 三方对齐。
+ *
+ * panorama 行/列在 MVP 阶段全部以 'deferred' 占位（仅自环 allow），表示
+ * 与其他节点类型的连线注入语义尚未在 edgePayload.ts 中实现；后续迭代再按需放行。
  */
 export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegality>> = {
   text: {
@@ -42,6 +45,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'allow',
     storyboard: 'allow',
+    panorama: 'deferred',
   },
   image: {
     text: 'deferred',
@@ -49,6 +53,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'allow',
     storyboard: 'allow',
+    panorama: 'deferred',
   },
   video: {
     text: 'deferred',
@@ -56,6 +61,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'deferred',
     storyboard: 'allow',
+    panorama: 'deferred',
   },
   audio: {
     text: 'deferred',
@@ -63,6 +69,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'deferred',
     storyboard: 'allow',
+    panorama: 'deferred',
   },
   storyboard: {
     text: 'allow',
@@ -70,6 +77,15 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'allow',
     storyboard: 'allow',
+    panorama: 'deferred',
+  },
+  panorama: {
+    text: 'deferred',
+    image: 'deferred',
+    video: 'deferred',
+    audio: 'deferred',
+    storyboard: 'deferred',
+    panorama: 'allow',
   },
 };
 
@@ -84,7 +100,7 @@ export const REJECT_MESSAGES: Record<EdgeRejectReason, string> = {
 };
 
 const isNodeType = (x: unknown): x is NodeType =>
-  typeof x === 'string' && ['text', 'image', 'video', 'audio', 'storyboard'].includes(x);
+  typeof x === 'string' && ['text', 'image', 'video', 'audio', 'storyboard', 'panorama'].includes(x);
 
 /**
  * 读取 Handle 所在的几何侧边（基于 id 前缀）。

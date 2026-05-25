@@ -49,6 +49,7 @@ NODE_TYPE_SCHEMA = {
     "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
     "audio":      {"name": str, "description": str, "audioUrl": str, "lyrics": str},
     "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any, "tableData": Any, "tableColumns": Any},
+    "panorama":   {"name": str, "description": str, "panoramaUrl": str},
 }
 
 _DEFAULT_NODE_WIDTH = 420
