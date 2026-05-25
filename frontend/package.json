@@ -50,7 +50,7 @@
     "@tiptap/starter-kit": "^3.23.6",
     "@types/dagre": "^0.7.54",
     "@types/lodash.debounce": "^4.0.9",
-    "@types/react-window": "^1.8.8",
+    "@types/react-window": "^2.0.0",
     "@xyflow/react": "^12.10.1",
     "antd": "^6.4.2",
     "axios": "^1.16.0",
