@@ -57,6 +57,20 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
 
   const [showConfig, setShowConfig] = useState(false);
 
+  // 响应 modeRequest 中的 prompt / aspectRatio overrides（一键场景如“生成全景图”）
+  // - token 驱动：同一 token 只应用一次，避免覆盖用户后续修改
+  const appliedOverrideTokenRef = useRef<number | null>(null);
+  useEffect(() => {
+    const tok = modeRequest?.token ?? null;
+    const should = tok !== null && appliedOverrideTokenRef.current !== tok;
+    should && (() => {
+      appliedOverrideTokenRef.current = tok;
+      modeRequest!.promptOverride && form.setPrompt(modeRequest!.promptOverride);
+      modeRequest!.aspectRatioOverride && form.setAspectRatio(modeRequest!.aspectRatioOverride);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeRequest]);
+
   // 图像节点连线到图像节点的注入处理：
   // 设计原则：连线 == 「源节点加入参考图列表」，**不**主动切换生成模式，由用户手动选择。
   // - 源节点可能有多张图，这里只取第一张作为该源对应的参考图（一个源节点 → 一个参考图条目）。

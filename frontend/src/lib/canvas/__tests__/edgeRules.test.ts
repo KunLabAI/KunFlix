@@ -1,8 +1,9 @@
 /**
  * edgeRules.ts 矩阵与 validateEdge 的单元测试。
  * 测试覆盖：
- *  - 5x5 矩阵字面值与 edgeRules.md 第 4 节一致
+ *  - 6x6 矩阵字面值与后端 _canvas_edge_rules.py 对齐
  *  - validateEdge 早返回顺序（self_loop → same_polarity → duplicate_edge → cycle → matrix）
+ *  - panorama 节点作为 MVP 阶段占位：仅自环 allow，其余 deferred
  */
 import type { Edge } from '@xyflow/react';
 import {
@@ -23,33 +24,39 @@ const mkEdge = (source: string, target: string, sh = 'right-source', th = 'left-
 });
 
 describe('EDGE_LEGALITY_MATRIX 字面值锁定', () => {
-  it('text 行：全 allow', () => {
+  it('text 行：五个原始类型 allow，→panorama=deferred', () => {
     expect(EDGE_LEGALITY_MATRIX.text).toEqual({
-      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow',
+      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('image 行：→audio=forbid, →text=deferred，其余 allow', () => {
+  it('image 行：→text=deferred, →panorama=deferred，其余 allow', () => {
     expect(EDGE_LEGALITY_MATRIX.image).toEqual({
-      text: 'deferred', image: 'allow', video: 'allow', audio: 'forbid', storyboard: 'allow',
+      text: 'deferred', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('video 行：→text=deferred, →audio=deferred，其余 allow', () => {
+  it('video 行：→text=deferred, →audio=deferred, →panorama=deferred，其余 allow', () => {
     expect(EDGE_LEGALITY_MATRIX.video).toEqual({
-      text: 'deferred', image: 'allow', video: 'allow', audio: 'deferred', storyboard: 'allow',
+      text: 'deferred', image: 'allow', video: 'allow', audio: 'deferred', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('audio 行：→image=forbid, →text=deferred, →audio=deferred，其余 allow', () => {
+  it('audio 行：→image=forbid, →text=deferred, →audio=deferred, →panorama=deferred，其余 allow', () => {
     expect(EDGE_LEGALITY_MATRIX.audio).toEqual({
-      text: 'deferred', image: 'forbid', video: 'allow', audio: 'deferred', storyboard: 'allow',
+      text: 'deferred', image: 'forbid', video: 'allow', audio: 'deferred', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('storyboard 行：全 allow', () => {
+  it('storyboard 行：五个原始类型 allow，→panorama=deferred', () => {
     expect(EDGE_LEGALITY_MATRIX.storyboard).toEqual({
-      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow',
+      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
+    });
+  });
+
+  it('panorama 行：仅自环 allow，其余全部 deferred（MVP 占位）', () => {
+    expect(EDGE_LEGALITY_MATRIX.panorama).toEqual({
+      text: 'deferred', image: 'deferred', video: 'deferred', audio: 'deferred', storyboard: 'deferred', panorama: 'allow',
     });
   });
 });
@@ -154,6 +161,26 @@ describe('validateEdge 矩阵', () => {
     expect(r.ok).toBe(true);
   });
 
+  it('text→panorama：deferred → not_supported_yet', () => {
+    const r = validateEdge({ ...base, sourceType: 'text', targetType: 'panorama' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('not_supported_yet');
+  });
+
+  it('panorama→panorama：allow（仅自环被拒，同类型不同节点放行）', () => {
+    const r = validateEdge({
+      ...base, sourceType: 'panorama', targetType: 'panorama',
+      sourceId: 'p1', targetId: 'p2',
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('panorama→image：deferred → not_supported_yet', () => {
+    const r = validateEdge({ ...base, sourceType: 'panorama', targetType: 'image' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('not_supported_yet');
+  });
+
   it('未知类型：按 allow 处理', () => {
     const r = validateEdge({ ...base, sourceType: 'ghost' as unknown as NodeType, targetType: 'text' });
     expect(r.ok).toBe(true);
@@ -169,5 +196,11 @@ describe('getEdgeLegality', () => {
   });
   it('text→storyboard = allow', () => {
     expect(getEdgeLegality('text', 'storyboard')).toBe('allow');
+  });
+  it('text→panorama = deferred', () => {
+    expect(getEdgeLegality('text', 'panorama')).toBe('deferred');
+  });
+  it('panorama→panorama = allow', () => {
+    expect(getEdgeLegality('panorama', 'panorama')).toBe('allow');
   });
 });

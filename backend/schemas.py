@@ -4,7 +4,8 @@ from datetime import datetime
 
 
 # 画布节点类型常量
-NODE_TYPES = {"script", "character", "storyboard", "video"}
+# 注：保留 "script"/"character" 旧名以兼容历史数据；新节点统一使用迁移后名称。
+NODE_TYPES = {"script", "character", "storyboard", "video", "panorama"}
 
 
 # ---------------------------------------------------------------------------

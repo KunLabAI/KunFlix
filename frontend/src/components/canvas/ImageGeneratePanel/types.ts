@@ -12,11 +12,14 @@ export interface ImageRef {
  * 外部触发的模式切换请求（用于 ImageNode 工具条快捷按钮）。
  * - token 变化视为一次新的请求；相同 token 不重复应用。
  * - preselectImages 用于自动预设一或多张参考图（单图编辑传 1 张，多图参考传多张）。
+ * - promptOverride / aspectRatioOverride 用于一键场景（如“生成全景图”）自动填充提示词与画面比例。
  */
 export interface ImagePanelModeRequest {
   mode: ImageMode;
   token: number;
   preselectImages?: ImageRef[];
+  promptOverride?: string;
+  aspectRatioOverride?: string;
 }
 
 export interface ImageGeneratePanelProps {

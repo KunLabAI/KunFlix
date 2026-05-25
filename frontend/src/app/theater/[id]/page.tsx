@@ -27,6 +27,7 @@ import CharacterNode from '@/components/canvas/ImageNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
 import VideoNode from '@/components/canvas/VideoNode';
 import AudioNode from '@/components/canvas/AudioNode';
+import PanoramaNode from '@/components/canvas/PanoramaNode';
 import GhostNode from '@/components/canvas/GhostNode';
 import { CustomEdge } from '@/components/canvas/CustomEdge';
 import { AIAssistantPanel } from '@/components/canvas/AIAssistantPanel';
@@ -50,6 +51,7 @@ const nodeTypes = {
   storyboard: StoryboardNode,
   video: VideoNode,
   audio: AudioNode,
+  panorama: PanoramaNode,
   ghost: GhostNode,
 } as unknown as NodeTypes;
 

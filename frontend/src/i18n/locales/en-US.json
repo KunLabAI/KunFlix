@@ -246,17 +246,44 @@
       "unnamedImageCard": "Untitled Image Card",
       "unnamedAudioCard": "Untitled Audio Card",
       "unnamedVideoCard": "Untitled Video Card",
+      "unnamedPanoramaCard": "Untitled Panorama Card",
       "newTextCard": "New Text Card",
       "newImageCard": "New Image Card",
       "newAudioCard": "New Audio Card",
       "newVideoCard": "New Video Card",
+      "newPanoramaCard": "New Panorama Card",
       "copySuffix": "{{name}} (Copy)",
       "deleteConfirm": {
         "text": "Are you sure you want to delete this text card?",
         "image": "Are you sure you want to delete this image card?",
         "audio": "Are you sure you want to delete this audio card?",
         "storyboard": "Are you sure you want to delete this pivot table card?",
-        "video": "Are you sure you want to delete this video card?"
+        "video": "Are you sure you want to delete this video card?",
+        "panorama": "Are you sure you want to delete this panorama card?"
+      },
+      "panorama": {
+        "enterFullscreen": "Enter 720° Fullscreen",
+        "screenshot": "Screenshot",
+        "resetView": "Reset View",
+        "exit": "Exit Fullscreen (ESC)",
+        "uploadPanorama": "Upload Panorama",
+        "changePanorama": "Change Panorama",
+        "emptyHint": "Upload or pick a 720° panorama",
+        "doubleClickToFullscreen": "Double-click for 720° fullscreen",
+        "sizeError": "Panorama too large (max 30 MB)",
+        "hint": "Drag to look around · Scroll to zoom · ESC to exit",
+        "noPanorama": "No panorama uploaded",
+        "loading": "Loading panorama…",
+        "loadError": "Failed to load panorama",
+        "loadErrorHint": "Make sure the image is accessible and is in equirectangular projection (2:1 ratio recommended, e.g. 4096×2048)",
+        "screenshotName": "Panorama Screenshot",
+        "promptBuilder": {
+          "placeholder": "Describe the scene you want, e.g.: spaceship cockpit, futuristic city rooftop…",
+          "generate": "Generate Panorama Prompt",
+          "copied": "Copied",
+          "copyPrompt": "Copy Prompt",
+          "hint": "Paste the prompt into Midjourney / DALL-E to generate a panorama, then upload here"
+        }
       },
       "toolbar": {
         "duplicate": "Duplicate",
@@ -468,7 +495,9 @@
         "pickEditImage": "Pick an image to edit",
         "removeRef": "Remove",
         "generatingHint": "Generating image…",
-        "lastDuration": "Last generation time"
+        "lastDuration": "Last generation time",
+        "generatePanorama": "Generate Panorama",
+        "panoramaGenName": "Generated Panorama"
       },
       "storyboard": {
         "noData": "No Data",
@@ -604,6 +633,8 @@
     "storyboardDesc": "Storyboards, scripts, data management",
     "audioCard": "Audio Card",
     "audioDesc": "Music, sound effects, voice",
+    "panoramaCard": "Panorama Card",
+    "panoramaDesc": "720° panoramic scene",
     "dropToAdd": "Drop to add node",
     "images": "Images",
     "videos": "Videos",
