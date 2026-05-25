@@ -33,7 +33,7 @@ const PanoramaNode = ({ id, data, selected }: NodeProps<Node<PanoramaNodeData>>)
   const updateNodeData = useCanvasStore((s) => s.updateNodeData);
   const deleteNode = useCanvasStore((s) => s.deleteNode);
   const addNode = useCanvasStore((s) => s.addNode);
-  const { getNode, screenToFlowPosition } = useReactFlow();
+  const { getNode } = useReactFlow();
 
   // ── 标题编辑 ──
   const commitTitle = useCallback((name: string) => {
