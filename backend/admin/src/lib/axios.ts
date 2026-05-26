@@ -25,9 +25,10 @@ const NO_REFRESH_PATHS = ['/admin/auth/login', '/admin/auth/refresh', '/admin/au
 const redirectToLogin = () => {
   if (typeof window === 'undefined') return;
   clearAdminSession();
-  // 避免在 /admin/login 重复跳转造成循环
-  const onLoginPage = window.location.pathname === '/admin/login';
-  onLoginPage || (window.location.href = '/admin/login');
+  // 注意：window.location 不会被 Next.js basePath 加前缀，必须写浏览器实际可见的完整 URL。
+  // 当前目录结构 src/app/admin/login + basePath=/admin 决定登录页真实 URL 为 /admin/admin/login。
+  const onLoginPage = window.location.pathname === '/admin/admin/login';
+  onLoginPage || (window.location.href = '/admin/admin/login');
 };
 
 // 跨页签 Token 刷新协调器（admin 专属 key 与 channel）

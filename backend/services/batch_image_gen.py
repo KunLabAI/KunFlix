@@ -16,11 +16,13 @@ logger = logging.getLogger(__name__)
 
 
 # 配置映射表（避免 if-else）
+# 历史 quality=standard 曾输出 "1024"，此处兜底映射回官方 "1K"
 IMAGE_SIZE_MAP = {
-    "512": "512px",
-    "1K": "1K",
-    "2K": "2K",
-    "4K": "4K",
+    "512":  "512px",
+    "1024": "1K",   # 历史兼容：旧客户端 / 旧 quality 映射输出
+    "1K":   "1K",
+    "2K":   "2K",
+    "4K":   "4K",
     "auto": None,
 }
 

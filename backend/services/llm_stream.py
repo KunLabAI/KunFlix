@@ -851,11 +851,13 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
     # 图片模式：动态构建 ImageConfig（SDK 使用 camelCase 参数名）
     # image_size 映射表：前端数值 → API 标准值（512px/1K/2K/4K）
+    # 历史 quality=standard 曾输出 "1024"，此处兜底映射回官方 "1K"
     _IMAGE_SIZE_MAP = {
-        "512": "512px",    # 前端发送 "512"，后端转为 "512px"
-        "1K": "1K",
-        "2K": "2K",
-        "4K": "4K",
+        "512":  "512px",   # 前端发送 "512"，后端转为 "512px"
+        "1024": "1K",      # 历史兼容
+        "1K":   "1K",
+        "2K":   "2K",
+        "4K":   "4K",
         "auto": None,
     }
     _ASPECT_AUTO_MAP = {"auto": None}

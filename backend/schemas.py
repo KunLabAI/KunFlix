@@ -207,9 +207,14 @@ class TestConnectionRequest(BaseModel):
 # Gemini 3.1 配置 schemas
 # ---------------------------------------------------------------------------
 class GeminiImageConfig(BaseModel):
-    """Gemini 图片生成配置"""
-    aspect_ratio: Optional[Literal["auto", "16:9", "4:3", "1:1", "3:4", "9:16"]] = None
-    image_size: Optional[Literal["4K", "2K", "1024", "512", "auto"]] = None
+    """Gemini 图片生成配置（与 gemini-3.x-image-preview 官方规格对齐）"""
+    # Gemini 3 系列支持 14 个比例 + auto；2.5 在模型级能力清单中收窄
+    aspect_ratio: Optional[Literal[
+        "auto", "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
+        "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"
+    ]] = None
+    # image_size：官方推荐 1K/2K/4K（Flash 额外支持 512）；保留 "1024" 兼容旧请求（在 IMAGE_SIZE_MAP 中映射为 1K）
+    image_size: Optional[Literal["4K", "2K", "1K", "1024", "512", "auto"]] = None
     output_format: Optional[Literal["png", "jpeg", "webp"]] = None  # 输出格式
     batch_count: Optional[int] = Field(None, ge=1, le=8)  # 批量生成数量 (1-8)
     # 参考图片数量限制配置

@@ -10,7 +10,8 @@ from typing import Any
 # Quality → provider-specific resolution / image_size
 # ---------------------------------------------------------------------------
 _QUALITY_MAP: dict[str, dict[str, str]] = {
-    "gemini": {"standard": "1024", "hd": "2K", "ultra": "4K"},
+    # Gemini 官方 API 标准字面量为 1K/2K/4K，与 batch_image_gen.IMAGE_SIZE_MAP 一致
+    "gemini": {"standard": "1K",   "hd": "2K", "ultra": "4K"},
     "xai":    {"standard": "1k",   "hd": "2k", "ultra": "2k"},
     "ark":    {"standard": "1K",   "hd": "2K", "ultra": "4K"},
 }
@@ -31,7 +32,7 @@ _BATCH_MAP: dict[str, dict[str, Any]] = {
 _SUPPORTED_MODES: dict[str, list[str]] = {
     "gemini":     ["text_to_image", "edit", "reference_images"],
     "xai":        ["text_to_image", "edit", "reference_images"],
-    "ark":        ["text_to_image"],
+    "ark":        ["text_to_image", "edit", "reference_images"],
     "openrouter": ["text_to_image", "edit", "reference_images"],
 }
 
@@ -39,10 +40,12 @@ _SUPPORTED_MODES: dict[str, list[str]] = {
 # Provider-supported aspect ratios (for validation / fallback)
 # ---------------------------------------------------------------------------
 _ASPECT_RATIO_SUPPORTED: dict[str, set[str]] = {
-    "gemini":     {"auto", "16:9", "4:3", "1:1", "3:4", "9:16"},
+    # Gemini 3.x Image Preview 官方 14 个比例 + auto（gemini-2.5-flash-image 在模型粒度收窄）
+    "gemini":     {"auto", "1:1", "1:4", "1:8", "2:3", "3:2", "3:4",
+                   "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"},
     "xai":        {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3",
                    "2:1", "1:2", "19.5:9", "9:19.5", "20:9", "9:20", "auto"},
-    "ark":        {"1:1", "16:9", "9:16", "4:3", "3:4", "21:9", "auto"},
+    "ark":        {"1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "21:9", "auto"},
     # OpenRouter 下面模型诡异很大，取官方文档通用集合（模型不支持时凭 prompt 提示软限制）
     "openrouter": {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"},
 }
@@ -60,7 +63,7 @@ _ASPECT_RATIO_DEFAULT: dict[str, str] = {
 _OUTPUT_FORMAT_SUPPORTED: dict[str, set[str]] = {
     "gemini":     {"png", "jpeg", "webp"},
     "xai":        set(),  # xAI 不支持用户指定输出格式
-    "ark":        set(),  # Ark Seedream 不支持用户指定输出格式
+    "ark":        {"png", "jpeg"},  # Seedream 5.0 支持 png/jpeg；4.5/4.0 仅 jpeg
     "openrouter": set(),  # OpenRouter 不支持 output_format 透传
 }
 
@@ -87,7 +90,7 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
     "ark": {
         "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["ark"]),
         "qualities": ["standard", "hd", "ultra"],
-        "output_formats": [],
+        "output_formats": sorted(_OUTPUT_FORMAT_SUPPORTED["ark"]),
         "batch_count": {"min": 1, "max": _BATCH_MAP["ark"]["max"]},
         "supported_modes": _SUPPORTED_MODES["ark"],
     },
@@ -103,6 +106,78 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
         "moderations": [],
         "supports_mask": False,
         "supports_output_compression": False,
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Model-level capabilities (per Gemini image model)
+#
+# Gemini 3 系列模型差异：
+#   - gemini-3.1-flash-image-preview：512 / 1K / 2K / 4K，全部 14 个 aspect ratio
+#   - gemini-3-pro-image-preview：    1K / 2K / 4K，全部 14 个 aspect ratio
+#   - gemini-2.5-flash-image：        仅 1K，常用 aspect ratio 子集（不含 1:4/4:1/1:8/8:1）
+#
+# 路由 GET /api/images/model-capabilities/{provider}/{model} 在 provider 级能力上叠加返回。
+# ---------------------------------------------------------------------------
+_GEMINI_FULL_ASPECT_RATIOS: list[str] = sorted(_ASPECT_RATIO_SUPPORTED["gemini"])
+_GEMINI3_IMAGE_SIZES_FLASH: list[str] = ["512", "1K", "2K", "4K"]
+_GEMINI3_IMAGE_SIZES_PRO:   list[str] = ["1K", "2K", "4K"]
+_GEMINI25_IMAGE_SIZES:      list[str] = ["1K"]
+_GEMINI25_ASPECT_RATIOS:    list[str] = sorted(
+    {"auto", "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "4:5", "5:4", "21:9"}
+)
+
+# ---------------------------------------------------------------------------
+# Seedream 模型粒度能力差异：
+#   - doubao-seedream-5-0-260128 / lite：2K / 3K / 4K，输出 png/jpeg，最多 14 张参考图
+#   - doubao-seedream-4-5-251128：      2K / 4K，输出 jpeg，最多 14 张参考图
+#   - doubao-seedream-4-0-250828：      1K / 2K / 4K，输出 jpeg，最多 14 张参考图
+# ---------------------------------------------------------------------------
+_SEEDREAM_50_SIZES:  list[str] = ["2K", "3K", "4K"]
+_SEEDREAM_45_SIZES:  list[str] = ["2K", "4K"]
+_SEEDREAM_40_SIZES:  list[str] = ["1K", "2K", "4K"]
+
+IMAGE_MODEL_CAPABILITIES: dict[str, dict] = {
+    # Gemini 系列
+    "gemini-3.1-flash-image-preview": {
+        "aspect_ratios":         _GEMINI_FULL_ASPECT_RATIOS,
+        "image_sizes":           _GEMINI3_IMAGE_SIZES_FLASH,
+        "max_reference_images":  14,
+        "supports_thinking":     True,
+    },
+    "gemini-3-pro-image-preview": {
+        "aspect_ratios":         _GEMINI_FULL_ASPECT_RATIOS,
+        "image_sizes":           _GEMINI3_IMAGE_SIZES_PRO,
+        "max_reference_images":  14,
+        "supports_thinking":     True,
+    },
+    "gemini-2.5-flash-image": {
+        "aspect_ratios":         _GEMINI25_ASPECT_RATIOS,
+        "image_sizes":           _GEMINI25_IMAGE_SIZES,
+        "max_reference_images":  3,
+        "supports_thinking":     False,
+    },
+    # Seedream 系列
+    "doubao-seedream-5-0-260128": {
+        "image_sizes":           _SEEDREAM_50_SIZES,
+        "output_formats":        ["png", "jpeg"],
+        "max_reference_images":  14,
+    },
+    "doubao-seedream-5-0-lite-260128": {
+        "image_sizes":           _SEEDREAM_50_SIZES,
+        "output_formats":        ["png", "jpeg"],
+        "max_reference_images":  14,
+    },
+    "doubao-seedream-4-5-251128": {
+        "image_sizes":           _SEEDREAM_45_SIZES,
+        "output_formats":        ["jpeg"],
+        "max_reference_images":  14,
+    },
+    "doubao-seedream-4-0-250828": {
+        "image_sizes":           _SEEDREAM_40_SIZES,
+        "output_formats":        ["jpeg"],
+        "max_reference_images":  14,
     },
 }
 
@@ -184,6 +259,10 @@ def _adapt_to_ark(unified: dict) -> dict:
     # batch_count → n
     bc = cfg.get("batch_count")
     bc and img.update(n=min(bc, _BATCH_MAP["ark"]["max"]))
+
+    # output_format（Seedream 5.0 支持 png/jpeg）
+    fmt = cfg.get("output_format")
+    fmt and fmt in _OUTPUT_FORMAT_SUPPORTED["ark"] and img.update(output_format=fmt)
 
     # Seedream 默认使用 url 格式
     img.update(response_format="url")

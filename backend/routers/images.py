@@ -21,7 +21,11 @@ from database import get_db
 from models import LLMProvider, ToolConfig
 from schemas import ImageGenerateRequest, ImageGenerateResponse
 from auth import get_current_active_user_or_admin
-from services.image_config_adapter import IMAGE_PROVIDER_CAPABILITIES, to_provider_config
+from services.image_config_adapter import (
+    IMAGE_PROVIDER_CAPABILITIES,
+    IMAGE_MODEL_CAPABILITIES,
+    to_provider_config,
+)
 from services.tool_manager.providers.image_gen import (
     _IMAGE_GENERATORS,
     _TOOL_GEN_PROVIDERS,
@@ -209,6 +213,26 @@ async def get_image_model_capabilities(
         HTTPException(status_code=404, detail=f"Image provider {provider_type} not supported")
     )
     return caps
+
+
+# ---------------------------------------------------------------------------
+# GET /api/images/model-capabilities/{provider_type}/{model} —— 模型级能力
+# 在 provider 级能力上叠加 IMAGE_MODEL_CAPABILITIES 中的模型差异（image_sizes / 14 比例 / 参考图上限）
+# ---------------------------------------------------------------------------
+@router.get("/model-capabilities/{provider_type}/{model:path}")
+async def get_image_model_capabilities_by_model(
+    provider_type: str,
+    model: str,
+    current_user=Depends(get_current_active_user_or_admin),
+):
+    """返回 provider 级能力 + 模型级差异（如 Flash 支持 512、Pro 不支持等）。"""
+    provider_caps = IMAGE_PROVIDER_CAPABILITIES.get((provider_type or "").lower())
+    provider_caps or (_ for _ in ()).throw(
+        HTTPException(status_code=404, detail=f"Image provider {provider_type} not supported")
+    )
+    model_caps = IMAGE_MODEL_CAPABILITIES.get(model) or {}
+    # 模型级覆盖 provider 级（dict 合并语义：模型独有 image_sizes / max_reference_images / supports_thinking 等会附加）
+    return {**provider_caps, **model_caps}
 
 
 # ---------------------------------------------------------------------------
