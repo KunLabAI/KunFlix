@@ -167,6 +167,9 @@ docker compose --env-file .env.prod up -d --force-recreate nginx
 # 数据库备份
 bash scripts/backup-db.sh
 
+# 镜像冗余清理
+docker system prune -a -f
+
 # 证书状态查看
 docker compose --env-file .env.prod exec certbot certbot certificates
 ```

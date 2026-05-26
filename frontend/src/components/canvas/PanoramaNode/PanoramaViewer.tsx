@@ -87,12 +87,20 @@ export const PanoramaViewer = forwardRef<PanoramaViewerHandle, PanoramaViewerPro
         if (cancelled) return;
 
 
+        // 等距柱状投影必须是 2:1 宽高比，否则 PSV 渲染时球体顶/底部会出现黑色极冠（黑圈）
+        // 强制把任意比例图片绘制到 2:1 画布：以 max(原宽, 原高×2) 为目标宽度，既保留
+        // 标准 2:1 全景图（如 4096×2048）的原始分辨率，也能让非标准图（1:1、16:9 等）
+        // 横向拉伸覆盖整个球面，消除顶部/底部黑圈。
+        const TARGET_ASPECT = 2;
+        const targetW = Math.max(img.naturalWidth, Math.round(img.naturalHeight * TARGET_ASPECT));
+        const targetH = Math.round(targetW / TARGET_ASPECT);
+
         // 绘制到 canvas 再转 blob URL，确保 PSV 可以以 blob: 协议加载（无网络请求）
         const cvs = document.createElement('canvas');
-        cvs.width = img.naturalWidth;
-        cvs.height = img.naturalHeight;
+        cvs.width = targetW;
+        cvs.height = targetH;
         const ctx = cvs.getContext('2d');
-        ctx?.drawImage(img, 0, 0);
+        ctx?.drawImage(img, 0, 0, targetW, targetH);
         cvs.toBlob((blob) => {
           if (cancelled || !blob) {
             !cancelled && done(false, '图片转码失败');

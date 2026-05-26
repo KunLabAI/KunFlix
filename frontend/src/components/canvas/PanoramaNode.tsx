@@ -354,40 +354,22 @@ const PanoramaNode = ({ id, data, selected }: NodeProps<Node<PanoramaNodeData>>)
 
         <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
-            {/* 空态：提示词生成器 + 上传入口 */}
+            {/* 空态：提示词生成器（上传/资产库入口已由悬浮工具条提供，避免重复） */}
             {!hasPanorama && !isUploading && (
               <div className="flex flex-col items-center justify-center w-full h-full py-4">
                 <PromptBuilder />
-                <div className="flex items-center gap-3 mt-2">
-                  <button
-                    type="button"
-                    onClick={handleUploadClick}
-                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Upload className="w-3 h-3" />
-                    {t('canvas.node.panorama.uploadPanorama', '上传全景图')}
-                  </button>
-                  <span className="text-muted-foreground/40 text-[10px]">|</span>
-                  <button
-                    type="button"
-                    onClick={handlePickFromLibrary}
-                    className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <FolderOpen className="w-3 h-3" />
-                    {t('canvas.node.upload.fromLibrary', '从资产库选择')}
-                  </button>
-                </div>
               </div>
             )}
 
-            {/* 已上传：等距柱状缩略（静态 img，避免节点内实例化 WebGL） */}
+            {/* 已上传：等距柱状缩略（静态 img，避免节点内实例化 WebGL）。
+                使用 object-contain 保证节点拖拽缩放时全景图不会被裁剪/截断，与图像节点保持一致 */}
             {hasPanorama && (
               <div className="relative w-full h-full bg-black/60">
                 <img
                   src={data.panoramaUrl as string}
                   alt={data.name || t('canvas.node.unnamedPanoramaCard', '未命名全景图')}
                   draggable={false}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
                 {/* 浮层：双击进入全屏提示 */}
                 <div className="absolute inset-0 flex items-end justify-center pb-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">

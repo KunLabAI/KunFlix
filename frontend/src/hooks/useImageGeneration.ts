@@ -28,6 +28,10 @@ export interface ImageModelCapabilities {
   moderations?: string[];                  // auto / low
   supports_mask?: boolean;                 // edit 模式是否接受蒙版
   supports_output_compression?: boolean;   // webp/jpeg 压缩率是否可调
+  // 模型级能力（仅 GET /model-capabilities/{provider}/{model} 返回，由 IMAGE_MODEL_CAPABILITIES 提供）
+  image_sizes?: string[];                  // Gemini Flash: 512/1K/2K/4K；Pro: 1K/2K/4K
+  max_reference_images?: number;           // Gemini 3.x: 14；2.5: 3
+  supports_thinking?: boolean;             // Gemini 3.x: true；2.5: false
 }
 
 export interface ImageGenParams {
@@ -81,6 +85,7 @@ export interface ImageModel {
 }
 
 // Label maps（与 VideoGeneratePanel 风格对齐）
+// Gemini 3.x Image Preview 完整 14 个比例 + 其他 provider 的并集
 export const ASPECT_RATIO_LABELS: Record<string, string> = {
   auto: 'Auto',
   '1:1': '1:1',
@@ -90,9 +95,25 @@ export const ASPECT_RATIO_LABELS: Record<string, string> = {
   '3:4': '3:4',
   '3:2': '3:2',
   '2:3': '2:3',
+  '4:5': '4:5',
+  '5:4': '5:4',
   '21:9': '21:9',
   '2:1': '2:1',
   '1:2': '1:2',
+  // Gemini 3.1 Flash Image Preview 新增的极端横竖比
+  '1:4': '1:4',
+  '4:1': '4:1',
+  '1:8': '1:8',
+  '8:1': '8:1',
+};
+
+// 画质（image_size）字面量标签 —— Gemini 3 系列模型级能力消费
+export const IMAGE_SIZE_LABELS: Record<string, string> = {
+  '512': '0.5K',
+  '1K': '1K',
+  '2K': '2K',
+  '4K': '4K',
+  auto: 'Auto',
 };
 
 export const QUALITY_LABELS: Record<string, string> = {
@@ -181,7 +202,10 @@ export function useImageModels() {
 // Hook: useImageModelCapabilities — 按 provider_type 取能力
 // ---------------------------------------------------------------------------
 
-export function useImageModelCapabilities(providerType: string | null) {
+export function useImageModelCapabilities(
+  providerType: string | null,
+  model?: string | null,
+) {
   const [capabilities, setCapabilities] = useState<ImageModelCapabilities | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -193,21 +217,35 @@ export function useImageModelCapabilities(providerType: string | null) {
       pt || setIsLoading(false);
       pt && setIsLoading(true);
       pt && await (async () => {
+        // 模型级能力优先（Gemini 3 系列差异：Flash 支持 512、Pro 不支持等）
+        // 失败时回退至 provider 级，保证向后兼容
+        const url = model
+          ? `/images/model-capabilities/${encodeURIComponent(pt)}/${encodeURIComponent(model)}`
+          : `/images/model-capabilities/${encodeURIComponent(pt)}`;
+        const fallbackUrl = `/images/model-capabilities/${encodeURIComponent(pt)}`;
         try {
-          const { data } = await api.get<ImageModelCapabilities>(
-            `/images/model-capabilities/${encodeURIComponent(pt)}`,
-            { signal: controller.signal },
-          );
+          const { data } = await api.get<ImageModelCapabilities>(url, { signal: controller.signal });
           setCapabilities(data);
         } catch {
-          // ignore
+          // 模型级 404 / 网络异常 → 回退 provider 级
+          model && await (async () => {
+            try {
+              const { data } = await api.get<ImageModelCapabilities>(
+                fallbackUrl,
+                { signal: controller.signal },
+              );
+              setCapabilities(data);
+            } catch {
+              // ignore
+            }
+          })();
         } finally {
           setIsLoading(false);
         }
       })();
     })();
     return () => controller.abort();
-  }, [providerType]);
+  }, [providerType, model]);
 
   return { capabilities, isLoading };
 }

@@ -20,6 +20,18 @@ const nextConfig = {
       },
     ]
   },
+  // basePath=/admin 下，根路径 / 不在 Next.js 路由表内，直接 404。
+  // 通过 redirects + basePath: false 让 / 跳到 /admin，由 src/app/page.tsx 接力跳到仪表盘。
+  async redirects() {
+    return [
+      {
+        source: '/',
+        destination: '/admin',
+        basePath: false,
+        permanent: false,
+      },
+    ]
+  },
 };
 
 module.exports = nextConfig;

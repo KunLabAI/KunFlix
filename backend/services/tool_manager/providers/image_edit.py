@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 IMAGE_EDIT_TOOL_NAME = "edit_image"
 
 # 图片编辑支持的供应商类型（与生成相同）
-_EDIT_CAPABLE_PROVIDERS = {"xai", "gemini", "openrouter"}
+_EDIT_CAPABLE_PROVIDERS = {"xai", "gemini", "openrouter", "ark"}
 
 # Fallback aspect ratio enum（与 image_gen.py 的 _ASPECT_RATIO_ENUM 对齐）
 _FALLBACK_ASPECT_RATIOS = [
@@ -39,6 +39,7 @@ _FALLBACK_ASPECT_RATIOS = [
 _EDIT_PARAM_EXTRACTORS: dict[str, callable] = {
     "xai":        lambda img_cfg: {"resolution": img_cfg.get("resolution")},
     "gemini":     lambda img_cfg: {"image_size": img_cfg.get("image_size")},
+    "ark":        lambda img_cfg: {"size": img_cfg.get("size")},
     "openrouter": lambda img_cfg: {
         "quality":            img_cfg.get("quality"),
         "output_format":      img_cfg.get("output_format"),
@@ -444,11 +445,41 @@ async def _edit_via_openrouter(
     )
 
 
+async def _edit_via_ark(
+    api_key: str,
+    base_url: str | None,
+    model: str,
+    image_urls: list[str],
+    prompt: str,
+    aspect_ratio: str | None,
+    size: str | None = None,
+    user_id: str | None = None,
+    **_kw,
+) -> str:
+    """火山方舟 Seedream 图像编辑/参考图生成。
+
+    Seedream 使用同一个 /images/generations 端点，通过 image 字段传递参考图。
+    """
+    from services.ark_image_gen import edit_ark_image
+
+    return await edit_ark_image(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        image_urls=image_urls,
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        size=size,
+        user_id=user_id,
+    )
+
+
 # 供应商调度表
 _EDIT_HANDLERS = {
     "xai": _edit_via_xai,
     "gemini": _edit_via_gemini,
     "openrouter": _edit_via_openrouter,
+    "ark": _edit_via_ark,
 }
 
 # 编辑后节点位置偏移

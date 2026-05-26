@@ -187,6 +187,7 @@ async def _generate_via_ark(
         n=1,
         response_format=img_cfg.get("response_format") or "url",
         watermark=img_cfg.get("watermark", False),
+        output_format=img_cfg.get("output_format") or "png",
     )
     result = await batch_generate_ark_images(
         api_key=api_key,

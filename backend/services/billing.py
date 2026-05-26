@@ -354,21 +354,26 @@ async def _drain_balance_to_zero(
 ) -> None:
     """生成已发生但余额不足时，把余额清零并落 underpaid 流水。
 
-    使用 WHERE credits == current_balance 的乐观锁，避免与并发扣费冲突；
-    若并发已把余额改动，跳过本次清零（其他请求已处理）。
+    使用 WHERE credits > 0 AND credits < attempted_cost 作为守卫条件：
+    - credits > 0：防止重复清零（并发安全）
+    - credits < attempted_cost：仅在余额确实不足时清零，若并发充值使余额 >= cost 则跳过
+
+    注意：不使用 credits == current_balance 精确相等比较，因为 SQLite 以 REAL（float64）
+    存储 Numeric 列，浮点精度差异会导致 WHERE 条件不匹配而静默跳过清零。
     """
     if current_balance <= 0:
         return
     stmt_clear = (
         update(entity_model)
         .where(entity_model.id == entity_id)
-        .where(entity_model.credits == current_balance)
+        .where(entity_model.credits > 0)
+        .where(entity_model.credits < attempted_cost)
         .values(credits=0)
         .execution_options(synchronize_session="fetch")
     )
     res = await session.execute(stmt_clear)
     if res.rowcount <= 0:
-        return  # 并发竞争：其他请求已扣，无需重复
+        return  # 并发竞争：余额已被其他请求处理，或充值后余额已足够
     tx_meta = dict(metadata or {})
     tx_meta.update({
         "underpaid": True,
