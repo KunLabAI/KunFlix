@@ -126,30 +126,51 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 
 ### Prerequisites
 
-- Python 3.10+
+- **Python 3.12+** (required by AgentScope 2.0; old 3.10 venvs must be recreated)
+- **Rust 1.85+** (only when compiling ripgrep from source; triggered on first install, see [UPGRADE.md](./UPGRADE.md))
 - Node.js 20+
+- Docker 24+ (required for Docker deployment)
 - SQLite (Development) / PostgreSQL (Production)
 
-### Installation
+> If you are upgrading from 1.0 to 2.0, please read [UPGRADE.md](./UPGRADE.md) first.
 
-<summary><b>📦 Clone Repository</b></summary>
+### Three Deployment Modes
+
+The project supports three deployment methods covering production, local full-stack, and pure development scenarios:
+
+| Mode | Command | Use Case | Cross-Platform |
+|:---|:---|:---|:---|
+| ☁️ Cloud Server | `bash scripts/init-letsencrypt.sh` | Domain + HTTPS production | Linux |
+| 🐳 Local Docker | `bash scripts/init-local.sh` | Full-stack local development | Win (Git Bash/WSL) / macOS / Linux |
+| 🖥️ Non-Docker Dev | `python dev.py` | Pure local dev with hot-reload | Win / macOS / Linux |
+
+---
+
+#### Option 1: Local Development (Recommended for Developers)
 
 ```bash
 git clone https://github.com/KunLabAI/KunFlix.git
 cd KunFlix
-```
-
-### 🎯 Development Mode One-Command Start
-
-```bash
 python dev.py
 ```
 
-### 🎯 Production Mode One-Command Start (Recommended)
+Automatically: creates venv → installs dependencies → initializes database → starts Backend + Frontend + Admin in parallel.
+
+#### Option 2: [Local Docker](./DEPLOY_EN.md)
 
 ```bash
-python start.py
+git clone https://github.com/KunLabAI/KunFlix.git
+cd KunFlix/deploy
+bash scripts/init-local.sh
 ```
+
+One command to launch PostgreSQL + Redis + Backend + Worker + Frontend + Admin full-stack containers.
+
+#### Option 3: [Cloud Server Production](./DEPLOY_EN.md)
+
+See [DEPLOY_EN.md](./DEPLOY_EN.md) for the complete guide including HTTPS certificate issuance, Nginx reverse proxy, and security hardening.
+
+### Manual Installation (Optional)
 
 <details>
 <summary><b>⚙️ 1. Backend Setup</b></summary>
@@ -207,6 +228,7 @@ Enter the Admin Dashboard (http://localhost:3888) and input the corresponding AP
 - MiniMax
 - DeepSeek
 - Dashscope (Alibaba Bailian)
+- Open Router
 - Other providers will be supported in future updates
 
 ### 2. Create an Agent
@@ -311,7 +333,6 @@ We are continuously iterating on KunFlix. Here are the upcoming core features:
 
 | Priority | Feature | Status | Description |
 |:---:|:---|:---:|:---|
-| 🔴 High | Canvas Node Toolization | 🚧 In Progress | Transform content nodes (images, videos, audio) in the canvas into tools, enabling agents to directly reference and remix them |
 | 🔴 High | TTS Provider Expansion | 📋 Planned | Integrate more TTS providers (Azure TTS, ElevenLabs, Volcano Engine, etc.) for more voice options |
 | 🟡 Medium | TTS Node Features | 📋 Planned | Add dedicated TTS nodes in the canvas, supporting text-to-speech, voice cloning, multi-character dubbing, and more |
 | 🟡 Medium | Multi-Agent Module Optimization | 🚧 In Progress | Optimize multi-agent collaboration stability, task dispatch logic, and event stream display |

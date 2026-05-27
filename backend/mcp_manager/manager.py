@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
-from agentscope.mcp import HttpStatefulClient, StdIOStatefulClient
+from agentscope.mcp import MCPClient, HttpMCPConfig, StdioMCPConfig
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,33 @@ class MCPClientConfig(BaseModel):
 
 class MCPConfig(BaseModel):
     clients: Dict[str, MCPClientConfig] = {}
+
+
+# ---------------------------------------------------------------------------
+# Transport → mcp_config factory (遵循项目“减少 if”风格，使用映射表调度)
+# ---------------------------------------------------------------------------
+
+def _build_stdio_config(cfg: MCPClientConfig) -> StdioMCPConfig:
+    if not cfg.command:
+        raise ValueError("command is required for stdio transport")
+    kwargs: Dict[str, Any] = {"command": cfg.command, "args": cfg.args}
+    cfg.env and kwargs.update(env=cfg.env)
+    cfg.cwd and kwargs.update(cwd=cfg.cwd)
+    return StdioMCPConfig(**kwargs)
+
+
+def _build_http_config(cfg: MCPClientConfig) -> HttpMCPConfig:
+    if not cfg.url:
+        raise ValueError("url is required for http transport")
+    headers = {k: os.path.expandvars(v) for k, v in (cfg.headers or {}).items()}
+    return HttpMCPConfig(url=cfg.url, headers=headers or None)
+
+
+_TRANSPORT_BUILDERS = {
+    "stdio": _build_stdio_config,
+    "http": _build_http_config,
+}
+
 
 class MCPClientManager:
     """Manages MCP clients with hot-reload support.
@@ -104,35 +131,18 @@ class MCPClientManager:
 
     @staticmethod
     def _build_client(client_config: MCPClientConfig) -> Any:
-        rebuild_info = client_config.model_dump()
-        
-        if client_config.transport == "stdio":
-            if not client_config.command:
-                raise ValueError("command is required for stdio transport")
-            client = StdIOStatefulClient(
-                name=client_config.name,
-                command=client_config.command,
-                args=client_config.args,
-                env=client_config.env,
-                cwd=client_config.cwd,
-            )
-            setattr(client, "_rebuild_info", rebuild_info)
-            return client
-            
-        elif client_config.transport == "http":
-            if not client_config.url:
-                raise ValueError("url is required for http transport")
-            
-            headers = client_config.headers or {}
-            headers = {k: os.path.expandvars(v) for k, v in headers.items()}
-            
-            client = HttpStatefulClient(
-                name=client_config.name,
-                transport=client_config.transport,
-                url=client_config.url,
-                headers=headers or None,
-            )
-            setattr(client, "_rebuild_info", rebuild_info)
-            return client
-        
-        raise ValueError(f"Unknown transport: {client_config.transport}")
+        """Build a 2.0 MCPClient using the transport-specific config builder."""
+        builder = _TRANSPORT_BUILDERS.get(client_config.transport)
+        if not builder:
+            raise ValueError(f"Unknown transport: {client_config.transport}")
+
+        mcp_config = builder(client_config)
+        client = MCPClient(
+            name=client_config.name,
+            is_stateful=True,
+            mcp_config=mcp_config,
+        )
+        # 保留重建快照，供热重载 / 调试使用
+        setattr(client, "_rebuild_info", client_config.model_dump())
+        return client
+

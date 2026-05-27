@@ -35,7 +35,15 @@ venv.bak/
 .env
 .env.local
 .env.*.local
+.env.prod
+deploy/.env.prod
 !.env.example
+!deploy/.env.prod.example
+
+# Docker compose 本地覆盖（每个开发者机器状态不同，不入库）
+docker-compose.override.yml
+deploy/docker-compose.override.yml
+!deploy/docker-compose.override.yml.example
 
 # Logs
 *.log

@@ -9,16 +9,10 @@ from database import get_db
 from models import LLMProvider, Admin, Agent
 from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
 from auth import require_admin
-from agents import narrative_engine
+from agents import narrative_engine, create_chat_model
 from cache.pubsub import invalidate as publish_invalidate
 from services import audit
-import agentscope
-from agentscope.message import Msg
-from agentscope.model import (
-    OpenAIChatModel, DashScopeChatModel, AnthropicChatModel,
-    GeminiChatModel, OllamaChatModel,
-)
-import asyncio
+from agentscope.message import UserMsg
 
 router = APIRouter(
     prefix="/api/admin/llm-providers",
@@ -36,56 +30,8 @@ _DEFAULT_BASE_URLS = {
     "openrouter": "https://openrouter.ai/api/v1",
 }
 
-# Azure uses "azure" client type, all others use "openai"
-_CLIENT_TYPE_MAP = {"azure": "azure"}
-
 # 视频模型关键词 → 跳过聊天测试，使用 API key 验证
 _VIDEO_MODEL_PATTERNS = ("video", "imagine-video", "seedance")
-
-
-def _build_client_kwargs(base_url: str | None, provider_type: str) -> dict:
-    """Build client_kwargs with provider-specific base_url fallback."""
-    kwargs = {}
-    if base_url:
-        kwargs["base_url"] = base_url
-    kwargs.setdefault("base_url", _DEFAULT_BASE_URLS.get(provider_type))
-    return kwargs
-
-
-def _create_test_model(provider_type: str, model: str, api_key: str,
-                       base_url: str | None, extra_config: dict):
-    """Create model instance for connection testing via factory dispatch."""
-    client_kwargs = _build_client_kwargs(base_url, provider_type)
-
-    # Anthropic-compatible factory (shared by anthropic & minimax)
-    def _anthropic():
-        return AnthropicChatModel(
-            model_name=model, api_key=api_key,
-            client_kwargs=client_kwargs, generate_kwargs=extra_config,
-        )
-
-    # Provider-specific factories
-    factories = {
-        "dashscope": lambda: DashScopeChatModel(
-            model_name=model, api_key=api_key, generate_kwargs=extra_config,
-        ),
-        "gemini": lambda: GeminiChatModel(
-            model_name=model, api_key=api_key, generate_kwargs=extra_config,
-        ),
-        "ollama": lambda: OllamaChatModel(
-            model_name=model, host=base_url,
-        ),
-        "anthropic": _anthropic,
-        "minimax": _anthropic,
-    }
-
-    factory = factories.get(provider_type)
-    # Found a specific factory -> use it; otherwise default to OpenAI-compatible
-    return factory() if factory else OpenAIChatModel(
-        model_name=model, api_key=api_key,
-        client_type=_CLIENT_TYPE_MAP.get(provider_type, "openai"),
-        client_kwargs=client_kwargs, generate_kwargs=extra_config,
-    )
 
 
 async def _test_video_model_connection(api_key: str, base_url: str | None, provider_type: str) -> dict:
@@ -114,25 +60,24 @@ async def test_connection(request: TestConnectionRequest, _admin: Admin = Depend
                 request.api_key, request.base_url, request.provider_type.lower()
             )
 
-        agentscope.init()
-
         provider_type = request.provider_type.lower()
-        extra_config = request.config_json or {}
 
-        model_instance = _create_test_model(
-            provider_type, request.model, request.api_key,
-            request.base_url, extra_config,
+        model_instance = create_chat_model(
+            provider_type=provider_type,
+            api_key=request.api_key,
+            model_name=request.model,
+            base_url=request.base_url,
         )
 
         from agents import DialogAgent as MyDialogAgent
         agent = MyDialogAgent(name="Tester", sys_prompt="You are a connection tester.", model=model_instance)
 
-        msg = Msg(name="User", content="Hello", role="user")
-        response = agent(msg)
-        if asyncio.iscoroutine(response):
-            response = await response
+        msg = UserMsg(name="User", content="Hello")
+        response = await agent.reply(msg)
 
-        response_content = str(response.content) if response.content is not None else ""
+        # 2.0 Msg.content 是 list[ContentBlock]；优先使用 helper 提取文本
+        getter = getattr(response, "get_text_content", None)
+        response_content = (getter() or "") if callable(getter) else str(getattr(response, "content", "") or "")
         return {"success": True, "message": "Connection successful", "response": response_content}
 
     except Exception as e:

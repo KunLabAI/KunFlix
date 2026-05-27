@@ -21,16 +21,8 @@ from sqlalchemy.future import select
 
 from config import settings
 from models import Agent, LLMProvider
-from agents import DialogAgent
-from agentscope.message import Msg
-from agentscope.model import (
-    OpenAIChatModel,
-    DashScopeChatModel,
-    AnthropicChatModel,
-    GeminiChatModel,
-    OllamaChatModel,
-)
-import agentscope
+from agents import DialogAgent, create_chat_model
+from agentscope.message import UserMsg
 from services.llm_stream import stream_completion, StreamResult, DEFAULT_BASE_URLS
 from cache import get_cache_backend
 from cache.pubsub import subscribe, channel_invalidate
@@ -43,15 +35,19 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_content(content) -> str:
-    """Normalize LLM response content to str (handles list from multi-modal APIs)."""
+    """Normalize 2.0 Msg/ChatResponse content to str (TextBlock list 或 str)."""
     type_handlers = {
         str: lambda c: c,
-        list: lambda c: "".join(
-            item.get("text", "") if hasattr(item, "get") else str(item)
-            for item in c
-        ),
+        list: lambda c: "".join(_block_text(b) for b in c),
     }
     return type_handlers.get(type(content), str)(content)
+
+
+def _block_text(block) -> str:
+    """单个 content block → 文本（兼容 Pydantic TextBlock 与 dict）。"""
+    if isinstance(block, dict):
+        return block.get("text", "") if not block.get("type") or block.get("type") == "text" else ""
+    return getattr(block, "text", "") or ""
 
 
 def _extract_tool_results(new_messages: list, is_anthropic: bool) -> dict:
@@ -88,65 +84,21 @@ class ExecutionResult:
 
 
 # ---------------------------------------------------------------------------
-# Model factory — 映射表驱动，避免多层 if-else
+# Model factory — 委托给 agents.create_chat_model，这里只保留轻量适配层
 # ---------------------------------------------------------------------------
-# 直接匹配的 provider_type -> 模型工厂
-_DIRECT_MODEL_CREATORS = {
-    "dashscope": lambda model_name, api_key, base_url=None: DashScopeChatModel(
-        model_name=model_name, api_key=api_key,
-    ),
-    "gemini": lambda model_name, api_key, base_url=None: GeminiChatModel(
-        model_name=model_name, api_key=api_key,
-    ),
-    "ollama": lambda model_name, api_key, base_url=None: OllamaChatModel(
-        model_name=model_name, host=base_url,
-    ),
-}
-
-# 家族类型 -> 模型工厂（OpenAI/Anthropic 使用 client_kwargs 注入 base_url）
-_FAMILY_MODEL_CREATORS = {
-    "anthropic": lambda model_name, api_key, base_url=None: AnthropicChatModel(
-        model_name=model_name,
-        api_key=api_key,
-        client_kwargs={"base_url": base_url} if base_url else None,
-    ),
-    "openai": lambda model_name, api_key, base_url=None: OpenAIChatModel(
-        model_name=model_name,
-        api_key=api_key,
-        client_kwargs={"base_url": base_url} if base_url else None,
-    ),
-}
-
-# 家族识别关键字（子串包含即匹配）
-_ANTHROPIC_FAMILY_KEYWORDS = ("anthropic", "minimax")
-
-
-def _resolve_model_family(provider_type: str) -> str:
-    """Pick the model family key for factory lookup.
-
-    Priority:
-    1. Direct match on _DIRECT_MODEL_CREATORS (dashscope/gemini/ollama)
-    2. Anthropic family (provider_type 包含 anthropic 或 minimax)
-    3. OpenAI 兜底（含 openai/azure/deepseek/vllm/xai 等）
-    """
-    pt = provider_type.lower()
-    probes = [
-        (pt in _DIRECT_MODEL_CREATORS, pt),
-        (any(k in pt for k in _ANTHROPIC_FAMILY_KEYWORDS), "anthropic"),
-    ]
-    return next((key for matched, key in probes if matched), "openai")
-
 
 def _create_llm_model(provider: LLMProvider, model_name: str):
-    """Create an LLM model instance from a provider config using the family registry."""
-    provider_type = provider.provider_type.lower()
-    api_key = provider.api_key
-    base_url = provider.base_url or DEFAULT_BASE_URLS.get(provider_type)
+    """Create a 2.0 ChatModel instance from LLMProvider DB record.
 
-    family = _resolve_model_family(provider_type)
-    factories = {**_DIRECT_MODEL_CREATORS, **_FAMILY_MODEL_CREATORS}
-    factory = factories[family]
-    return factory(model_name=model_name, api_key=api_key, base_url=base_url)
+    这里不再处理 provider_type 分派，统一委托给 ``agents.create_chat_model``，
+    避免与 agents.py 里的家族映射重复。
+    """
+    return create_chat_model(
+        provider_type=provider.provider_type,
+        api_key=provider.api_key,
+        model_name=model_name,
+        base_url=provider.base_url,
+    )
 
 
 class AgentExecutor:
@@ -206,7 +158,7 @@ class AgentExecutor:
         dialog_agent = await self._get_dialog_agent(agent_config, provider)
 
         input_content = messages[-1]["content"] if messages else ""
-        input_msg = Msg(name="User", content=input_content, role="user")
+        input_msg = UserMsg(name="User", content=input_content)
 
         input_chars = sum(len(m.get("content", "")) for m in messages)
 
@@ -379,7 +331,7 @@ class AgentExecutor:
             skill_names=agent_config.tools or None,
         )
 
-        input_msg = Msg(name="User", content=user_content, role="user")
+        input_msg = UserMsg(name="User", content=user_content)
         input_chars = len(user_content)
 
         response_msg = await dialog_agent.reply(input_msg)

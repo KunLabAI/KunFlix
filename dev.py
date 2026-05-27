@@ -1,4 +1,6 @@
 import os
+import platform
+import shutil
 import subprocess
 import sys
 import threading
@@ -13,8 +15,49 @@ ADMIN_DIR = os.path.join(BACKEND_DIR, "admin")
 # 颜色代码（跨平台可能需要 colorama，这里为了简单只做基本处理或不加）
 PROCESSES = []
 
+# AgentScope 2.0 要求 Python >= 3.11；ripgrep 从源码编译需 Rust >= 1.85
+_MIN_PYTHON = (3, 11)
+
 def log(message, prefix="[SYSTEM]"):
     print(f"{prefix} {message}")
+
+
+def _check_python_version() -> None:
+    """启动前 fail-fast：Python 版本 < 3.11 直接报错退出。
+
+    AgentScope 2.0 在 PyPI 元数据里强制 Requires-Python >= 3.11，
+    pip 会静默跳过不兼容版本，最后报 "Could not find a version”。
+    提前检测能避免开发者走 5+ 分钟弯路。
+    """
+    if sys.version_info >= _MIN_PYTHON:
+        return
+    current = platform.python_version()
+    required = ".".join(map(str, _MIN_PYTHON))
+    log(
+        f"Python {current} 不满足要求；AgentScope 2.0 需 Python >= {required}",
+        "[BACKEND]",
+    )
+    log("Windows  : winget install -e --id Python.Python.3.12", "[BACKEND]")
+    log("macOS    : brew install python@3.12", "[BACKEND]")
+    log("Linux    : 参考 https://www.python.org/downloads/ 或包管理器", "[BACKEND]")
+    log("安装完后请删除 backend/venv 后重新运行本脚本", "[BACKEND]")
+    sys.exit(1)
+
+
+def _check_rust_toolchain() -> None:
+    """警告级检测：本地首次 pip install 遇上 ripgrep 编译会需 Rust 工具链。
+
+    不 fail-fast：部分平台（如 Windows + cp312 wheel 已发布）可能不需本地编译，
+    仅提示避免 pip 报错后才定位问题。
+    """
+    cargo = shutil.which("cargo")
+    if cargo:
+        return
+    log("未检测到 cargo；agentscope 2.0 首次安装可能需本地编译 ripgrep。", "[BACKEND]")
+    log("若随后 pip install 报错 'feature edition2024 is required'，请安装 Rust：", "[BACKEND]")
+    log("  Windows  : winget install -e --id Rustlang.Rustup; rustup default stable", "[BACKEND]")
+    log("  macOS/Linux: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", "[BACKEND]")
+
 
 def get_python_exec():
     """获取虚拟环境中的 python 解释器路径"""
@@ -22,16 +65,53 @@ def get_python_exec():
         return os.path.join(BACKEND_DIR, "venv", "Scripts", "python.exe")
     return os.path.join(BACKEND_DIR, "venv", "bin", "python")
 
+
+def _venv_python_version(python_exec: str) -> tuple[int, int] | None:
+    """读取现有 venv 里的 python 版本，以 (major, minor) 元组返回；读不到则 None。"""
+    if not os.path.exists(python_exec):
+        return None
+    try:
+        out = subprocess.check_output(
+            [python_exec, "-c", "import sys; print(sys.version_info[0], sys.version_info[1])"],
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=10,
+        ).strip().split()
+        return int(out[0]), int(out[1])
+    except Exception:  # noqa: BLE001 — 检测失败不该阻断主流程
+        return None
+
+
 def setup_backend():
     """检查并安装后端依赖"""
     log("Checking backend environment...", "[BACKEND]")
-    
+
+    _check_python_version()
+    _check_rust_toolchain()
+
     venv_path = os.path.join(BACKEND_DIR, "venv")
+    python_exec = get_python_exec()
+
+    # 如果已存在的 venv 是 Python < 3.11（旧 1.0 遗留），提示手动重建
+    existing_ver = _venv_python_version(python_exec)
+    if existing_ver is not None and existing_ver < _MIN_PYTHON:
+        required = ".".join(map(str, _MIN_PYTHON))
+        log(
+            f"当前 venv 是 Python {existing_ver[0]}.{existing_ver[1]}，不满足 AgentScope 2.0 (>= {required})",
+            "[BACKEND]",
+        )
+        log(
+            f"请删除后重建：\n"
+            f"  Remove-Item -Recurse -Force \"{venv_path}\"   # PowerShell\n"
+            f"  rm -rf \"{venv_path}\"                        # bash\n"
+            f"随后使用 Python >= {required} 重新运行本脚本即可",
+            "[BACKEND]",
+        )
+        sys.exit(1)
+
     if not os.path.exists(venv_path):
         log("Creating virtual environment...", "[BACKEND]")
         subprocess.check_call([sys.executable, "-m", "venv", "venv"], cwd=BACKEND_DIR)
-    
-    python_exec = get_python_exec()
 
     # 强制 pip 以 UTF-8 读取 requirements.txt，避免 Windows 中文系统默认 GBK 解码失败
     # （requirements.txt 含中文注释，旧版 pip 在非 UTF-8 locale 下会报 UnicodeDecodeError）

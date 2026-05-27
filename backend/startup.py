@@ -47,6 +47,11 @@ def _alembic_stamp_head() -> None:
     )
 
 
+# 多 worker 并发启动跨进程互斥锁的 64-bit key（PG advisory lock 要求 bigint）
+# 'KUNFXLCK' 的 ASCII 拼拼，固定不变以免与其他应用冲突
+_BOOTSTRAP_LOCK_KEY = 0x4B554E46584C434B
+
+
 async def _try_fast_bootstrap() -> bool:
     """空库快通道：用 Base.metadata.create_all() 直建终态 schema，再
     alembic stamp head 标记已到最新版本，跳过整条针对 SQLite
@@ -54,12 +59,26 @@ async def _try_fast_bootstrap() -> bool:
 
     返回 True 表示已完成 fast bootstrap；非空库返回 False，由调用方
     走正常 upgrade head。
+
+    多 worker 互斥：uvicorn --workers >1 时每个子进程都跑 lifespan，并发
+    create_all() 在 PG 上会撞 pg_type_typname_nsp_index 唯一约束。这里
+    用 advisory_xact_lock（事务级、自动释放）跨进程串行，锁内再 double-
+    check is_fresh，确保只有第一个进入临界区的 worker 真正建表。
+    SQLite 单文件无该并发问题，方言映射表自动跳过。
     """
-    from sqlalchemy import inspect
+    from sqlalchemy import inspect, text
     from database import Base, engine
     import models  # noqa: F401 — 触发 Base.metadata 注册所有表
 
+    _lock_sql_by_dialect = {
+        "postgresql": text("SELECT pg_advisory_xact_lock(:key)"),
+    }
+    lock_sql = _lock_sql_by_dialect.get(engine.dialect.name)
+
     async with engine.begin() as conn:
+        # 先拿锁，让后到的 worker 阻塞在这里直到第一个 worker 提交事务
+        lock_sql is not None and await conn.execute(lock_sql, {"key": _BOOTSTRAP_LOCK_KEY})
+        # 锁内 inspect：double-check 让后入锁的 worker 看到表已存在
         tables = await conn.run_sync(
             lambda sync_conn: inspect(sync_conn).get_table_names()
         )
@@ -69,7 +88,9 @@ async def _try_fast_bootstrap() -> bool:
         }
         awaitable = _fresh_action.get(is_fresh, lambda: None)()
         awaitable and await awaitable
-    is_fresh and _alembic_stamp_head()
+        # stamp 必须保留在 advisory lock 内：否则 worker B 在 stamp 完成前拿到锁后
+        # 会看到 alembic_version 为空，走到 _execute_migrations_upgrade 全量重放撞已存在的表
+        is_fresh and _alembic_stamp_head()
     is_fresh and logger.info(
         "Fresh database detected — ran create_all + alembic stamp head, skipping migration chain."
     )

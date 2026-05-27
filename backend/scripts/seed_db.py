@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(_BACKEND_DIR, "deps")))
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import AsyncSessionLocal
-from models import LLMProvider, Admin, User, PromptTemplate, SubscriptionPlan
+from models import LLMProvider, Admin, PromptTemplate, SubscriptionPlan, EmailTemplate
 from config import settings
 import bcrypt
 # from passlib.context import CryptContext
@@ -88,6 +88,121 @@ def load_prompt_templates():
         print(f"Warning: Failed to parse {json_path}: {e}")
         return []
 
+
+# 邮件模板种子数据：4 个 code × 2 个 locale = 8 条
+_SEED_EMAIL_TEMPLATES = [
+    {
+        "code": "register_verify", "locale": "zh-CN",
+        "name": "注册验证码",
+        "subject": "【KunFlix】注册验证码 {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2 style="color:#111">欢迎加入 KunFlix</h2>'
+            '<p>您正在注册 KunFlix 账户，验证码为：</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#111">{code}</p>'
+            '<p>验证码 {expires_minutes} 分钟内有效，请勿向他人泄露。</p>'
+            '</div>'
+        ),
+        "text_body": "您的 KunFlix 注册验证码为 {code}，{expires_minutes} 分钟内有效。",
+    },
+    {
+        "code": "register_verify", "locale": "en-US",
+        "name": "Register verification",
+        "subject": "[KunFlix] Your verification code {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2>Welcome to KunFlix</h2>'
+            '<p>Your verification code is:</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px">{code}</p>'
+            '<p>This code expires in {expires_minutes} minutes. Do not share it with anyone.</p>'
+            '</div>'
+        ),
+        "text_body": "Your KunFlix verification code is {code}, valid for {expires_minutes} minutes.",
+    },
+    {
+        "code": "change_password", "locale": "zh-CN",
+        "name": "修改密码验证码",
+        "subject": "【KunFlix】修改密码验证码 {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2 style="color:#111">修改密码</h2>'
+            '<p>您正在修改 KunFlix 账户密码，验证码为：</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#111">{code}</p>'
+            '<p>验证码 {expires_minutes} 分钟内有效；如非本人操作请忽略本邮件。</p>'
+            '</div>'
+        ),
+        "text_body": "您的 KunFlix 修改密码验证码为 {code}，{expires_minutes} 分钟内有效。",
+    },
+    {
+        "code": "change_password", "locale": "en-US",
+        "name": "Change password verification",
+        "subject": "[KunFlix] Change password code {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2>Change password</h2>'
+            '<p>Your verification code is:</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px">{code}</p>'
+            '<p>This code expires in {expires_minutes} minutes. Ignore this email if it was not you.</p>'
+            '</div>'
+        ),
+        "text_body": "Your KunFlix change-password code is {code}, valid for {expires_minutes} minutes.",
+    },
+    {
+        "code": "reset_password", "locale": "zh-CN",
+        "name": "重置密码验证码",
+        "subject": "【KunFlix】重置密码验证码 {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2 style="color:#111">重置密码</h2>'
+            '<p>您正在重置 KunFlix 账户密码，验证码为：</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#111">{code}</p>'
+            '<p>验证码 {expires_minutes} 分钟内有效；如非本人操作请尽快修改密码。</p>'
+            '</div>'
+        ),
+        "text_body": "您的 KunFlix 重置密码验证码为 {code}，{expires_minutes} 分钟内有效。",
+    },
+    {
+        "code": "reset_password", "locale": "en-US",
+        "name": "Reset password verification",
+        "subject": "[KunFlix] Reset password code {code}",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2>Reset password</h2>'
+            '<p>Your verification code is:</p>'
+            '<p style="font-size:28px;font-weight:700;letter-spacing:6px">{code}</p>'
+            '<p>This code expires in {expires_minutes} minutes.</p>'
+            '</div>'
+        ),
+        "text_body": "Your KunFlix reset-password code is {code}, valid for {expires_minutes} minutes.",
+    },
+    {
+        "code": "admin_test", "locale": "zh-CN",
+        "name": "管理员测试邮件",
+        "subject": "【KunFlix】邮件服务测试",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2>邮件服务测试成功</h2>'
+            '<p>这是一封来自 KunFlix 后台管理系统的测试邮件，用于验证邮件服务商配置可达。</p>'
+            '<p>发送时间：{sent_at}</p>'
+            '</div>'
+        ),
+        "text_body": "邮件服务测试成功，发送时间：{sent_at}",
+    },
+    {
+        "code": "admin_test", "locale": "en-US",
+        "name": "Admin test mail",
+        "subject": "[KunFlix] Email service test",
+        "html_body": (
+            '<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.6">'
+            '<h2>Email service test succeeded</h2>'
+            '<p>This is a test email from KunFlix admin to verify the email provider configuration.</p>'
+            '<p>Sent at: {sent_at}</p>'
+            '</div>'
+        ),
+        "text_body": "Email service test succeeded. Sent at: {sent_at}",
+    },
+]
+
 async def seed():
     print("Seeding database...")
     async with AsyncSessionLocal() as session:
@@ -110,20 +225,23 @@ async def seed():
             else:
                 print(f"Provider {provider_config['name']} already exists.")
 
-        # 2. Seed Admin
-        result = await session.execute(select(Admin).filter_by(email="admin@example.com"))
+        # 2. Seed Admin——支持通过环境变量自定义（init-local.ps1 / docker exec 场景）
+        admin_email = os.environ.get("KUNFLIX_INIT_EMAIL", "admin@example.com")
+        admin_password = os.environ.get("KUNFLIX_INIT_PASSWORD", "Admin@12345")
+        result = await session.execute(select(Admin).filter_by(email=admin_email))
         admin = result.scalars().first()
         if not admin:
-            print("Creating default admin...")
+            print(f"Creating default admin ({admin_email})...")
             admin = Admin(
-                email="admin@example.com",
-                nickname="SuperAdmin",
-                password_hash=hash_password("admin123"),
+                email=admin_email,
+                nickname="Admin",
+                password_hash=hash_password(admin_password),
+                is_active=True,
                 permission_level="super_admin"
             )
             session.add(admin)
         else:
-            print("Admin already exists.")
+            print(f"Admin {admin_email} already exists.")
 
         # 3. Seed Free Tier Subscription Plan
         #    注册时 routers/auth.py 会按 is_active=True 且 price_usd=0 按 sort_order 匹配首个免费套餐
@@ -169,6 +287,26 @@ async def seed():
                 session.add(template)
             else:
                 print(f"Prompt template {template_config['name']} already exists.")
+
+        # 5. Seed Email Templates——4 类模板 × 2 个 locale = 8 条
+        for tpl in _SEED_EMAIL_TEMPLATES:
+            result = await session.execute(
+                select(EmailTemplate).filter_by(code=tpl["code"], locale=tpl["locale"])
+            )
+            existing = result.scalars().first()
+            if not existing:
+                print(f"Creating email template: {tpl['name']} ({tpl['locale']})...")
+                session.add(EmailTemplate(
+                    code=tpl["code"],
+                    locale=tpl["locale"],
+                    name=tpl["name"],
+                    subject=tpl["subject"],
+                    html_body=tpl["html_body"],
+                    text_body=tpl["text_body"],
+                    is_active=True,
+                ))
+            else:
+                print(f"Email template {tpl['name']} ({tpl['locale']}) already exists.")
 
         await session.commit()
     print("Seeding completed.")
