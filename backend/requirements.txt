@@ -9,7 +9,7 @@ aiosqlite>=0.22.1
 redis[hiredis]>=5.0.0,<6.0.0
 websockets>=16.0
 python-dotenv>=1.2.1
-agentscope==1.0.18
+agentscope>=2.0.0
 openai>=2.36.0
 python-multipart>=0.0.22
 aiofiles>=23.1.0

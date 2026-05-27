@@ -25,9 +25,13 @@ RUN npm ci --no-audit --no-fund --legacy-peer-deps --include=optional
 # ---------- Stage 2: 构建 ----------
 FROM node:26-alpine AS build
 WORKDIR /app
+# BACKEND_INTERNAL_URL 必须在构建期可用：Next.js rewrites() 在 build 时序列化到路由清单，
+# standalone 产物中不会再次读取运行时环境变量来解析 rewrite destination。
+ARG BACKEND_INTERNAL_URL=http://backend:8000
 ENV NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production \
-    NODE_OPTIONS=--max-old-space-size=4096
+    NODE_OPTIONS=--max-old-space-size=4096 \
+    BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
 RUN npm run build

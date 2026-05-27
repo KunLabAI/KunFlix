@@ -1,305 +1,327 @@
-import agentscope
-from agentscope.agent import AgentBase
-from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel, DashScopeChatModel, AnthropicChatModel, GeminiChatModel, OllamaChatModel
-from agentscope.formatter import (
-    OpenAIChatFormatter,
-    DashScopeChatFormatter,
-    AnthropicChatFormatter,
-    GeminiChatFormatter,
-    OllamaChatFormatter,
-)
-from config import settings
-from sqlalchemy.future import select
-from models import LLMProvider
-from database import AsyncSessionLocal
-import asyncio
-import logging
-from agentscope.tool import Toolkit
-from skills_manager import sync_skills, get_active_skills_dir, list_available_skills
+"""DialogAgent 与 NarrativeEngine —— 基于 AgentScope 2.0。
 
-from agent_extensions import MemoryCompactionHook, ToolGuardMixin
+变更说明（1.0 → 2.0）：
+- DialogAgent 继承 ``agentscope.agent.Agent``，复用 2.0 的 ReAct loop / 上下文压缩。
+- 模型实例统一通过 ``Credential`` 注入 ``api_key`` / ``base_url``，按家族映射表分派。
+- 删除 1.0 的 ``ToolGuardMixin`` / ``MemoryCompactionHook`` / 手工 formatter / self.memory；
+  2.0 的 Permission 系统、Middleware、ContextConfig 已分别取代它们的职责。
+- Skill 通过 ``Toolkit(skills_or_loaders=[...])`` 在构造时一次性注册到 active_skills 目录。
+- MCP 在每次 reply 之前懒注册到 toolkit，沿用 mcp_manager 的热加载语义。
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+from agentscope.agent import Agent
+from agentscope.credential import (
+    AnthropicCredential,
+    DashScopeCredential,
+    GeminiCredential,
+    OpenAICredential,
+)
+from agentscope.message import Msg
+from agentscope.model import (
+    AnthropicChatModel,
+    DashScopeChatModel,
+    GeminiChatModel,
+    OllamaChatModel,
+    OpenAIChatModel,
+)
+from agentscope.tool import Toolkit
+from sqlalchemy.future import select
+
+from config import settings
+from database import AsyncSessionLocal
 from mcp_manager.manager import MCPClientManager
+from models import LLMProvider
+from skills_manager import (
+    get_active_skills_dir,
+    list_available_skills,
+    sync_skills,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _extract_response_text(response) -> str:
-    """从 ChatResponse 的 content blocks 中提取文本"""
-    content = getattr(response, 'content', None)
+# ---------------------------------------------------------------------------
+# Provider → ChatModel 工厂（映射表替代 if-else 链）
+# ---------------------------------------------------------------------------
+
+# 默认 base_url：与 1.0 行为对齐，OpenAI 兼容供应商兜底
+_DEFAULT_BASE_URLS: dict[str, str] = {
+    "deepseek": "https://api.deepseek.com",
+    "minimax": "https://api.minimax.io/anthropic",
+    "xai": "https://api.x.ai/v1",
+    "ark": "https://ark.cn-beijing.volces.com/api/v3",
+}
+
+# 家族识别：子串包含即视为 Anthropic 系；其余落到 OpenAI 兼容路径
+_ANTHROPIC_FAMILY_KEYWORDS: tuple[str, ...] = ("anthropic", "minimax")
+
+
+def _build_credential(cred_cls: Any, api_key: str, base_url: str | None) -> Any:
+    """构造 Credential。某些 Credential 不支持 base_url 字段，此时回退至仅 api_key。"""
+    cred_kwargs: dict[str, Any] = {"api_key": api_key}
+    base_url and cred_kwargs.update(base_url=base_url)
+    try:
+        return cred_cls(**cred_kwargs)
+    except TypeError:
+        cred_kwargs.pop("base_url", None)
+        return cred_cls(**cred_kwargs)
+
+
+def _factory_with_credential(cred_cls: Any, model_cls: Any):
+    """通用工厂：Credential + ChatModel 组合，参数一致。"""
+
+    def factory(api_key: str, model_name: str, base_url: str | None,
+                parameters: Any | None = None) -> Any:
+        credential = _build_credential(cred_cls, api_key, base_url)
+        model_kwargs: dict[str, Any] = {"credential": credential, "model": model_name}
+        parameters is not None and model_kwargs.update(parameters=parameters)
+        return model_cls(**model_kwargs)
+
+    return factory
+
+
+def _ollama_factory(api_key: str, model_name: str, base_url: str | None,
+                    parameters: Any | None = None) -> Any:
+    """Ollama: credential 可选；host 指向本地服务地址。"""
+    kwargs: dict[str, Any] = {"model": model_name}
+    base_url and kwargs.update(host=base_url)
+    return OllamaChatModel(**kwargs)
+
+
+# 直接命中：provider_type 完全匹配
+_DIRECT_MODEL_FACTORIES = {
+    "dashscope": _factory_with_credential(DashScopeCredential, DashScopeChatModel),
+    "gemini": _factory_with_credential(GeminiCredential, GeminiChatModel),
+    "ollama": _ollama_factory,
+}
+
+# 家族兜底：OpenAI / Anthropic
+_FAMILY_FACTORIES = {
+    "openai": _factory_with_credential(OpenAICredential, OpenAIChatModel),
+    "anthropic": _factory_with_credential(AnthropicCredential, AnthropicChatModel),
+}
+
+
+def _resolve_factory(provider_type: str):
+    """根据 provider_type 选定模型工厂（直接匹配 → Anthropic 家族 → OpenAI 兜底）。"""
+    pt = provider_type.lower()
+    direct = _DIRECT_MODEL_FACTORIES.get(pt)
+    if direct:
+        return direct
+    family_key = "anthropic" if any(k in pt for k in _ANTHROPIC_FAMILY_KEYWORDS) else "openai"
+    return _FAMILY_FACTORIES[family_key]
+
+
+def create_chat_model(
+    provider_type: str,
+    api_key: str,
+    model_name: str,
+    base_url: str | None = None,
+    parameters: Any | None = None,
+) -> Any:
+    """统一构造 2.0 ChatModel：1.0 风格的 (provider_type, api_key, base_url) → Credential。
+
+    供 narrative_engine、services.agent_executor、routers.llm_config 复用，
+    集中收敛 Credential 拆包逻辑，避免散落多处的 if-else 链。
+    """
+    factory = _resolve_factory(provider_type)
+    effective_base_url = base_url or _DEFAULT_BASE_URLS.get(provider_type.lower())
+    return factory(api_key, model_name, effective_base_url, parameters)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _extract_response_text(response_msg: Any) -> str:
+    """从 2.0 Msg 中提取纯文本（兼容 TextBlock / dict / str 多形态 content）。"""
+    helper = getattr(response_msg, "get_text_content", None)
+    if callable(helper):
+        return helper() or ""
+
+    content = getattr(response_msg, "content", None)
     extractors = {
         str: lambda c: c,
-        list: lambda c: "".join(
-            block.get("text", "") for block in c
-            if isinstance(block, dict) and block.get("type") == "text"
-        ),
+        list: lambda c: "".join(_block_to_text(b) for b in c),
     }
     return extractors.get(type(content), lambda c: str(c) if c else "")(content)
 
 
-class DialogAgent(ToolGuardMixin, AgentBase):
-    # Model type -> Formatter class (OpenAI as default fallback)
-    _FORMATTER_MAP = {
-        GeminiChatModel: GeminiChatFormatter,
-        DashScopeChatModel: DashScopeChatFormatter,
-        AnthropicChatModel: AnthropicChatFormatter,
-        OllamaChatModel: OllamaChatFormatter,
-    }
+def _block_to_text(block: Any) -> str:
+    """单个 content block → text。兼容 Pydantic TextBlock 与历史 dict 形态。"""
+    if isinstance(block, dict):
+        return block.get("text", "") if block.get("type") == "text" else ""
+    return getattr(block, "text", "") or ""
 
-    def __init__(self, name: str, sys_prompt: str, model, max_tokens=4000, mcp_manager: MCPClientManager = None, skill_names: list[str] | None = None):
-        super().__init__()
-        self.name = name
-        self.sys_prompt = sys_prompt
-        self.model = model
-        self.memory = []
+
+# ---------------------------------------------------------------------------
+# DialogAgent（KunFlix 项目对 2.0 Agent 的最薄封装）
+# ---------------------------------------------------------------------------
+
+class DialogAgent(Agent):
+    """保留 1.0 风格的构造签名，便于 services.agent_executor / routers 零改动接入。
+
+    - skills 通过 Toolkit(skills_or_loaders=[...]) 一次性注册
+    - mcp 在 reply 前懒注册（兼容 mcp_manager 热加载）
+    """
+
+    def __init__(
+        self,
+        name: str,
+        sys_prompt: str,
+        model: Any,
+        max_tokens: int = 4000,  # noqa: ARG002 — 1.0 兼容签名；2.0 由 ContextConfig 接管
+        mcp_manager: MCPClientManager | None = None,
+        skill_names: list[str] | None = None,
+    ) -> None:
+        sync_skills()  # 同步 builtin / customized → active_skills
+        active_dir = get_active_skills_dir()
+        active_dir.exists() or active_dir.mkdir(parents=True, exist_ok=True)
+
+        skills_or_loaders = self._collect_skill_paths(active_dir, skill_names)
+        toolkit_kwargs = {"skills_or_loaders": skills_or_loaders} if skills_or_loaders else {}
+        toolkit = Toolkit(**toolkit_kwargs)
+
+        super().__init__(
+            name=name,
+            system_prompt=sys_prompt,
+            model=model,
+            toolkit=toolkit,
+        )
+
         self.mcp_manager = mcp_manager
-        # Resolve formatter based on model type
-        formatter_cls = self._FORMATTER_MAP.get(type(model), OpenAIChatFormatter)
-        self._formatter = formatter_cls()
-        
-        # Initialize ToolGuard
-        self._init_tool_guard()
-        
-        # Initialize Toolkit and load skills
-        self.toolkit = Toolkit()
-        self._register_skills(skill_names)
-        
-        # Initialize Memory Compaction Hook
-        self._memory_compaction_hook = MemoryCompactionHook(max_tokens=max_tokens, summarization_model=self.model)
+        self._mcp_registered = False
 
-    async def _register_mcp_clients(self):
-        """Register MCP clients with the toolkit if manager is provided."""
-        if not self.mcp_manager:
+    @staticmethod
+    def _collect_skill_paths(active_dir: Path, skill_names: list[str] | None) -> list[str]:
+        """从 active_skills 中挑选目录路径，必要时按 skill_names 过滤。"""
+        available = list_available_skills()
+        wanted = [s for s in available if s in skill_names] if skill_names else available
+        return [str(active_dir / name) for name in wanted]
+
+    async def _ensure_mcp_registered(self) -> None:
+        """懒注册 MCP 客户端到 toolkit；首次 reply 之前完成。"""
+        if not self.mcp_manager or self._mcp_registered:
             return
-            
-        clients = await self.mcp_manager.get_clients()
-        for client in clients:
+
+        # 兼容 toolkit 在不同 2.0 版本中的方法名（register_mcp_client / register_mcp）
+        register = (
+            getattr(self.toolkit, "register_mcp_client", None)
+            or getattr(self.toolkit, "register_mcp", None)
+        )
+        if not callable(register):
+            logger.debug("Toolkit has no MCP registration hook; skipping MCP injection.")
+            self._mcp_registered = True
+            return
+
+        for client in await self.mcp_manager.get_clients():
             try:
-                # AgentScope 1.1+ supports register_mcp_client
-                if hasattr(self.toolkit, 'register_mcp_client'):
-                    await self.toolkit.register_mcp_client(client)
-                    logger.info(f"Registered MCP client: {getattr(client, 'name', 'unknown')}")
-            except Exception as e:
-                logger.error(f"Failed to register MCP client: {e}")
+                res = register(client)
+                asyncio.iscoroutine(res) and await res
+                logger.info("Registered MCP client: %s", getattr(client, "name", "unknown"))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to register MCP client: %s", exc)
+        self._mcp_registered = True
 
-    def _register_skills(self, skill_names: list[str] | None = None):
-        """Load and register skills from active_skills directory.
-        
-        Args:
-            skill_names: Optional list of skill names to load.
-                         When provided, only matching active skills are registered.
-                         When None, all active skills are registered.
-        """
-        sync_skills()  # Ensure skills are synced before loading
-        active_skills_dir = get_active_skills_dir()
-        available_skills = list_available_skills()
+    async def reply(self, *args: Any, **kwargs: Any) -> Msg:  # type: ignore[override]
+        """覆盖 Agent.reply，在第一次推理前确保 MCP 已注册。"""
+        await self._ensure_mcp_registered()
+        return await super().reply(*args, **kwargs)
 
-        skills_to_load = (
-            [s for s in available_skills if s in skill_names]
-            if skill_names
-            else available_skills
-        )
-        
-        for skill_name in skills_to_load:
-            skill_dir = active_skills_dir / skill_name
-            try:
-                # Assuming AgentScope Toolkit has a register_agent_skill method similar to CoPaw
-                # If not, we might need to parse SKILL.md and register the functions manually
-                if hasattr(self.toolkit, 'register_agent_skill'):
-                    self.toolkit.register_agent_skill(str(skill_dir))
-                    logger.info(f"Registered skill: {skill_name}")
-            except Exception as e:
-                logger.error(f"Failed to register skill '{skill_name}': {e}")
 
-    async def reply(self, x: Msg = None) -> Msg:
-        # First ensure MCP clients are registered (done lazily/per-request to support hot-reload)
-        await self._register_mcp_clients()
-        
-        if x:
-            self.memory.append(x)
-            
-        # Trigger Memory Compaction Hook before reasoning
-        await self._memory_compaction_hook(self, {})
-
-        # Build Msg list with correct roles for formatter
-        msgs = [Msg(name="system", content=self.sys_prompt, role="system")]
-        for m in self.memory:
-            role = "assistant" if m.name == self.name else (m.role if m.role == "system" else "user")
-            msgs.append(Msg(name=m.name, content=m.content, role=role))
-
-        # 计算输入字符数
-        input_chars = len(self.sys_prompt) + sum(
-            len(m.content) if isinstance(m.content, str) else 0 for m in self.memory
-        )
-
-        # Format -> Call -> Collect (formatter handles provider-specific conversion)
-        formatted = await self._formatter.format(msgs)
-        # Sanitize: strip `name` from non-user messages
-        # (xAI only allows name on user role; safe for all other providers)
-        for m in formatted:
-            m.get("role") != "user" and m.pop("name", None)
-        response = self.model(formatted)
-
-        if asyncio.iscoroutine(response):
-            response = await response
-
-        # Consume async generator (streaming)
-        if hasattr(response, '__anext__'):
-            chunks = []
-            async for chunk in response:
-                chunks.append(chunk)
-            response = chunks[-1] if chunks else None
-
-        # Extract text from ChatResponse content blocks
-        content = _extract_response_text(response)
-
-        # 从 response.usage 提取真实 API token 统计
-        usage = getattr(response, 'usage', None)
-        input_tokens = getattr(usage, 'input_tokens', 0) if usage else 0
-        output_tokens = getattr(usage, 'output_tokens', 0) if usage else 0
-
-        # 创建包含双维度统计的消息
-        res_msg = Msg(
-            name=self.name,
-            content=content,
-            role="assistant",
-            metadata={
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "input_chars": input_chars,
-                "output_chars": len(content),
-            }
-        )
-        self.memory.append(res_msg)
-        return res_msg
+# ---------------------------------------------------------------------------
+# NarrativeEngine：从 DB 读取 active LLMProvider，热加载为 chat model
+# ---------------------------------------------------------------------------
 
 class NarrativeEngine:
-    def __init__(self):
+    def __init__(self) -> None:
         self.initialized = False
-        self.current_model = None
+        self.current_model: Any = None
 
-        
-    async def load_config_from_db(self, db_session=None):
-        """
-        Loads the active LLM configuration from the database.
-        If db_session is provided, use it. Otherwise, create a new one.
-        """
+    async def load_config_from_db(self, db_session: Any | None = None) -> None:
+        """Load active LLM configuration from DB. Reuse session if provided."""
         if db_session:
             return await self._fetch_and_init(db_session)
-        
+
         async with AsyncSessionLocal() as session:
             return await self._fetch_and_init(session)
 
-    async def _fetch_and_init(self, session):
+    async def _fetch_and_init(self, session: Any) -> None:
         result = await session.execute(
-            select(LLMProvider).filter(LLMProvider.is_active == True).order_by(LLMProvider.is_default.desc())
+            select(LLMProvider)
+            .filter(LLMProvider.is_active == True)  # noqa: E712 — SQLAlchemy 表达式
+            .order_by(LLMProvider.is_default.desc())
         )
         provider = result.scalars().first()
-        
-        if not provider:
-            print("Warning: No active LLM Provider found in database. Using fallback settings if available.")
-            # Fallback to settings if DB is empty (migration path)
-            if settings.OPENAI_API_KEY:
-                self.initialize(
-                    api_key=settings.OPENAI_API_KEY, 
-                    model_name=settings.STORY_GENERATION_MODEL,
-                    base_url=None
-                )
-            return
-            
-        print(f"Initializing NarrativeEngine with provider: {provider.name}")
-        
-        # Parse models from JSON or list
-        model_to_use = "gpt-4"
-        if provider.models:
-            if isinstance(provider.models, list) and len(provider.models) > 0:
-                model_to_use = provider.models[0]
-            elif isinstance(provider.models, str):
-                import json
-                try:
-                    models_list = json.loads(provider.models)
-                    if models_list and len(models_list) > 0:
-                        model_to_use = models_list[0]
-                except:
-                    model_to_use = provider.models
 
+        if not provider:
+            logger.warning(
+                "No active LLM Provider in DB; falling back to settings.OPENAI_API_KEY."
+            )
+            settings.OPENAI_API_KEY and self.initialize(
+                api_key=settings.OPENAI_API_KEY,
+                model_name=settings.STORY_GENERATION_MODEL,
+                base_url=None,
+            )
+            return
+
+        logger.info("Initializing NarrativeEngine with provider: %s", provider.name)
         self.initialize(
             api_key=provider.api_key,
-            model_name=model_to_use,
+            model_name=self._pick_first_model(provider.models),
             base_url=provider.base_url,
             provider_type=provider.provider_type,
-            config_json=provider.config_json
+            config_json=provider.config_json,
         )
 
-    def initialize(self, api_key=None, model_name="gpt-4", base_url=None, provider_type="openai_chat", config_json=None):
+    @staticmethod
+    def _pick_first_model(models_field: Any) -> str:
+        """Resolve provider.models (list / json-string / str) to a single model name."""
+        if isinstance(models_field, list) and models_field:
+            return models_field[0]
+        if isinstance(models_field, str) and models_field:
+            try:
+                parsed = json.loads(models_field)
+                return parsed[0] if isinstance(parsed, list) and parsed else models_field
+            except json.JSONDecodeError:
+                return models_field
+        return "gpt-4"
+
+    def initialize(
+        self,
+        api_key: str | None = None,
+        model_name: str = "gpt-4",
+        base_url: str | None = None,
+        provider_type: str = "openai_chat",
+        config_json: Any | None = None,  # noqa: ARG002 — 留作未来 parameters 注入位
+    ) -> None:
         if not api_key:
-            print("Warning: API Key not provided for Narrative Engine.")
+            logger.warning("API Key not provided for Narrative Engine; skipping init.")
             return
 
         try:
-            agentscope.init()
-            
-            provider_type_lower = provider_type.lower()
-            
-            # 供应商类型映射到模型类和配置
-            openai_compatible = ["openai", "azure", "deepseek", "vllm", "xai"]
-            anthropic_compatible = ["anthropic", "minimax"]
-            
-            # 默认 base_url 配置
-            default_base_urls = {
-                "deepseek": "https://api.deepseek.com",
-                "minimax": "https://api.minimax.io/anthropic",
-                "xai": "https://api.x.ai/v1",
-                "ark": "https://ark.cn-beijing.volces.com/api/v3",
-            }
-            
-            # 确定实际使用的 base_url
-            effective_base_url = base_url or default_base_urls.get(provider_type_lower)
-            client_kwargs = {"base_url": effective_base_url} if effective_base_url else None
-            
-            # 根据供应商类型创建对应的模型实例
-            model_creators = {
-                "dashscope": lambda: DashScopeChatModel(model_name=model_name, api_key=api_key),
-                "gemini": lambda: GeminiChatModel(model_name=model_name, api_key=api_key),
-                "ollama": lambda: OllamaChatModel(model_name=model_name, host=effective_base_url),
-            }
-            
-            # 检查是否有直接匹配的创建器
-            creator = model_creators.get(provider_type_lower)
-            
-            # 检查是否属于 OpenAI 兼容类型
-            is_openai = creator is None and any(t in provider_type_lower for t in openai_compatible)
-            # 检查是否属于 Anthropic 兼容类型
-            is_anthropic = creator is None and any(t in provider_type_lower for t in anthropic_compatible)
-            
-            if creator:
-                self.current_model = creator()
-            elif is_anthropic:
-                self.current_model = AnthropicChatModel(
-                    model_name=model_name,
-                    api_key=api_key,
-                    client_kwargs=client_kwargs
-                )
-            else:
-                # 默认使用 OpenAI 兼容格式
-                self.current_model = OpenAIChatModel(
-                    model_name=model_name,
-                    api_key=api_key,
-                    client_kwargs=client_kwargs
-                )
+            self.current_model = create_chat_model(
+                provider_type=provider_type,
+                api_key=api_key,
+                model_name=model_name,
+                base_url=base_url,
+            )
+            logger.info("AgentScope chat model ready: %s (%s)", model_name, provider_type)
+            self.initialized = True
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to initialize chat model: %s", exc)
 
-            print(f"AgentScope initialized with model: {model_name} ({provider_type})")
-        except Exception as e:
-            print(f"AgentScope init error: {e}")
-            return
-
-        self.initialized = True
-
-    async def reload_config(self, db_session):
-        """Method to trigger a reload of configuration from the API"""
+    async def reload_config(self, db_session: Any) -> None:
+        """Trigger a reload of configuration from DB."""
         await self.load_config_from_db(db_session)
 
 
 narrative_engine = NarrativeEngine()
-# Note: Initial loading happens when needed or triggered by startup event
-
+# Note: Initial loading happens via startup.lifespan or admin API endpoints.

@@ -126,32 +126,51 @@ KunFlix 专为**影视广告与短剧创作**打造的开放式AI内容创作生
 
 ### 环境要求
 
-- Python 3.10+
+- **Python 3.12+**（AgentScope 2.0 强制要求；旧 3.10 venv 需删除重建）
+- **Rust 1.85+**（仅当从源码编译 ripgrep 时需要；首次安装会触发，参见 [UPGRADE.md](./UPGRADE.md)）
 - Node.js 20+
+- Docker 24+（Docker 部署时需要）
 - SQLite（开发）/ PostgreSQL（生产）
 
-### 安装步骤
+> 从 1.0 升级到 2.0 的开发者请先阅读 [UPGRADE.md](./UPGRADE.md)。
 
-<summary><b>📦 克隆项目</b></summary>
+### 三种启动模式
+
+项目支持三种部署方式，覆盖云端生产、本地联调、纯开发全场景：
+
+| 模式 | 命令 | 适用场景 | 跨平台支持 |
+|:---|:---|:---|:---|
+| ☁️ 云服务器 | `bash scripts/init-letsencrypt.sh` | 带域名 + HTTPS 生产环境 | Linux |
+| 🐳 本地 Docker | `bash scripts/init-local.sh` | 个人开发全栈联调 | Win (Git Bash/WSL) / macOS / Linux |
+| 🖥️ 非 Docker 开发 | `python dev.py` | 纯本地开发、热重载 | Win / macOS / Linux |
+
+---
+
+#### 方式一：本地开发（推荐开发者）
 
 ```bash
 git clone https://github.com/KunLabAI/KunFlix.git
 cd KunFlix
-```
-
-### 🎯 开发模式一键启动
-
-```bash
 python dev.py
 ```
 
-### 🎯 生产模式一键启动(推荐)
+自动完成：创建虚拟环境 → 安装依赖 → 初始化数据库 → 并行启动 Backend + Frontend + Admin 三个服务。
+
+#### 方式二：[本地 Docker](./DEPLOY.md)
 
 ```bash
-python start.py
+git clone https://github.com/KunLabAI/KunFlix.git
+cd KunFlix/deploy
+bash scripts/init-local.sh
 ```
 
-### 或者 手动安装
+一键拉起 PostgreSQL + Redis + Backend + Worker + Frontend + Admin 全栈容器。
+
+#### 方式三：[云服务器生产部署](./DEPLOY.md)
+
+详见 [DEPLOY.md](./DEPLOY.md)，含 HTTPS 证书签发、Nginx 反代、安全加固等完整流程。
+
+### 手动安装（可选）
 
 <details>
 <summary><b>⚙️ 1. 后端配置</b></summary>
@@ -209,6 +228,7 @@ npm run dev
 - DeepSeek
 - Dashscope（阿里百炼）
 - 火山引擎/火山方舟
+- Open Router
 - 其他供应商后续支持
 
 ### 2. 创建智能体
@@ -315,7 +335,6 @@ KunFlix/
 
 | 优先级 | 功能 | 状态 | 描述 |
 |:---:|:---|:---:|:---|
-| 🔴 高 | 画布节点工具化 | 🚧 进行中 | 将画布中的内容节点（图片、视频、音频）工具化，支持智能体直接引用和二次创作 |
 | 🔴 高 | TTS 供应商补齐 | 📋 规划中 | 接入更多 TTS 供应商（Azure TTS、ElevenLabs、火山引擎等），提供更多音色选择 |
 | 🟡 中 | TTS 节点功能 | 📋 规划中 | 在画布中增加 TTS 专用节点，支持文本转语音、语音克隆、多角色配音等功能 |
 | 🟡 中 | 多智能体模块优化 | 🚧 进行中 | 优化多智能体协作的稳定性、任务分派逻辑和事件流显示 |

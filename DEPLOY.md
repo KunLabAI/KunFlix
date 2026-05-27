@@ -2,6 +2,8 @@
 
 > 面向 2C4G+ Ubuntu/Debian 服务器的完整 Docker Compose 一键部署方案。
 
+简体中文 | [English](./DEPLOY_EN.md)
+
 ---
 
 ## 架构概览
@@ -32,7 +34,72 @@ certbot ──► 每12h自动续期  (webroot 模式, 不中断服务)
 
 ---
 
-## 快速部署
+## 本地 Docker 部署（跨平台）
+
+> 适用于在个人电脑跳过域名 / Let's Encrypt 的全流程打通。支持 Windows（Git Bash / WSL）、macOS、Linux。
+
+### 1. 安装 Docker Desktop
+
+[下载 Docker Desktop](https://www.docker.com/products/docker-desktop/) 安装后启动，确保 `docker --version` 与 `docker compose version` 都能返回版本。
+
+### 2. 拉取代码
+
+```bash
+git clone https://github.com/KunLabAI/KunFlix
+cd deploy
+```
+
+### 3. 一键初始化
+
+```bash
+# Windows 用户请使用 Git Bash 或 WSL 执行
+bash scripts/init-local.sh
+```
+
+该脚本一次性完成：
+
+1. 检查 Docker / Compose
+2. 生成 `.env.prod`（`DOMAIN=localhost` + 随机生成 POSTGRES_PASSWORD / REDIS_PASSWORD / JWT_SECRET_KEY / ENCRYPTION_KEY）
+3. 生成 `docker-compose.override.yml`（本地端口直通 3666/3888/8000/5432/6379）
+4. `docker compose up -d --build` 拉起 **postgres / redis / backend / worker / frontend / admin** 六个服务（跳过 nginx + certbot，本地无 TLS 证书）
+5. 等待 backend healthy → seed 数据库（LLM Provider / Admin / Email Templates / Prompt Templates，幂等）
+
+脚本完全幂等，重跑不会破坏已有数据。可选参数：
+
+```bash
+# 自定义默认管理员凭证
+bash scripts/init-local.sh --admin-email me@test.dev --admin-password 'My$tr0ng!Pass'
+
+# 仅重启不重建镜像（代码未改时更快）
+bash scripts/init-local.sh --no-build
+
+# 跳过数据库灌种
+bash scripts/init-local.sh --skip-seed
+```
+
+启动后访问：
+
+| 入口 | 地址 | 默认凭证 |
+|------|------|---------|
+| 前台主站 | http://localhost:3666/ | 自行注册 |
+| 管理后台 | http://localhost:3888/admin | `admin@example.com` / `Admin@12345` |
+| 后端 API 文档 | http://localhost:8000/docs | — |
+
+> ⚠️ 默认 admin 凭证仅限本地开发。上线生产务必通过 `--admin-password` 参数传入高强度密码，或在后台 UI 中手动修改。
+
+停止与清理：
+
+```bash
+# 仅停服务（保留数据卷）
+docker compose --env-file .env.prod down
+
+# 连数据一起炸（重新初始化用）
+docker compose --env-file .env.prod down -v
+```
+
+---
+
+## 云服务器生产部署
 
 ### 1. 安装 Docker & 防火墙
 
@@ -45,7 +112,7 @@ sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
 ### 2. 拉取代码 & 配置环境变量
 
 ```bash
-git clone <your-repo-url> /opt/kunflix
+git clone https://github.com/KunLabAI/KunFlix
 cd /opt/kunflix/deploy
 cp .env.prod.example .env.prod
 ```
@@ -132,7 +199,8 @@ deploy/
 ├── redis/
 │   └── redis.conf                  # AOF + maxmemory 256MB + protected-mode off
 └── scripts/
-    ├── init-letsencrypt.sh         # 一键首签脚本（certbot standalone）
+    ├── init-letsencrypt.sh         # 云服务器一键首签脚本（certbot standalone）
+    ├── init-local.sh               # 本地 Docker 一键初始化（跨平台 bash）
     └── backup-db.sh                # pg_dump 定时备份
 ```
 

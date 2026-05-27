@@ -213,7 +213,7 @@ function LoginPageContent() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [verifyToken, setVerifyToken] = useState<string>("");
-  const [emailVerifyRequired, setEmailVerifyRequired] = useState(true);
+  const [emailVerifyRequired, setEmailVerifyRequired] = useState(false);
   const { login } = useAuth();
   const { restoreTheme } = useTheme();
   const { message } = App.useApp();
@@ -223,7 +223,7 @@ function LoginPageContent() {
   useEffect(() => {
     api.get<{ email_verification_required: boolean }>("/auth/public-settings")
       .then(({ data }) => setEmailVerifyRequired(data.email_verification_required))
-      .catch(() => setEmailVerifyRequired(true));
+      .catch(() => setEmailVerifyRequired(false));
   }, []);
 
   // 登录成功后回跳地址：默认 "/"，仅允许以单 "/" 开头的相对路径（防开放重定向）。
