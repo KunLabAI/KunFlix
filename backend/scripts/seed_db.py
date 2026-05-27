@@ -13,7 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(_BACKEND_DIR, "deps")))
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import AsyncSessionLocal
-from models import LLMProvider, Admin, User, PromptTemplate, SubscriptionPlan, EmailTemplate
+from models import LLMProvider, Admin, PromptTemplate, SubscriptionPlan, EmailTemplate
 from config import settings
 import bcrypt
 # from passlib.context import CryptContext
