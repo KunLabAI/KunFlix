@@ -1,206 +1,140 @@
 ---
 name: canvas_tools
-description: "Canvas node and edge CRUD operations. Provides tools to manage theater canvas nodes and connections between them."
+description: "Canvas node CRUD operations. Provides tools to list, get, create, update, and delete theater canvas nodes."
 metadata:
-  builtin_skill_version: "1.4"
+  builtin_skill_version: "1.0"
 ---
 # Canvas Tools
 
-Use this skill when the user asks to view, create, update, or delete content on the theater canvas (nodes and edges).
+Use this skill when the user asks to view, create, update, or delete content on the theater canvas (nodes).
 
-Loading this skill activates 8 tools: `list_canvas_nodes`, `get_canvas_node`, `create_canvas_node`, `update_canvas_node`, `delete_canvas_node`, `list_canvas_edges`, `create_canvas_edge`, `delete_canvas_edge`.
+Loading this skill activates the following tools:
+- `list_canvas_nodes` — List all nodes on the canvas
+- `get_canvas_node` — Get full details of a specific node
+- `create_canvas_node` — Create a new node
+- `update_canvas_node` — Update an existing node
+- `delete_canvas_node` — Delete a node
 
----
+**Note:** Loading this skill grants access to all node types (text, image, video, storyboard). A theater (canvas) must be active in the current conversation for these tools to work.
 
-## Node Types & Data Fields
+## Node Types
 
-### text — 文本节点
-For scripts, copy, and written content. Supports Markdown.
+The canvas supports these node types (available types depend on agent configuration):
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `title` | string | Required |
-| `content` | string | Markdown body (`#`, `**bold**`, code blocks, lists). Required on create; **omit on update if unchanged**. |
-| `tags` | string[] | Optional, for categorization |
+### text
+Text nodes for scripts, copy, ads, and other written content. Supports rich text (Markdown).
 
-### image — 图像节点
-For character designs, scenes, posters.
+Fields:
+- `title` (string, required) — Node title
+- `content` (string, Markdown) — Body text. Supports headings (#/##/###), paragraphs, bold (**text**), italic (*text*), code blocks, etc. Required when creating; omit when updating if unchanged.
+- `tags` (array, optional) — Tags for categorization
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `name` | string | Required |
-| `description` | string | Scene/character description |
-| `imageUrl` | string | `/api/media/xxx.jpg` — JPEG/PNG/WebP |
-| `fitMode` | string | `"cover"` or `"contain"` |
+### image
+Image nodes for character designs, scenes, posters, and visual content.
 
-### video — 视频节点
+Fields:
+- `name` (string) — Image name
+- `description` (string) — Image description (scene, character info, etc.)
+- `imageUrl` (string) — Image URL path (e.g. `/media/xxx.jpg`), supports JPEG/PNG/JPG
+- `fitMode` (string) — "cover" (fill) or "contain" (fit)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `name` | string | Required |
-| `description` | string | Scene/duration description |
-| `videoUrl` | string | `/api/media/xxx.mp4` — MP4 |
-| `fitMode` | string | `"cover"` or `"contain"` |
+### video
+Video nodes for animations, short films, and motion content.
 
-### audio — 音频节点
+Fields:
+- `name` (string) — Video name
+- `description` (string) — Video description (scene, duration, etc.)
+- `videoUrl` (string) — Video URL path (e.g. `/media/xxx.mp4`), supports MP4
+- `fitMode` (string) — "cover" (fill) or "contain" (fit)
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `name` | string | Required |
-| `description` | string | Style/purpose description |
-| `audioUrl` | string | `/api/media/xxx.mp3` — MP3/WAV/OGG |
-| `lyrics` | string | Optional lyrics text |
+### storyboard
+Storyboard nodes for shot breakdowns and multi-dimensional table content.
 
-### storyboard — 分镜/多维表格节点
-For shot breakdowns and table content. **Supports embedding media in cells.**
+Fields:
+- `shotNumber` (string) — Shot number (e.g. "1-1", "2-3")
+- `description` (string) — Shot description
+- `duration` (integer) — Duration in seconds
+- `pivotConfig` (JSON) — Multi-dimensional table config with custom field types
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `shotNumber` | string | e.g. `"1-1"` |
-| `description` | string | Shot description |
-| `duration` | integer | Seconds |
-| `tableColumns` | array | `[{key, label, type}]` — type: `"text"`, `"number"`, `"image"`, `"video"`, `"audio"` |
-| `tableData` | array | `[{key: value, ...}]` — media cells use `/api/media/xxx.ext` paths |
+## Tool: list_canvas_nodes
 
----
+List all nodes on the canvas, optionally filtered by type.
 
-## Positioning & Layout
+Parameters:
+- `node_type` (string, optional) — Filter by node type (e.g. "text", "image", "video", "storyboard")
 
-Nodes live on an infinite 2D canvas. Each node has `position_x` (horizontal) and `position_y` (vertical), where **right = +X**, **down = +Y**.
+Returns a list of node summaries (id, type, position, key fields).
 
-### Auto-placement
-When creating nodes **without** specifying position, the system places them automatically to the right of existing nodes, wrapping to new rows when space runs out. **Use auto-placement by default** unless the user requests a specific layout.
+## Tool: get_canvas_node
 
-### Manual positioning
-Both `create_canvas_node` and `update_canvas_node` accept optional `position_x` and `position_y` parameters (top-level, not inside `data`).
+Get full details of a specific node.
 
-**Typical node sizes for spacing reference:**
-- Standard node: ~420×300 px
-- Horizontal gap: ~40–80 px
-- Vertical gap: ~60–100 px
+Parameters:
+- `node_id` (string, required) — ID of the node to retrieve
 
-### Layout patterns
-When the user asks to "arrange" or "rearrange" nodes:
-1. Call `list_canvas_nodes` to get current positions and node list
-2. Calculate new positions based on desired layout (grid, tree, flow, etc.)
-3. Call `update_canvas_node` for each node with new `position_x` and `position_y`
+Returns complete node data including all fields, position, and metadata.
 
-**Common layouts:**
-- **Horizontal flow:** nodes in a row, X increments by ~500, same Y
-- **Grid:** rows of 3–4 nodes, X increments by ~500, Y increments by ~400 per row
-- **Tree/hierarchy:** parent centered on top, children spread below
+## Tool: create_canvas_node
 
-Example — move a node to a new position:
+Create a new node on the canvas.
+
+Parameters:
+- `node_type` (string, required) — Type of node to create
+- `data` (object, required) — Node data matching the type's field schema
+- `position_x` (number, optional) — X position. Auto-calculated if omitted.
+- `position_y` (number, optional) — Y position. Auto-calculated if omitted.
+
+Example — create a text node:
 ```
-update_canvas_node(node_id="uuid", position_x=800, position_y=300)
-```
-
-Example — update both data and position:
-```
-update_canvas_node(node_id="uuid", data={"title": "New Title"}, position_x=100, position_y=200)
+create_canvas_node(
+  node_type="text",
+  data={
+    "title": "Chapter 1 Outline",
+    "content": "# Chapter 1\n\nThe story begins...\n\n## Scene 1\n\nThe protagonist appears.",
+    "tags": ["outline", "chapter1"]
+  }
+)
 ```
 
----
-
-## Edge Conventions
-
-Edges connect nodes left-to-right. Always use the standard direction:
-- `source_handle`: `"right-source"` (default)
-- `target_handle`: `"left-target"` (default)
-
-Only deviate if the user explicitly requests a different flow direction.
-
-### Edge Compatibility Matrix (Source → Target)
-
-This matrix is the **single source of truth** for edge legality.
-It is mirrored on the frontend at `frontend/src/lib/canvas/edgeRules.md`.
-Both `create_canvas_edge` and the frontend `onConnect` handler MUST validate against it.
-
-| Source \\ Target | text | image | video | audio | storyboard |
-|---|---|---|---|---|---|
-| **text**       | allow (append/continue) | allow (fill prompt)         | allow (fill prompt)           | allow (fill lyrics/TTS)    | allow (append row / column text) |
-| **image**      | deferred (OCR/caption)  | allow (image-to-image ref)  | allow (first-frame / ref)     | allow (reference image)    | allow (fill media column)        |
-| **video**      | deferred (subtitle)     | allow (frame extract)       | allow (style/continuation)    | deferred (audio extract)   | allow (fill media column)        |
-| **audio**      | deferred (ASR)          | forbid                      | allow (voiceover input)       | deferred (mix)             | allow (fill media column)        |
-| **storyboard** | allow (flatten rows)    | allow (batch generate)      | allow (batch generate)        | allow (batch generate)     | allow (append/merge rows)        |
-
-Legend:
-- **allow** — create the edge.
-- **forbid** — reject the edge and return an error with reason `"forbidden_type_combination"`.
-- **deferred** — phase-1 not supported; reject with reason `"not_supported_yet"` (UI tooltip: "coming soon").
-
-### Hard Constraints
-
-Always reject when any of these hold:
-1. Self-loop: `source_node_id == target_node_id`.
-2. Duplicate edge: same `(source_node_id, source_handle, target_node_id, target_handle)` already exists.
-3. Same-polarity handles: both endpoints are `*-source` or both are `*-target`.
-4. Matrix entry is `forbid` or `deferred`.
-
-### Content Injection Semantics (for reference)
-
-`create_canvas_edge` itself does NOT perform content injection — that is a frontend UX concern.
-However, when planning a workflow, keep the semantics in mind:
-- text → image/video: upstream text becomes the downstream generation prompt.
-- image → image/video: upstream media URL is appended as a reference image.
-- any media → storyboard: URL is written into the matching media column.
-- storyboard → image/video/audio: each row triggers one generation task (downstream app logic).
-
----
-
-## Return Values
-
-| Tool | Returns |
-|------|---------|
-| `list_canvas_nodes` | `{count, nodes: [{id, node_type, position: {x, y}, ...key_fields}]}` |
-| `get_canvas_node` | Full node object with all fields, position, dimensions |
-| `create_canvas_node` | `{success: true, node: {full node object}}` |
-| `update_canvas_node` | `{success: true, node: {full node object}}` |
-| `delete_canvas_node` | `{success: true, deleted_node_id}` |
-| `list_canvas_edges` | `{count, edges: [{id, source_node_id, target_node_id, ...}]}` |
-| `create_canvas_edge` | `{success: true, edge: {edge object}}` |
-| `delete_canvas_edge` | `{success: true, deleted_edge: {source, target}}` |
-
----
-
-## Workflow Patterns
-
-### Creating a set of connected nodes
+Example — create an image node:
 ```
-1. create_canvas_node(type="text", data={...})           → get node_id_A
-2. create_canvas_node(type="image", data={...})          → get node_id_B
-3. create_canvas_edge(source=node_id_A, target=node_id_B)
+create_canvas_node(
+  node_type="image",
+  data={
+    "name": "Hero Portrait",
+    "description": "Main character, age 18, cheerful personality",
+    "imageUrl": "/media/generated-image.jpg",
+    "fitMode": "cover"
+  }
+)
 ```
 
-### Rebuilding canvas (delete all, recreate)
+## Tool: update_canvas_node
+
+Update an existing node's data.
+
+Parameters:
+- `node_id` (string, required) — ID of the node to update
+- `data` (object, required) — Fields to update (partial update supported)
+
+Example:
 ```
-1. list_canvas_nodes()                    → get all node IDs
-2. delete_canvas_node(node_id=...) × N   → edges auto-deleted
-3. create_canvas_node(...) × N           → new nodes
-4. create_canvas_edge(...) × M           → new connections
+update_canvas_node(
+  node_id="node-uuid-here",
+  data={"title": "Updated Title", "tags": ["revised"]}
+)
 ```
 
-### Rearranging existing nodes
-```
-1. list_canvas_nodes()                                  → get IDs and current positions
-2. update_canvas_node(node_id=..., position_x=, position_y=) × N
-```
+## Tool: delete_canvas_node
 
-### Referencing media across nodes
-To embed an existing image/video/audio node's media in a storyboard table:
-```
-1. get_canvas_node(node_id="image-node-uuid")  → extract imageUrl
-2. Use that URL as the cell value in storyboard tableData
-```
+Delete a node from the canvas.
 
----
+Parameters:
+- `node_id` (string, required) — ID of the node to delete
 
-## Best Practices
+## Tips
 
-1. **List before mutate** — always call `list_canvas_nodes` first to understand current state.
-2. **Auto-place by default** — omit position unless the user specifies coordinates or requests a layout.
-3. **Minimal updates** — only include changed fields in `update_canvas_node`. Never re-send `content` on text nodes unless it changed.
-4. **Check edges before connecting** — use `list_canvas_edges` to avoid duplicate connections.
-5. **Position is top-level** — pass `position_x`/`position_y` as top-level parameters, not inside `data`.
-6. **Batch awareness** — when creating multiple nodes, the system auto-places them in a grid. For custom layouts, create first, then rearrange with update calls.
-7. **Node types are restricted** — you can only access node types allowed by the agent configuration.
+- Always use `list_canvas_nodes` first to see what exists before creating or modifying.
+- When creating nodes, omit position to let the system auto-place them.
+- Only include fields you want to change in `update_canvas_node`.
+- Node types are restricted by agent configuration — you can only create/access allowed types.
