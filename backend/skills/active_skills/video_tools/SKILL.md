@@ -210,7 +210,7 @@ When the video generation API returns an error, the error message will be passed
 
 | Error Code | Meaning | How to Handle |
 |---|---|---|
-| `InputImageSensitiveContentDetected.PrivacyInformation` | Input image contains a real person's face | **STOP immediately.** Tell the user: "The image contains a real person's face, which is rejected by the platform's content safety policy." Then call `list_virtual_human_presets` to offer preset virtual humans as alternatives. Do NOT retry with the same image. |
+| `InputImageSensitiveContentDetected.PrivacyInformation` | Input image contains a real person's face | **STOP immediately.** Tell the user: "The image contains a real person's face, which is rejected by the platform's content safety policy. Please use a non-real-person image (e.g. AI-generated, illustrated, or cartoon style) and try again." Do NOT retry with the same image. |
 | `InputImageSensitiveContentDetected` | Input image has sensitive content | **STOP immediately.** Tell the user the image was rejected due to content policy. Do NOT retry. |
 | Other 400 errors | Various API validation failures | Tell the user the specific error and suggest corrections. Do NOT blindly retry more than once. |
 
@@ -219,88 +219,6 @@ When the video generation API returns an error, the error message will be passed
 2. Explain the specific reason to the user clearly
 3. Suggest alternatives (e.g. use AI-generated character images instead of real photos)
 4. Wait for the user to provide new input before trying again
-
-## Virtual Human Presets (Seedance 2.0 Only)
-
-Seedance 2.0 **does NOT support uploading real human face images/videos** — they will be rejected by content safety review. To generate realistic human videos, use the platform's **preset virtual human library**.
-
-### Tool: list_virtual_human_presets
-
-Lists available virtual human presets with their asset URIs.
-
-**Parameters:**
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `gender` | string | No | Filter by gender: "male" or "female". Omit to list all. |
-| `style` | string | No | Filter by style tag (e.g. "realistic"). Omit to list all. |
-
-### When to Use
-
-When the user asks to generate a video featuring a **realistic human character** using Seedance 2.0:
-
-1. Call `list_virtual_human_presets` to show available virtual humans
-2. Present the options to the user (show preview images and descriptions)
-3. After the user selects a virtual human, use its `asset_uri` (e.g. `asset://asset-20260401123823-6d4x2`) as an element in `reference_images`
-
-### Usage Example
-
-```
-# Step 1: List available virtual humans
-list_virtual_human_presets(gender="female")
-
-# Step 2: User selects one, then generate video
-generate_video(
-  prompt="图片1中的女生面带笑容，向镜头介绍图片2中的产品，说'这款面霜真的超好用'，自然光线，近景镜头",
-  video_mode="reference_images",
-  reference_images=["asset://asset-20260401123823-6d4x2", "/api/media/product.jpg"],
-  duration=8,
-  aspect_ratio="9:16"
-)
-```
-
-### Important Rules
-
-- **Asset URI format**: Always use `asset://<asset_id>` — do NOT modify or truncate the asset ID.
-- **Prompt referencing**: In the prompt, reference virtual humans using the standard numbering format (图片1, 图片2, etc.) based on their position in the `reference_images` array. **NEVER use asset IDs in the prompt.**
-- **Combining with other images**: You can mix virtual human asset URIs with regular image URLs in `reference_images`. For example, `reference_images=["asset://...", "/api/media/product.jpg"]` — the virtual human is 图片1, the product is 图片2.
-- **Content safety**: Virtual human presets are pre-approved and will NOT trigger face detection rejection, unlike uploaded real human photos.
-
-## Script and Storyboard Workflow
-
-When the user provides a script file or storyboard description, follow these principles:
-
-### Core Principles
-- **One script generates one video by default** (not one video per shot)
-- Describe the complete shot sequence in a single `generate_video` call through the prompt
-
-### Multi-Shot Prompt Construction
-Combine multiple shots into a coherent prompt using shot transition descriptions:
-
-```
-[Opening shot] → [Transition/camera movement] → [Middle shot] → [Transition/camera movement] → [Ending shot]
-
-Example:
-"A woman walks into a coffee shop (opening shot), 
- the camera follows her as she approaches the counter (tracking shot), 
- she smiles and orders a latte (close-up), 
- camera pulls back to show the bustling cafe atmosphere (wide shot)"
-```
-
-### When to Split Into Multiple Videos
-
-| Scenario | Approach | Notes |
-|----------|----------|-------|
-| Continuous action in same time/space | **Single video** | Use prompt to describe shot transitions |
-| Different scenes/time periods | **Multiple videos** | One video per scene, concatenate later with `edit_video` |
-| Need precise control per shot parameters | **Multiple videos** | Generate separately then concatenate |
-
-### Strict Script Adherence
-- **Do NOT add content outside the script** — only generate what is explicitly described
-- **Do NOT expand the plot** — even if the script is short, do not add your own storyline
-- **Maintain character/scene consistency** — use `reference_images` to provide character/scene references
-
----
 
 ## Canvas Node → Multimodal Reference Workflow
 
