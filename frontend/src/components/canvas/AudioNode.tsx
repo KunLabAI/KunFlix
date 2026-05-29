@@ -47,7 +47,10 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
   const deleteNode = useCanvasStore((s) => s.deleteNode);
   const addNode = useCanvasStore((s) => s.addNode);
   const nodes = useCanvasStore((s) => s.nodes);
-  const { getNode } = useReactFlow();
+  const { getNode, screenToFlowPosition } = useReactFlow();
+
+  // 节点主容器（用于拖拽起点/落点判定）
+  const nodeRef = useRef<HTMLDivElement>(null);
 
   // 标题编辑
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -197,26 +200,30 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
 
   const handleHistoryDragEnd = useCallback(
     (e: DragEvent<HTMLDivElement>, entry: AudioGenHistoryEntry) => {
-      void e;
-      // 拖入空白区域时当成 "从历史克隆一条记录到新节点"
-      const newId = uuidv4();
-      const currentNode = getNode(id);
-      const posX = (currentNode?.position.x ?? 0) + (currentNode?.measured?.width ?? 300) + 80;
-      const posY = currentNode?.position.y ?? 0;
-      addNode({
-        id: newId,
-        type: 'audio',
-        position: { x: posX, y: posY },
-        data: {
-          name: t('canvas.node.audio.aiGenerated', 'AI 生成'),
-          description: '',
-          audioUrl: entry.url,
-          lyrics: entry.lyrics,
-          initialGenConfig: entry,
-        } as AudioNodeData,
-      });
+      // 拖回本节点身上 → 不克隆
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const droppedOnSelf = nodeRef.current?.contains(el);
+      droppedOnSelf || (() => {
+        // 跟随光标位置创建新节点，并与侧边栏拖拽使用同样的默认尺寸 360×200
+        const pos = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+        const newNode: CanvasNode = {
+          id: uuidv4(),
+          type: 'audio',
+          position: { x: pos.x - 180, y: pos.y - 100 },
+          width: 360,
+          height: 200,
+          data: {
+            name: t('canvas.node.audio.aiGenerated', 'AI 生成'),
+            description: '',
+            audioUrl: entry.url,
+            lyrics: entry.lyrics,
+            initialGenConfig: entry,
+          } as AudioNodeData,
+        };
+        addNode(newNode);
+      })();
     },
-    [addNode, getNode, id, t],
+    [addNode, screenToFlowPosition, t],
   );
 
   const handleHistoryClick = (url: string) => {
@@ -259,7 +266,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
         data-testid="audio-file-upload-input"
       />
 
-      <div className="audio-node-wrapper w-full h-full flex flex-col group relative">
+      <div ref={nodeRef} className="audio-node-wrapper w-full h-full flex flex-col group relative">
         <NodeEffectOverlay nodeId={id} />
 
         <NodeHeader
@@ -299,7 +306,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
             {!audioUrl && !isUploading && !upload.uploadError && <EmptyPlaceholder />}
 
             {audioUrl && !isUploading && (
-              <AudioDisplay audioUrl={audioUrl} lyrics={data.lyrics} />
+              <AudioDisplay audioUrl={audioUrl} lyrics={data.lyrics} selected={!!selected} />
             )}
 
             {isUploading && <UploadingOverlay progress={upload.uploadProgress} />}
@@ -342,7 +349,6 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
           canvasNodes={nodes}
           onTogglePinPanel={handleTogglePinPanel}
           onSubmit={gen.submit}
-          onStop={gen.musicTask.reset}
           onApplyToNode={gen.applyToNode}
           onApplyToNextNode={gen.applyToNextNode}
           onLinkNode={linkNode}

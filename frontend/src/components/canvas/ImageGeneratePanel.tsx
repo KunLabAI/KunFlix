@@ -23,7 +23,6 @@ export type { ImageRef, ImagePanelModeRequest, ImageGeneratePanelProps } from '.
 export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
   const {
     onSubmit,
-    onStop,
     isSubmitting,
     taskActive,
     taskDone,
@@ -272,7 +271,6 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
               hasSelectedModel={!!form.selectedModel}
               showConfig={showConfig}
               onToggleConfig={() => setShowConfig((v) => !v)}
-              onStop={onStop}
               onSubmit={handleSubmit}
             />
           </div>

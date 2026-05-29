@@ -487,7 +487,6 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
         modeRequest={quick.panelModeRequest}
         onTogglePinPanel={handleTogglePinPanel}
         onSubmit={gen.submit}
-        onStop={() => imageTask.reset()}
         onApplyToNode={gen.applyToNode}
         onApplyToNextNode={gen.applyToNextNode}
         onLinkNode={linkNode}

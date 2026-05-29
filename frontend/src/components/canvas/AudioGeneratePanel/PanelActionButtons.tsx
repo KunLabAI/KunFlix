@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Settings2, Send, Square, ArrowRight } from 'lucide-react';
+import { Settings2, Send, ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useCreditsGuard } from '@/hooks/useCreditsGuard';
@@ -12,24 +12,27 @@ interface Props {
   hasSelectedModel: boolean;
   showConfig: boolean;
   onToggleConfig: () => void;
-  onStop: () => void;
   onSubmit: () => void;
 }
 
-/** 面板右侧：设置按钮 + 停止/发送 按钮 */
+/** 面板右侧：设置按钮 + 发送按钮（任务进行中静默禁用） */
 export function PanelActionButtons({
   taskActive,
   canSubmit,
   hasSelectedModel,
   showConfig,
   onToggleConfig,
-  onStop,
   onSubmit,
 }: Props) {
   const { t } = useTranslation();
   const { creditsExhausted, tooltipText } = useCreditsGuard();
-  const submitDisabled = !canSubmit || creditsExhausted;
-  const submitTitle = creditsExhausted ? tooltipText : t('canvas.node.audio.submit', '生成音乐');
+  // 任务进行中：发送按钮静默禁用（不再提供中断能力）
+  const submitDisabled = !canSubmit || creditsExhausted || taskActive;
+  const submitTitle = taskActive
+    ? t('canvas.node.audio.generating', '生成中')
+    : creditsExhausted
+      ? tooltipText
+      : t('canvas.node.audio.submit', '生成音乐');
 
   return (
     <>
@@ -48,31 +51,20 @@ export function PanelActionButtons({
         <Settings2 className="w-4 h-4" />
       </button>
 
-      {taskActive ? (
-        <button
-          type="button"
-          onClick={onStop}
-          className="h-8 w-8 rounded-lg bg-destructive hover:bg-destructive/90 text-destructive-foreground shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center"
-          title={t('canvas.node.audio.stopGenerate', '停止生成')}
-        >
-          <Square className="h-3.5 w-3.5 fill-current" />
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitDisabled}
-          className={cn(
-            'h-8 w-8 rounded-lg transition-all duration-200 flex items-center justify-center',
-            submitDisabled
-              ? 'bg-muted text-muted-foreground cursor-not-allowed'
-              : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md',
-          )}
-          title={submitTitle}
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={submitDisabled}
+        className={cn(
+          'h-8 w-8 rounded-lg transition-all duration-200 flex items-center justify-center',
+          submitDisabled
+            ? 'bg-muted text-muted-foreground cursor-not-allowed'
+            : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md',
+        )}
+        title={submitTitle}
+      >
+        <Send className="h-4 w-4" />
+      </button>
     </>
   );
 }

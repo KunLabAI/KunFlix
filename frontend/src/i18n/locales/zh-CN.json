@@ -236,6 +236,7 @@
     "videoCard": "视频卡",
     "audioCard": "音频卡",
     "storyboardCard": "多维表格卡",
+    "panoramaCard": "全景卡",
     "node": {
       "textCard": "文本卡",
       "imageCard": "图片卡",

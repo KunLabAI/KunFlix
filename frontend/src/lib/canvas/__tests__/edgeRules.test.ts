@@ -30,9 +30,9 @@ describe('EDGE_LEGALITY_MATRIX 字面值锁定', () => {
     });
   });
 
-  it('image 行：→text=deferred, →panorama=deferred，其余 allow', () => {
+  it('image 行：→text=deferred，其余 allow（含 panorama）', () => {
     expect(EDGE_LEGALITY_MATRIX.image).toEqual({
-      text: 'deferred', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
+      text: 'deferred', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'allow',
     });
   });
 

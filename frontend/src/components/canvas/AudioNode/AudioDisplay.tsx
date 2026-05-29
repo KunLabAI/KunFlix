@@ -7,12 +7,14 @@ import { useTranslation } from 'react-i18next';
 interface Props {
   audioUrl: string;
   lyrics?: string;
+  /** 节点是否选中，决定是否播放频谱动画；未选中时不起 RAF，节省 CPU/GPU。 */
+  selected?: boolean;
 }
 
 /**
  * 音频播放区域：居中播放按钮 + 频谱波形动画（RGB颜色）+ 底部折叠歌词
  */
-export function AudioDisplay({ audioUrl, lyrics }: Props) {
+export function AudioDisplay({ audioUrl, lyrics, selected = false }: Props) {
   const { t } = useTranslation();
 
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -263,11 +265,19 @@ export function AudioDisplay({ audioUrl, lyrics }: Props) {
     animFrameRef.current = requestAnimationFrame(draw);
   }, []);
 
-  // 组件挂载后启动动画循环（静默态也有脉动）
+  // 选中或正在播放时启动动画循环；均不满足时停止 RAF 并清空画布
   useEffect(() => {
+    if (!selected && !isPlaying) {
+      // 未选中且未播放：取消上一轮 RAF、清空画布，避免残留最后一帧
+      cancelAnimationFrame(animFrameRef.current);
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext('2d');
+      canvas && ctx && ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
     animFrameRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animFrameRef.current);
-  }, [draw]);
+  }, [draw, selected, isPlaying]);
 
   // 播放/暂停 切换
   const togglePlay = useCallback(async (e: React.MouseEvent) => {

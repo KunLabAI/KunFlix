@@ -217,6 +217,8 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         id: uuidv4(),
         type: 'video',
         position: { x: pos.x - 128, y: pos.y - 96 },
+        width: 512,
+        height: 384,
         data: {
           name: t('canvas.node.video.aiGenerated'),
           videoUrl: entry.url,
@@ -359,7 +361,6 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
         canvasNodes={canvasNodes}
         onTogglePinPanel={handleTogglePinPanel}
         onSubmit={gen.submit}
-        onStop={() => videoTask.reset()}
         onApplyToNode={gen.applyToNode}
         onApplyToNextNode={gen.applyToNextNode}
         onLinkNode={linkNode}

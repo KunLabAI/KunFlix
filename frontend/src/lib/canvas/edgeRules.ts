@@ -53,7 +53,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     video: 'allow',
     audio: 'allow',
     storyboard: 'allow',
-    panorama: 'deferred',
+    panorama: 'allow',
   },
   video: {
     text: 'deferred',

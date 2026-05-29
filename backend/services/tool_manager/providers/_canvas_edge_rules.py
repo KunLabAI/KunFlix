@@ -40,7 +40,7 @@ EDGE_LEGALITY_MATRIX: dict[str, dict[str, EdgeLegality]] = {
         "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
     },
     "image": {
-        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
+        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "allow",
     },
     "video": {
         "text": "deferred", "image": "allow", "video": "allow", "audio": "deferred", "storyboard": "allow", "panorama": "deferred",

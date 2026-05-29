@@ -15,7 +15,6 @@ export interface FlatVideoModelItem {
 /** 对外 Props — 与原实现保持完全一致 */
 export interface VideoGeneratePanelProps {
   onSubmit: (params: VideoCreateParams) => void;
-  onStop: () => void;
   isSubmitting: boolean;
   taskActive: boolean;
   taskDone: boolean;

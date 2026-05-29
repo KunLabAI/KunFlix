@@ -14,6 +14,8 @@ import { usePanelResize } from '@/hooks/usePanelResize';
 import { onPanelInject } from '@/lib/canvas/panelEvents';
 import { mediaUrlsToDataUrls, TEXT_PROMPT_MAX } from '@/lib/canvas/edgePayload';
 import type { CanvasNode } from '@/store/useCanvasStore';
+import { useCanvasStore } from '@/store/useCanvasStore';
+import { useShallow } from 'zustand/react/shallow';
 import { edgeToast } from '@/lib/canvas/toast';
 
 import { AttachmentPreviews, type ReferenceImage } from './AudioGeneratePanel/AttachmentPreviews';
@@ -50,7 +52,6 @@ export default function AudioGeneratePanel(props: AudioGeneratePanelProps) {
   const { t } = useTranslation();
   const {
     onSubmit,
-    onStop,
     isSubmitting,
     taskActive,
     taskDone,
@@ -124,11 +125,55 @@ export default function AudioGeneratePanel(props: AudioGeneratePanelProps) {
   const [showNodePicker, setShowNodePicker] = useState<boolean>(false);
   const [showConfig, setShowConfig] = useState<boolean>(false);
 
+  // 订阅 incoming edges 中的图像节点 source ids（仅当前节点的入边，且 source = image）。
+  // 切走/刷新后面板重新 mount 时，本 effect 从 edges 回填 references，
+  // 使「image → audio」拖线建立的「附件参考」关系能随 edges 持久化。
+  const incomingImageSourceIds = useCanvasStore(
+    useShallow((s) => {
+      if (!nodeId) return [] as string[];
+      const incomingEdges = s.edges.filter((e) => e.target === nodeId);
+      return incomingEdges
+        .map((e) => e.source)
+        .filter((sid) => {
+          const src = s.nodes.find((n) => n.id === sid);
+          return src?.type === 'image';
+        });
+    }),
+  );
+
   // initialConfig 填充 prompt（从历史拖拽）
   useEffect(() => {
     const p = initialConfig?.prompt;
     p && setPrompt(p);
   }, [initialConfig?.prompt]);
+
+  // 从 incoming edges 自动回填 references：
+  // - 仅加入「已连线但 references 中还没有」的 source，不删除已有项
+  // - 顺序跟随 incoming edges；超出 MAX_REFERENCE_IMAGES 容量丢弃
+  // - 避免依赖 references 造成循环：统一走 setReferences 回调形式
+  useEffect(() => {
+    setReferences((prev) => {
+      const existing = new Set(prev.map((r) => r.sourceNodeId));
+      const filled: ReferenceImage[] = [];
+      incomingImageSourceIds.forEach((sid) => {
+        const dup = existing.has(sid);
+        const reached = prev.length + filled.length >= MAX_REFERENCE_IMAGES;
+        const skip = dup || reached;
+        skip || (() => {
+          const src = canvasNodes.find((n) => n.id === sid);
+          const url = src ? getImageNodeUrl(src) : '';
+          const normalized = url ? (normalizeUrl(url) || url) : '';
+          normalized && filled.push({
+            id: uuidv4(),
+            url: normalized,
+            sourceNodeId: sid,
+            name: ((src?.data as Record<string, unknown>)?.name as string) || t('canvas.node.image.refItem', '参考图'),
+          });
+        })();
+      });
+      return filled.length > 0 ? [...prev, ...filled] : prev;
+    });
+  }, [incomingImageSourceIds, canvasNodes, t]);
 
   // ── 模型切换处理：重置 capability 相关字段 ──
   const handleModelChange = useCallback((key: string) => {
@@ -329,7 +374,6 @@ export default function AudioGeneratePanel(props: AudioGeneratePanelProps) {
               hasSelectedModel={!!selectedModel}
               showConfig={showConfig}
               onToggleConfig={() => setShowConfig((v) => !v)}
-              onStop={onStop}
               onSubmit={handleSubmit}
             />
           </div>
