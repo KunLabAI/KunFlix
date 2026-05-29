@@ -10,6 +10,7 @@ const nodeDefaultData: Record<string, Record<string, unknown>> = {
   storyboard: { shotNumber: '001', description: '', duration: 5 },
   video: { name: '新视频卡', description: '', videoUrl: '', fitMode: 'cover' },
   audio: { name: '新音频卡', description: '', audioUrl: '' },
+  panorama: { name: '新全景卡', description: '', panoramaUrl: '' },
 };
 
 // Default dimensions by node type
@@ -19,6 +20,7 @@ const nodeDefaultDimensions: Record<string, { width: number; height: number }> =
   video: { width: 512, height: 384 },
   audio: { width: 360, height: 200 },
   storyboard: { width: 398, height: 256 },
+  panorama: { width: 512, height: 320 },
 };
 
 export interface QuickAddMenuState {

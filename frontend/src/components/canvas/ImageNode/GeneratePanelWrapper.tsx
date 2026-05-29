@@ -104,7 +104,6 @@ interface PanelProps {
   modeRequest: ImagePanelModeRequest | null;
   onTogglePinPanel: (e?: React.MouseEvent) => void;
   onSubmit: (p: ImageCreateParams) => void;
-  onStop: () => void;
   onApplyToNode: () => void;
   onApplyToNextNode: () => void;
   onLinkNode: (sourceNodeId: string) => void;
@@ -130,7 +129,6 @@ export function GeneratePanelWrapper({
   modeRequest,
   onTogglePinPanel,
   onSubmit,
-  onStop,
   onApplyToNode,
   onApplyToNextNode,
   onLinkNode,
@@ -160,7 +158,6 @@ export function GeneratePanelWrapper({
       </button>
       <ImageGeneratePanel
         onSubmit={onSubmit}
-        onStop={onStop}
         isSubmitting={isSubmitting}
         taskActive={taskActive}
         taskDone={taskDone}

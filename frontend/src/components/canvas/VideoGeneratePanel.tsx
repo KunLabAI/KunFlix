@@ -30,7 +30,6 @@ export type { VideoGeneratePanelProps } from './VideoGeneratePanel/types';
 export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
   const {
     onSubmit,
-    onStop,
     isSubmitting,
     taskActive,
     taskDone,
@@ -332,7 +331,6 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
               hasSelectedModel={!!form.selectedModel}
               showConfig={showConfig}
               onToggleConfig={() => setShowConfig((v) => !v)}
-              onStop={onStop}
               onSubmit={handleSubmit}
             />
           </div>

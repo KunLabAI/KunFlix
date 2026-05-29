@@ -236,6 +236,7 @@
     "videoCard": "Video Card",
     "audioCard": "Audio Card",
     "storyboardCard": "Pivot Table Card",
+    "panoramaCard": "Panorama Card",
     "node": {
       "textCard": "Text Card",
       "imageCard": "Image Card",

@@ -14,7 +14,6 @@ export interface FlatMusicModelItem {
 /** 对外 Props */
 export interface AudioGeneratePanelProps {
   onSubmit: (params: MusicCreateParams) => void;
-  onStop: () => void;
   isSubmitting: boolean;
   taskActive: boolean;
   taskDone: boolean;

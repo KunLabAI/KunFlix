@@ -92,7 +92,6 @@ interface PanelProps {
   canvasNodes: CanvasNode[];
   onTogglePinPanel: (e?: React.MouseEvent) => void;
   onSubmit: (p: VideoCreateParams) => void;
-  onStop: () => void;
   onApplyToNode: () => void;
   onApplyToNextNode: () => void;
   onLinkNode: (sourceNodeId: string) => void;
@@ -117,7 +116,6 @@ export function GeneratePanelWrapper({
   canvasNodes,
   onTogglePinPanel,
   onSubmit,
-  onStop,
   onApplyToNode,
   onApplyToNextNode,
   onLinkNode,
@@ -147,7 +145,6 @@ export function GeneratePanelWrapper({
       </button>
       <VideoGeneratePanel
         onSubmit={onSubmit}
-        onStop={onStop}
         isSubmitting={isSubmitting}
         taskActive={taskActive}
         taskDone={taskDone}

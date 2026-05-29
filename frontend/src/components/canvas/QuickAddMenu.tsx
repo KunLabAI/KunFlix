@@ -3,7 +3,7 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ScrollText, User, Film, Headphones, Clapperboard } from 'lucide-react';
+import { ScrollText, Image as ImageIcon, Video, Headphones, Table2, Globe } from 'lucide-react';
 import type { QuickAddMenuState } from '@/app/theater/[id]/hooks/useQuickAddMenu';
 
 interface QuickAddMenuProps {
@@ -11,13 +11,14 @@ interface QuickAddMenuProps {
   onAddNode: (type: string) => void;
 }
 
-// Menu items config (avoids repetitive JSX)
+// 菜单项配置：图标 / 颜色 / 标签与侧边栏 Sidebar 保持一致
 const MENU_ITEMS: Array<{ type: string; icon: typeof ScrollText; iconClass: string; labelKey: string }> = [
-  { type: 'text', icon: ScrollText, iconClass: 'text-indigo-500', labelKey: 'canvas.textCard' },
-  { type: 'image', icon: User, iconClass: 'text-emerald-500', labelKey: 'canvas.imageCard' },
-  { type: 'video', icon: Film, iconClass: 'text-purple-500', labelKey: 'canvas.videoCard' },
-  { type: 'audio', icon: Headphones, iconClass: 'text-amber-500', labelKey: 'canvas.audioCard' },
-  { type: 'storyboard', icon: Clapperboard, iconClass: 'text-amber-500', labelKey: 'canvas.storyboardCard' },
+  { type: 'text',       icon: ScrollText, iconClass: 'text-node-blue',   labelKey: 'canvas.textCard' },
+  { type: 'image',      icon: ImageIcon,  iconClass: 'text-node-green',  labelKey: 'canvas.imageCard' },
+  { type: 'video',      icon: Video,      iconClass: 'text-node-yellow', labelKey: 'canvas.videoCard' },
+  { type: 'audio',      icon: Headphones, iconClass: 'text-amber-500',   labelKey: 'canvas.audioCard' },
+  { type: 'storyboard', icon: Table2,     iconClass: 'text-node-purple', labelKey: 'canvas.storyboardCard' },
+  { type: 'panorama',   icon: Globe,      iconClass: 'text-cyan-500',    labelKey: 'canvas.panoramaCard' },
 ];
 
 export function QuickAddMenu({ menuState, onAddNode }: QuickAddMenuProps) {

@@ -24,7 +24,6 @@ export interface ImagePanelModeRequest {
 
 export interface ImageGeneratePanelProps {
   onSubmit: (params: ImageCreateParams) => void;
-  onStop?: () => void;
   isSubmitting: boolean;
   taskActive: boolean;
   taskDone: boolean;

@@ -20,6 +20,7 @@ import type {
   VideoNodeData,
   AudioNodeData,
   StoryboardNodeData,
+  PanoramaNodeData,
 } from '@/store/useCanvasStore';
 import { extractPlainTextFromTiptap } from '@/lib/nodeAttachmentUtils';
 import type { PanelInjectEvent } from './panelEvents';
@@ -359,6 +360,24 @@ function injectToStoryboard(targetNode: CanvasNode, payload: EdgePayload): Injec
   return handler ? handler() : emptyResult;
 }
 
+/** 下游 panorama：image → 直接写入 panoramaUrl（PSV 渲染单张等距柱状投影图） */
+function injectToPanorama(targetNode: CanvasNode, payload: EdgePayload): InjectionResult {
+  const data = targetNode.data as PanoramaNodeData;
+  const handlers: Partial<Record<EdgePayload['kind'], () => InjectionResult>> = {
+    image: () => {
+      const p = payload as Extract<EdgePayload, { kind: 'image' }>;
+      // 已有全景图 → 保护原资产，不覆盖，给个 warn 提示
+      const hasExisting = !!data.panoramaUrl;
+      if (hasExisting) {
+        return { warnings: ['全景节点已有图像，未覆盖；如需替换请先删除原图'] };
+      }
+      return { dataPatch: { panoramaUrl: p.url, uploading: false } };
+    },
+  };
+  const handler = handlers[payload.kind];
+  return handler ? handler() : emptyResult;
+}
+
 // ── 主分发器 ──
 
 /**
@@ -376,6 +395,7 @@ export function injectPayload(
     video: () => injectToVideo(targetNode, payload, sourceNodeId),
     audio: () => injectToAudio(targetNode, payload, sourceNodeId),
     storyboard: () => injectToStoryboard(targetNode, payload),
+    panorama: () => injectToPanorama(targetNode, payload),
   };
   const handler = targetNode.type ? dispatch[targetNode.type] : null;
   return handler ? handler() : emptyResult;
