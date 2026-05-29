@@ -23,43 +23,60 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Debian 镜像源（默认清华 HTTPS，相较阿里云 HTTP 抗断流能力更强；
-# 外网/海外构建可通过 --build-arg DEBIAN_MIRROR= 清空回退到 deb.debian.org）
-ARG DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn
+# Debian 多镜像源 fallback：依次尝试，命中即用
+# 默认顺序：火山引擎(http) → 清华(https) → 阿里云(http) → 官方 deb.debian.org(http)
+# 可通过 --build-arg DEBIAN_MIRRORS="host1:proto1 host2:proto2 ..." 自定义全局列表
+# 或 --build-arg DEBIAN_MIRROR=xxx 强制单源（向后兼容，会覆盖多源列表）
+ARG DEBIAN_MIRRORS="mirrors.volces.com:http mirrors.tuna.tsinghua.edu.cn:https mirrors.aliyun.com:http deb.debian.org:http"
+ARG DEBIAN_MIRROR=
 ARG DEBIAN_MIRROR_PROTO=https
-RUN set -eux; \
-    if [ -n "$DEBIAN_MIRROR" ]; then \
-      printf '%s\n' \
-        'Types: deb' \
-        "URIs: ${DEBIAN_MIRROR_PROTO}://${DEBIAN_MIRROR}/debian" \
-        'Suites: bookworm bookworm-updates' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        '' \
-        'Types: deb' \
-        "URIs: ${DEBIAN_MIRROR_PROTO}://${DEBIAN_MIRROR}/debian-security" \
-        'Suites: bookworm-security' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        > /etc/apt/sources.list.d/debian.sources; \
-    fi; \
-    printf '%s\n' \
-        'Acquire::Retries "10";' \
-        'Acquire::http::Timeout "60";' \
-        'Acquire::https::Timeout "60";' \
-        'Acquire::http::No-Cache "true";' \
-        > /etc/apt/apt.conf.d/99-retries
 
-# 编译 ripgrep 等 Rust 扩展所需的最小工具链
-# 外层 shell 5 次重试循环：对镜像源偶发 EOF/500 抖动容错；--fix-missing 兜底
+# apt 高鲁棒安装：单 RUN 内完成「写源 + apt update + install」
+#   外层遍历镜像源，内层每源 3 次重试，任一源装上即 break
+#   全部失败才 exit 1，避免被 BuildKit 缓存为"假成功"层
+#   另加 command -v 校验关键工具真的装上，防御 --fix-missing 静默跳包
 RUN set -eux; \
-    for i in 1 2 3 4 5; do \
-        apt-get update \
-        && apt-get install -y --no-install-recommends --fix-missing \
-            curl ca-certificates build-essential libpq-dev \
-        && break \
-        || { echo ">>> apt install failed, retry $i/5 in 10s..."; sleep 10; }; \
+    printf '%s\n' \
+        'Acquire::Retries "3";' \
+        'Acquire::http::Timeout "30";' \
+        'Acquire::https::Timeout "30";' \
+        'Acquire::http::No-Cache "true";' \
+        > /etc/apt/apt.conf.d/99-retries; \
+    write_sources() { \
+        host="$1"; proto="$2"; sec_host="$1"; \
+        [ "$host" = "deb.debian.org" ] && sec_host="security.debian.org"; \
+        rm -f /etc/apt/sources.list.d/debian.sources; \
+        printf '%s\n' \
+            "deb ${proto}://${host}/debian bookworm main" \
+            "deb ${proto}://${host}/debian bookworm-updates main" \
+            "deb ${proto}://${sec_host}/debian-security bookworm-security main" \
+            > /etc/apt/sources.list; \
+    }; \
+    if [ -n "$DEBIAN_MIRROR" ]; then \
+        MIRRORS="${DEBIAN_MIRROR}:${DEBIAN_MIRROR_PROTO}"; \
+    else \
+        MIRRORS="$DEBIAN_MIRRORS"; \
+    fi; \
+    ok=0; \
+    for spec in $MIRRORS; do \
+        host="${spec%:*}"; proto="${spec##*:}"; \
+        echo ">>> [apt] trying mirror: ${proto}://${host}"; \
+        write_sources "$host" "$proto"; \
+        for i in 1 2 3; do \
+            if apt-get update \
+                && apt-get install -y --no-install-recommends --fix-missing \
+                    curl ca-certificates build-essential libpq-dev; then \
+                ok=1; break; \
+            fi; \
+            echo ">>> [apt] install failed on ${host} (${i}/3), retry in 5s..."; \
+            sleep 5; \
+        done; \
+        [ "$ok" = "1" ] && break; \
+        echo ">>> [apt] mirror ${host} unusable, switching to next..."; \
     done; \
+    [ "$ok" = "1" ] || { echo "FATAL: all debian mirrors failed"; exit 1; }; \
+    command -v curl >/dev/null && command -v gcc >/dev/null \
+        || { echo "FATAL: required tools missing after install"; exit 1; }; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -124,47 +141,57 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     TZ=Asia/Shanghai
 
-# Debian 镜像源（默认清华 HTTPS；外网环境可通过 --build-arg DEBIAN_MIRROR= 清空回退到 deb.debian.org）
-ARG DEBIAN_MIRROR=mirrors.tuna.tsinghua.edu.cn
+# Debian 多镜像源 fallback（与 rust-builder 一致）。默认顺序：火山 → 清华 → 阿里 → 官方
+ARG DEBIAN_MIRRORS="mirrors.volces.com:http mirrors.tuna.tsinghua.edu.cn:https mirrors.aliyun.com:http deb.debian.org:http"
+ARG DEBIAN_MIRROR=
 ARG DEBIAN_MIRROR_PROTO=https
-RUN set -eux; \
-    if [ -n "$DEBIAN_MIRROR" ]; then \
-      printf '%s\n' \
-        'Types: deb' \
-        "URIs: ${DEBIAN_MIRROR_PROTO}://${DEBIAN_MIRROR}/debian" \
-        'Suites: bookworm bookworm-updates' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        '' \
-        'Types: deb' \
-        "URIs: ${DEBIAN_MIRROR_PROTO}://${DEBIAN_MIRROR}/debian-security" \
-        'Suites: bookworm-security' \
-        'Components: main' \
-        'Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg' \
-        > /etc/apt/sources.list.d/debian.sources; \
-    fi; \
-    printf '%s\n' \
-        'Acquire::Retries "10";' \
-        'Acquire::http::Timeout "60";' \
-        'Acquire::https::Timeout "60";' \
-        'Acquire::http::No-Cache "true";' \
-        > /etc/apt/apt.conf.d/99-retries
 
 # 系统依赖：libpq-dev 供 psycopg2 运行时；build-essential 仅在装无 wheel 的小依赖时兜底
 # 说明：不在镜像内跑 apt-get upgrade。CVE 修复交由上游 python:3.14-slim-bookworm
 # 镜像定期 bump tag 处理，避免不可重复构建与额外跨网依赖
-# 外层 shell 5 次重试循环 + --fix-missing：对镜像源偶发 EOF/500 抖动容错
+# 多源 fallback：任一源装上即 break；全部失败才 exit 1，避免缓存"假成功"层
 RUN set -eux; \
-    for i in 1 2 3 4 5; do \
-        apt-get update \
-        && apt-get install -y --no-install-recommends --fix-missing \
-            build-essential \
-            libpq-dev \
-            curl \
-            tini \
-        && break \
-        || { echo ">>> apt install failed, retry $i/5 in 10s..."; sleep 10; }; \
+    printf '%s\n' \
+        'Acquire::Retries "3";' \
+        'Acquire::http::Timeout "30";' \
+        'Acquire::https::Timeout "30";' \
+        'Acquire::http::No-Cache "true";' \
+        > /etc/apt/apt.conf.d/99-retries; \
+    write_sources() { \
+        host="$1"; proto="$2"; sec_host="$1"; \
+        [ "$host" = "deb.debian.org" ] && sec_host="security.debian.org"; \
+        rm -f /etc/apt/sources.list.d/debian.sources; \
+        printf '%s\n' \
+            "deb ${proto}://${host}/debian bookworm main" \
+            "deb ${proto}://${host}/debian bookworm-updates main" \
+            "deb ${proto}://${sec_host}/debian-security bookworm-security main" \
+            > /etc/apt/sources.list; \
+    }; \
+    if [ -n "$DEBIAN_MIRROR" ]; then \
+        MIRRORS="${DEBIAN_MIRROR}:${DEBIAN_MIRROR_PROTO}"; \
+    else \
+        MIRRORS="$DEBIAN_MIRRORS"; \
+    fi; \
+    ok=0; \
+    for spec in $MIRRORS; do \
+        host="${spec%:*}"; proto="${spec##*:}"; \
+        echo ">>> [apt] trying mirror: ${proto}://${host}"; \
+        write_sources "$host" "$proto"; \
+        for i in 1 2 3; do \
+            if apt-get update \
+                && apt-get install -y --no-install-recommends --fix-missing \
+                    build-essential libpq-dev curl tini; then \
+                ok=1; break; \
+            fi; \
+            echo ">>> [apt] install failed on ${host} (${i}/3), retry in 5s..."; \
+            sleep 5; \
+        done; \
+        [ "$ok" = "1" ] && break; \
+        echo ">>> [apt] mirror ${host} unusable, switching to next..."; \
     done; \
+    [ "$ok" = "1" ] || { echo "FATAL: all debian mirrors failed"; exit 1; }; \
+    command -v curl >/dev/null && command -v tini >/dev/null \
+        || { echo "FATAL: required tools missing after install"; exit 1; }; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
