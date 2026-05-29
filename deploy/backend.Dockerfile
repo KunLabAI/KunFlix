@@ -80,28 +80,82 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# 安装 Rust stable（rustup 走 rsproxy.cn 镜像，crate 走 rsproxy sparse）
+# 安装 Rust stable —— 多镜像源 fallback：rsproxy → 清华 → 中科大 → 官方
 # AgentScope 2.0 → ripgrep 15.x 要求 Rust >=1.85（edition2024），这里固定 stable 即可
-ARG RUSTUP_DIST_SERVER=https://rsproxy.cn
-ARG RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup
-ENV RUSTUP_DIST_SERVER=${RUSTUP_DIST_SERVER} \
-    RUSTUP_UPDATE_ROOT=${RUSTUP_UPDATE_ROOT}
+# 可通过 --build-arg RUSTUP_MIRRORS="rsproxy tuna ustc official" 自定义顺序
+# 或 --build-arg RUSTUP_DIST_SERVER=xxx RUSTUP_UPDATE_ROOT=xxx 强制单源（向后兼容）
+ARG RUSTUP_MIRRORS="rsproxy tuna ustc official"
+ARG RUSTUP_DIST_SERVER=
+ARG RUSTUP_UPDATE_ROOT=
 
-RUN curl --proto '=https' --tlsv1.2 -sSf "${RUSTUP_UPDATE_ROOT}/rustup-init.sh" \
-        | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path \
-    && /root/.cargo/bin/rustup --version \
-    && /root/.cargo/bin/rustc --version
+# 多源 fallback 安装：任一源装上即 break；全部失败才 exit 1
+# 每次尝试前清理 /root/.rustup 残留，防 settings.toml 锁住上次镜像路径
+# curl 加 --connect-timeout / --max-time，避免单源卡死无限挂起
+RUN set -eux; \
+    set_rustup_mirror() { \
+        case "$1" in \
+            rsproxy) \
+                D="https://rsproxy.cn"; U="https://rsproxy.cn/rustup" ;; \
+            tuna) \
+                D="https://mirrors.tuna.tsinghua.edu.cn/rustup"; \
+                U="https://mirrors.tuna.tsinghua.edu.cn/rustup" ;; \
+            ustc) \
+                D="https://mirrors.ustc.edu.cn/rust-static"; \
+                U="https://mirrors.ustc.edu.cn/rust-static/rustup" ;; \
+            bfsu) \
+                D="https://mirrors.bfsu.edu.cn/rustup"; \
+                U="https://mirrors.bfsu.edu.cn/rustup" ;; \
+            official) \
+                D="https://static.rust-lang.org"; \
+                U="https://static.rust-lang.org/rustup" ;; \
+            *) \
+                echo "FATAL: unknown rustup mirror name: $1"; return 1 ;; \
+        esac; \
+        export RUSTUP_DIST_SERVER="$D"; \
+        export RUSTUP_UPDATE_ROOT="$U"; \
+        echo ">>> [rustup] mirror=$1 DIST=${RUSTUP_DIST_SERVER}"; \
+    }; \
+    if [ -n "$RUSTUP_DIST_SERVER" ] && [ -n "$RUSTUP_UPDATE_ROOT" ]; then \
+        export RUSTUP_DIST_SERVER RUSTUP_UPDATE_ROOT; \
+        MIRRORS="custom"; \
+    else \
+        MIRRORS="$RUSTUP_MIRRORS"; \
+    fi; \
+    ok=0; \
+    for mirror in $MIRRORS; do \
+        echo ">>> [rustup] trying mirror: ${mirror}"; \
+        [ "$mirror" != "custom" ] && { set_rustup_mirror "$mirror" || continue; }; \
+        rm -rf /root/.rustup /root/.cargo /tmp/rustup-init.sh; \
+        if curl --proto '=https' --tlsv1.2 -sSf \
+                --connect-timeout 30 --max-time 240 \
+                "${RUSTUP_UPDATE_ROOT}/rustup-init.sh" -o /tmp/rustup-init.sh \
+            && sh /tmp/rustup-init.sh -y --default-toolchain stable \
+                --profile minimal --no-modify-path; then \
+            ok=1; break; \
+        fi; \
+        echo ">>> [rustup] mirror ${mirror} failed, switching to next..."; \
+    done; \
+    [ "$ok" = "1" ] || { echo "FATAL: all rustup mirrors failed"; exit 1; }; \
+    rm -f /tmp/rustup-init.sh; \
+    /root/.cargo/bin/rustup --version; \
+    /root/.cargo/bin/rustc --version
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# 配置 cargo 国内镜像（rsproxy.cn sparse），避免 crates.io 默认源国内拉取超时
+# 配置 cargo 国内镜像源（sparse 协议），避免 crates.io 默认源国内拉取超时
+# 默认字节 rsproxy-sparse；若 rsproxy 不可用可走 --build-arg CARGO_REGISTRY_URL=xxx 切换
+# 备选：
+#   sparse+https://mirrors.ustc.edu.cn/crates.io-index/
+#   sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/
+#   sparse+https://index.crates.io/        （官方）
+ARG CARGO_REGISTRY_URL=sparse+https://rsproxy.cn/index/
 RUN mkdir -p /root/.cargo \
     && printf '%s\n' \
         '[source.crates-io]' \
-        'replace-with = "rsproxy-sparse"' \
+        'replace-with = "mirror"' \
         '' \
-        '[source.rsproxy-sparse]' \
-        'registry = "sparse+https://rsproxy.cn/index/"' \
+        '[source.mirror]' \
+        "registry = \"${CARGO_REGISTRY_URL}\"" \
         '' \
         '[net]' \
         'git-fetch-with-cli = true' \
