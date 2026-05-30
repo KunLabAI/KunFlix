@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   CheckCircle2,
-  CircleDotDashed,
+  Loader2,
   Circle,
   AlertCircle,
   ChevronDown,
@@ -127,8 +127,10 @@ const STATUS_STYLE: Record<ResolvedStatus, { icon: string; text: string }> = {
 function StatusIcon({ resolved, size = 'sm' }: { resolved: ResolvedStatus; size?: 'sm' | 'xs' }) {
   const cls = size === 'sm' ? 'h-4 w-4' : 'h-3.5 w-3.5';
   const style = STATUS_STYLE[resolved];
+  // active 状态使用 Loader2 + animate-spin，提供明确的 loading 进行中反馈；
+  // 完成后切换为 CheckCircle2，使用者一眼识别状态转换。
   const map: Record<ResolvedStatus, React.ReactNode> = {
-    active: <CircleDotDashed className={cn(cls, style.icon)} />,
+    active: <Loader2 className={cn(cls, 'animate-spin', style.icon)} />,
     success: <CheckCircle2 className={cn(cls, style.icon)} />,
     error: <AlertCircle className={cn(cls, style.icon)} />,
     pending: <Circle className={cn(cls, style.icon)} />,
