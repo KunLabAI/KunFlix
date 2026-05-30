@@ -63,39 +63,46 @@ function parseAttachments(content: string) {
 // ---------------------------------------------------------------------------
 // Think content parsing - 解析 <think>...</think> 标记
 // ---------------------------------------------------------------------------
-const THINK_TAG_RE = /<think>([\s\S]*?)(?:<\/think>|$)/;
+// 说明：在同一轮 AI 回复中，复杂任务可能出现多次思考（例如工具调用后二次推理），
+// 需要使用全局标志提取所有思考段落，然后合并到一个面板，
+// 同时从正文中剔除所有已匹配的 <think>...</think> 块，避免未匹配的残留标签被当作普通文本渲染。
+const THINK_TAG_RE = /<think>([\s\S]*?)(?:<\/think>|$)/g;
 
 interface ParsedThinkContent {
-  thinkingContent: string;     // 思考内容
+  thinkingContent: string;     // 思考内容（多段合并后）
   responseContent: string;      // 正式回复内容
-  isThinkingComplete: boolean;  // 思考是否完成
+  isThinkingComplete: boolean;  // 思考是否全部闭合完成
 }
 
 function parseThinkContent(content: string): ParsedThinkContent {
-  const match = THINK_TAG_RE.exec(content);
-  
-  // 没有 <think> 标记，所有内容都是正式回复
-  const noThinkTag = !match;
-  if (noThinkTag) {
-    return {
-      thinkingContent: '',
-      responseContent: content,
-      isThinkingComplete: true,
-    };
+  // 未出现任何 <think> 标签：全部为正文
+  if (!content.includes('<think>')) {
+    return { thinkingContent: '', responseContent: content, isThinkingComplete: true };
   }
 
-  const thinkingContent = match[1] || '';
-  const hasClosingTag = content.includes('</think>');
-  
-  // 提取 </think> 后的内容作为正式回复
-  const responseContent = hasClosingTag
-    ? content.split('</think>').slice(1).join('</think>').trim()
-    : '';
+  // 提取所有 <think>...</think> 段落（含未闭合的尾部）
+  const thinkingSegments: string[] = [];
+  const re = new RegExp(THINK_TAG_RE.source, 'g');
+  let hasUnclosed = false;
+  for (let m = re.exec(content); m !== null; m = re.exec(content)) {
+    const matched = content.slice(m.index, re.lastIndex);
+    const closed = matched.endsWith('</think>');
+    thinkingSegments.push((m[1] || '').trim());
+    closed || (hasUnclosed = true);
+    // 未闭合意味着流式在进行中，已到达字符串末尾，后续不会再匹配。
+    // 防护：如果 lastIndex 未推进造成死循环，手动 +1。
+    closed || (m.index === re.lastIndex && re.lastIndex++);
+  }
+
+  // 从原串中剔除所有已闭合的 <think>...</think> 块得到正文；
+  // 未闭合的尾部（流式中）从起点到文末一并剔除。
+  let stripped = content.replace(/<think>[\s\S]*?<\/think>/g, '');
+  hasUnclosed && (stripped = stripped.replace(/<think>[\s\S]*$/, ''));
 
   return {
-    thinkingContent: thinkingContent.trim(),
-    responseContent,
-    isThinkingComplete: hasClosingTag,
+    thinkingContent: thinkingSegments.filter(Boolean).join('\n\n---\n\n'),
+    responseContent: stripped.trim(),
+    isThinkingComplete: !hasUnclosed,
   };
 }
 
@@ -210,6 +217,36 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
     );
   },
   pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
+  // 表格：外包 overflow-x-auto 容器，让表格在气泡宽度不够时横向滚动而不被挤压。
+  // th/td 加 whitespace-nowrap 使单元格内容尽可能一行显示。
+  table: ({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
+    <div className="my-3 overflow-x-auto rounded-md border border-[var(--color-border-light)]">
+      <table className="min-w-full text-sm border-collapse" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <thead className="bg-muted/50" {...props}>
+      {children}
+    </thead>
+  ),
+  th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+    <th
+      className="px-3 py-2 text-left font-semibold whitespace-nowrap border-b border-[var(--color-border-light)]"
+      {...props}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+    <td
+      className="px-3 py-2 whitespace-nowrap border-b border-[var(--color-border-light)]/60"
+      {...props}
+    >
+      {children}
+    </td>
+  ),
   // 使用懒加载图片组件
   img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
     const srcString = typeof src === 'string' ? src : '';
@@ -517,8 +554,7 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
                             [&_hr]:my-4 [&_hr]:border-border/50
                             [&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r
                             [&_pre]:my-3
-                            [&_ul]:my-2 [&_ol]:my-2
-                            [&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50">
+                            [&_ul]:my-2 [&_ol]:my-2">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                               {chunk}
                             </ReactMarkdown>
@@ -537,8 +573,7 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
                         [&_hr]:my-4 [&_hr]:border-border/50
                         [&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r
                         [&_pre]:my-3
-                        [&_ul]:my-2 [&_ol]:my-2
-                        [&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50">
+                        [&_ul]:my-2 [&_ol]:my-2">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                           {cleanContent}
                         </ReactMarkdown>

@@ -36,6 +36,36 @@ const markdownComponents = {
     );
   },
   pre: ({ children }: React.HTMLAttributes<HTMLPreElement>) => <>{children}</>,
+  // 表格：外包 overflow-x-auto 容器，让表格在气泡宽度不够时横向滚动而不被挤压。
+  // th/td 加 whitespace-nowrap 使单元格内容尽可能一行显示。
+  table: ({ children, ...props }: React.HTMLAttributes<HTMLTableElement>) => (
+    <div className="my-3 overflow-x-auto rounded-md border border-border/50">
+      <table className="min-w-full text-sm border-collapse" {...props}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children, ...props }: React.HTMLAttributes<HTMLTableSectionElement>) => (
+    <thead className="bg-muted/50" {...props}>
+      {children}
+    </thead>
+  ),
+  th: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+    <th
+      className="px-3 py-2 text-left font-semibold whitespace-nowrap border-b border-border/50"
+      {...props}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) => (
+    <td
+      className="px-3 py-2 whitespace-nowrap border-b border-border/30"
+      {...props}
+    >
+      {children}
+    </td>
+  ),
   img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
     const isValidSrc = typeof src === 'string' && src.trim() !== '';
     return isValidSrc ? (
@@ -147,8 +177,7 @@ export function TypewriterText({ content, isStreaming, className, onComplete }: 
     "[&_hr]:my-4 [&_hr]:border-border/50",
     "[&_blockquote]:my-3 [&_blockquote]:py-1 [&_blockquote]:px-3 [&_blockquote]:border-l-2 [&_blockquote]:border-primary/30 [&_blockquote]:bg-muted/30 [&_blockquote]:rounded-r",
     "[&_pre]:my-3",
-    "[&_ul]:my-2 [&_ol]:my-2",
-    "[&_table]:my-3 [&_th]:px-3 [&_th]:py-2 [&_td]:px-3 [&_td]:py-2 [&_thead]:bg-muted/50"
+    "[&_ul]:my-2 [&_ol]:my-2"
   );
   
   return (

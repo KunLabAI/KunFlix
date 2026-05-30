@@ -600,8 +600,10 @@ async def generate_single_agent(
                        attempt + 1, _MAX_MSG_RETRIES, exc)
                 if fatal:
                     return
-                # 指数退避：0.5s, 1s, 2s, 4s, 8s
-                await asyncio.sleep(0.5 * (2 ** attempt))
+                # 指数退避（0.1s, 0.2s, 0.4s, 0.8s, 1.6s累计 3.1s）。
+                # 与 SQLite busy_timeout=30s 互补：锁父进程较长时依靠 SQLite 自身超时，
+                # 这里仅处理瞬态并发冲突，避免后台 task 总耗时过长。
+                await asyncio.sleep(0.1 * (2 ** attempt))
 
         # -------- Phase 2: 统计 + 扣费 + compaction（独立事务，失败可容忍） --------
         try:
@@ -672,9 +674,18 @@ async def generate_single_agent(
             # Phase 2 失败不影响消息可见性，仅记录告警
             logger.warning(f"Background stats/billing save failed (message already persisted): {e}")
 
-    # 启动后台保存任务，使用 asyncio.shield 保护任务不被请求取消影响
+    # 启动后台保存 task，限时等待以获取 billing/compaction/title 返填；
+    # 超时后仍以当前 billing_event 继续发送 SSE，task 在后台继续运行。
+    # 这避免 SQLite 临时锁定时重试退避（最多 3.1s）叠加事务超时导致 SSE done 事件长时间不发送，
+    # 从而使前端发送按钮卡在「暂停」样式。
+    persist_task = asyncio.create_task(_persist_message_and_billing())
     try:
-        await asyncio.shield(_persist_message_and_billing())
+        await asyncio.wait_for(asyncio.shield(persist_task), timeout=5.0)
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Persistence taking >5s (likely SQLite lock); proceeding with current billing state, "
+            "background task will continue retrying."
+        )
     except asyncio.CancelledError:
         # generator 被取消，但 shield 内的保存操作仍在运行
         logger.warning("SSE generator cancelled during save, persistence continues in background")
@@ -719,5 +730,4 @@ async def generate_single_agent(
         except Exception as e:
             logger.error(f"Image canvas bridge failed: {e}")
 
-    yield sse("done", {})
     yield sse("done", {})
