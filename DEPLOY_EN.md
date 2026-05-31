@@ -206,6 +206,54 @@ deploy/
 
 ---
 
+## Local LLM Integration (Ollama, Optional)
+
+KunFlix backend natively supports Ollama. The recommended topology is "Ollama runs on the host + Backend container connects back via `host.docker.internal`".
+
+### 1. Start Ollama on the Host with External Listening
+
+Ollama listens on `127.0.0.1:11434` by default, which containers cannot reach. Change it to `0.0.0.0`:
+
+```bash
+# One-off start (foreground)
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# Persistent via systemd (recommended for production)
+sudo systemctl edit ollama.service
+# Add under [Service]:
+#   Environment="OLLAMA_HOST=0.0.0.0:11434"
+sudo systemctl restart ollama
+
+# Pull at least one model
+ollama pull llama3.1
+```
+
+### 2. Verify Backend Container Connectivity
+
+`deploy/docker-compose.yml` already configures `extra_hosts: host.docker.internal:host-gateway` for the backend service—no extra changes needed:
+
+```bash
+docker compose --env-file .env.prod exec backend \
+  curl -s http://host.docker.internal:11434/api/tags
+# Should return a JSON model list
+```
+
+If the host has a firewall (e.g. ufw), allow port 11434 inbound from the docker bridge subnet.
+
+### 3. Register Ollama Provider in Admin Panel
+
+Log in to the admin dashboard at `https://${DOMAIN}/admin/llm`:
+
+- **Brand**: Select `Ollama (Local)`
+- **Base URL**: `http://host.docker.internal:11434`
+- **API Key**: Leave empty (frontend validation is relaxed for Ollama)
+- **Models**: Click "Sync local models" to auto-fill, or manually enter model names like `llama3.1`
+- Click "Test Connection"—should return an inference result
+
+> On fresh deployments `seed_db.py` auto-creates a default Ollama entry; just sync the model list.
+
+---
+
 ## Daily Operations
 
 ```bash

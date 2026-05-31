@@ -4,15 +4,18 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 from typing import List
 import httpx
+import logging
 
 from database import get_db
 from models import LLMProvider, Admin, Agent
-from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest
+from schemas import LLMProviderCreate, LLMProviderUpdate, LLMProviderResponse, TestConnectionRequest, OllamaModelsRequest
 from auth import require_admin
 from agents import narrative_engine, create_chat_model
 from cache.pubsub import invalidate as publish_invalidate
 from services import audit
 from agentscope.message import UserMsg
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/admin/llm-providers",
@@ -84,6 +87,32 @@ async def test_connection(request: TestConnectionRequest, _admin: Admin = Depend
         import traceback
         traceback.print_exc()
         return {"success": False, "message": f"Server Error: {str(e)}"}
+
+
+@router.post("/ollama-models")
+async def list_ollama_models(
+    req: OllamaModelsRequest,
+    _admin: Admin = Depends(require_admin),
+):
+    """同步 Ollama 本地已拉取的模型列表（调用 Ollama /api/tags）。
+
+    返回 {success, models, message?}，前端可直接填回表单 models 字段。
+    """
+    base = (req.base_url or "http://localhost:11434").rstrip("/")
+    url = f"{base}/api/tags"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+        data = resp.json()
+        models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+        return {"success": True, "models": models}
+    except httpx.HTTPError:
+        logger.warning("Failed to fetch Ollama models from %s", url, exc_info=True)
+        return {"success": False, "models": [], "message": "连接 Ollama 失败，请检查地址与服务状态"}
+    except Exception:
+        logger.exception("Unexpected error while listing Ollama models")
+        return {"success": False, "models": [], "message": "Server Error"}
 
 @router.post("", response_model=LLMProviderResponse)
 async def create_llm_provider(

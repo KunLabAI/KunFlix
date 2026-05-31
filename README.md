@@ -9,9 +9,11 @@
 *你的创意，瞬间变成专业级短剧、广告、MV、品牌影片*
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg?logo=next.js&logoColor=white)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-412991.svg?logo=openai&logoColor=white)](https://openai.com/)
+[![Gemini](https://img.shields.io/badge/Gemini-8E75B2.svg?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![xAI](https://img.shields.io/badge/xAI-000000.svg?logo=x&logoColor=white)](https://x.ai/)
+[![Volcengine](https://img.shields.io/badge/火山方舟-0C60FF.svg?logo=bytedance&logoColor=white)](https://www.volcengine.com/product/ark)
+[![Ollama](https://img.shields.io/badge/Ollama-000000.svg?logo=ollama&logoColor=white)](https://ollama.com/)
 
 [🚀 快速开始](#-快速开始) · [✨ 核心特性](#-核心特性) · [📖 文档](#-技术架构) · [🗺️ 路线图](#-路线图-roadmap) · [🤝 贡献](#-社区与支持)
 
@@ -229,6 +231,7 @@ npm run dev
 - Dashscope（阿里百炼）
 - 火山引擎/火山方舟
 - Open Router
+- Ollama
 - 其他供应商后续支持
 
 ### 2. 创建智能体

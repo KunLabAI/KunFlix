@@ -158,7 +158,8 @@ class SubscriptionAssignRequest(BaseModel):
 class LLMProviderBase(BaseModel):
     name: str
     provider_type: str
-    api_key: str
+    # Ollama 本地部署无鉴权场景允许为空；后端 EncryptedString 透传空字符串
+    api_key: Optional[str] = ""
     base_url: Optional[str] = None
     models: List[str] = Field(default_factory=list)
     tags: List[str] = Field(default_factory=list)
@@ -197,10 +198,16 @@ class LLMProviderResponse(LLMProviderBase):
 
 class TestConnectionRequest(BaseModel):
     provider_type: str
-    api_key: str
+    # 与 LLMProviderBase.api_key 可选性保持一致，兼容 Ollama 无鉴权连接测试
+    api_key: Optional[str] = ""
     base_url: Optional[str] = None
     model: str
     config_json: Optional[Dict[str, Any]] = {}
+
+
+class OllamaModelsRequest(BaseModel):
+    """同步 Ollama 本地模型列表的请求体；base_url 为空时默认 http://localhost:11434。"""
+    base_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

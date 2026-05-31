@@ -206,6 +206,54 @@ deploy/
 
 ---
 
+## 本地 LLM 接入（Ollama，可选）
+
+KunFlix 后端原生支持 Ollama，部署形态推荐「宿主机直跑 Ollama + Backend 容器通过 `host.docker.internal` 回连」。
+
+### 1. 宿主机启动 Ollama 并对外监听
+
+Ollama 默认仅监听 `127.0.0.1:11434`，容器无法访问，需改为 `0.0.0.0`：
+
+```bash
+# 一次性启动（前台）
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# systemd 持久化（推荐生产）
+sudo systemctl edit ollama.service
+# 在 [Service] 段加入：
+#   Environment="OLLAMA_HOST=0.0.0.0:11434"
+sudo systemctl restart ollama
+
+# 拉取至少一个模型
+ollama pull llama3.1
+```
+
+### 2. Backend 容器联通性确认
+
+`deploy/docker-compose.yml` 的 backend 服务已配置 `extra_hosts: host.docker.internal:host-gateway`，无需额外改动：
+
+```bash
+docker compose --env-file .env.prod exec backend \
+  curl -s http://host.docker.internal:11434/api/tags
+# 预期返回 JSON 模型列表
+```
+
+若宿主机有防火墙（如 ufw），需放行 11434 端口对 docker bridge 网段的入站访问。
+
+### 3. 后台注册 Ollama 供应商
+
+登录 admin 后台 `https://${DOMAIN}/admin/llm`：
+
+- **品牌**：选择 `Ollama (Local)`
+- **Base URL**：`http://host.docker.internal:11434`
+- **API Key**：留空（前端校验已对 Ollama 放宽）
+- **Models**：填入已 `ollama pull` 的模型名，如 `llama3.1`
+- 点击「测试连接」，应回显推理结果
+
+> 全新部署时 `seed_db.py` 已自动预创建 Ollama 默认条目，仅需补全 models 即可。
+
+---
+
 ## 日常运维
 
 ```bash

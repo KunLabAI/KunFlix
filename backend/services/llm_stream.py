@@ -196,8 +196,34 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
 
 # ============================================================
-# xAI/Grok 供应商（独立处理推理模式 + 图像生成）
+# Ollama 本地模型 — 复用 OpenAI 兼容端点
 # ============================================================
+@register_provider("ollama")
+async def stream_ollama(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """Ollama 本地部署复用 OpenAI 兼容端点 (/v1/chat/completions)。
+
+    两个适配点：
+    - base_url 自动补 /v1 后缀（admin 填的是 http://localhost:11434）；
+    - api_key 为空时注入占位 "ollama"，避免 AsyncOpenAI 构造时 Missing credentials。
+    """
+    base = (ctx.base_url or "http://localhost:11434").rstrip("/")
+    effective_base = base if base.endswith("/v1") else f"{base}/v1"
+    patched = StreamContext(
+        provider_type=ctx.provider_type,
+        api_key=ctx.api_key or "ollama",  # OpenAI SDK 校验 api_key 非空
+        base_url=effective_base,
+        model=ctx.model,
+        messages=ctx.messages,
+        temperature=ctx.temperature,
+        context_window=ctx.context_window,
+        thinking_mode=ctx.thinking_mode,
+        gemini_config=ctx.gemini_config,
+        xai_image_config=ctx.xai_image_config,
+        tools=ctx.tools,
+        user_id=ctx.user_id,
+    )
+    async for chunk in _PROVIDER_REGISTRY["openai"](patched, result):
+        yield chunk
 
 # xAI 推理参数配置（模型关键词 → thinking_mode 开启时的 extra_body）
 # grok-3-mini: 支持 reasoning_effort，Chat Completions 返回 reasoning_content

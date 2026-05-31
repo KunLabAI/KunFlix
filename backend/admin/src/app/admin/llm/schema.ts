@@ -47,6 +47,7 @@ export const PROVIDER_ICONS: Record<string, string> = {
   openrouter: withBasePath('/provider/openrouter.svg'),
   sora: withBasePath('/provider/sora-color.svg'),
   ark: withBasePath('/provider/volcengine-color.svg'),
+  ollama: withBasePath('/provider/ollama.svg'),
 };
 
 // Provider brand labels come from the vendor itself (proper nouns), not translated.
@@ -61,7 +62,11 @@ export const PROVIDER_OPTIONS = [
   { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
   { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
   { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
+  { value: 'ollama', label: 'Ollama (Local)', icon: PROVIDER_ICONS.ollama },
 ];
+
+// 本地部署且无鉴权的供应商（如 Ollama）允许 api_key 为空
+const PROVIDERS_WITHOUT_AUTH = new Set(['ollama']);
 
 export const createFormSchema = (t: TFunction) => z.object({
   name: z.string().min(1, t('llm.form.validation.nameRequired')),
@@ -73,7 +78,8 @@ export const createFormSchema = (t: TFunction) => z.object({
     display_name: z.string().optional(),
   })).min(1, t('llm.form.validation.modelsRequired')),
   base_url: z.string().optional(),
-  api_key: z.string().min(1, t('llm.form.validation.apiKeyRequired')),
+  // 顶层 superRefine 根据 provider_type 动态决定是否必填
+  api_key: z.string().optional().default(''),
   config_json: z.string().refine((val) => {
     if (!val) return true;
     try {
@@ -83,6 +89,13 @@ export const createFormSchema = (t: TFunction) => z.object({
       return false;
     }
   }, t('llm.form.validation.invalidJson')).optional(),
+}).superRefine((data, ctx) => {
+  // Ollama 等本地部署跳过 api_key 校验，其余供应商仍需非空
+  !PROVIDERS_WITHOUT_AUTH.has(data.provider_type) && !data.api_key && ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['api_key'],
+    message: t('llm.form.validation.apiKeyRequired'),
+  });
 });
 
 export type FormValues = {
@@ -91,7 +104,7 @@ export type FormValues = {
   tags?: string[];
   models: { value: string; type?: string; display_name?: string }[];
   base_url?: string;
-  api_key: string;
+  api_key?: string;
   config_json?: string;
 };
 
