@@ -104,70 +104,51 @@ docker compose --env-file .env.prod down -v
 ### 1. Install Docker & Firewall
 
 ```bash
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin ufw
+curl -fsSL https://get.docker.com | sh
 sudo systemctl enable --now docker
-sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
+sudo apt-get install -y ufw && sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
 ```
+
+> **China server tip**: If `get.docker.com` is slow, use mirror: `curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun`
 
 ### 2. Pull the Code & Configure Environment Variables
 
 ```bash
 git clone https://github.com/KunLabAI/KunFlix
-cd /opt/kunflix/deploy
-cp .env.prod.example .env.prod
+cd /opt/KunFlix/deploy
+bash scripts/setup-env.sh
 ```
 
-Edit `.env.prod` and set the following required fields:
+The script prompts for your domain and email, then auto-generates all secrets (`POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `JWT_SECRET_KEY` / `ENCRYPTION_KEY`).
+
+You can also pass arguments to skip the interactive prompts:
 
 ```bash
-vi .env.prod
+bash scripts/setup-env.sh --domain kunflix.example.com --email admin@example.com
 ```
 
-| Variable | Description | How to Generate |
-|------|------|-----------------|
-| `DOMAIN` | Your domain (e.g. `kunflix.example.com`) | — |
-| `CERTBOT_EMAIL` | Let's Encrypt notification email | — |
-| `POSTGRES_PASSWORD` | Database password (high-entropy random) | `openssl rand -base64 24` |
-| `JWT_SECRET_KEY` | JWT signing key | `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | Data encryption key | `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+> To tweak optional settings (AI model keys, rate limits, etc.), run `vi .env.prod` manually.
 
-### 3. Issue HTTPS Certificate & Launch
+### 3. Issue HTTPS Certificate & Launch & Initialize
 
 ```bash
-# Make sure DNS already points to the server, then issue + start in one command
+# Make sure DNS already points to the server, then run full initialization
 bash scripts/init-letsencrypt.sh
 ```
 
-The script automates: certificate issuance → start all containers → health check.
+The script automates all steps:
+1. Certificate issuance (certbot standalone)
+2. Start all containers
+3. Wait for backend health check
+4. Initialize database (seed + create admin account)
 
-### 4. Initialize Data
+You'll be prompted for admin email and password. Or pass arguments to skip interaction:
 
 ```bash
-# Seed default LLM Provider configs & Prompt Templates
-docker compose --env-file .env.prod exec backend python -c "
-import asyncio, sys
-sys.path.insert(0, '/app/scripts')
-from scripts.seed_db import seed
-asyncio.run(seed())
-"
-
-# Create the admin account (email must be a valid format; .local domains are rejected)
-docker compose --env-file .env.prod exec backend python -c "
-import asyncio
-from database import AsyncSessionLocal
-from models import Admin
-from auth import hash_password
-async def main():
-    async with AsyncSessionLocal() as db:
-        a = Admin(email='your-email@example.com', nickname='Admin', password_hash=hash_password('YourStrongPassword!'), is_active=True, permission_level='super_admin')
-        db.add(a)
-        await db.commit()
-        print('Admin created successfully')
-asyncio.run(main())
-"
+bash scripts/init-letsencrypt.sh --admin-email admin@example.com --admin-password 'YourStrongPwd!'
 ```
 
-### 5. Verify
+### 4. Verify
 
 ```bash
 curl -I https://<DOMAIN>/           # Frontend main site → 200

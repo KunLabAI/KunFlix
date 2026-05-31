@@ -104,70 +104,51 @@ docker compose --env-file .env.prod down -v
 ### 1. 安装 Docker & 防火墙
 
 ```bash
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin ufw
+curl -fsSL https://get.docker.com | sh
 sudo systemctl enable --now docker
-sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
+sudo apt-get install -y ufw && sudo ufw allow 22,80,443/tcp && sudo ufw --force enable
 ```
+
+> **国内服务器提示**：如果 `get.docker.com` 访问缓慢，可使用镜像：`curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun`
 
 ### 2. 拉取代码 & 配置环境变量
 
 ```bash
 git clone https://github.com/KunLabAI/KunFlix
-cd /opt/kunflix/deploy
-cp .env.prod.example .env.prod
+cd /opt/KunFlix/deploy
+bash scripts/setup-env.sh
 ```
 
-编辑 `.env.prod`，必须修改以下字段：
+脚本会提示输入域名和邮箱，并自动生成所有密钥（`POSTGRES_PASSWORD` / `REDIS_PASSWORD` / `JWT_SECRET_KEY` / `ENCRYPTION_KEY`）。
+
+也可直接传参跳过交互：
 
 ```bash
-vi .env.prod
+bash scripts/setup-env.sh --domain kunflix.example.com --email admin@example.com
 ```
 
-| 变量 | 说明 | 生成方式 |
-|------|------|---------|
-| `DOMAIN` | 你的域名（如 `kunflix.example.com`） | — |
-| `CERTBOT_EMAIL` | Let's Encrypt 通知邮箱 | — |
-| `POSTGRES_PASSWORD` | 数据库密码（高强度随机） | `openssl rand -base64 24` |
-| `JWT_SECRET_KEY` | JWT 签名密钥 | `openssl rand -hex 32` |
-| `ENCRYPTION_KEY` | 数据加密密钥 | `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+> 如需修改其他可选配置（AI 模型密钥、限流参数等），执行 `vi .env.prod` 手动编辑。
 
-### 3. 签发 HTTPS 证书 & 启动
+### 3. 签发 HTTPS 证书 & 启动 & 初始化
 
 ```bash
-# 确保 DNS 已指向服务器，然后一键签发 + 启动
+# 确保 DNS 已指向服务器，然后一键完成全部初始化
 bash scripts/init-letsencrypt.sh
 ```
 
-该脚本会自动完成：证书签发 → 启动全部容器 → 健康检查。
+脚本会依次自动完成：
+1. 证书签发（certbot standalone）
+2. 启动全部容器
+3. 等待 backend 健康检查通过
+4. 初始化数据库（seed + 创建管理员账号）
 
-### 4. 初始化数据
+过程中会提示输入管理员邮箱和密码，也可传参跳过交互：
 
 ```bash
-# 灌入默认 LLM Provider 配置 & Prompt Templates
-docker compose --env-file .env.prod exec backend python -c "
-import asyncio, sys
-sys.path.insert(0, '/app/scripts')
-from scripts.seed_db import seed
-asyncio.run(seed())
-"
-
-# 创建管理员账号（邮箱必须是合法格式，不能用 .local 域名）
-docker compose --env-file .env.prod exec backend python -c "
-import asyncio
-from database import AsyncSessionLocal
-from models import Admin
-from auth import hash_password
-async def main():
-    async with AsyncSessionLocal() as db:
-        a = Admin(email='your-email@example.com', nickname='Admin', password_hash=hash_password('YourStrongPassword!'), is_active=True, permission_level='super_admin')
-        db.add(a)
-        await db.commit()
-        print('Admin created successfully')
-asyncio.run(main())
-"
+bash scripts/init-letsencrypt.sh --admin-email admin@example.com --admin-password 'YourStrongPwd!'
 ```
 
-### 5. 验证
+### 4. 验证
 
 ```bash
 curl -I https://<DOMAIN>/           # 前端主站 → 200
