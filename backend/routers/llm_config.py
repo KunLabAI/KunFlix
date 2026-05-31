@@ -4,6 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy import func
 from typing import List
 import httpx
+import logging
 
 from database import get_db
 from models import LLMProvider, Admin, Agent
@@ -13,6 +14,8 @@ from agents import narrative_engine, create_chat_model
 from cache.pubsub import invalidate as publish_invalidate
 from services import audit
 from agentscope.message import UserMsg
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/admin/llm-providers",
@@ -104,10 +107,12 @@ async def list_ollama_models(
         data = resp.json()
         models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
         return {"success": True, "models": models}
-    except httpx.HTTPError as e:
-        return {"success": False, "models": [], "message": f"连接 Ollama 失败: {e}"}
-    except Exception as e:
-        return {"success": False, "models": [], "message": f"Server Error: {e}"}
+    except httpx.HTTPError:
+        logger.warning("Failed to fetch Ollama models from %s", url, exc_info=True)
+        return {"success": False, "models": [], "message": "连接 Ollama 失败，请检查地址与服务状态"}
+    except Exception:
+        logger.exception("Unexpected error while listing Ollama models")
+        return {"success": False, "models": [], "message": "Server Error"}
 
 @router.post("", response_model=LLMProviderResponse)
 async def create_llm_provider(
