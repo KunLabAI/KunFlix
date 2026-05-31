@@ -21,6 +21,7 @@ from agentscope.credential import (
     AnthropicCredential,
     DashScopeCredential,
     GeminiCredential,
+    OllamaCredential,
     OpenAICredential,
 )
 from agentscope.message import Msg
@@ -89,9 +90,11 @@ def _factory_with_credential(cred_cls: Any, model_cls: Any):
 
 def _ollama_factory(api_key: str, model_name: str, base_url: str | None,
                     parameters: Any | None = None) -> Any:
-    """Ollama: credential 可选；host 指向本地服务地址。"""
-    kwargs: dict[str, Any] = {"model": model_name}
-    base_url and kwargs.update(host=base_url)
+    """Ollama：OllamaChatModel 不接受 host kwarg，主机地址必须通过
+    OllamaCredential(host=...) 注入；api_key 不使用。"""
+    credential = OllamaCredential(host=base_url) if base_url else OllamaCredential()
+    kwargs: dict[str, Any] = {"credential": credential, "model": model_name}
+    parameters is not None and kwargs.update(parameters=parameters)
     return OllamaChatModel(**kwargs)
 
 

@@ -6,6 +6,7 @@
 import asyncio
 import codecs
 import logging
+import os
 import sys
 
 import uvicorn
@@ -15,6 +16,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from errors import BizError, ErrorCode, STATUS_TO_CODE
+
+# ---------------------------------------------------------------------------
+# 代理旁路：开发机常常设了 HTTP_PROXY/HTTPS_PROXY（Clash / V2Ray / 公司代理），
+# httpx / ollama-py / openai-py 默认读环境变量，连本机 Ollama (localhost:11434)
+# 会被误转发到代理服务器上，触发 "Server disconnected without sending a response"。
+# 这里将环回地址追加到 NO_PROXY，让所有本机调用绕过代理。
+# ---------------------------------------------------------------------------
+_no_proxy_existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+_no_proxy_set = {item.strip() for item in _no_proxy_existing.split(",") if item.strip()}
+_no_proxy_set.update({"localhost", "127.0.0.1", "::1"})
+_no_proxy_value = ",".join(sorted(_no_proxy_set))
+os.environ["NO_PROXY"] = _no_proxy_value
+os.environ["no_proxy"] = _no_proxy_value
 
 # ---------------------------------------------------------------------------
 # Windows 兼容：asyncpg + 控制台 UTF-8

@@ -73,6 +73,15 @@ DEFAULT_PROVIDERS = [
         "models": ["deepseek-chat", "deepseek-reasoner"],
         "tags": ["llm"],
     },
+    {
+        # Ollama 本地部署：api_key 留空；models 留空交由后台「同步本地模型」按钮拉取
+        # base_url 默认 localhost，若部署在 Docker 中需手动改为 http://host.docker.internal:11434
+        "name": "Ollama",
+        "provider_type": "ollama",
+        "models": [],
+        "tags": ["llm", "local"],
+        "base_url": "http://localhost:11434",
+    },
 ]
 
 def load_prompt_templates():
@@ -216,6 +225,7 @@ async def seed():
                     name=provider_config["name"],
                     provider_type=provider_config["provider_type"],
                     api_key="",  # API Key 需在部署后配置
+                    base_url=provider_config.get("base_url"),  # 本地供应商（如 Ollama）预填默认地址
                     models=provider_config["models"],
                     tags=provider_config.get("tags", []),
                     is_active=True,

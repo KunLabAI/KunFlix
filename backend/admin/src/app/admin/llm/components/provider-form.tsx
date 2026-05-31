@@ -30,7 +30,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PRESET_COST_DIMENSIONS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, createFormSchema, FormValues, LLMProvider } from '../schema';
 
@@ -44,6 +44,7 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   const { t } = useTranslation();
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncingOllama, setIsSyncingOllama] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>(initialData?.model_costs || {});
   const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
@@ -67,10 +68,55 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "models",
   });
+
+  // 同步本地 Ollama 模型列表：调用后端代理 GET /api/tags，
+  // 合并保留已有同名条目的别名/类型配置；cost 配置仍由 modelCosts state 按名匹配。
+  const handleSyncOllamaModels = async () => {
+    try {
+      setIsSyncingOllama(true);
+      const baseUrl = (form.getValues('base_url') || '').trim() || 'http://localhost:11434';
+      const res = await api.post('/admin/llm-providers/ollama-models', { base_url: baseUrl });
+      if (!res.data?.success) {
+        toast({
+          variant: 'destructive',
+          title: '同步失败',
+          description: res.data?.message || '未能连接本地 Ollama 服务',
+        });
+        return;
+      }
+      const remoteNames: string[] = res.data.models || [];
+      if (remoteNames.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: '本地未发现模型',
+          description: '请先使用 `ollama pull <model>` 拉取至少一个模型',
+        });
+        return;
+      }
+      // 按 value 合并：本地列表为准，同名条目保留已有 type/display_name
+      const existing = new Map(
+        (form.getValues('models') || []).map((m: { value: string; type?: string; display_name?: string }) => [m.value, m]),
+      );
+      const merged = remoteNames.map((name) => existing.get(name) || { value: name, type: 'language', display_name: '' });
+      replace(merged);
+      toast({
+        title: '同步成功',
+        description: `已从 Ollama 拉取 ${remoteNames.length} 个模型`,
+      });
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: '同步出错',
+        description: err?.message || '请检查 Base URL 与后端服务',
+      });
+    } finally {
+      setIsSyncingOllama(false);
+    }
+  };
 
   const handleTestConnection = async () => {
     try {
@@ -393,8 +439,29 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('llm.form.models.title')}</CardTitle>
-                  <CardDescription>{t('llm.form.models.description')}</CardDescription>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1.5">
+                      <CardTitle>{t('llm.form.models.title')}</CardTitle>
+                      <CardDescription>{t('llm.form.models.description')}</CardDescription>
+                    </div>
+                    {form.watch('provider_type') === 'ollama' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSyncOllamaModels}
+                        disabled={isSyncingOllama}
+                        className="shrink-0"
+                      >
+                        {isSyncingOllama ? (
+                          <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                        )}
+                        同步本地模型
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">

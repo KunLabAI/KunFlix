@@ -86,6 +86,9 @@ services:
       AUDIT_ENABLED: "true"
       # 生产通过 Nginx 单域名同源访问，保留内部直连来源以兼容调试
       CORS_ALLOW_ORIGINS: "https://${DOMAIN},http://${DOMAIN}"
+    # 让 Linux 容器也能解析 host.docker.internal，用于访问宿主机上的 Ollama 等本地 LLM 服务
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - mediadata:/app/media
     depends_on:
