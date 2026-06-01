@@ -1,11 +1,11 @@
-"""
-Skill prompt builder — Tool Wrapper pattern implementation.
+"""Skill prompt builder — Tool Wrapper pattern implementation.
 
 Architecture:
 - System prompt contains a LIGHTWEIGHT skill index (name + description only)
 - A `load_skill` meta-tool is registered alongside execution tools
 - Skills are tutorials: they teach the LLM how to perform specific tasks
 - load_skill returns the FULL SKILL.md content (instructions, examples, references)
+- load_skill with file_path returns any file within the skill directory
 - Normal conversations cost ~0 extra tokens; skill-heavy conversations load on demand
 
 This module is INDEPENDENT of the tool_manager — skills and tools are
@@ -70,8 +70,16 @@ def build_skill_prompt(
 # Skill content loader
 # ---------------------------------------------------------------------------
 
-def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
-    """Load the full SKILL.md content for a skill (called by load_skill tool)."""
+def load_skill_content(skill_name: str, active_skills_dir: Path, file_path: str | None = None) -> str:
+    """Load skill content — either SKILL.md or a specific file.
+
+    - file_path=None → load SKILL.md (main tutorial) + list available files
+    - file_path="xxx" → load that specific file from the skill directory
+    """
+    # Route to file loader when file_path is provided
+    if file_path:
+        return _load_skill_file(skill_name, file_path, active_skills_dir)
+
     skill_md_path = active_skills_dir / skill_name / "SKILL.md"
     if not skill_md_path.exists():
         return f"Skill '{skill_name}' not found."
@@ -81,19 +89,85 @@ def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
         name = str(post.get("name", skill_name))
         body = (post.content or "").strip()
 
-        refs_dir = active_skills_dir / skill_name / "references"
-        refs_listing = ""
-        if refs_dir.is_dir():
-            ref_files = [f.name for f in refs_dir.iterdir() if f.is_file()]
-            refs_listing = (
-                "\n\n## References\n" + "\n".join(f"- {f}" for f in ref_files)
-            ) if ref_files else ""
+        # List all sub-files in the skill directory (excluding SKILL.md itself)
+        skill_dir = active_skills_dir / skill_name
+        sub_files = _collect_skill_files(skill_dir, skill_dir)
+        files_listing = (
+            "\n\n## Skill Files\n"
+            "The following files are available in this skill. "
+            "Call `load_skill` again with `file_path` parameter to read their content.\n"
+            + "\n".join(f"- `{f}`" for f in sub_files)
+        ) if sub_files else ""
 
         logger.info("Loaded full skill content: %s (%d chars)", name, len(body))
-        return f"# Skill: {name}\n\n{body}{refs_listing}"
+        return f"# Skill: {name}\n\n{body}{files_listing}"
     except Exception as exc:
         logger.error("Failed to load skill '%s': %s", skill_name, exc)
         return f"Error loading skill '{skill_name}': {exc}"
+
+
+def _collect_skill_files(directory: Path, base_dir: Path) -> list[str]:
+    """Recursively collect all files under a skill directory, returning relative paths.
+
+    Excludes SKILL.md (already loaded as main content).
+    """
+    files: list[str] = []
+    if not directory.exists() or not directory.is_dir():
+        return files
+    for item in sorted(directory.iterdir()):
+        rel_path = str(item.relative_to(base_dir)).replace("\\", "/")
+        (item.is_file() and item.name != "SKILL.md") and files.append(rel_path)
+        item.is_dir() and files.extend(_collect_skill_files(item, base_dir))
+    return files
+
+
+# ---------------------------------------------------------------------------
+# Skill file loader (internal)
+# ---------------------------------------------------------------------------
+
+def _load_skill_file(
+    skill_name: str, file_path: str, active_skills_dir: Path,
+) -> str:
+    """Load any file from a skill's directory.
+
+    Prevents path traversal and restricts access to within the skill directory.
+    """
+    normalized = file_path.replace("\\", "/").strip().strip("/")
+
+    # Prevent path traversal
+    if ".." in normalized:
+        return "Error: path traversal ('..') is not allowed in file_path."
+
+    # SKILL.md is loaded without file_path
+    if normalized == "SKILL.md":
+        return load_skill_content(skill_name, active_skills_dir)
+
+    skill_dir = active_skills_dir / skill_name
+    if not skill_dir.exists():
+        return f"Skill '{skill_name}' not found."
+
+    full_path = (skill_dir / normalized).resolve()
+
+    # Ensure resolved path is still within the skill directory
+    if not str(full_path).startswith(str(skill_dir.resolve())):
+        return "Error: access denied \u2014 path escapes skill directory."
+
+    if not full_path.exists() or not full_path.is_file():
+        return f"File '{file_path}' not found in skill '{skill_name}'."
+
+    try:
+        content = full_path.read_text(encoding="utf-8")
+        logger.info(
+            "Loaded skill file: %s/%s (%d chars)",
+            skill_name, normalized, len(content),
+        )
+        return f"# {normalized}\n\n{content}"
+    except Exception as exc:
+        logger.error(
+            "Failed to read '%s' from skill '%s': %s",
+            file_path, skill_name, exc,
+        )
+        return f"Error reading file '{file_path}': {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -103,31 +177,37 @@ def load_skill_content(skill_name: str, active_skills_dir: Path) -> str:
 def build_load_skill_tool_def(skill_names: list[str]) -> dict:
     """Build the OpenAI-format tool definition for the load_skill meta-tool.
 
-    The enum is restricted to only the skills configured for this agent.
+    Unified tool: loads SKILL.md by default, or any file when file_path is given.
+    The enum covers ALL configured skills (not just remaining ones).
     """
-    # 清理 skill 名称，确保没有多余空白字符
     clean_skill_names = [name.strip() for name in skill_names]
     return {
         "type": "function",
         "function": {
             "name": "load_skill",
             "description": (
-                "Load detailed instructions for a specific skill that gives you new capabilities. "
-                "You MUST call this before performing any skill-related task. "
-                "After loading, follow the skill's instructions to complete the user's request."
+                "Load a skill or read any file within a skill directory. "
+                "Without file_path: loads the skill tutorial (SKILL.md) and lists available files. "
+                "With file_path: loads the specified file's full content. "
+                "You MUST call this (without file_path) before performing any skill-related task."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "skill_name": {
                         "type": "string",
-                        "description": (
-                            "The name of the skill to load. "
-                            "MUST be exactly one of the values in the enum list, without any quotes, "
-                            "line breaks, or extra whitespace."
-                        ),
+                        "description": "The name of the skill.",
                         "enum": clean_skill_names,
-                    }
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": (
+                            "Optional. Relative path to a file within the skill directory. "
+                            "When omitted, loads the skill's main tutorial (SKILL.md). "
+                            "When provided, loads that specific file. "
+                            "Example: 'references/guide.md'"
+                        ),
+                    },
                 },
                 "required": ["skill_name"],
             },
