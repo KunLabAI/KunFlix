@@ -9,6 +9,8 @@ import logging
 import os
 import sys
 
+logger = logging.getLogger(__name__)
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
@@ -77,8 +79,8 @@ def _detect_proxy_macos() -> str | None:
         socks_port = lines.get("SOCKSPort", "")
         if socks_on and socks_host:
             return f"socks5://{socks_host}:{socks_port}" if socks_port else f"socks5://{socks_host}"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to detect macOS system proxy: %s", e, exc_info=True)
     return None
 
 
@@ -98,8 +100,8 @@ def _detect_proxy_linux() -> str | None:
             ).strip()
             if host and port and port != "0":
                 return f"http://{host}:{port}"
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to detect Linux system proxy: %s", e, exc_info=True)
     return None
 
 
