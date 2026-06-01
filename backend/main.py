@@ -9,6 +9,8 @@ import logging
 import os
 import sys
 
+logger = logging.getLogger(__name__)
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.exceptions import RequestValidationError
@@ -18,17 +20,110 @@ from fastapi.responses import JSONResponse
 from errors import BizError, ErrorCode, STATUS_TO_CODE
 
 # ---------------------------------------------------------------------------
-# 代理旁路：开发机常常设了 HTTP_PROXY/HTTPS_PROXY（Clash / V2Ray / 公司代理），
-# httpx / ollama-py / openai-py 默认读环境变量，连本机 Ollama (localhost:11434)
-# 会被误转发到代理服务器上，触发 "Server disconnected without sending a response"。
-# 这里将环回地址追加到 NO_PROXY，让所有本机调用绕过代理。
+# 代理自动检测（跨平台）：
+#   1. 自动检测系统代理设置（Windows 注册表 / macOS scutil / Linux gsettings）
+#   2. 若检测到系统代理 → 设置 HTTP_PROXY/HTTPS_PROXY → 外网模型（Gemini/Claude）走代理
+#   3. 始终将 localhost/127.0.0.1 加入 NO_PROXY → Ollama 本地调用绕过代理
 # ---------------------------------------------------------------------------
+import subprocess as _sp
+
+
+def _detect_system_proxy() -> str | None:
+    """跨平台检测系统代理。返回 'http://host:port' 或 None。"""
+    _DETECTORS = {
+        "win32": _detect_proxy_windows,
+        "darwin": _detect_proxy_macos,
+        "linux": _detect_proxy_linux,
+    }
+    detector = _DETECTORS.get(sys.platform)
+    return detector() if detector else None
+
+
+def _detect_proxy_windows() -> str | None:
+    """Windows: 读取注册表 Internet Settings。"""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as key:
+            enabled, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            server, _ = winreg.QueryValueEx(key, "ProxyServer")
+            if enabled and server:
+                # 协议分组格式 "http=h:p;https=h:p;..." 或简单格式 "host:port"
+                parts = dict(item.split("=", 1) for item in server.split(";") if "=" in item)
+                addr = parts.get("https") or parts.get("http") or server
+                return f"http://{addr}" if not addr.startswith("http") else addr
+    except Exception:
+        logging.debug("Failed to detect Windows system proxy from registry.", exc_info=True)
+    return None
+
+
+def _detect_proxy_macos() -> str | None:
+    """macOS: 通过 scutil --proxy 读取系统网络代理。"""
+    try:
+        out = _sp.check_output(["scutil", "--proxy"], text=True, timeout=3)
+        lines = {l.strip().split(" : ")[0]: l.strip().split(" : ")[1]
+                 for l in out.splitlines() if " : " in l}
+        # 优先 HTTPS，回退 HTTP
+        for enable_key, host_key, port_key in [
+            ("HTTPSEnable", "HTTPSProxy", "HTTPSPort"),
+            ("HTTPEnable", "HTTPProxy", "HTTPPort"),
+        ]:
+            enabled = lines.get(enable_key, "0") == "1"
+            host = lines.get(host_key, "")
+            port = lines.get(port_key, "")
+            if enabled and host:
+                return f"http://{host}:{port}" if port else f"http://{host}"
+        # SOCKS 代理（Clash 增强模式常用）
+        socks_on = lines.get("SOCKSEnable", "0") == "1"
+        socks_host = lines.get("SOCKSProxy", "")
+        socks_port = lines.get("SOCKSPort", "")
+        if socks_on and socks_host:
+            return f"socks5://{socks_host}:{socks_port}" if socks_port else f"socks5://{socks_host}"
+    except Exception as e:
+        logger.debug("Failed to detect macOS system proxy: %s", e, exc_info=True)
+    return None
+
+
+def _detect_proxy_linux() -> str | None:
+    """Linux: 通过 gsettings 读取 GNOME 代理，或检测常见代理端口。"""
+    # 尝试 gsettings（GNOME 桌面）
+    try:
+        mode = _sp.check_output(
+            ["gsettings", "get", "org.gnome.system.proxy", "mode"], text=True, timeout=3
+        ).strip().strip("'")
+        if mode == "manual":
+            host = _sp.check_output(
+                ["gsettings", "get", "org.gnome.system.proxy.http", "host"], text=True, timeout=3
+            ).strip().strip("'")
+            port = _sp.check_output(
+                ["gsettings", "get", "org.gnome.system.proxy.http", "port"], text=True, timeout=3
+            ).strip()
+            if host and port and port != "0":
+                return f"http://{host}:{port}"
+    except Exception as e:
+        logger.debug("Failed to detect Linux system proxy: %s", e, exc_info=True)
+    return None
+
+
+# 优先级：环境变量 > 系统代理自动检测
+_proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or os.environ.get("https_proxy") or os.environ.get("http_proxy")
+_proxy_url = _proxy_url or _detect_system_proxy()
+_proxy_url and os.environ.setdefault("HTTP_PROXY", _proxy_url)
+_proxy_url and os.environ.setdefault("HTTPS_PROXY", _proxy_url)
+_proxy_url and os.environ.setdefault("http_proxy", _proxy_url)
+_proxy_url and os.environ.setdefault("https_proxy", _proxy_url)
+
+# NO_PROXY: 本地地址始终绕过代理（Ollama / 本地服务）
 _no_proxy_existing = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
 _no_proxy_set = {item.strip() for item in _no_proxy_existing.split(",") if item.strip()}
 _no_proxy_set.update({"localhost", "127.0.0.1", "::1"})
 _no_proxy_value = ",".join(sorted(_no_proxy_set))
 os.environ["NO_PROXY"] = _no_proxy_value
 os.environ["no_proxy"] = _no_proxy_value
+
+# 日志输出代理状态（启动时可见）
+_proxy_url and print(f"[PROXY] 检测到代理: {_proxy_url} | NO_PROXY: {_no_proxy_value}")
+(not _proxy_url) and print(f"[PROXY] 未检测到代理，外网模型可能无法连接 | NO_PROXY: {_no_proxy_value}")
 
 # ---------------------------------------------------------------------------
 # Windows 兼容：asyncpg + 控制台 UTF-8
