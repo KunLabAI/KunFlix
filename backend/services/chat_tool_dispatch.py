@@ -36,7 +36,7 @@ async def get_tool_result(
     try:
         # Skill dispatch (peer-level, NOT a managed provider)
         result = (
-            _execute_skill(tc_name, tc_args, ctx)
+            _execute_skill(tc_args, ctx)
             if tc_name == "load_skill"
             else await tool_manager.execute_tool(tc_name, tc_args, ctx)
         )
@@ -48,15 +48,15 @@ async def get_tool_result(
     return result
 
 
-def _execute_skill(tc_name: str, tc_args: dict, ctx: "ToolContext") -> str:
+def _execute_skill(tc_args: dict, ctx: "ToolContext") -> str:
     from services.skill_tools import load_skill_content
     from services.tool_manager.context import TOOL_SKILL_GATE_MAP
     # 清理 skill_name：去除空白字符和引号
-    skill_name = tc_args.get("skill_name", "")
-    skill_name = skill_name.strip().strip('"\'')
-    # 追踪工具Skill加载（用于 skill-gated 工具动态注入）
-    (skill_name in TOOL_SKILL_GATE_MAP) and ctx.loaded_tool_skills.add(skill_name)
-    return load_skill_content(skill_name, ctx.active_skills_dir)
+    skill_name = tc_args.get("skill_name", "").strip().strip("'\"'")
+    file_path = tc_args.get("file_path") or None
+    # 追踪工具Skill加载（用于 skill-gated 工具动态注入，仅在加载主文档时触发）
+    (not file_path and skill_name in TOOL_SKILL_GATE_MAP) and ctx.loaded_tool_skills.add(skill_name)
+    return load_skill_content(skill_name, ctx.active_skills_dir, file_path)
 
 
 async def append_tool_round(

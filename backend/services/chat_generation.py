@@ -184,7 +184,7 @@ async def generate_single_agent(
 
     # 技能系统（与工具同级，独立编排）
     remaining_skills = [s for s in agent_skills if s not in loaded_skills]
-    remaining_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(remaining_skills)])
+    agent_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(agent_skills)])
 
     # 注入技能信息到 system prompt
     # 已恢复的技能：注入完整内容（补偿工具调用轮次未持久化导致的上下文丢失）
@@ -452,7 +452,7 @@ async def generate_single_agent(
                 if tool_skill_loaded
                 else tool_manager.rebuild_after_round(ctx)
             )
-            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(agent_skills)] if agent_skills else [])
             tool_defs = tool_defs or None
 
             # 输出重建后的工具列表（仅在发生变化时）

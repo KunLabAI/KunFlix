@@ -367,7 +367,7 @@ async def _generate_single_agent_debug(
 
     # 技能系统（与工具同级，独立编排）
     remaining_skills = [s for s in agent_skills if s not in loaded_skills]
-    remaining_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(remaining_skills)])
+    agent_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(agent_skills)])
 
     # 注入技能信息到 system prompt
     _skill_prompt_parts: list[str] = []
@@ -505,7 +505,7 @@ async def _generate_single_agent_debug(
                 if tool_skill_loaded
                 else tool_manager.rebuild_after_round(ctx)
             )
-            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(remaining_skills)] if remaining_skills else [])
+            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(agent_skills)] if agent_skills else [])
             tool_defs = tool_defs or None
 
             # 发送 tool 完成事件
