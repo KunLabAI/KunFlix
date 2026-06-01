@@ -51,7 +51,7 @@ def _detect_proxy_windows() -> str | None:
                 addr = parts.get("https") or parts.get("http") or server
                 return f"http://{addr}" if not addr.startswith("http") else addr
     except Exception:
-        pass
+        logging.debug("Failed to detect Windows system proxy from registry.", exc_info=True)
     return None
 
 
