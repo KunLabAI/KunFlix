@@ -1239,7 +1239,9 @@ def _has_multimodal_content(messages: List[Dict[str, Any]]) -> bool:
 
 
 # 向后兼容别名
-_has_image_content = _has_multimodal_content
+def _has_image_content(messages: List[Dict[str, Any]]) -> bool:
+    """向后兼容：旧名称映射到多模态检测实现。"""
+    return _has_multimodal_content(messages)
 
 
 async def stream_completion(
