@@ -123,6 +123,42 @@ def get_effective_base_url(ctx: StreamContext) -> str | None:
 # ============================================================
 # OpenAI 兼容供应商 (openai, azure, deepseek)
 # ============================================================
+
+
+def _convert_inline_data_for_openai(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 inline_data parts 转换为 OpenAI 兼容格式。
+
+    - audio/* → {"type": "input_audio", "input_audio": {"data": b64, "format": ext}}
+    - video/* → {"type": "image_url", "image_url": {"url": "data:{mime};base64,{data}"}}
+    """
+    converted = []
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            converted.append(msg)
+            continue
+        new_parts = []
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "inline_data":
+                new_parts.append(part)
+                continue
+            inline = part.get("inline_data", {})
+            mime = inline.get("mime_type", "")
+            data = inline.get("data", "")
+            # 音频 → input_audio 格式
+            if mime.startswith("audio/"):
+                fmt = mime.split("/")[-1].split(";")[0]  # audio/mp3 → mp3
+                new_parts.append({"type": "input_audio", "input_audio": {"data": data, "format": fmt}})
+            # 视频 → data URL (OpenAI 通过 image_url 格式接收 data URL)
+            elif mime.startswith("video/"):
+                new_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+            else:
+                # 未知类型：跳过（避免发送无法识别的格式）
+                new_parts.append({"type": "text", "text": f"[Unsupported media: {mime}]"})
+        converted.append({**msg, "content": new_parts})
+    return converted
+
+
 @register_provider("openai", "deepseek", "openrouter")
 async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """OpenAI/DeepSeek/OpenRouter 流式调用（支持 tool calling）"""
@@ -130,9 +166,12 @@ async def stream_openai(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 
     client = _get_openai_client(ctx.api_key, get_effective_base_url(ctx))
     
+    # 将 inline_data parts 转为 OpenAI 兼容格式（audio → input_audio, video → data URL）
+    effective_messages = _convert_inline_data_for_openai(ctx.messages)
+    
     create_params = {
         "model": ctx.model,
-        "messages": ctx.messages,
+        "messages": effective_messages,
         "temperature": ctx.temperature,
         "stream": True,
         "stream_options": {"include_usage": True},
@@ -584,6 +623,53 @@ async def stream_azure(ctx: StreamContext, result: StreamResult) -> AsyncGenerat
 # ============================================================
 # Anthropic 兼容供应商 (anthropic, minimax)
 # ============================================================
+
+
+def _convert_messages_for_anthropic(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 OpenAI 格式的多模态消息转换为 Anthropic 原生格式。
+
+    - image_url (data URL) → {"type": "image", "source": {"type": "base64", ...}}
+    - inline_data (audio/video) → {"type": "document", "source": {"type": "base64", ...}}
+    - text → 保持不变
+    """
+    converted = []
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            converted.append(msg)
+            continue
+        new_parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                new_parts.append(part)
+                continue
+            ptype = part.get("type", "")
+            # 文本：保持原样
+            if ptype == "text":
+                new_parts.append(part)
+            # 图片：data URL → Anthropic image 格式
+            elif ptype == "image_url":
+                url = part.get("image_url", {}).get("url", "")
+                if url.startswith("data:"):
+                    parsed = url.split(",", 1)
+                    mime = parsed[0].replace("data:", "").split(";")[0] if len(parsed) == 2 else "image/png"
+                    b64_data = parsed[1] if len(parsed) == 2 else ""
+                    new_parts.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64_data}})
+                else:
+                    # URL 引用：保持原样（Anthropic 可能支持）
+                    new_parts.append(part)
+            # 视频/音频：inline_data → Anthropic document 格式
+            elif ptype == "inline_data":
+                inline = part.get("inline_data", {})
+                mime = inline.get("mime_type", "")
+                data = inline.get("data", "")
+                new_parts.append({"type": "document", "source": {"type": "base64", "media_type": mime, "data": data}})
+            else:
+                new_parts.append(part)
+        converted.append({**msg, "content": new_parts})
+    return converted
+
+
 @register_provider("anthropic", "minimax")
 async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """Anthropic/MiniMax 流式调用（支持 tool calling）"""
@@ -591,10 +677,13 @@ async def stream_anthropic(ctx: StreamContext, result: StreamResult) -> AsyncGen
 
     client = _get_anthropic_client(ctx.api_key, get_effective_base_url(ctx))
     
+    # 转换多模态消息为 Anthropic 原生格式
+    anthropic_messages = _convert_messages_for_anthropic(ctx.messages)
+    
     # 提取 system message
     system_content = ""
     chat_messages = []
-    for msg in ctx.messages:
+    for msg in anthropic_messages:
         if msg["role"] == "system":
             system_content = msg["content"]
         else:
@@ -765,22 +854,34 @@ def _content_part_to_gemini(part: dict):
     输入格式：
     - {"type": "text", "text": "..."} 
     - {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
+    - {"type": "inline_data", "inline_data": {"mime_type": "video/mp4", "data": "base64..."}}
     """
     from google.genai import types
+    import base64 as b64mod
     
     part_type = part.get("type", "")
     
     # 文本
     text = part.get("text")
-    return {"text": text} if part_type == "text" and text else (
-        # 图片 (data URL)
-        types.Part.from_bytes(data=img_data[1], mime_type=img_data[0])
-        if part_type == "image_url" 
-           and (img_url := part.get("image_url", {}).get("url", ""))
-           and img_url.startswith("data:")
-           and (img_data := _parse_data_url(img_url))[1]
-        else None
-    )
+    if part_type == "text" and text:
+        return {"text": text}
+    
+    # 图片 (data URL)
+    if (part_type == "image_url"
+        and (img_url := part.get("image_url", {}).get("url", ""))
+        and img_url.startswith("data:")
+        and (img_data := _parse_data_url(img_url))[1]):
+        return types.Part.from_bytes(data=img_data[1], mime_type=img_data[0])
+    
+    # 视频/音频/任意媒体 (inline_data)
+    if part_type == "inline_data":
+        inline = part.get("inline_data", {})
+        mime = inline.get("mime_type", "")
+        data_b64 = inline.get("data", "")
+        data_bytes = b64mod.b64decode(data_b64) if data_b64 else b""
+        return types.Part.from_bytes(data=data_bytes, mime_type=mime) if data_bytes else None
+    
+    return None
 
 
 def _format_gemini_messages(messages: list[dict]) -> tuple[list, str]:
@@ -1100,6 +1201,49 @@ async def stream_gemini(ctx: StreamContext, result: StreamResult) -> AsyncGenera
 # ============================================================
 # 统一入口
 # ============================================================
+# ---------------------------------------------------------------------------
+# 多模态降级：响应式检测 + 内存缓存
+# 当模型首次拒绝多模态内容（400 错误）时自动降级重试并缓存结果，
+# 后续请求直接跳过媒体注入，无需重复尝试。
+# ---------------------------------------------------------------------------
+_NON_VISION_MODELS: set[str] = set()  # 缓存: "provider_type:model" → 已知不支持多模态
+
+# 用于匹配 400 错误中多模态拒绝的关键词（任一匹配即视为模型不支持多模态）
+_MULTIMODAL_REJECT_KEYWORDS = (
+    "image_url", "image url", "unknown variant",
+    "unsupported content", "invalid content type",
+    "does not support image", "multimodal",
+    "expected text", "invalid_request_error",
+    "inline_data", "input_audio", "audio", "video",
+    "does not support", "media_type",
+)
+
+
+def _is_multimodal_rejection(error: Exception) -> bool:
+    """判断异常是否为模型拒绝多模态输入的 400 错误。"""
+    status = getattr(error, 'status_code', 0) or 0
+    error_msg = str(error).lower()
+    # 通过 status_code 属性或错误文本中的 "400" 判断 HTTP 状态
+    is_400 = (status == 400) or ("error code: 400" in error_msg)
+    return is_400 and any(kw in error_msg for kw in _MULTIMODAL_REJECT_KEYWORDS)
+
+
+def _has_multimodal_content(messages: List[Dict[str, Any]]) -> bool:
+    """快速检测消息列表中是否包含多模态 content parts（图像/视频/音频）。"""
+    _media_types = frozenset({"image_url", "inline_data", "input_audio"})
+    return any(
+        isinstance(msg.get("content"), list)
+        and any(p.get("type") in _media_types for p in msg["content"] if isinstance(p, dict))
+        for msg in messages
+    )
+
+
+# 向后兼容别名
+def _has_image_content(messages: List[Dict[str, Any]]) -> bool:
+    """向后兼容：旧名称映射到多模态检测实现。"""
+    return _has_multimodal_content(messages)
+
+
 async def stream_completion(
     provider_type: str,
     api_key: str,
@@ -1120,12 +1264,21 @@ async def stream_completion(
     Yields:
         tuple[str, StreamResult]: (chunk, result) - 每次 yield chunk 文本，最后一次包含完整 result
     """
+    # 多模态降级（缓存命中）：已知不支持多模态的模型直接跳过媒体注入
+    cache_key = f"{provider_type.lower()}:{model}"
+    effective_messages = messages
+    contains_media = _has_multimodal_content(messages)
+    if contains_media and cache_key in _NON_VISION_MODELS:
+        from services.chat_utils import strip_multimodal_parts
+        effective_messages = strip_multimodal_parts(messages)
+        logger.info(f"[Multimodal cache hit] Pre-stripped media for: {cache_key}")
+
     ctx = StreamContext(
         provider_type=provider_type.lower(),
         api_key=api_key,
         base_url=base_url,
         model=model,
-        messages=messages,
+        messages=effective_messages,
         temperature=temperature,
         context_window=context_window,
         thinking_mode=thinking_mode,
@@ -1162,6 +1315,40 @@ async def stream_completion(
         # When handler produced tool_calls but no text, yield sentinel so caller sees result
         (not yielded and result.tool_calls) and (yield ("", result))  # type: ignore[func-returns-value]
     except Exception as e:
+        # ----------------------------------------------------------------
+        # 多模态自动降级重试：检测到多模态拒绝 400 → 剥离媒体 → 重新请求
+        # ----------------------------------------------------------------
+        if _is_multimodal_rejection(e) and contains_media and cache_key not in _NON_VISION_MODELS:
+            _NON_VISION_MODELS.add(cache_key)
+            logger.info(f"[Multimodal fallback] Model rejected multimodal, retrying without media: {cache_key}")
+            from services.chat_utils import strip_multimodal_parts
+            stripped_msgs = strip_multimodal_parts(messages)
+            ctx_retry = StreamContext(
+                provider_type=ctx.provider_type,
+                api_key=ctx.api_key,
+                base_url=ctx.base_url,
+                model=ctx.model,
+                messages=stripped_msgs,
+                temperature=ctx.temperature,
+                context_window=ctx.context_window,
+                thinking_mode=ctx.thinking_mode,
+                gemini_config=ctx.gemini_config,
+                xai_image_config=ctx.xai_image_config,
+                tools=ctx.tools,
+                user_id=ctx.user_id,
+            )
+            result_retry = StreamResult()
+            try:
+                async with guarded(f"llm:{ctx.provider_type}"):
+                    async for chunk in handler(ctx_retry, result_retry):
+                        yield chunk, result_retry
+            except Exception as retry_err:
+                logger.error(f"Multimodal fallback retry also failed: {retry_err}")
+                result_retry.full_response = f"Error: {retry_err}"
+                yield result_retry.full_response, result_retry
+            return
+
+        # 原始错误处理
         error_str = str(e)
         logger.error(f"LLM stream error: {error_str}")
         

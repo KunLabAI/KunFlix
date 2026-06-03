@@ -63,6 +63,7 @@ const ATTACHMENT_CONTEXT_BUILDERS: Record<string, (a: NodeAttachment) => string>
   },
   image: (a) => `[引用图像卡「${a.label}」]\n图像描述：${a.excerpt || '无描述'}`,
   video: (a) => `[引用视频卡「${a.label}」]\n视频描述：${a.excerpt || '无描述'}`,
+  audio: (a) => `[引用音频卡「${a.label}」]\n音频描述：${a.excerpt || '无描述'}`,
   storyboard: (a) => {
     const meta = a.meta as { tableColumns?: { key: string; label?: string }[]; tableData?: Record<string, unknown>[] } | undefined;
     const columns = meta?.tableColumns;

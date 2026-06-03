@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { motion } from 'framer-motion';
+import { Music, Film, Image as ImageIcon, ScrollText, Play, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TypewriterText } from './TypewriterText';
 import { CallTimelinePanel } from './CallTimelinePanel';
@@ -17,6 +18,8 @@ import { VideoTaskCard } from './VideoTaskCard';
 import { MusicTaskCard } from './MusicTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
 import { CompactionNotice } from './CompactionNotice';
+import { AudioDisplay } from '@/components/canvas/AudioNode/AudioDisplay';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import type { Message, NodeAttachment, HarnessEvent } from '@/store/useAIAssistantStore';
 
 // ---------------------------------------------------------------------------
@@ -346,40 +349,163 @@ function StreamingIndicator() {
 }
 
 function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] }) {
+  const [previewAttachment, setPreviewAttachment] = useState<NodeAttachment | null>(null);
+
   if (!attachments?.length) return null;
 
+  // 类型图标映射表
+  const TYPE_ICONS: Record<string, React.ElementType> = {
+    image: ImageIcon,
+    video: Film,
+    audio: Music,
+    text: ScrollText,
+    storyboard: ScrollText,
+  };
+
   return (
-    <div className="flex flex-wrap gap-2 mb-2">
-      {attachments.map(a => {
-        const isMedia = a.nodeType === 'image' || a.nodeType === 'video';
-        
-        if (isMedia && a.thumbnailUrl) {
+    <>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {attachments.map(a => {
+          const Icon = TYPE_ICONS[a.nodeType] ?? ScrollText;
+
+          // 图片附件：缩略图 + 左上图标 + 底部名称
+          if (a.nodeType === 'image' && a.thumbnailUrl) {
+            return (
+              <div
+                key={a.nodeId}
+                className="relative size-[88px] rounded-lg overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all border border-border shadow-sm"
+                title={a.label}
+                onClick={() => setPreviewAttachment(a)}
+              >
+                <img src={a.thumbnailUrl} alt={a.label} className="w-full h-full object-cover" />
+                <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+                  <Icon className="w-3 h-3 text-white" />
+                </div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                  <p className="text-[10px] text-white truncate">{a.label}</p>
+                </div>
+              </div>
+            );
+          }
+
+          // 视频附件：视频帧 + 居中播放按钮 + 左上图标 + 底部名称
+          if (a.nodeType === 'video' && a.thumbnailUrl) {
+            return (
+              <div
+                key={a.nodeId}
+                className="relative size-[88px] rounded-lg overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-black/80"
+                title={a.label}
+                onClick={() => setPreviewAttachment(a)}
+              >
+                <video
+                  src={`${a.thumbnailUrl}#t=0.5`}
+                  preload="metadata"
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+                    <Play className="w-3 h-3 text-white ml-0.5" fill="white" />
+                  </div>
+                </div>
+                <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+                  <Icon className="w-3 h-3 text-white" />
+                </div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+                  <p className="text-[10px] text-white truncate">{a.label}</p>
+                </div>
+              </div>
+            );
+          }
+
+          // 音频附件：居中播放图标 + 左上图标 + 底部名称
+          if (a.nodeType === 'audio' && a.thumbnailUrl) {
+            return (
+              <div
+                key={a.nodeId}
+                className="relative size-[88px] rounded-lg overflow-hidden flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all bg-secondary/50 flex items-center justify-center"
+                title={a.label}
+                onClick={() => setPreviewAttachment(a)}
+              >
+                <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center">
+                  <Play className="w-4 h-4 text-foreground ml-0.5" fill="currentColor" />
+                </div>
+                <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+                  <Icon className="w-3 h-3 text-white" />
+                </div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5">
+                  <p className="text-[10px] text-foreground truncate">{a.label}</p>
+                </div>
+              </div>
+            );
+          }
+
+          // 其他类型（文本/分镜）：摘要 + 左上图标 + 底部名称
           return (
-            <div 
-              key={a.nodeId} 
-              className="relative w-24 h-24 rounded-md overflow-hidden flex-shrink-0"
+            <div
+              key={a.nodeId}
+              className="relative size-[88px] rounded-lg overflow-hidden flex-shrink-0 bg-muted p-2 pt-7"
               title={a.label}
             >
-              {a.nodeType === 'video' ? (
-                <video src={a.thumbnailUrl} className="w-full h-full object-cover" muted playsInline preload="metadata" />
-              ) : (
-                <img src={a.thumbnailUrl} alt={a.label} className="w-full h-full object-cover" />
+              {a.excerpt && (
+                <p className="text-[7px] text-muted-foreground whitespace-pre-wrap break-words leading-tight line-clamp-4">
+                  {a.excerpt}
+                </p>
               )}
+              <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+                <Icon className="w-3 h-3 text-white" />
+              </div>
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5">
+                <p className="text-[10px] text-foreground truncate">{a.label}</p>
+              </div>
             </div>
           );
-        }
-        
-        return (
-          <div 
-            key={a.nodeId} 
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[var(--color-bg-primary)]/20 rounded-md text-xs border border-[var(--color-bg-primary)]/30 max-w-full overflow-hidden"
-            title={a.label}
+        })}
+      </div>
+
+      {/* 音视频全屏预览弹窗 */}
+      <Dialog open={!!previewAttachment} onOpenChange={(open) => { open || setPreviewAttachment(null); }}>
+        <DialogContent
+          className="max-w-[90vw] w-auto p-0 bg-black/95 border-none shadow-2xl [&>button]:hidden flex items-center justify-center"
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <DialogTitle className="sr-only">{previewAttachment?.label || 'Preview'}</DialogTitle>
+          <button
+            className="absolute top-3 right-3 z-50 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            onClick={() => setPreviewAttachment(null)}
           >
-            <span className="truncate opacity-90 font-medium">{a.label}</span>
+            <X className="w-4 h-4" />
+          </button>
+          <div className="p-6" onClick={(e) => e.stopPropagation()}>
+            {previewAttachment?.nodeType === 'video' && previewAttachment.thumbnailUrl && (
+              <video
+                src={previewAttachment.thumbnailUrl}
+                controls
+                autoPlay
+                className="max-w-[80vw] max-h-[75vh] rounded-lg"
+              />
+            )}
+            {previewAttachment?.nodeType === 'audio' && previewAttachment.thumbnailUrl && (
+              <div className="w-[400px] h-[320px] rounded-xl overflow-hidden bg-black">
+                <AudioDisplay
+                  audioUrl={previewAttachment.thumbnailUrl}
+                  lyrics={(previewAttachment.meta as { lyrics?: string })?.lyrics}
+                  selected={true}
+                />
+              </div>
+            )}
+            {previewAttachment?.nodeType === 'image' && previewAttachment.thumbnailUrl && (
+              <img
+                src={previewAttachment.thumbnailUrl}
+                alt={previewAttachment.label}
+                className="max-w-[80vw] max-h-[75vh] object-contain rounded-lg"
+              />
+            )}
           </div>
-        );
-      })}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

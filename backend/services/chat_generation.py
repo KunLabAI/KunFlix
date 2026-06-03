@@ -14,7 +14,7 @@ from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, To
 from services.chat_utils import (
     sse, deserialize_content, extract_media_filename,
     get_last_image_path, image_file_to_data_url, inject_image_to_message,
-    inject_attachment_images,
+    inject_attachment_media,
 )
 from services.chat_tool_dispatch import append_tool_round, append_tool_round_with_errors
 from services.agent_executor import _extract_tool_results
@@ -136,7 +136,7 @@ async def generate_single_agent(
     # 路径 1：从消息文本的 __ATTACHMENTS__ 解析所有图片附件
     last_msg = messages[-1] if messages else None
     if last_msg and last_msg.get("role") == "user":
-        _injected_images = await inject_attachment_images(last_msg)
+        _injected_images = await inject_attachment_media(last_msg)
 
     # 路径 2/3：__ATTACHMENTS__ 未注入任何图片时，回退到单图注入
     _edit_image_data_url = None
