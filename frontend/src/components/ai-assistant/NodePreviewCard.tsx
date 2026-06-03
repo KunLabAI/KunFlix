@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ScrollText, Image as ImageIcon, Film, Clapperboard, X, Loader2 } from 'lucide-react';
+import { ScrollText, Image as ImageIcon, Film, Music, Clapperboard, X, Loader2, Play, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
@@ -17,10 +17,11 @@ const NODE_PREVIEW_CONFIG: Record<string, {
   text:       { icon: ScrollText,   color: 'text-node-blue',   bg: 'bg-node-blue/10' },
   image:      { icon: ImageIcon,    color: 'text-node-green',  bg: 'bg-node-green/10' },
   video:      { icon: Film,         color: 'text-node-yellow', bg: 'bg-node-yellow/10' },
+  audio:      { icon: Music,        color: 'text-node-blue',   bg: 'bg-node-blue/10' },
   storyboard: { icon: Clapperboard, color: 'text-node-purple', bg: 'bg-node-purple/10' },
 };
 
-// 默认配置（兜底）
+// 默认配置（兆底）
 const DEFAULT_CONFIG = { icon: ScrollText, color: 'text-muted-foreground', bg: 'bg-muted/10' };
 
 interface NodePreviewCardProps {
@@ -30,11 +31,13 @@ interface NodePreviewCardProps {
 
 /**
  * 媒体节点预览卡（图片/视频）- 100x100 统一卡片
+ * 左上角显示类型图标，底部显示节点名称
  */
 function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
   const isUploading = !!attachment.meta?.uploading;
   const isVideo = attachment.nodeType === 'video';
   const config = NODE_PREVIEW_CONFIG[attachment.nodeType] ?? DEFAULT_CONFIG;
+  const Icon = config.icon;
 
   return (
     <motion.div
@@ -54,8 +57,8 @@ function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
               muted
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-              <div className="w-5 h-5 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
-                <div className="w-0 h-0 border-t-[4px] border-t-transparent border-l-[6px] border-l-white border-b-[4px] border-b-transparent ml-0.5" />
+              <div className="w-6 h-6 rounded-full bg-black/50 backdrop-blur flex items-center justify-center">
+                <Play className="w-3 h-3 text-white ml-0.5" fill="white" />
               </div>
             </div>
           </div>
@@ -66,12 +69,13 @@ function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
             className="w-full h-full object-cover"
           />
         )}
-        {/* 底部标签 */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5 flex items-center gap-1">
-          <span className={cn('text-[9px]', config.color)}>
-            {config.icon === ImageIcon ? '图片' : '视频'}
-          </span>
-          <p className="text-[10px] text-foreground truncate flex-1">{attachment.label}</p>
+        {/* 左上角类型图标 */}
+        <div className={cn('absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm')}>
+          <Icon className="w-3 h-3 text-white" />
+        </div>
+        {/* 底部节点名称 */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5">
+          <p className="text-[10px] text-white truncate">{attachment.label}</p>
         </div>
       </div>
 
@@ -96,7 +100,77 @@ function MediaNodeCard({ attachment, onClear }: NodePreviewCardProps) {
 }
 
 /**
+ * 音频节点预览卡 - 100x100，点击播放/暂停，无进度条
+ * 左上角显示 Music 图标，中间大播放按钮，底部节点名称
+ */
+function AudioNodeCard({ attachment, onClear }: NodePreviewCardProps) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const togglePlay = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.paused ? audio.play() : audio.pause();
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ duration: 0.15 }}
+      className="relative group shrink-0"
+    >
+      <div className="size-[100px] rounded-lg overflow-hidden bg-secondary/50 border border-border shadow-sm flex flex-col items-center justify-center">
+        {attachment.thumbnailUrl && (
+          <audio
+            ref={audioRef}
+            src={attachment.thumbnailUrl}
+            preload="metadata"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => setIsPlaying(false)}
+          />
+        )}
+        {/* 中间播放/暂停按钮 */}
+        <button
+          onClick={togglePlay}
+          className="w-10 h-10 rounded-full bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center transition-colors"
+        >
+          {isPlaying ? (
+            <Pause className="w-5 h-5 text-foreground" fill="currentColor" />
+          ) : (
+            <Play className="w-5 h-5 text-foreground ml-0.5" fill="currentColor" />
+          )}
+        </button>
+        {/* 左上角类型图标 */}
+        <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+          <Music className="w-3 h-3 text-white" />
+        </div>
+        {/* 底部节点名称 */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5">
+          <p className="text-[10px] text-foreground truncate">{attachment.label}</p>
+        </div>
+      </div>
+
+      {/* 关闭按钮 */}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-background border border-border/50 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground z-10"
+        onClick={onClear}
+      >
+        <X className="h-3 w-3" />
+      </Button>
+    </motion.div>
+  );
+}
+
+/**
  * 文本/分镜等无缩略图节点预览卡 - 100x100 统一卡片
+ * 左上角类型图标，中间摘要文本，底部节点名称
  */
 function InfoNodeCard({ attachment, onClear }: NodePreviewCardProps) {
   const config = NODE_PREVIEW_CONFIG[attachment.nodeType] ?? DEFAULT_CONFIG;
@@ -111,26 +185,23 @@ function InfoNodeCard({ attachment, onClear }: NodePreviewCardProps) {
       transition={{ duration: 0.15 }}
       className="relative group shrink-0"
     >
-      <div className="size-[100px] rounded-lg overflow-hidden bg-muted border border-border shadow-sm p-2.5 flex flex-col">
-        {/* 顶部：图标 */}
-        <div className={cn('p-1.5 rounded-md shrink-0 w-fit', config.bg)}>
-          <Icon className={cn('w-3.5 h-3.5', config.color)} />
-        </div>
-
+      <div className="size-[100px] rounded-lg overflow-hidden bg-muted border border-border shadow-sm p-2.5 pt-8 flex flex-col">
         {/* 中间：摘要文本 */}
-        <div className="flex-1 min-w-0 overflow-hidden mt-1.5">
+        <div className="flex-1 min-w-0 overflow-hidden">
           {attachment.excerpt && (
-            <p className="text-[7px] text-muted-foreground whitespace-pre-wrap break-words leading-tight line-clamp-3">
+            <p className="text-[7px] text-muted-foreground whitespace-pre-wrap break-words leading-tight line-clamp-4">
               {attachment.excerpt}
             </p>
           )}
         </div>
-
-        {/* 底部渐变 + 标签 */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent pointer-events-none" />
-        <span className="absolute bottom-1.5 left-1.5 text-[9px] text-foreground bg-muted/90 border border-border/50 px-1.5 py-0.5 rounded truncate max-w-[85px]">
-          {attachment.label}
-        </span>
+        {/* 左上角类型图标 */}
+        <div className="absolute top-1.5 left-1.5 p-1 rounded-md bg-black/40 backdrop-blur-sm">
+          <Icon className="w-3 h-3 text-white" />
+        </div>
+        {/* 底部节点名称 */}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-background/80 to-transparent p-1.5">
+          <p className="text-[10px] text-foreground truncate">{attachment.label}</p>
+        </div>
       </div>
 
       {/* 关闭按钮 */}
@@ -187,9 +258,12 @@ export function NodePreviewList({ attachments, onRemove, onClearAll }: NodePrevi
  * 统一节点预览卡片 - 根据类型自动选择渲染方式
  */
 export function NodePreviewCard({ attachment, onClear }: NodePreviewCardProps) {
-  const isMedia = attachment.nodeType === 'image' || attachment.nodeType === 'video';
+  const isVisualMedia = attachment.nodeType === 'image' || attachment.nodeType === 'video';
+  const isAudio = attachment.nodeType === 'audio';
 
-  return isMedia
+  return isVisualMedia
     ? <MediaNodeCard attachment={attachment} onClear={onClear} />
-    : <InfoNodeCard attachment={attachment} onClear={onClear} />;
+    : isAudio
+      ? <AudioNodeCard attachment={attachment} onClear={onClear} />
+      : <InfoNodeCard attachment={attachment} onClear={onClear} />;
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Pause, Volume2, VolumeX, Music2 } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Music2, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -499,6 +499,22 @@ export function AudioDisplay({ audioUrl, lyrics, selected = false }: Props) {
         <span className="text-[9px] text-muted-foreground tabular-nums w-7">
           {formatTime(duration)}
         </span>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            const url = audioRef.current?.src || audioUrl;
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = url.split('/').pop() || 'audio.mp3';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }}
+          className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
+          title={t('canvas.node.audio.download', '下载')}
+        >
+          <Download className="w-3 h-3" />
+        </button>
         <button
           onClick={(e) => { e.stopPropagation(); setShowLyrics((v) => !v); }}
           className={`p-1 rounded hover:bg-white/10 transition-colors ${
