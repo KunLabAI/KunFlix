@@ -25,7 +25,7 @@ export function useAudioGenerationApply(id: string, data: AudioNodeData) {
   const onConnect = useCanvasStore((s) => s.onConnect);
 
   const musicTask = useMusicTask();
-  const taskActive = !!musicTask.taskId && !musicTask.isTerminal;
+  const taskActive = musicTask.isSubmitting || (!!musicTask.taskId && !musicTask.isTerminal);
   const taskDone = musicTask.isCompleted;
   const taskFailed = musicTask.isFailed;
 

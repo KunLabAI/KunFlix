@@ -135,6 +135,7 @@ function AudioNodeCard({ attachment, onClear }: NodePreviewCardProps) {
         )}
         {/* 中间播放/暂停按钮 */}
         <button
+          type="button"
           onClick={togglePlay}
           className="w-10 h-10 rounded-full bg-foreground/10 hover:bg-foreground/20 flex items-center justify-center transition-colors"
         >
