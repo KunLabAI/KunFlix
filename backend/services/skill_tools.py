@@ -28,6 +28,8 @@ _SKILL_INDEX_HEADER = (
     "Each skill is a tutorial that teaches you how to perform specific tasks.\n"
     "You MUST call `load_skill` BEFORE attempting any skill-related task — "
     "do NOT tell the user you cannot do it; load the skill first and follow its instructions.\n"
+    "When a skill is no longer needed for the current task, call `load_skill` with "
+    "`action: \"unload\"` to release it and reduce context noise.\n"
 )
 
 _SKILL_INDEX_ITEM = "- **{name}**: {description}"
@@ -178,6 +180,8 @@ def build_load_skill_tool_def(skill_names: list[str]) -> dict:
     """Build the OpenAI-format tool definition for the load_skill meta-tool.
 
     Unified tool: loads SKILL.md by default, or any file when file_path is given.
+    Supports action="unload" to release a previously loaded skill and remove its
+    gated tools from the active schema — reducing context noise in long sessions.
     The enum covers ALL configured skills (not just remaining ones).
     """
     clean_skill_names = [name.strip() for name in skill_names]
@@ -186,10 +190,12 @@ def build_load_skill_tool_def(skill_names: list[str]) -> dict:
         "function": {
             "name": "load_skill",
             "description": (
-                "Load a skill or read any file within a skill directory. "
-                "Without file_path: loads the skill tutorial (SKILL.md) and lists available files. "
-                "With file_path: loads the specified file's full content. "
-                "You MUST call this (without file_path) before performing any skill-related task."
+                "Load or unload a skill. "
+                "action=\"load\" (default): loads the skill tutorial (SKILL.md) and lists available files. "
+                "action=\"unload\": releases a previously loaded skill and removes its associated tools. "
+                "With file_path (load only): loads the specified file's full content. "
+                "You MUST call this (action=\"load\") before performing any skill-related task. "
+                "Call with action=\"unload\" when the skill is no longer needed to keep context focused."
             ),
             "parameters": {
                 "type": "object",
@@ -199,10 +205,20 @@ def build_load_skill_tool_def(skill_names: list[str]) -> dict:
                         "description": "The name of the skill.",
                         "enum": clean_skill_names,
                     },
+                    "action": {
+                        "type": "string",
+                        "description": (
+                            "Whether to load or unload the skill. "
+                            "Use \"unload\" to release a skill that is no longer needed."
+                        ),
+                        "enum": ["load", "unload"],
+                        "default": "load",
+                    },
                     "file_path": {
                         "type": "string",
                         "description": (
-                            "Optional. Relative path to a file within the skill directory. "
+                            "Optional. Only used with action=\"load\". "
+                            "Relative path to a file within the skill directory. "
                             "When omitted, loads the skill's main tutorial (SKILL.md). "
                             "When provided, loads that specific file. "
                             "Example: 'references/guide.md'"

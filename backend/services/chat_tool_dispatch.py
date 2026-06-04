@@ -35,11 +35,14 @@ async def get_tool_result(
     status = "success"
     try:
         # Skill dispatch (peer-level, NOT a managed provider)
-        result = (
-            _execute_skill(tc_args, ctx)
-            if tc_name == "load_skill"
-            else await tool_manager.execute_tool(tc_name, tc_args, ctx)
-        )
+        # reset_tools dispatch (peer-level meta-tool, AgentScope-style group management)
+        if tc_name == "load_skill":
+            result = _execute_skill(tc_args, ctx)
+        elif tc_name == "reset_tools":
+            from services.tool_manager.reset_tools import execute_reset_tools
+            result = execute_reset_tools(tc_args, ctx)
+        else:
+            result = await tool_manager.execute_tool(tc_name, tc_args, ctx)
     except Exception as exc:
         result = f"Error: {exc}"
         status = "error"
@@ -53,7 +56,22 @@ def _execute_skill(tc_args: dict, ctx: "ToolContext") -> str:
     from services.tool_manager.context import TOOL_SKILL_GATE_MAP
     # 清理 skill_name：去除空白字符和引号
     skill_name = tc_args.get("skill_name", "").strip().strip("'\"'")
+    action = tc_args.get("action", "load").strip().lower()
     file_path = tc_args.get("file_path") or None
+
+    # --- Unload path: remove skill from loaded set, gated tools will be hidden on rebuild ---
+    is_unload = action == "unload"
+    if is_unload:
+        ctx.loaded_tool_skills.discard(skill_name)
+        gated_tools = TOOL_SKILL_GATE_MAP.get(skill_name, frozenset())
+        tool_list = ", ".join(sorted(gated_tools)) or "none"
+        return (
+            f"Skill '{skill_name}' unloaded. "
+            f"The following tools have been deactivated: [{tool_list}]. "
+            f"Call load_skill again if you need them later."
+        )
+
+    # --- Load path (default) ---
     # 追踪工具Skill加载（用于 skill-gated 工具动态注入，仅在加载主文档时触发）
     (not file_path and skill_name in TOOL_SKILL_GATE_MAP) and ctx.loaded_tool_skills.add(skill_name)
     return load_skill_content(skill_name, ctx.active_skills_dir, file_path)
