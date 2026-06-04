@@ -362,3 +362,24 @@
   gap: 0.25rem;
   white-space: nowrap;
 }
+
+// ── Immersive writing mode ──
+// 工具栏固定悬浮 + 内容区不独立滚动（由外层容器统一滚动） + 底部留白
+.immersive-writing-mode {
+  .script-editor-root .tiptap-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--background);
+  }
+
+  .script-editor-content {
+    overflow-y: visible;
+    overflow-x: visible;
+
+    .tiptap.ProseMirror {
+      // 底部留白约8行高度，避免内容紧贴底部
+      padding-bottom: 12rem;
+    }
+  }
+}

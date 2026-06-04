@@ -71,7 +71,7 @@ function InfiniteCanvas() {
   const { isAuthenticated } = useAuth();
   const theaterId = params.id as string;
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const { fitView, setCenter } = useReactFlow();
+  const { fitView, setCenter, fitBounds } = useReactFlow();
   const [showMap, setShowMap] = useState(false);
   const [showCanvasTools, setShowCanvasTools] = useState(false);
   const [viewport, setViewportState] = useState({ x: 0, y: 0, zoom: 1 });
@@ -85,15 +85,37 @@ function InfiniteCanvas() {
     setSnapToGrid, setSnapToGuides
   } = useCanvasStore();
 
-  // Auto-pan to newly created ghost nodes
+  // Auto-pan to newly created ghost nodes (debounced for concurrent creation)
+  const ghostPanQueue = useRef<{ x: number; y: number }[]>([]);
+  const ghostPanTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const handler = (e: Event) => {
       const { x, y } = (e as CustomEvent).detail;
-      setCenter(x, y, { duration: 600, zoom: 1 });
+      ghostPanQueue.current.push({ x, y });
+      // Debounce: wait 500ms for more ghost events before committing viewport change
+      ghostPanTimer.current && clearTimeout(ghostPanTimer.current);
+      ghostPanTimer.current = setTimeout(() => {
+        const positions = ghostPanQueue.current.splice(0);
+        const count = positions.length;
+        // Single node: center on it
+        count === 1 && setCenter(positions[0].x, positions[0].y, { duration: 600, zoom: 1 });
+        // Multiple nodes: fit viewport to encompass all new node positions
+        (count > 1) && (() => {
+          const PAD = 200;
+          const minX = Math.min(...positions.map(p => p.x)) - PAD;
+          const minY = Math.min(...positions.map(p => p.y)) - PAD;
+          const maxX = Math.max(...positions.map(p => p.x)) + PAD;
+          const maxY = Math.max(...positions.map(p => p.y)) + PAD;
+          fitBounds({ x: minX, y: minY, width: maxX - minX, height: maxY - minY }, { duration: 600 });
+        })();
+      }, 500);
     };
     window.addEventListener('ghost-node-added', handler);
-    return () => window.removeEventListener('ghost-node-added', handler);
-  }, [setCenter]);
+    return () => {
+      window.removeEventListener('ghost-node-added', handler);
+      ghostPanTimer.current && clearTimeout(ghostPanTimer.current);
+    };
+  }, [setCenter, fitBounds]);
 
   // --- Hooks ---
   useTheaterLoading(theaterId);

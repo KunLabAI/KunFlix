@@ -251,7 +251,7 @@ interface CanvasState {
   // Streaming node: progressive storyboard creation from tool argument deltas
   updateStreamingNode: (partialData: Partial<StoryboardNodeData>) => void;
   replaceGhostWithStreamingNode: (data: Partial<StoryboardNodeData>) => void;
-  replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>) => void;
+  replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>, position?: { x: number; y: number }) => void;
   removeStreamingNodes: () => void;
 
   // AI operation effects on existing nodes
@@ -263,6 +263,62 @@ interface CanvasState {
 }
 
 const MAX_HISTORY = 50;
+
+// --- Auto-position calculator (shared by addGhostNode & replaceGhostWithLocalNode) ---
+// Replicates backend _calculate_auto_position grid logic to place new nodes
+// without overlap. Considers ALL current nodes including ghost/local-* for
+// correct positioning during concurrent creation.
+const GRID_GAP_X = 40;
+const GRID_GAP_Y = 60;
+const GRID_MAX_ROW_WIDTH = 2400;
+const GRID_DEF_W = 420;
+const GRID_DEF_H = 300;
+const GRID_START_X = 100;
+const GRID_START_Y = 100;
+
+function calcAutoPosition(
+  nodes: CanvasNode[],
+  explicitX?: number,
+  explicitY?: number,
+): { x: number; y: number } {
+  // Explicit coordinates take priority
+  if (explicitX != null && explicitY != null) {
+    return { x: explicitX, y: explicitY };
+  }
+
+  let autoX = GRID_START_X;
+  let autoY = GRID_START_Y;
+
+  (nodes.length > 0) && (() => {
+    const rowBand = GRID_DEF_H + GRID_GAP_Y;
+    const occupiedRows = new Map<number, number>();
+    nodes.forEach((n) => {
+      const nw = n.width ?? n.measured?.width ?? GRID_DEF_W;
+      const edge = n.position.x + nw;
+      const rowKey = Math.round(n.position.y / rowBand) * rowBand;
+      occupiedRows.set(rowKey, Math.max(occupiedRows.get(rowKey) ?? 0, edge));
+    });
+    // Try to fit in first row with room
+    let placed = false;
+    const sortedRows = [...occupiedRows.keys()].sort((a, b) => a - b);
+    for (const rowY of sortedRows) {
+      const candidateX = occupiedRows.get(rowY)! + GRID_GAP_X;
+      (candidateX + GRID_DEF_W <= GRID_MAX_ROW_WIDTH) && (autoX = candidateX, autoY = Math.max(rowY, GRID_START_Y), placed = true);
+      if (placed) break;
+    }
+    // All rows full → new row below
+    !placed && (() => {
+      const maxBottom = nodes.reduce((max, n) => {
+        const nh = n.height ?? n.measured?.height ?? GRID_DEF_H;
+        return Math.max(max, n.position.y + nh);
+      }, 0);
+      autoX = GRID_START_X;
+      autoY = maxBottom + GRID_GAP_Y;
+    })();
+  })();
+
+  return { x: autoX, y: autoY };
+}
 
 // --- Debounced snapshot for data updates ---
 // 文本节点等数据更新会逐字触发 updateNodeData，若每次都打快照，50 条 MAX_HISTORY
@@ -692,6 +748,18 @@ export const useCanvasStore = create<CanvasState>()(
           const newNodesRaw = detail.nodes.map(apiToNode);
           const newEdgesRaw = detail.edges.map(apiToEdge);
 
+          // Collect local-* node positions to transfer to newly-arrived backend nodes.
+          // This prevents visual "jump" when ghost/local animation position differs
+          // from backend's auto-calculated position.
+          const localNodes = currentNodes.filter((n) => n.id.startsWith('local-'));
+          const localPositionByType = new Map<string, { x: number; y: number }[]>();
+          localNodes.forEach((n) => {
+            const key = n.type || 'unknown';
+            const arr = localPositionByType.get(key) || [];
+            arr.push({ x: n.position.x, y: n.position.y });
+            localPositionByType.set(key, arr);
+          });
+
           let nodesChanged = false;
           const mergedNodes = newNodesRaw.map((newNode) => {
             const existingNode = currentNodes.find((n) => n.id === newNode.id);
@@ -718,8 +786,15 @@ export const useCanvasStore = create<CanvasState>()(
                 };
               }
             }
+            // This is a newly-arrived node from backend (not in current state).
+            // If there's a matching local-* node (same type), inherit its position
+            // to avoid the animation→final position visual jump.
             nodesChanged = true;
-            return newNode;
+            const candidates = localPositionByType.get(newNode.type || 'unknown');
+            const localPos = candidates?.shift();
+            return localPos
+              ? { ...newNode, position: { x: localPos.x, y: localPos.y } }
+              : newNode;
           });
 
           if (currentNodes.length !== mergedNodes.length) {
@@ -843,56 +918,8 @@ export const useCanvasStore = create<CanvasState>()(
         };
         const dims = GHOST_DIMENSIONS[nodeType] || { width: 420, height: 300 };
 
-        // Estimate position: replicate backend _calculate_auto_position grid logic
-        // when agent doesn't provide explicit coordinates
-        let finalX = positionX;
-        let finalY = positionY;
-        const needsAutoPosition = finalX == null || finalY == null;
         const { nodes } = get();
-        const realNodes = nodes.filter((n) => n.type !== 'ghost');
-
-        const GRID_GAP_X = 40;
-        const GRID_GAP_Y = 60;
-        const GRID_MAX_ROW_WIDTH = 2400;
-        const DEF_W = 420;
-        const DEF_H = 300;
-        const START_X = 100;
-        const START_Y = 100;
-
-        let autoX = START_X;
-        let autoY = START_Y;
-        if (needsAutoPosition && realNodes.length > 0) {
-          // Group nodes into rows by Y-band, track rightmost edge per row
-          const rowBand = DEF_H + GRID_GAP_Y;
-          const occupiedRows = new Map<number, number>();
-          realNodes.forEach((n) => {
-            const nw = n.width ?? n.measured?.width ?? DEF_W;
-            const edge = n.position.x + nw;
-            const rowKey = Math.round(n.position.y / rowBand) * rowBand;
-            occupiedRows.set(rowKey, Math.max(occupiedRows.get(rowKey) ?? 0, edge));
-          });
-          // Try to fit in existing row
-          let placed = false;
-          const sortedRows = [...occupiedRows.keys()].sort((a, b) => a - b);
-          for (const rowY of sortedRows) {
-            const rowRight = occupiedRows.get(rowY)!;
-            const candidateX = rowRight + GRID_GAP_X;
-            (candidateX + DEF_W <= GRID_MAX_ROW_WIDTH) && (autoX = candidateX, autoY = Math.max(rowY, START_Y), placed = true);
-            placed && (void 0); // break equivalent
-            if (placed) break;
-          }
-          // All rows full → new row below
-          !placed && (() => {
-            const maxBottom = realNodes.reduce((max, n) => {
-              const nh = n.height ?? n.measured?.height ?? DEF_H;
-              return Math.max(max, n.position.y + nh);
-            }, 0);
-            autoX = START_X;
-            autoY = maxBottom + GRID_GAP_Y;
-          })();
-        }
-        finalX = finalX ?? autoX;
-        finalY = finalY ?? autoY;
+        const { x: finalX, y: finalY } = calcAutoPosition(nodes, positionX, positionY);
 
         const ghostId = `ghost-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const ghostNode: CanvasNode = {
@@ -927,8 +954,8 @@ export const useCanvasStore = create<CanvasState>()(
         const { nodes } = get();
         const ghostIdx = nodes.findIndex((n) => n.type === 'ghost');
         const ghost = ghostIdx >= 0 ? nodes[ghostIdx] : null;
-        // No ghost to replace — create a new streaming node at default position
-        const position = ghost ? ghost.position : { x: 100, y: 100 };
+        // No ghost to replace — use auto-position to avoid overlap
+        const position = ghost ? ghost.position : calcAutoPosition(nodes);
         const streamingId = `streaming-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const streamingNode: CanvasNode = {
           id: streamingId,
@@ -964,19 +991,21 @@ export const useCanvasStore = create<CanvasState>()(
       },
 
       // Replace ghost/streaming node with a local node using complete tool_call args
-      replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>) => {
+      replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>, position?: { x: number; y: number }) => {
         const { nodes } = get();
         // Find streaming node first, then ghost
         const targetIdx = nodes.findIndex(
           (n) => (n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming) || n.type === 'ghost'
         );
         const target = targetIdx >= 0 ? nodes[targetIdx] : null;
-        const position = target ? target.position : { x: 100, y: 100 };
+        // Use explicit position > target (ghost/streaming) position > auto-calculated
+        // Auto-calc prevents overlap when multiple tool_calls arrive without enough ghosts
+        const finalPosition = position || (target ? target.position : calcAutoPosition(nodes));
         const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         const localNode: CanvasNode = {
           id: localId,
           type: nodeType,
-          position,
+          position: finalPosition,
           width: 420,
           height: 300,
           data: data as StoryboardNodeData,

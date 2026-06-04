@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -18,9 +18,9 @@ interface SingleAgentThinkPanelProps {
  * SingleAgentThinkPanel - 单智能体思考面板
  * 
  * 特性：
- * - 显示思考状态和计时器
- * - 有内容时可展开查看详情
- * - 自动展开/折叠控制
+ * - 显示思考状态
+ * - 最多显示8行内容，超出时自动向上滚动
+ * - 思考结束后自动折叠
  */
 export function SingleAgentThinkPanel({ 
   isThinking = false, 
@@ -31,41 +31,23 @@ export function SingleAgentThinkPanel({
 }: SingleAgentThinkPanelProps) {
   const hasContent = !!thinkingContent || !!children;
   const [isExpanded, setIsExpanded] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState(0);
   const [userExpandedManually, setUserExpandedManually] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // 自动展开/折叠逻辑
   useEffect(() => {
     // 开始思考时自动展开，并重置用户干预状态
     isThinking && !isExpanded && (setIsExpanded(true), setUserExpandedManually(false));
     
-    // 思考结束后延迟折叠（仅在用户未手动展开的情况下）
-    const shouldAutoCollapse = !isThinking && isExpanded && !userExpandedManually;
-    
-    const timer = shouldAutoCollapse
-      ? setTimeout(() => setIsExpanded(false), 1500)
-      : null;
-    
-    return () => { timer && clearTimeout(timer); };
+    // 思考结束后立即折叠（仅在用户未手动展开的情况下）
+    !isThinking && isExpanded && !userExpandedManually && setIsExpanded(false);
   }, [isThinking, isExpanded, userExpandedManually]);
 
-  // 思考计时器
+  // 内容更新时自动滚动到底部
   useEffect(() => {
-    const startTime = Date.now();
-    const timer = isThinking
-      ? setInterval(() => setElapsedTime(Math.floor((Date.now() - startTime) / 1000)), 1000)
-      : null;
-    
-    !isThinking && setElapsedTime(0);
-    
-    return () => { timer && clearInterval(timer); };
-  }, [isThinking]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
-  };
+    const el = scrollRef.current;
+    el && (el.scrollTop = el.scrollHeight);
+  }, [thinkingContent]);
 
   // 有思考内容或有子元素时渲染
   const shouldRender = isThinking || !!thinkingContent || !!children;
@@ -78,7 +60,7 @@ export function SingleAgentThinkPanel({
       initial={skipEntryAnimation ? false : { opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className={cn('overflow-hidden', className)}
+      className={cn('overflow-hidden w-full', className)}
     >
       {/* 面板头部 */}
       <div
@@ -110,16 +92,9 @@ export function SingleAgentThinkPanel({
             {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>
         </div>
-
-        {/* 计时器 */}
-        {isThinking && (
-          <span className="text-[10px] text-muted-foreground/60 tabular-nums">
-            {formatTime(elapsedTime)}
-          </span>
-        )}
       </div>
 
-      {/* 展开的详细内容 */}
+      {/* 展开的详细内容 - 最多8行，超出自动滚动 */}
       <AnimatePresence>
         {isExpanded && hasContent && (
           <motion.div
@@ -130,9 +105,12 @@ export function SingleAgentThinkPanel({
             className="overflow-hidden"
           >
             <div className="space-y-2 pt-2 pl-2">
-              <div className="p-2 bg-muted/30 rounded text-xs text-muted-foreground">
+              <div
+                ref={scrollRef}
+                className="p-2 bg-muted/30 rounded text-xs text-muted-foreground max-h-[calc(1.5em*8+16px)] overflow-y-auto scroll-smooth"
+              >
                 {thinkingContent && (
-                  <p className="whitespace-pre-wrap">{thinkingContent}</p>
+                  <p className="whitespace-pre-wrap leading-[1.5]">{thinkingContent}</p>
                 )}
                 {children}
               </div>

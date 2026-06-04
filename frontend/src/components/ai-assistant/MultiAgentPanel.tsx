@@ -33,7 +33,6 @@ const STATUS_ICON_MAP: Record<string, { Icon: typeof Circle; className: string }
  */
 export function MultiAgentPanel({ steps, isThinking = false, className }: MultiAgentPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState(0);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [userExpandedManually, setUserExpandedManually] = useState(false);
 
@@ -65,33 +64,9 @@ export function MultiAgentPanel({ steps, isThinking = false, className }: MultiA
     // 开始思考时自动展开，并重置用户干预状态
     isThinking && !isExpanded && (setIsExpanded(true), setUserExpandedManually(false));
     
-    // 思考结束后延迟折叠（仅在用户未手动展开的情况下）
-    const shouldAutoCollapse = !isThinking && isExpanded && !userExpandedManually && progress.isAllDone;
-    
-    const timer = shouldAutoCollapse
-      ? setTimeout(() => setIsExpanded(false), 1500)
-      : null;
-    
-    return () => { timer && clearTimeout(timer); };
+    // 思考结束后立即折叠（仅在用户未手动展开的情况下）
+    !isThinking && isExpanded && !userExpandedManually && progress.isAllDone && setIsExpanded(false);
   }, [isThinking, progress.isAllDone, isExpanded, userExpandedManually]);
-
-  // 思考计时器
-  useEffect(() => {
-    const startTime = Date.now();
-    const timer = isThinking
-      ? setInterval(() => setElapsedTime(Math.floor((Date.now() - startTime) / 1000)), 1000)
-      : null;
-    
-    !isThinking && setElapsedTime(0);
-    
-    return () => { timer && clearInterval(timer); };
-  }, [isThinking]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`;
-  };
 
   const toggleStep = (stepId: string) => {
     setExpandedSteps(prev => {
@@ -112,7 +87,7 @@ export function MultiAgentPanel({ steps, isThinking = false, className }: MultiA
       initial={skipEntryAnimation ? false : { opacity: 0, height: 0 }}
       animate={{ opacity: 1, height: 'auto' }}
       exit={{ opacity: 0, height: 0 }}
-      className={cn('overflow-hidden', className)}
+      className={cn('overflow-hidden w-full', className)}
     >
       {/* 面板头部 */}
       <div
@@ -153,11 +128,6 @@ export function MultiAgentPanel({ steps, isThinking = false, className }: MultiA
           {progress.total > 0 && (
             <span className="text-[10px] text-muted-foreground tabular-nums">
               {progress.completed}/{progress.total}
-            </span>
-          )}
-          {isThinking && (
-            <span className="text-[10px] text-muted-foreground/60 tabular-nums">
-              {formatTime(elapsedTime)}
             </span>
           )}
         </div>
