@@ -20,7 +20,7 @@ from services.chat_tool_dispatch import append_tool_round, append_tool_round_wit
 from services.agent_executor import _extract_tool_results
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
-from services.tool_manager.context import TOOL_SKILL_GATE_MAP, TOOL_GROUPS, PROVIDER_GROUP_MAP
+from services.tool_manager.context import TOOL_SKILL_GATE_MAP, TOOL_GROUPS
 from services.tool_manager.reset_tools import build_reset_tools_def
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_model, load_pricing
