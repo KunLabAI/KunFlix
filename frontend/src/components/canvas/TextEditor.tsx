@@ -170,6 +170,43 @@ function markdownToTiptapJson(markdown: string): JSONContent {
       continue;
     }
 
+    // Markdown table (| col1 | col2 | ... with separator line | --- | --- |)
+    if (/^\|(.+)\|\s*$/.test(line) && i + 1 < lines.length && /^\|[\s:]*-+[\s:]*/.test(lines[i + 1])) {
+      flushParagraph(paraBuf); paraBuf.length = 0;
+      const parseRow = (row: string) =>
+        row.replace(/^\|\s*/, '').replace(/\s*\|\s*$/, '').split(/\s*\|\s*/);
+
+      // Header row
+      const headerCells = parseRow(lines[i]);
+      i += 2; // skip header + separator
+
+      // Data rows
+      const dataRows: string[][] = [];
+      while (i < lines.length && /^\|(.+)\|\s*$/.test(lines[i])) {
+        dataRows.push(parseRow(lines[i]));
+        i += 1;
+      }
+
+      // Build Tiptap table JSON
+      const headerRow: JSONContent = {
+        type: 'tableRow',
+        content: headerCells.map((cell) => ({
+          type: 'tableHeader',
+          content: [{ type: 'paragraph', content: parseInlineMarkdown(cell.trim()) }],
+        })),
+      };
+      const bodyRows: JSONContent[] = dataRows.map((row) => ({
+        type: 'tableRow',
+        content: row.map((cell) => ({
+          type: 'tableCell',
+          content: [{ type: 'paragraph', content: parseInlineMarkdown(cell.trim()) }],
+        })),
+      }));
+
+      content.push({ type: 'table', content: [headerRow, ...bodyRows] });
+      continue;
+    }
+
     // Empty line - flush paragraph buffer
     if (!trimmed) {
       flushParagraph(paraBuf); paraBuf.length = 0;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Terminal, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +35,8 @@ function parseToolError(result: string | undefined): string | null {
 
 export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorProps) {
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [userToggledManually, setUserToggledManually] = useState(false);
 
   const toggleTool = (toolName: string) => {
     setExpandedTools((prev) => {
@@ -49,9 +51,33 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
   const errorCount = toolCalls.filter((t) => t.status === 'completed' && parseToolError(t.result)).length;
   const successCount = completedCount - errorCount;
 
+  // 全部完成后自动折叠
+  useEffect(() => {
+    const allDone = toolCalls.length > 0 && executingCount === 0;
+    allDone && !isPanelCollapsed && !userToggledManually && setIsPanelCollapsed(true);
+  }, [executingCount, toolCalls.length, isPanelCollapsed, userToggledManually]);
+
   return (
-    <div className={cn('space-y-1.5', className)}>
-      {toolCalls.map((tool, index) => {
+    <div className={cn('space-y-1.5 w-full', className)}>
+      {/* 折叠摘要头 */}
+      <div
+        className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-muted/50 rounded-lg transition-colors"
+        onClick={() => { setIsPanelCollapsed(v => !v); setUserToggledManually(true); }}
+      >
+        {executingCount > 0
+          ? <Loader2 className="h-3.5 w-3.5 text-foreground/70 animate-spin" />
+          : <CheckCircle2 className="h-3.5 w-3.5 text-foreground/50" />
+        }
+        <span className="text-xs flex-1 text-foreground/70">
+          {executingCount > 0 ? `${executingCount} 个工具执行中` : `${toolCalls.length} 个工具调用完成`}
+        </span>
+        {isPanelCollapsed
+          ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+          : <ChevronUp className="h-3 w-3 text-muted-foreground" />
+        }
+      </div>
+
+      {!isPanelCollapsed && toolCalls.map((tool, index) => {
         const isExpanded = expandedTools.has(tool.tool_name);
         const isExecuting = tool.status === 'executing';
         const errorMessage = parseToolError(tool.result);
@@ -149,7 +175,7 @@ export function ToolCallIndicator({ toolCalls, className }: ToolCallIndicatorPro
         );
       })}
 
-      {toolCalls.length > 1 && (
+      {!isPanelCollapsed && toolCalls.length > 1 && (
         <div className="text-[10px] text-muted-foreground px-1">
           {executingCount > 0 && <span>{executingCount} 个执行中</span>}
           {executingCount > 0 && (successCount > 0 || errorCount > 0) && <span> / </span>}

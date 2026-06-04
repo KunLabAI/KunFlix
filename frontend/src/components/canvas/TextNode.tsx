@@ -349,7 +349,7 @@ const ScriptNode = ({ id, data, selected }: NodeProps<Node<ScriptNodeData>>) => 
       {/* 沉浸式写作层 */}
       {isImmersive && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[9998] bg-background nodrag nowheel animate-in fade-in duration-200"
+          className="fixed inset-0 z-[9998] bg-background nodrag nowheel animate-in fade-in duration-200 immersive-writing-mode"
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >

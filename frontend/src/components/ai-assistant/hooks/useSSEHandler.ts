@@ -203,9 +203,8 @@ export function useSSEHandler() {
         const canvasStore = useCanvasStore.getState();
         const PENDING_MAP: Record<string, () => void> = {
           create_canvas_node: () => {
-            // No args yet (arguments still generating) → create ghost with default type
-            const hasGhost = canvasStore.nodes.some((n) => n.type === 'ghost');
-            !hasGhost && canvasStore.addGhostNode('text');
+            // Allow multiple ghost nodes for concurrent tool calls
+            canvasStore.addGhostNode('text');
           },
           list_canvas_nodes: () => {
             const effects: Record<string, 'scanning'> = {};
@@ -232,11 +231,15 @@ export function useSSEHandler() {
             // tool_call has complete args — replace ghost/streaming with real local node immediately
             const nodeType = (args?.node_type as string) || 'text';
             const nodeData = (args?.data as Record<string, unknown>) || {};
+            // If agent provided explicit position, use it for the local node
+            const posX = args?.position_x as number | undefined;
+            const posY = args?.position_y as number | undefined;
+            const explicitPos = (posX != null && posY != null) ? { x: posX, y: posY } : undefined;
             // Clear streaming args state
             streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: true };
             parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
             // Replace ghost/streaming node with a fully-formed local node
-            canvasStore.replaceGhostWithLocalNode(nodeType, nodeData);
+            canvasStore.replaceGhostWithLocalNode(nodeType, nodeData, explicitPos);
           },
           get_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'reading'),
           update_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'updating'),
@@ -289,10 +292,18 @@ export function useSSEHandler() {
           nodeIdMatch && canvasStore.setNodeEffect(nodeIdMatch[1], targetEffect);
         })();
 
-        // Streaming storyboard creation: progressive JSON parse
-        (toolName !== 'create_canvas_node' || sRef.replaced) && (void 0);
+        // For create_canvas_node: extract position early to reposition ghost node
+        // This reduces the gap between ghost animation position and final position
+        (toolName === 'create_canvas_node' && !sRef.replaced) && (() => {
+          const pxMatch = sRef.accumulated.match(/"position_x"\s*:\s*([\d.]+)/);
+          const pyMatch = sRef.accumulated.match(/"position_y"\s*:\s*([\d.]+)/);
+          (pxMatch && pyMatch) && (() => {
+            const ghost = canvasStore.nodes.find((n) => n.type === 'ghost');
+            ghost && canvasStore.restoreNodePositions([{ id: ghost.id, x: parseFloat(pxMatch[1]), y: parseFloat(pyMatch[1]) }]);
+          })();
+        })();
 
-        // Throttled partial JSON parse: attempt when accumulated > lastParse + 200 chars
+        // Streaming storyboard creation: throttled partial JSON parse
         const shouldParse = sRef.accumulated.length - sRef.lastParseLen > 200;
 
         const tryParsePartial = () => {

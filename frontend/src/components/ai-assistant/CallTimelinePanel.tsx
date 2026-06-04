@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   CheckCircle2,
   Loader2,
@@ -175,6 +175,7 @@ const collapseVariants = {
 export function CallTimelinePanel({ skillCalls, toolCalls, className }: CallTimelinePanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
+  const [userCollapsedManually, setUserCollapsedManually] = useState(false);
 
   const entries = useMemo(() => buildTimeline(skillCalls, toolCalls), [skillCalls, toolCalls]);
 
@@ -190,6 +191,12 @@ export function CallTimelinePanel({ skillCalls, toolCalls, className }: CallTime
     });
     return { active, success, error, total: entries.length };
   }, [entries]);
+
+  // 全部完成后自动折叠
+  useEffect(() => {
+    const allDone = summary.total > 0 && summary.active === 0;
+    allDone && isExpanded && !userCollapsedManually && setIsExpanded(false);
+  }, [summary.active, summary.total, isExpanded, userCollapsedManually]);
 
   const toggleEntry = (id: string) => {
     setExpandedEntries((prev) => {
@@ -209,11 +216,11 @@ export function CallTimelinePanel({ skillCalls, toolCalls, className }: CallTime
         : 'pending';
 
   return (
-    <div className={cn('overflow-hidden rounded-lg bg-muted/30', className)}>
+    <div className={cn('overflow-hidden rounded-lg w-full', className)}>
       {/* Header */}
       <div
         className="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer hover:bg-muted/50 transition-colors"
-        onClick={() => setIsExpanded((v) => !v)}
+        onClick={() => { setIsExpanded((v) => !v); setUserCollapsedManually(true); }}
       >
         <StatusIcon resolved={panelResolved} size="sm" />
 
