@@ -20,7 +20,8 @@ from services.chat_tool_dispatch import append_tool_round, append_tool_round_wit
 from services.agent_executor import _extract_tool_results
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
-from services.tool_manager.context import TOOL_SKILL_GATE_MAP
+from services.tool_manager.context import TOOL_SKILL_GATE_MAP, TOOL_GROUPS, PROVIDER_GROUP_MAP
+from services.tool_manager.reset_tools import build_reset_tools_def
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_model, load_pricing
 from services.media_utils import MEDIA_DIR
@@ -54,6 +55,23 @@ def _extract_reasoning_to_msg(msg: dict) -> bool:
         content=_THINK_EXTRACT_RE.sub("", content).strip() or None,
     )
     return bool(match)
+
+
+def _is_group_potentially_available(group: str, agent: Any, theater_id: str | None) -> bool:
+    """Rough check whether a tool group is potentially relevant for the current agent.
+
+    Used to decide whether to expose the group in reset_tools schema.
+    Does NOT check global ToolConfig or skill-gate — just coarse eligibility.
+    """
+    _checks = {
+        "canvas": bool(theater_id and (agent.target_node_types or [])),
+        "image_gen": True,
+        "image_edit": True,
+        "video_gen": True,
+        "video_edit": True,
+        "music_gen": True,
+    }
+    return _checks.get(group, False)
 
 
 async def generate_single_agent(
@@ -168,23 +186,46 @@ async def generate_single_agent(
     agent_skills = agent.tools or []
 
     # 从聊天历史恢复已加载的技能（渐进式披露：跨轮次持久化）
-    # assistant 消息中的 skill_calls 字段记录了之前加载过的技能
+    # 取最后一条含 skill_calls 的助理消息作为权威状态（支持 unload 后的正确恢复）
     loaded_skills: set[str] = set()
-    for msg in history[skip_count:]:
+    for msg in reversed(history[skip_count:]):
         deserialized = (msg.role == "assistant") and deserialize_content(msg.content)
-        (isinstance(deserialized, dict) and deserialized.get("skill_calls")) and loaded_skills.update(
-            sc.get("skill_name", "") for sc in deserialized["skill_calls"]
-            if sc.get("status") == "loaded" and sc.get("skill_name")
-        )
+        if isinstance(deserialized, dict) and deserialized.get("skill_calls"):
+            loaded_skills.update(
+                sc.get("skill_name", "") for sc in deserialized["skill_calls"]
+                if sc.get("status") == "loaded" and sc.get("skill_name")
+            )
+            break
     # 同步到 ToolContext，使 is_skill_gated() 对已加载技能返回 False
     ctx.loaded_tool_skills.update(s for s in loaded_skills if s in TOOL_SKILL_GATE_MAP)
     loaded_skills and logger.info(f"Restored skills from history: {loaded_skills}")
+
+    # 从聊天历史恢复工具组覆盖状态（reset_tools 的最后一次调用）
+    for msg in reversed(history[skip_count:]):
+        deserialized = (msg.role == "assistant") and deserialize_content(msg.content)
+        if isinstance(deserialized, dict) and deserialized.get("tool_calls"):
+            for tc_hist in deserialized["tool_calls"]:
+                if tc_hist.get("name") == "reset_tools":
+                    _restored_args = tc_hist.get("arguments", {})
+                    isinstance(_restored_args, str) and (_restored_args := {})
+                    ctx.set_group_overrides(_restored_args)
+                    logger.info(f"Restored tool group overrides: {ctx._group_overrides}")
+                    break
+            if ctx._group_overrides:
+                break
 
     tool_defs = await tool_manager.build_tool_defs(ctx)
 
     # 技能系统（与工具同级，独立编排）
     remaining_skills = [s for s in agent_skills if s not in loaded_skills]
     agent_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(agent_skills)])
+
+    # reset_tools 元工具注册（当有可用工具组时）
+    _available_groups = [
+        g for g in TOOL_GROUPS
+        if _is_group_potentially_available(g, agent, theater_id)
+    ]
+    _available_groups and (tool_defs := (tool_defs or []) + [build_reset_tools_def(_available_groups)])
 
     # 注入技能信息到 system prompt
     # 已恢复的技能：注入完整内容（补偿工具调用轮次未持久化导致的上下文丢失）
@@ -264,7 +305,6 @@ async def generate_single_agent(
     result = None
     generation_failed = False
     _SSE_START = {True: "skill_call", False: "tool_call"}
-    _SSE_END = {True: "skill_loaded", False: "tool_result"}
     _consecutive_tool_failures = 0   # Harness: 连续工具失败计数器
     _thinking_only_retried = False     # thinking-only 重试标记（防止无限循环）
     try:
@@ -434,49 +474,68 @@ async def generate_single_agent(
                 if tc.name == IMAGE_GEN_TOOL_NAME
             )
 
-            # 追踪已加载的技能 - 只从有效调用中追踪
-            tool_skill_loaded = False
+            # 追踪已加载/卸载的技能 - 只从有效调用中追踪
+            tool_skill_changed = False
             for tc, args in tool_calls_valid:
-                (tc.name == "load_skill") and loaded_skills.add(args.get("skill_name", ""))
-            # 检测本轮是否有工具Skill被加载（ctx.loaded_tool_skills 已在 _execute_skill 中更新）
-            tool_skill_loaded = any(
-                tc.name == "load_skill" and args.get("skill_name", "") in TOOL_SKILL_GATE_MAP
-                for tc, args in tool_calls_valid
-            )
+                if tc.name != "load_skill":
+                    continue
+                skill_name = args.get("skill_name", "")
+                action = args.get("action", "load")
+                # Unload: 从 loaded_skills 移除（ctx.loaded_tool_skills 已在 _execute_skill 中更新）
+                (action == "unload") and loaded_skills.discard(skill_name)
+                # Load: 添加到 loaded_skills
+                (action != "unload") and loaded_skills.add(skill_name)
+                # 检测是否是工具Skill变更（需触发完整重建）
+                (skill_name in TOOL_SKILL_GATE_MAP) and (tool_skill_changed := True)
+
+            # 检测 reset_tools 调用 → 需完整重建工具定义
+            _reset_tools_called = any(tc.name == "reset_tools" for tc, _ in tool_calls_valid)
 
             # 重建工具定义（技能 enum 自动缩减）
-            # 如果有工具Skill被加载，需完整异步重建以注入新解锁的工具定义
+            # 如果有工具Skill被加载/卸载或工具组重置，需完整异步重建
             remaining_skills = [s for s in agent_skills if s not in loaded_skills]
             managed_defs = (
                 await tool_manager.build_tool_defs(ctx)
-                if tool_skill_loaded
+                if (tool_skill_changed or _reset_tools_called)
                 else tool_manager.rebuild_after_round(ctx)
             )
-            tool_defs = (managed_defs or []) + ([build_load_skill_tool_def(agent_skills)] if agent_skills else [])
+            tool_defs = (managed_defs or [])
+            agent_skills and (tool_defs := tool_defs + [build_load_skill_tool_def(agent_skills)])
+            _available_groups and (tool_defs := tool_defs + [build_reset_tools_def(_available_groups)])
             tool_defs = tool_defs or None
 
             # 输出重建后的工具列表（仅在发生变化时）
-            tool_skill_loaded and logger.info(
-                f"  [Skill-gate] Rebuilt tools: {[d.get('function', {}).get('name', '?') for d in (tool_defs or [])]}"
+            (tool_skill_changed or _reset_tools_called) and logger.info(
+                f"  [ToolGroup] Rebuilt tools: {[d.get('function', {}).get('name', '?') for d in (tool_defs or [])]}"
             )
 
-            # 发送 tool 完成事件 (skill_loaded 或 tool_result)
+            # 发送 tool 完成事件 (skill_loaded / skill_unloaded / tool_result)
             for tc, args in tool_calls_valid:
                 is_skill = tc.name == "load_skill"
                 is_canvas = tc.name in CANVAS_TOOL_NAMES
                 tool_result_str = _tool_results_map.get(tc.id, "")
+                skill_action = args.get("action", "load") if is_skill else None
                 event_data = (
-                    {"skill_name": args.get("skill_name", "")}
+                    {"skill_name": args.get("skill_name", ""), "action": skill_action}
                     if is_skill else
                     {"tool_name": tc.name, "success": True, "result": tool_result_str}
                 )
-                yield sse(_SSE_END[is_skill], event_data)
+                skill_event = "skill_unloaded" if skill_action == "unload" else "skill_loaded"
+                yield sse(skill_event if is_skill else "tool_result", event_data)
                 
                 # Canvas / edit_image 工具执行后发送画布更新事件，通知前端刷新
                 (is_canvas or tc.name == "edit_image") and theater_id and (
                     yield sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
             
+            # 发送 reset_tools 事件通知前端
+            _reset_tools_called and (
+                yield sse("tools_reset", {
+                    "active_groups": [g for g, v in ctx._group_overrides.items() if v],
+                    "deactivated_groups": [g for g, v in ctx._group_overrides.items() if not v],
+                })
+            )
+
             # 发送错误调用的完成事件
             for tc, _ in tool_calls_with_error:
                 yield sse("tool_result", {"tool_name": tc.name, "success": False, "error": "JSON parse failed"})
