@@ -25,9 +25,6 @@ logger = logging.getLogger(__name__)
 
 _ARK_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
-# Seedream 支持的尺寸（等级 + 像素值两种形式）
-_VALID_SIZE_LEVELS = frozenset({"1K", "2K", "3K", "4K"})
-
 # Seedream 支持的输出格式（5.0 支持 png/jpeg；4.5/4.0 仅 jpeg）
 _VALID_OUTPUT_FORMATS = frozenset({"png", "jpeg"})
 
