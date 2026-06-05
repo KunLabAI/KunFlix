@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { X, ZoomIn, GripVertical } from 'lucide-react';
+import { GripVertical, ZoomIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { handleImageDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
+import { useImagePreview } from '@/hooks/useImagePreview';
+import { ImagePreviewPortal } from '@/components/canvas/ImageNode/ImagePreviewPortal';
 
 interface LazyImageProps {
   src: string;
@@ -31,12 +32,12 @@ export function LazyImage({
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isPreviewHovered, setIsPreviewHovered] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const dragPreviewRef = useRef<HTMLElement | null>(null);
+  const preview = useImagePreview();
 
   // 使用 IntersectionObserver 检测图片是否进入视口
   useEffect(() => {
@@ -65,23 +66,6 @@ export function LazyImage({
     };
   }, []);
 
-  // ESC 键关闭全屏预览
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      e.key === 'Escape' && isFullscreen && setIsFullscreen(false);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isFullscreen]);
-
-  // 全屏预览时禁止页面滚动
-  useEffect(() => {
-    isFullscreen
-      ? document.body.style.overflow = 'hidden'
-      : document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
-  }, [isFullscreen]);
-
   const handleLoad = () => {
     setIsLoaded(true);
     onLoad?.();
@@ -105,9 +89,9 @@ export function LazyImage({
     dragPreviewRef.current = null;
   };
 
-  // 双击打开全屏预览
+  // 双击打开全屏预览（复用画布 ImagePreviewPortal）
   const handleDoubleClick = () => {
-    isLoaded && !hasError && setIsFullscreen(true);
+    isLoaded && !hasError && preview.openPreview(src);
   };
 
   const maxHeightStyle = typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight;
@@ -156,7 +140,7 @@ export function LazyImage({
           onLoad={handleLoad}
           onError={handleError}
           className={cn(
-            'max-w-full h-auto rounded-lg transition-all duration-300 object-contain block',
+            'max-w-full h-auto rounded-lg transition-opacity duration-300 object-contain block',
             isLoaded ? 'opacity-100' : 'opacity-0'
           )}
           style={{ maxHeight: maxHeightStyle }}
@@ -184,30 +168,26 @@ export function LazyImage({
         )}
       </span>
 
-      {/* 全屏预览弹窗 - 使用 Portal 渲染到 body */}
-      {isFullscreen && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => setIsFullscreen(false)}
-        >
-          {/* 关闭按钮 */}
-          <button
-            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors z-10"
-            onClick={() => setIsFullscreen(false)}
-          >
-            <X className="w-5 h-5" />
-          </button>
-          
-          {/* 全屏图片 */}
-          <img
-            src={src}
-            alt={alt}
-            className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>,
-        document.body
-      )}
+      {/* 全屏预览 - 复用画布 ImagePreviewPortal（支持缩放/拖拽/下载） */}
+      <ImagePreviewPortal
+        open={preview.open}
+        url={preview.url}
+        name={alt || ''}
+        scale={preview.scale}
+        position={preview.position}
+        isDragging={preview.isDragging}
+        mode={preview.mode}
+        onClose={preview.closePreview}
+        onZoomIn={preview.zoomIn}
+        onZoomOut={preview.zoomOut}
+        onPointerDown={preview.handlePointerDown}
+        onPointerMove={preview.handlePointerMove}
+        onPointerUp={preview.handlePointerUp}
+        annotationEnabled={false}
+        onEnterAnnotate={preview.enterAnnotate}
+        onExitAnnotate={preview.exitAnnotate}
+        onSaveAnnotation={async () => null}
+      />
     </>
   );
 }

@@ -74,6 +74,25 @@ def _is_group_potentially_available(group: str, agent: Any, theater_id: str | No
     return _checks.get(group, False)
 
 
+async def _wait_for_compaction(persist_task: asyncio.Task, persist_state: dict, timeout: float = 25.0) -> None:
+    """Wait for the persist task to complete so compaction result becomes available.
+
+    Called when the initial 5s wait timed out but compaction is expected.
+    Uses polling instead of await to avoid re-shielding complexities.
+    """
+    import time
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        # Compaction result appeared
+        if persist_state.get("compaction") is not None:
+            return
+        # Task finished (success or error)
+        if persist_task.done():
+            return
+        await asyncio.sleep(0.5)
+    logger.warning(f"Compaction wait timed out after {timeout}s")
+
+
 async def generate_single_agent(
     db: AsyncSession,
     agent: Agent,
@@ -332,6 +351,7 @@ async def generate_single_agent(
                         tools=current_tools,
                         xai_image_config=_eff_xai,
                         user_id=entity_id,
+                        model_type=((provider.model_metadata or {}).get(agent.model) or {}).get("model_type"),
                     ):
                         # Early tool detection / delta signals from stream layer
                         _is_pending = chunk.startswith(TOOL_PENDING_PREFIX)
@@ -393,6 +413,7 @@ async def generate_single_agent(
                                 tools=current_tools,
                                 xai_image_config=_eff_xai,
                                 user_id=entity_id,
+                                model_type=((provider.model_metadata or {}).get(agent.model) or {}).get("model_type"),
                             ):
                                 # Early tool detection / delta signals from stream layer
                                 _is_pending2 = chunk.startswith(TOOL_PENDING_PREFIX)
@@ -737,6 +758,15 @@ async def generate_single_agent(
     # 超时后仍以当前 billing_event 继续发送 SSE，task 在后台继续运行。
     # 这避免 SQLite 临时锁定时重试退避（最多 3.1s）叠加事务超时导致 SSE done 事件长时间不发送，
     # 从而使前端发送按钮卡在「暂停」样式。
+
+    # Pre-check: 预判是否会触发压缩，提前通知前端显示 loading 动画
+    _total_tokens = (result.input_tokens + result.output_tokens) if result else 0
+    _will_compact = (
+        _compact_cfg.enabled
+        and _total_tokens > int(agent.context_window * _compact_cfg.compact_ratio)
+    )
+    _will_compact and (yield sse("context_compacting", {}))
+
     persist_task = asyncio.create_task(_persist_message_and_billing())
     try:
         await asyncio.wait_for(asyncio.shield(persist_task), timeout=5.0)
@@ -745,6 +775,10 @@ async def generate_single_agent(
             "Persistence taking >5s (likely SQLite lock); proceeding with current billing state, "
             "background task will continue retrying."
         )
+        # 如果预判需要压缩，继续等待更长时间以获取压缩结果（压缩本身很快，瓶颈在 Phase 1 的 SQLite 锁）
+        _will_compact and not _persist_state.get("compaction") and (
+            await _wait_for_compaction(persist_task, _persist_state, timeout=25.0)
+        )
     except asyncio.CancelledError:
         # generator 被取消，但 shield 内的保存操作仍在运行
         logger.warning("SSE generator cancelled during save, persistence continues in background")
@@ -752,9 +786,13 @@ async def generate_single_agent(
 
     # 发送压缩事件（如果触发了压缩）
     _compaction = _persist_state.get("compaction")
+    # 确保前端 isCompacting 状态始终被重置：发送了 context_compacting 就必须发送 context_compacted
     _compaction and (yield sse("context_compacted", {
         "summary": _compaction[1],
+        "theater_id": theater_id or "",
     }))
+    # 发送了压缩开始但压缩未完成（超时/异常）→ 发送空事件重置前端状态
+    (_will_compact and not _compaction) and (yield sse("context_compacted", {"summary": ""}))
 
     # 发送标题更新事件（如果 AI 生成了新标题）
     _new_title = _persist_state.get("new_title")

@@ -59,6 +59,12 @@ IMAGE_GEN_TOOL_NAME = "generate_image"
 _EDIT_MODES = {"edit", "reference_images"}
 
 
+def _inject_sequential_refs(adapted: dict, ref_urls: list[str]) -> None:
+    """将参考图 URL 注入 adapted 配置（组图模式下的参考图输入）。"""
+    img_cfg = adapted.setdefault("image_config", {})
+    img_cfg["reference_images"] = ref_urls
+
+
 # ---------------------------------------------------------------------------
 # 辅助：根据 mode 分派生成或编辑
 # ---------------------------------------------------------------------------
@@ -75,16 +81,26 @@ async def _dispatch_image_generation(
     user_id: str,
     mask_url: Optional[str] = None,
 ) -> tuple[list[str], dict]:
-    """按 mode 分派到 text-to-image 生成器或 edit handler。
+    """按 mode 分派到 text-to-image / sequential / edit handler。
 
     返回：(image_urls, usage_dict)，其中 usage_dict = {"input_tokens": int, "output_tokens": int}。
     edit 路径不产生 token usage，返回零值。
     """
-    # text_to_image → SDK 生成器
+    # sequential → 组图生成（可带参考图，强制 sequential=True）
+    # 将 sequential 模式当作 n > 1 的 text_to_image 处理（强制 sequential）
+    is_sequential = (mode == "sequential")
+
+    # text_to_image / sequential → SDK 生成器
     if mode not in _EDIT_MODES:
         generator = _IMAGE_GENERATORS.get(provider_type)
         generator or (_ for _ in ()).throw(
             HTTPException(status_code=400, detail=f"Unsupported image provider type: {provider_type}")
+        )
+        # sequential 模式：强制 n >= 2 以触发组图逻辑
+        effective_n = max(2, n) if is_sequential else n
+        # 如果有参考图，注入到 adapted 配置中（组图模式支持参考图输入）
+        is_sequential and reference_images and _inject_sequential_refs(
+            adapted, [ref.url for ref in reference_images if ref and ref.url]
         )
         return await generator(
             api_key=provider.api_key,
@@ -92,7 +108,7 @@ async def _dispatch_image_generation(
             model=model,
             prompt=prompt,
             config=adapted,
-            n=n,
+            n=effective_n,
             user_id=user_id,
         )
 
@@ -487,24 +503,18 @@ async def _sse_stream_image_events(
     rate: float,
     db: AsyncSession,
 ):
-    """包装 stream_generate_openrouter_images，流完后同事务资产注册 + 扣费。"""
-    from services.openrouter_image_gen import stream_generate_openrouter_images
+    """流式图像生成 SSE 事件包装器，按 provider_type 分派到不同的流式生成器。"""
+    provider_type = (provider.provider_type or "").lower()
 
     final_urls: list[str] = []
     try:
-        async for evt in stream_generate_openrouter_images(
-            api_key=provider.api_key,
-            base_url=provider.base_url,
+        async for evt in _dispatch_stream_generator(
+            provider_type=provider_type,
+            provider=provider,
             model=model,
             prompt=prompt,
-            aspect_ratio=img_cfg.get("aspect_ratio"),
-            quality=img_cfg.get("quality"),
-            output_format=img_cfg.get("output_format"),
-            output_compression=img_cfg.get("output_compression"),
-            background=img_cfg.get("background"),
-            moderation=img_cfg.get("moderation"),
+            img_cfg=img_cfg,
             n=n,
-            partial_images=2,
             user_id=user_id,
         ):
             evt.get("type") == "final_image" and evt.get("url") and final_urls.append(evt["url"])
@@ -551,3 +561,62 @@ async def _sse_stream_image_events(
         "model": model,
         "provider_id": provider.id,
     })
+
+
+async def _dispatch_stream_generator(
+    *,
+    provider_type: str,
+    provider,
+    model: str,
+    prompt: str,
+    img_cfg: dict,
+    n: int,
+    user_id: str,
+):
+    """按 provider_type 分派到对应的流式生成器。"""
+    from services.image_config_adapter import resolve_ark_pixel_size
+
+    # Ark/Seedream 流式生成
+    if provider_type == "ark":
+        from services.ark_image_gen import stream_generate_ark_images, ArkBatchImageConfig
+        quality = img_cfg.get("size") or "2K"
+        aspect_ratio = img_cfg.get("aspect_ratio")
+        resolved_size = resolve_ark_pixel_size(quality, aspect_ratio)
+        ark_config = ArkBatchImageConfig(
+            size=resolved_size,
+            n=1,
+            watermark=img_cfg.get("watermark", False),
+            output_format=img_cfg.get("output_format") or "png",
+            web_search=img_cfg.get("web_search", False),
+            sequential=(n > 1),
+            max_images=max(1, n),
+        )
+        async for evt in stream_generate_ark_images(
+            api_key=provider.api_key,
+            model=model,
+            prompt=prompt,
+            config=ark_config,
+            base_url=provider.base_url,
+            user_id=user_id,
+        ):
+            yield evt
+        return
+
+    # OpenRouter 流式生成（降级为同步后单帧推送）
+    from services.openrouter_image_gen import stream_generate_openrouter_images
+    async for evt in stream_generate_openrouter_images(
+        api_key=provider.api_key,
+        base_url=provider.base_url,
+        model=model,
+        prompt=prompt,
+        aspect_ratio=img_cfg.get("aspect_ratio"),
+        quality=img_cfg.get("quality"),
+        output_format=img_cfg.get("output_format"),
+        output_compression=img_cfg.get("output_compression"),
+        background=img_cfg.get("background"),
+        moderation=img_cfg.get("moderation"),
+        n=n,
+        partial_images=2,
+        user_id=user_id,
+    ):
+        yield evt

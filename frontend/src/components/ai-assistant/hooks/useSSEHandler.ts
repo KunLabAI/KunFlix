@@ -62,10 +62,22 @@ interface StreamingState {
   harnessEvents: HarnessEvent[];
 }
 
+/** Calculate auto position for compaction summary node (right side of canvas) */
+function calcAutoPositionForCompaction(nodes: { position: { x: number; y: number }; width?: number; height?: number; measured?: { width?: number; height?: number } }[]): { x: number; y: number } {
+  const MARGIN = 60;
+  const maxRight = nodes.reduce((max, n) => {
+    const w = n.width ?? n.measured?.width ?? 400;
+    return Math.max(max, n.position.x + w);
+  }, 0);
+  const minY = nodes.reduce((min, n) => Math.min(min, n.position.y), 100);
+  return { x: maxRight + MARGIN, y: minY };
+}
+
 export function useSSEHandler() {
   const setMessages = useAIAssistantStore((state) => state.setMessages);
   const setIsLoading = useAIAssistantStore((state) => state.setIsOpen);
   const setContextUsage = useAIAssistantStore((state) => state.setContextUsage);
+  const setIsCompacting = useAIAssistantStore((state) => state.setIsCompacting);
   const updateChatTitleInList = useAIAssistantStore((state) => state.updateChatTitleInList);
   const { updateCredits } = useAuth();
   
@@ -712,9 +724,15 @@ export function useSSEHandler() {
         }, syncDelay);
       },
 
-      // 上下文压缩完成（旧消息已被摘要替代）
+      // 上下文压缩开始（电池图标显示 loading 动画）
+      context_compacting: () => {
+        setIsCompacting(true);
+      },
+
+      // 上下文压缩完成（旧消息已被摘要替代）—— 创建画布文本节点展示摘要
       context_compacted: () => {
-        const d = data as { summary?: string };
+        setIsCompacting(false);
+        const d = data as { summary?: string; theater_id?: string };
         d.summary && setMessages((prev) => [
           ...prev,
           {
@@ -724,6 +742,29 @@ export function useSSEHandler() {
             compaction_summary: d.summary,
           },
         ]);
+        // 在画布上创建文本节点展示压缩摘要
+        const canvasStore = useCanvasStore.getState();
+        const hasTheater = d.theater_id && canvasStore.theaterId === d.theater_id;
+        (d.summary && hasTheater) && (() => {
+          const nodeId = `compaction-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const nodes = canvasStore.nodes;
+          const position = calcAutoPositionForCompaction(nodes);
+          canvasStore.addNode({
+            id: nodeId,
+            type: 'text' as const,
+            position,
+            width: 420,
+            height: 320,
+            data: {
+              title: '📦 上下文压缩摘要',
+              content: {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text: d.summary }] }],
+              },
+              tags: ['compaction-summary'],
+            },
+          } as any);
+        })();
       },
 
       // 对话标题已生成（后端在第二轮 AI 回复后推送）

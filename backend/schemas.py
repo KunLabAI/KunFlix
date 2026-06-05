@@ -1086,12 +1086,14 @@ class ImageGenParams(BaseModel):
     """图像生成参数（供应商无关）"""
     aspect_ratio: Optional[str] = None           # 1:1 / 16:9 / 9:16 / 4:3 / 3:4 等
     quality: Optional[Literal["standard", "hd", "ultra"]] = None
-    batch_count: int = Field(default=1, ge=1, le=4)
+    batch_count: int = Field(default=1, ge=1, le=15)  # 组图模式参考图+输出 <= 15
     output_format: Optional[Literal["png", "jpeg", "webp"]] = None
     # P2 新增（OpenAI gpt-image-* 专用端点）：
     output_compression: Optional[int] = Field(default=None, ge=0, le=100)   # webp/jpeg 压缩率
     background: Optional[Literal["transparent", "opaque", "auto"]] = None    # 透明层
     moderation: Optional[Literal["low", "auto"]] = None                       # 内容安全等级
+    # 火山方舟 Seedream 5.0 联网搜索
+    web_search: Optional[bool] = None
 
 
 class ImageReference(BaseModel):
@@ -1106,7 +1108,7 @@ class ImageGenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=4000)
     session_id: Optional[str] = None
     config: Optional[ImageGenParams] = None
-    mode: Literal["text_to_image", "edit", "reference_images"] = "text_to_image"
+    mode: Literal["text_to_image", "edit", "reference_images", "sequential"] = "text_to_image"
     reference_images: Optional[List[ImageReference]] = None
     # P2 新增：edit 模式可选蒙版（PNG，透明区 = 被编辑区域）
     mask_url: Optional[str] = None

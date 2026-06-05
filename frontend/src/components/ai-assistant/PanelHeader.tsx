@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, Plus, Loader2, History } from 'lucide-react';
+import { X, Battery, BatteryMedium, BatteryLow, BatteryWarning, BatteryCharging, Plus, Loader2, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ContextUsage, ChatSessionInfo } from '@/store/useAIAssistantStore';
@@ -14,6 +14,7 @@ interface PanelHeaderProps {
   className?: string;
   contextUsage?: ContextUsage | null;
   isLoading?: boolean;
+  isCompacting?: boolean;
   // Multi-chat props
   chatList?: ChatSessionInfo[];
   currentSessionId?: string | null;
@@ -31,6 +32,7 @@ export function PanelHeader({
   className,
   contextUsage,
   isLoading = false,
+  isCompacting = false,
   chatList = [],
   currentSessionId,
   onCreateNewChat,
@@ -53,6 +55,7 @@ export function PanelHeader({
         <HeaderContextBattery
           contextUsage={contextUsage}
           isLoading={isLoading}
+          isCompacting={isCompacting}
         />
       </div>
 
@@ -257,13 +260,14 @@ function ChatHistoryDropdown({
   );
 }
 
-// 头部上下文电池组件（按10%步长显示）
+// 头部上下文电池组件（成10%步长显示）
 interface HeaderContextBatteryProps {
   contextUsage: ContextUsage | null | undefined;
   isLoading: boolean;
+  isCompacting?: boolean;
 }
 
-function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryProps) {
+function HeaderContextBattery({ contextUsage, isLoading, isCompacting = false }: HeaderContextBatteryProps) {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
 
@@ -277,8 +281,19 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
   const clampedPercentage = Math.min(percentage, 100);
   const remainingTokens = Math.max(0, contextWindow - usedTokens);
 
-  // 按10%步长获取电池图标和颜色
+  // 成10%步长获取电池图标和颜色
   const getBatteryIcon = () => {
+    // 压缩中：显示充电动画
+    if (isCompacting) {
+      return (
+        <motion.div
+          animate={{ opacity: [1, 0.5, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <BatteryCharging className="h-4 w-4 text-[var(--color-status-info-icon,#3b82f6)]" />
+        </motion.div>
+      );
+    }
     // 100% 红色警告状态
     if (percentage >= 100) {
       return (
@@ -330,7 +345,7 @@ function HeaderContextBattery({ contextUsage, isLoading }: HeaderContextBatteryP
         variant="ghost"
         size="sm"
         className="h-8 px-2 rounded-lg hover:bg-muted/50 flex items-center gap-2"
-        title={t('ai.context', { percentage: percentage.toFixed(0) })}
+        title={isCompacting ? t('ai.compacting', '上下文压缩中...') : t('ai.context', { percentage: percentage.toFixed(0) })}
       >
         {getBatteryIcon()}
         <span className={cn(

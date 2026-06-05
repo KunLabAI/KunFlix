@@ -223,6 +223,9 @@ interface AIAssistantState {
   // Context usage stats
   contextUsage: ContextUsage | null;
   
+  // Context compacting state (battery loading animation)
+  isCompacting: boolean;
+  
   // User uploaded files
   uploadedFiles: UploadedFile[];
   
@@ -290,6 +293,7 @@ interface AIAssistantState {
   
   // Context usage
   setContextUsage: (usage: ContextUsage | null) => void;
+  setIsCompacting: (isCompacting: boolean) => void;
   
   // Uploaded files
   setUploadedFiles: (files: UploadedFile[]) => void;
@@ -350,6 +354,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
       nodeAttachment: null,
       isDragOverPanel: false,
       contextUsage: null,
+      isCompacting: false,
       uploadedFiles: [],
       pastedContents: [],
       theaterChatList: [],
@@ -491,6 +496,7 @@ export const useAIAssistantStore = create<AIAssistantState>()(
 
       // Context usage
       setContextUsage: (contextUsage: ContextUsage | null) => set({ contextUsage }),
+      setIsCompacting: (isCompacting: boolean) => set({ isCompacting }),
       
       // Uploaded files
       setUploadedFiles: (uploadedFiles: UploadedFile[]) => set({ uploadedFiles }),

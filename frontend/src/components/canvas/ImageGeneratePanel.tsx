@@ -167,6 +167,7 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
         background: (form.background as 'auto' | 'transparent' | 'opaque') || undefined,
         moderation: (form.moderation as 'auto' | 'low') || undefined,
         output_compression: form.outputCompression ?? undefined,
+        web_search: form.webSearch || undefined,
       },
     });
   };
@@ -306,6 +307,8 @@ export default function ImageGeneratePanel(props: ImageGeneratePanelProps) {
           setModeration={form.setModeration}
           outputCompression={form.outputCompression}
           setOutputCompression={form.setOutputCompression}
+          webSearch={form.webSearch}
+          setWebSearch={form.setWebSearch}
         />
       )}
 
