@@ -135,7 +135,7 @@ async def _generate_via_xai(
         n=1,
         response_format=img_cfg.get("response_format") or "b64_json",
     )
-    result = await batch_generate_xai_images(
+    batch_result = await batch_generate_xai_images(
         api_key=api_key,
         model=model,
         prompts=[prompt] * max(1, n),
@@ -143,7 +143,13 @@ async def _generate_via_xai(
         base_url=base_url,
         user_id=user_id,
     )
-    urls = [url for r in result.results for url in r.image_urls]
+    urls = [url for r in batch_result.results for url in r.image_urls]
+    # 全部失败：提取第一个非空错误信息抛出，让 Agent 看到真实原因
+    (not urls and batch_result.failed > 0) and (_ for _ in ()).throw(
+        RuntimeError(
+            next((r.error for r in batch_result.results if r.error), "Unknown xAI image generation error")
+        )
+    )
     # xai 不返回 token usage，统一结构返回零值
     return urls, {"input_tokens": 0, "output_tokens": 0}
 
@@ -159,18 +165,24 @@ async def _generate_via_gemini(
         output_format=img_cfg.get("output_format") or "png",
     )
     # Gemini generates 1 image per prompt call; duplicate prompt for n images
-    result = await batch_generate_images(
+    batch_result = await batch_generate_images(
         api_key=api_key,
         model=model,
         prompts=[prompt] * n,
         config=gemini_config,
         user_id=user_id,
     )
-    urls = [r.image_url for r in result.results if r.image_url]
+    urls = [r.image_url for r in batch_result.results if r.image_url]
+    # 全部失败：提取第一个非空错误信息抛出，让 Agent 看到真实原因
+    (not urls and batch_result.failed > 0) and (_ for _ in ()).throw(
+        RuntimeError(
+            next((r.error for r in batch_result.results if r.error), "Unknown Gemini image generation error")
+        )
+    )
     # 汇总所有 prompt 的 token 使用量（image_output 计在 output_tokens 中）
     usage = {
-        "input_tokens":  sum((r.input_tokens or 0) for r in result.results),
-        "output_tokens": sum((r.output_tokens or 0) for r in result.results),
+        "input_tokens":  sum((r.input_tokens or 0) for r in batch_result.results),
+        "output_tokens": sum((r.output_tokens or 0) for r in batch_result.results),
     }
     return urls, usage
 
@@ -201,6 +213,8 @@ async def _generate_via_ark(
     # n > 1 时使用组图模式（单次调用生成多张关联图），n=1 时走单张生成
     ref_urls = img_cfg.get("reference_images") or []  # 组图模式下的参考图
     urls: list[str] = []
+
+    # 组图模式：异常直接上抛，由 _run_generator 统一处理
     ark_config.sequential and (
         urls := await generate_ark_sequential_images(
             api_key=api_key,
@@ -212,16 +226,25 @@ async def _generate_via_ark(
             image_urls=ref_urls or None,
         )
     )
-    (not ark_config.sequential) and (
-        urls := [u for r in (await batch_generate_ark_images(
+
+    # 单张生成模式：检查 batch 结果，全部失败时抛出真实错误信息
+    if not ark_config.sequential:
+        batch_result = await batch_generate_ark_images(
             api_key=api_key,
             model=model,
             prompts=[prompt],
             config=ark_config,
             base_url=base_url,
             user_id=user_id,
-        )).results for u in r.image_urls]
-    )
+        )
+        urls = [u for r in batch_result.results for u in r.image_urls]
+        # 全部失败：提取第一个非空错误信息抛出，让 Agent 看到真实原因
+        (not urls and batch_result.failed > 0) and (_ for _ in ()).throw(
+            RuntimeError(
+                next((r.error for r in batch_result.results if r.error), "Unknown ark image generation error")
+            )
+        )
+
     # ark 不返回 token usage，统一结构返回零值
     return urls, {"input_tokens": 0, "output_tokens": 0}
 

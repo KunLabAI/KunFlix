@@ -13,7 +13,7 @@ _QUALITY_MAP: dict[str, dict[str, str]] = {
     # Gemini 官方 API 标准字面量为 1K/2K/4K，与 batch_image_gen.IMAGE_SIZE_MAP 一致
     "gemini": {"standard": "1K",   "hd": "2K", "ultra": "4K"},
     "xai":    {"standard": "1k",   "hd": "2k", "ultra": "2k"},
-    "ark":    {"standard": "1K",   "hd": "2K", "ultra": "4K"},
+    "ark":    {"standard": "2K",   "hd": "3K", "ultra": "4K"},
 }
 
 # ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ _GEMINI25_ASPECT_RATIOS:    list[str] = sorted(
 # ---------------------------------------------------------------------------
 _SEEDREAM_50_SIZES:  list[str] = ["2K", "3K", "4K"]
 _SEEDREAM_45_SIZES:  list[str] = ["2K", "4K"]
-_SEEDREAM_40_SIZES:  list[str] = ["1K", "2K", "4K"]
+_SEEDREAM_40_SIZES:  list[str] = ["2K", "4K"]
 
 # ---------------------------------------------------------------------------
 # Seedream aspect_ratio + 分辨率等级 → 精确像素尺寸映射表（来自官方文档）
@@ -308,7 +308,7 @@ def _adapt_to_ark(unified: dict) -> dict:
 
     # quality → size
     q = cfg.get("quality")
-    q and img.update(size=_QUALITY_MAP["ark"].get(q, "1K"))
+    q and img.update(size=_QUALITY_MAP["ark"].get(q, "2K"))
 
     # batch_count → n
     bc = cfg.get("batch_count")
