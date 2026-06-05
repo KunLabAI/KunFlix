@@ -133,17 +133,13 @@ async def generate_ark_sequential_images(
         f"size={config.size}, web_search={config.web_search}"
     )
 
-    try:
-        response = await client.images.generate(**generate_params)
-        urls: list[str] = []
-        for item in response.data:
-            url = await _save_result_item(item, config.response_format, user_id=user_id)
-            url and urls.append(url)
-        logger.info(f"Ark Seedream sequential: generated {len(urls)} images")
-        return urls
-    except Exception as e:
-        logger.error(f"Ark Seedream sequential error: {e}")
-        return []
+    response = await client.images.generate(**generate_params)
+    urls: list[str] = []
+    for item in response.data:
+        url = await _save_result_item(item, config.response_format, user_id=user_id)
+        url and urls.append(url)
+    logger.info(f"Ark Seedream sequential: generated {len(urls)} images")
+    return urls
 
 
 # ---------------------------------------------------------------------------
