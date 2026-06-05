@@ -27,6 +27,9 @@ from services.llm_stream import stream_completion, StreamResult, DEFAULT_BASE_UR
 from cache import get_cache_backend
 from cache.pubsub import subscribe, channel_invalidate
 
+# 工具执行期间心跳间隔（秒），防止 Nginx proxy_read_timeout 断连
+_TOOL_HEARTBEAT_INTERVAL = 30.0
+
 if TYPE_CHECKING:
     from services.tool_manager import ToolManager
     from services.tool_manager.context import ToolContext
@@ -292,10 +295,16 @@ class AgentExecutor:
                 f"({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)"
             )
             msg_count_before = len(full_messages)
-            await append_tool_round_with_errors(
-                full_messages, last_result, tool_manager, tool_context,
-                is_anthropic, tool_calls_valid, tool_calls_with_error,
+            tool_task = asyncio.create_task(
+                append_tool_round_with_errors(
+                    full_messages, last_result, tool_manager, tool_context,
+                    is_anthropic, tool_calls_valid, tool_calls_with_error,
+                )
             )
+            while not tool_task.done():
+                done, _ = await asyncio.wait({tool_task}, timeout=_TOOL_HEARTBEAT_INTERVAL)
+                (not done) and (yield ("heartbeat", {}, None))
+            tool_task.result()
 
             tool_results = _extract_tool_results(full_messages[msg_count_before:], is_anthropic)
 

@@ -276,6 +276,7 @@ class CollaborationStrategy(ABC):
                         "subtask_id": subtask.id,
                         **event_data,
                     }),
+                    "heartbeat": lambda: OrchestrationEvent("heartbeat", {}),
                 }
                 if event_type == "chunk":
                     last_result = result

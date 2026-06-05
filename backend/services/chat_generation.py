@@ -36,6 +36,7 @@ MAX_LLM_RETRIES = 3                 # 单次 stream_completion 调用最大重�
 MAX_CONSECUTIVE_TOOL_FAILURES = 5   # 连续工具调用失败上限（触发工具循环熔断）
 RETRY_BACKOFF_SECONDS = (0.5, 1.0, 2.0)  # 重试退避时间
 MAX_THINKING_ONLY_RETRIES = 1       # 模型仅输出思考内容时的重试次数
+_TOOL_HEARTBEAT_INTERVAL = 30.0     # 工具执行期间 SSE 心跳间隔（秒），防止 Nginx proxy_read_timeout 断连
 
 import re
 _THINK_ONLY_RE = re.compile(r'^\s*<think>.*?</think>\s*$', re.DOTALL)
@@ -467,9 +468,16 @@ async def generate_single_agent(
                 yield sse("tool_call", {"tool_name": tc.name, "arguments": {"error": "JSON parse failed"}})
 
             # 执行工具调用并追加结果到消息（包含错误处理）
+            # 使用心跳机制防止长时间工具执行导致 Nginx 因 proxy_read_timeout 断连
             total_tool_calls = len(tool_calls_valid) + len(tool_calls_with_error)
             logger.info(f"[Tool Round {_round + 1}] {total_tool_calls} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
-            await append_tool_round_with_errors(messages, result, tool_manager, ctx, is_anthropic, tool_calls_valid, tool_calls_with_error)
+            tool_task = asyncio.create_task(
+                append_tool_round_with_errors(messages, result, tool_manager, ctx, is_anthropic, tool_calls_valid, tool_calls_with_error)
+            )
+            while not tool_task.done():
+                done, _ = await asyncio.wait({tool_task}, timeout=_TOOL_HEARTBEAT_INTERVAL)
+                (not done) and (yield sse("heartbeat", {}))
+            tool_task.result()
 
             # 提取工具执行结果（用于 SSE 事件携带 result，供前端显示错误状态）
             _tool_results_map = _extract_tool_results(messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:], is_anthropic)
