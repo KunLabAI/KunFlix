@@ -32,11 +32,13 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
   const [moderation, setModeration] = useState('');                          // '' / 'auto' / 'low'
   const [outputCompression, setOutputCompression] = useState<number | null>(null); // null = 不透传
   const [maskUrl, setMaskUrl] = useState<string>('');                         // edit 模式可选蒙版 data/URL
+  // Seedream 5.0 联网搜索
+  const [webSearch, setWebSearch] = useState(false);
 
   // Derived
   const selectedModel = models.find((m) => `${m.provider_id}::${m.model_name}` === selectedModelKey) || null;
   const selectedProviderType = selectedModel?.provider_type || '';
-  const { capabilities } = useImageModelCapabilities(selectedProviderType || null);
+  const { capabilities } = useImageModelCapabilities(selectedProviderType || null, selectedModel?.model_name);
   const visibility = useImageFormVisibility(capabilities);
 
   // Auto-correct params when capabilities change
@@ -61,6 +63,8 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
       mods.length > 0 && moderation && !mods.includes(moderation) && setModeration('');
       !caps.supports_output_compression && outputCompression !== null && setOutputCompression(null);
       !caps.supports_mask && maskUrl && setMaskUrl('');
+      // Seedream web_search 能力下架时重置
+      !caps.supports_web_search && webSearch && setWebSearch(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [capabilities]);
@@ -145,6 +149,9 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
     setOutputCompression,
     maskUrl,
     setMaskUrl,
+    // Seedream 5.0
+    webSearch,
+    setWebSearch,
     // actions
     handleModelSelect,
   };

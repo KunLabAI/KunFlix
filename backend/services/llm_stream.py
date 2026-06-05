@@ -24,6 +24,7 @@ class StreamContext:
     xai_image_config: Dict[str, Any] | None = None  # xAI 图像生成配置
     tools: List[Dict[str, Any]] | None = None     # OpenAI-format tool definitions
     user_id: str | None = None                     # 用户 ID（媒体文件目录隔离）
+    model_type: str | None = None                  # 模型类型（来自 model_metadata: image/language/video/audio）
 
 
 @dataclass
@@ -273,7 +274,8 @@ _XAI_REASONING_EXTRA = {
 }
 
 # xAI 图像模型集合（使用 /v1/images/generations 和 /v1/images/edits，非 chat completions）
-_XAI_IMAGE_MODELS = frozenset({"grok-imagine-image", "grok-imagine-image-pro"})
+# 已废弃：不再硬编码图像模型 ID，改用 StreamContext.model_type == "image" 动态路由
+# 模型类型由管理员在创建供应商时通过 model_metadata 配置
 
 
 async def _stream_xai_text(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
@@ -526,8 +528,8 @@ async def _save_xai_image_item_sdk(item, response_format: str, user_id: str | No
 
 @register_provider("xai")
 async def stream_xai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """xAI/Grok 统一分发器：根据模型类型路由到文本或图像处理器"""
-    handler = _stream_xai_image if ctx.model in _XAI_IMAGE_MODELS else _stream_xai_text
+    """xAI/Grok 统一分发器：根据 model_type 动态路由到文本或图像处理器"""
+    handler = _stream_xai_image if ctx.model_type == "image" else _stream_xai_text
     async for chunk in handler(ctx, result):
         yield chunk
 
@@ -536,18 +538,10 @@ async def stream_xai(ctx: StreamContext, result: StreamResult) -> AsyncGenerator
 # 火山方舟 (Ark) 供应商 — 文本(OpenAI 兼容) + 图像(Seedream)
 # ============================================================
 
-# Ark Seedream 图像模型集合（使用 /images/generations，非 chat completions）
-_ARK_IMAGE_MODELS = frozenset({
-    "doubao-seedream-5-0-260128",
-    "doubao-seedream-4-5-250115",
-    "doubao-seedream-4-0-241220",
-})
-
-
 async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
     """火山方舟 Seedream 图像生成（使用 /images/generations 端点）"""
-    from openai import AsyncOpenAI
     from services.media_utils import save_image_from_url
+    from services.image_config_adapter import resolve_ark_pixel_size
 
     base_url = get_effective_base_url(ctx) or "https://ark.cn-beijing.volces.com/api/v3"
     client = _get_openai_client(ctx.api_key, base_url)
@@ -558,19 +552,28 @@ async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
     # 从 xai_image_config 提取配置（复用统一字段）
     img_cfg = (ctx.xai_image_config or {}).get("image_config") or {}
     n = img_cfg.get("n") or 1
-    size = img_cfg.get("size") or "1K"
     watermark = img_cfg.get("watermark", False)
+    output_format = img_cfg.get("output_format") or "png"
+    aspect_ratio = img_cfg.get("aspect_ratio")
+    quality = img_cfg.get("size") or "2K"  # quality 已映射为 size 等级
+
+    # 将 aspect_ratio + quality 映射为精确像素尺寸（如 "2848x1600"）
+    size = resolve_ark_pixel_size(quality, aspect_ratio)
 
     logger.info(
-        f"Ark Seedream: model={ctx.model}, n={n}, size={size}, watermark={watermark}"
+        f"Ark Seedream: model={ctx.model}, n={n}, size={size}, "
+        f"output_format={output_format}, watermark={watermark}"
     )
+
+    extra_body: Dict[str, Any] = {"size": size, "watermark": watermark}
+    (output_format in ("png", "jpeg")) and extra_body.update(output_format=output_format)
 
     generate_params: Dict[str, Any] = {
         "model": ctx.model,
         "prompt": prompt_text,
         "n": n,
         "response_format": "url",
-        "extra_body": {"size": size, "watermark": watermark},
+        "extra_body": extra_body,
     }
 
     response = await client.images.generate(**generate_params)
@@ -588,8 +591,8 @@ async def _stream_ark_image(ctx: StreamContext, result: StreamResult) -> AsyncGe
 
 @register_provider("ark", "doubao")
 async def stream_ark(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
-    """火山方舟统一分发器：Seedream 图像模型 → 图像处理，其他 → OpenAI 兼容文本处理"""
-    handler = _stream_ark_image if ctx.model in _ARK_IMAGE_MODELS else _PROVIDER_REGISTRY["openai"]
+    """火山方舟统一分发器：根据 model_type 动态路由到图像或文本处理器"""
+    handler = _stream_ark_image if ctx.model_type == "image" else _PROVIDER_REGISTRY["openai"]
     async for chunk in handler(ctx, result):
         yield chunk
 
@@ -1257,6 +1260,7 @@ async def stream_completion(
     tools: List[Dict[str, Any]] | None = None,
     xai_image_config: Dict[str, Any] | None = None,
     user_id: str | None = None,
+    model_type: str | None = None,
 ) -> AsyncGenerator[tuple[str, StreamResult], None]:
     """
     统一的流式调用入口
@@ -1286,6 +1290,7 @@ async def stream_completion(
         xai_image_config=xai_image_config,
         tools=tools,
         user_id=user_id,
+        model_type=model_type,
     )
     result = StreamResult()
     

@@ -135,6 +135,7 @@ export function AIAssistantPanel() {
 
   // 上下文使用统计
   const contextUsage = useAIAssistantStore((state) => state.contextUsage);
+  const isCompacting = useAIAssistantStore((state) => state.isCompacting);
 
   // 用户上传文件
   const uploadedFiles = useAIAssistantStore((state) => state.uploadedFiles);
@@ -579,6 +580,7 @@ export function AIAssistantPanel() {
               onDragStart={(e) => dragControls.start(e)}
               contextUsage={contextUsage}
               isLoading={isLoading}
+              isCompacting={isCompacting}
               chatList={theaterChatList}
               currentSessionId={sessionId}
               onCreateNewChat={createNewChat}

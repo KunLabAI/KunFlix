@@ -32,7 +32,7 @@ _BATCH_MAP: dict[str, dict[str, Any]] = {
 _SUPPORTED_MODES: dict[str, list[str]] = {
     "gemini":     ["text_to_image", "edit", "reference_images"],
     "xai":        ["text_to_image", "edit", "reference_images"],
-    "ark":        ["text_to_image", "edit", "reference_images"],
+    "ark":        ["text_to_image", "edit", "reference_images", "sequential"],
     "openrouter": ["text_to_image", "edit", "reference_images"],
 }
 
@@ -91,7 +91,7 @@ IMAGE_PROVIDER_CAPABILITIES: dict[str, dict] = {
         "aspect_ratios": sorted(_ASPECT_RATIO_SUPPORTED["ark"]),
         "qualities": ["standard", "hd", "ultra"],
         "output_formats": sorted(_OUTPUT_FORMAT_SUPPORTED["ark"]),
-        "batch_count": {"min": 1, "max": _BATCH_MAP["ark"]["max"]},
+        "batch_count": {"min": 1, "max": 15},  # 组图模式参考图+输出 <= 15
         "supported_modes": _SUPPORTED_MODES["ark"],
     },
     "openrouter": {
@@ -138,6 +138,50 @@ _SEEDREAM_50_SIZES:  list[str] = ["2K", "3K", "4K"]
 _SEEDREAM_45_SIZES:  list[str] = ["2K", "4K"]
 _SEEDREAM_40_SIZES:  list[str] = ["1K", "2K", "4K"]
 
+# ---------------------------------------------------------------------------
+# Seedream aspect_ratio + 分辨率等级 → 精确像素尺寸映射表（来自官方文档）
+# 格式：_SEEDREAM_PIXEL_MAP[resolution_level][aspect_ratio] = "WxH"
+# ---------------------------------------------------------------------------
+_SEEDREAM_PIXEL_MAP: dict[str, dict[str, str]] = {
+    "1K": {
+        "1:1": "1024x1024", "3:4": "864x1152", "4:3": "1152x864",
+        "16:9": "1312x736", "9:16": "736x1312", "2:3": "832x1248",
+        "3:2": "1248x832", "21:9": "1568x672",
+    },
+    "2K": {
+        "1:1": "2048x2048", "3:4": "1728x2304", "4:3": "2304x1728",
+        "16:9": "2848x1600", "9:16": "1600x2848", "2:3": "1664x2496",
+        "3:2": "2496x1664", "21:9": "3136x1344",
+    },
+    "3K": {
+        "1:1": "3072x3072", "3:4": "2592x3456", "4:3": "3456x2592",
+        "16:9": "4096x2304", "9:16": "2304x4096", "2:3": "2496x3744",
+        "3:2": "3744x2496", "21:9": "4704x2016",
+    },
+    "4K": {
+        "1:1": "4096x4096", "3:4": "3520x4704", "4:3": "4704x3520",
+        "16:9": "5504x3040", "9:16": "3040x5504", "2:3": "3328x4992",
+        "3:2": "4992x3328", "21:9": "6240x2656",
+    },
+}
+
+
+def resolve_ark_pixel_size(quality: str, aspect_ratio: str | None = None) -> str:
+    """将 quality 等级 + aspect_ratio 映射为 Seedream API 的 size 参数。
+
+    规则：
+      - 有有效 aspect_ratio → 使用精确像素值（如 "2848x1600"）
+      - aspect_ratio 为 auto/None/未知 → 直接传递分辨率等级（如 "2K"），由模型自主判断宽高
+    """
+    level = quality.upper().replace("K", "K") if quality else "2K"
+    # 保证 level 在合法范围内
+    level = level if level in _SEEDREAM_PIXEL_MAP else "2K"
+
+    # auto 或空：让模型自主决定宽高比
+    ar = (aspect_ratio or "").strip()
+    pixel_map = _SEEDREAM_PIXEL_MAP.get(level, {})
+    return pixel_map.get(ar, level)
+
 IMAGE_MODEL_CAPABILITIES: dict[str, dict] = {
     # Gemini 系列
     "gemini-3.1-flash-image-preview": {
@@ -163,21 +207,31 @@ IMAGE_MODEL_CAPABILITIES: dict[str, dict] = {
         "image_sizes":           _SEEDREAM_50_SIZES,
         "output_formats":        ["png", "jpeg"],
         "max_reference_images":  14,
+        "supports_sequential":   True,
+        "max_sequential_images": 15,
+        "supports_web_search":   True,
     },
     "doubao-seedream-5-0-lite-260128": {
         "image_sizes":           _SEEDREAM_50_SIZES,
         "output_formats":        ["png", "jpeg"],
         "max_reference_images":  14,
+        "supports_sequential":   True,
+        "max_sequential_images": 15,
+        "supports_web_search":   True,
     },
     "doubao-seedream-4-5-251128": {
         "image_sizes":           _SEEDREAM_45_SIZES,
         "output_formats":        ["jpeg"],
         "max_reference_images":  14,
+        "supports_sequential":   True,
+        "max_sequential_images": 15,
     },
     "doubao-seedream-4-0-250828": {
         "image_sizes":           _SEEDREAM_40_SIZES,
         "output_formats":        ["jpeg"],
         "max_reference_images":  14,
+        "supports_sequential":   True,
+        "max_sequential_images": 15,
     },
 }
 
@@ -263,6 +317,9 @@ def _adapt_to_ark(unified: dict) -> dict:
     # output_format（Seedream 5.0 支持 png/jpeg）
     fmt = cfg.get("output_format")
     fmt and fmt in _OUTPUT_FORMAT_SUPPORTED["ark"] and img.update(output_format=fmt)
+
+    # web_search（仅 Seedream 5.0 支持联网搜索）
+    cfg.get("web_search") and img.update(web_search=True)
 
     # Seedream 默认使用 url 格式
     img.update(response_format="url")

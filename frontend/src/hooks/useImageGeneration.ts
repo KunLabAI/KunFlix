@@ -32,6 +32,10 @@ export interface ImageModelCapabilities {
   image_sizes?: string[];                  // Gemini Flash: 512/1K/2K/4K；Pro: 1K/2K/4K
   max_reference_images?: number;           // Gemini 3.x: 14；2.5: 3
   supports_thinking?: boolean;             // Gemini 3.x: true；2.5: false
+  // Seedream 特有能力
+  supports_sequential?: boolean;           // 组图生成
+  max_sequential_images?: number;          // 组图最大张数
+  supports_web_search?: boolean;           // 联网搜索（仅 Seedream 5.0）
 }
 
 export interface ImageGenParams {
@@ -43,9 +47,11 @@ export interface ImageGenParams {
   output_compression?: number;                                  // 0–100
   background?: 'auto' | 'transparent' | 'opaque';
   moderation?: 'auto' | 'low';
+  // Seedream 5.0 联网搜索
+  web_search?: boolean;
 }
 
-export type ImageMode = 'text_to_image' | 'edit' | 'reference_images';
+export type ImageMode = 'text_to_image' | 'edit' | 'reference_images' | 'sequential';
 
 export interface ImageReference {
   url: string;
@@ -132,6 +138,7 @@ export const IMAGE_MODE_LABELS: Record<string, string> = {
   text_to_image: '文生图',
   edit: '图像编辑',
   reference_images: '多图参考',
+  sequential: '组图生成',
 };
 
 // 各模式的参考图数量上限（统一约定）
@@ -139,6 +146,7 @@ export const IMAGE_MODE_MAX_REFS: Record<string, number> = {
   text_to_image: 0,
   edit: 1,
   reference_images: 10,
+  sequential: 14,  // 组图模式支持多参考图（参考图+输出 <= 15）
 };
 
 // ---------------------------------------------------------------------------
@@ -268,6 +276,7 @@ export function useImageFormVisibility(capabilities: ImageModelCapabilities | nu
     moderationOptions: [] as string[],
     supportsMask: false,
     supportsOutputCompression: false,
+    supportsWebSearch: false,
   };
 
   const c = capabilities;
@@ -284,6 +293,7 @@ export function useImageFormVisibility(capabilities: ImageModelCapabilities | nu
         moderationOptions: c.moderations || [],
         supportsMask: !!c.supports_mask,
         supportsOutputCompression: !!c.supports_output_compression,
+        supportsWebSearch: !!c.supports_web_search,
       }
     : fallback;
 }

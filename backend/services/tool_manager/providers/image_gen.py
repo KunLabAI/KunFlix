@@ -179,25 +179,49 @@ async def _generate_via_ark(
     api_key: str, base_url: str | None, model: str,
     prompt: str, config: dict, n: int, user_id: str | None = None,
 ) -> tuple[list[str], dict]:
+    from services.image_config_adapter import resolve_ark_pixel_size
+    from services.ark_image_gen import generate_ark_sequential_images
     img_cfg = config.get("image_config") or {}
-    # 采用「多份 prompt、每份 n=1」模式：Seedream 4 等模型未原生支持 n>1，
-    # 统一通过并行调用保证 batch_count 生效。
+    # 将 aspect_ratio + quality 映射为精确像素尺寸
+    quality = img_cfg.get("size") or "2K"
+    aspect_ratio = img_cfg.get("aspect_ratio")
+    resolved_size = resolve_ark_pixel_size(quality, aspect_ratio)
+
     ark_config = ArkBatchImageConfig(
-        size=img_cfg.get("size") or "1K",
+        size=resolved_size,
         n=1,
         response_format=img_cfg.get("response_format") or "url",
         watermark=img_cfg.get("watermark", False),
         output_format=img_cfg.get("output_format") or "png",
+        web_search=img_cfg.get("web_search", False),
+        sequential=(n > 1),
+        max_images=max(1, n),
     )
-    result = await batch_generate_ark_images(
-        api_key=api_key,
-        model=model,
-        prompts=[prompt] * max(1, n),
-        config=ark_config,
-        base_url=base_url,
-        user_id=user_id,
+
+    # n > 1 时使用组图模式（单次调用生成多张关联图），n=1 时走单张生成
+    ref_urls = img_cfg.get("reference_images") or []  # 组图模式下的参考图
+    urls: list[str] = []
+    ark_config.sequential and (
+        urls := await generate_ark_sequential_images(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            config=ark_config,
+            base_url=base_url,
+            user_id=user_id,
+            image_urls=ref_urls or None,
+        )
     )
-    urls = [url for r in result.results for url in r.image_urls]
+    (not ark_config.sequential) and (
+        urls := [u for r in (await batch_generate_ark_images(
+            api_key=api_key,
+            model=model,
+            prompts=[prompt],
+            config=ark_config,
+            base_url=base_url,
+            user_id=user_id,
+        )).results for u in r.image_urls]
+    )
     # ark 不返回 token usage，统一结构返回零值
     return urls, {"input_tokens": 0, "output_tokens": 0}
 

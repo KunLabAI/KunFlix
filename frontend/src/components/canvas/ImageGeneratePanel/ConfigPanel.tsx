@@ -26,6 +26,8 @@ interface Visibility {
   moderationOptions: string[];
   supportsMask: boolean;
   supportsOutputCompression: boolean;
+  // Seedream
+  supportsWebSearch: boolean;
 }
 
 interface Props {
@@ -47,6 +49,9 @@ interface Props {
   setModeration: (v: string) => void;
   outputCompression: number | null;
   setOutputCompression: (v: number | null) => void;
+  // Seedream
+  webSearch: boolean;
+  setWebSearch: (v: boolean) => void;
 }
 
 export function ConfigPanel({
@@ -67,6 +72,8 @@ export function ConfigPanel({
   setModeration,
   outputCompression,
   setOutputCompression,
+  webSearch,
+  setWebSearch,
 }: Props) {
   const { t } = useTranslation();
 
@@ -220,6 +227,30 @@ export function ConfigPanel({
               />
             </div>
           )}
+        </div>
+      )}
+
+      {/* Seedream: 联网搜索开关 */}
+      {visibility.supportsWebSearch && (
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.webSearch', '联网搜索')}</label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={webSearch}
+            onClick={() => setWebSearch(!webSearch)}
+            className={cn(
+              'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+              webSearch ? 'bg-primary' : 'bg-muted-foreground/30',
+            )}
+          >
+            <span
+              className={cn(
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm ring-0 transition-transform',
+                webSearch ? 'translate-x-4' : 'translate-x-0',
+              )}
+            />
+          </button>
         </div>
       )}
 
