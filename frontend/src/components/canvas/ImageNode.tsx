@@ -13,6 +13,7 @@ import {
   ImageGenHistoryEntry,
   type PanoramaNodeData,
 } from '@/store/useCanvasStore';
+import type { ImageMode } from '@/hooks/useImageGeneration';
 import { useAIAssistantStore } from '@/store/useAIAssistantStore';
 import { useResourceStore } from '@/store/useResourceStore';
 import NodeEffectOverlay from './NodeEffectOverlay';
@@ -146,7 +147,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   }, [quick]);
 
   // 其他快捷模式点击：重置全景意图标记（避免跨点击变为全景生成）
-  const handleQuickModeWrapped = useCallback((mode: 'text_to_image' | 'edit' | 'reference_images', e?: React.MouseEvent) => {
+  const handleQuickModeWrapped = useCallback((mode: ImageMode, e?: React.MouseEvent) => {
     panoramaPendingRef.current = false;
     quick.handleQuickMode(mode, e);
   }, [quick]);
