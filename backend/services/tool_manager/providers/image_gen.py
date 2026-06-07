@@ -426,11 +426,17 @@ async def _run_generator(generator, provider, model: str, prompt: str, config: d
     # 生成成功后注册资产
     image_urls and await _register_generated_image_assets(image_urls, ctx.user_id, ctx.db)
 
+    # 画布桥接：收集 URL 到队列，工具轮次结束后由 chat_generation 顺序创建节点
+    (image_urls and ctx.theater_id) and ctx.canvas_image_queue.extend(
+        {"url": url, "prompt": prompt} for url in image_urls
+    )
+
     return (
         "No images were generated. The request may have been filtered by content moderation."
         if not image_urls
         else f"Generated {len(image_urls)} image(s):\n\n"
              + "\n\n".join(f"![image]({url})" for url in image_urls)
+             + "\n\n[Use the above URLs verbatim in your response. Do NOT rewrite, prefix, or convert them.]"
     )
 
 

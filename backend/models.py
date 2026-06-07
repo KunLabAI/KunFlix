@@ -486,6 +486,9 @@ class VideoTask(Base):
     result_video_url = Column(String, nullable=True)         # 本地存储路径
     error_message = Column(Text, nullable=True)
 
+    # 画布桥接
+    canvas_node_id = Column(String(36), nullable=True)      # 自动创建的画布占位节点 ID
+
     # 计费相关
     input_image_count = Column(Integer, default=0)
     output_duration_seconds = Column(Float, default=0)
@@ -516,6 +519,9 @@ class MusicTask(Base):
     status = Column(String(20), default="pending", index=True)  # pending/processing/completed/failed
     result_audio_url = Column(String(500), nullable=True)    # /api/media/{uuid}.mp3
     error_message = Column(Text, nullable=True)
+
+    # 画布桥接
+    canvas_node_id = Column(String(36), nullable=True)      # 自动创建的画布占位节点 ID
 
     # 计费
     credit_cost = Column(Float, default=0.0)

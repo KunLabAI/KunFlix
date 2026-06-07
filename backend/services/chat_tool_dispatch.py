@@ -35,12 +35,8 @@ async def get_tool_result(
     status = "success"
     try:
         # Skill dispatch (peer-level, NOT a managed provider)
-        # reset_tools dispatch (peer-level meta-tool, AgentScope-style group management)
         if tc_name == "load_skill":
             result = _execute_skill(tc_args, ctx)
-        elif tc_name == "reset_tools":
-            from services.tool_manager.reset_tools import execute_reset_tools
-            result = execute_reset_tools(tc_args, ctx)
         else:
             result = await tool_manager.execute_tool(tc_name, tc_args, ctx)
     except Exception as exc:

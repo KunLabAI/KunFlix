@@ -303,7 +303,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
           className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}
         >
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 overflow-hidden">
-            {!audioUrl && !isUploading && !upload.uploadError && <EmptyPlaceholder />}
+            {!audioUrl && !isUploading && !upload.uploadError && !data._generating && <EmptyPlaceholder />}
 
             {audioUrl && !isUploading && (
               <AudioDisplay audioUrl={audioUrl} lyrics={data.lyrics} selected={!!selected} />
@@ -318,7 +318,7 @@ const AudioNode = ({ id, data, selected }: NodeProps<Node<AudioNodeData>>) => {
               />
             )}
 
-            <GenerationOverlay active={gen.taskActive} elapsedMs={gen.elapsedMs} />
+            <GenerationOverlay active={gen.taskActive || !!data._generating} elapsedMs={gen.elapsedMs} />
           </CardContent>
         </Card>
 

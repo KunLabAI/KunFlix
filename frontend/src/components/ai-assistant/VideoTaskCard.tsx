@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { handleVideoDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 import { useAuth } from '@/context/AuthContext';
+import { useCanvasStore } from '@/store/useCanvasStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -186,6 +187,10 @@ export function VideoTaskCard({ task, className }: VideoTaskCardProps) {
 
     // Stop polling on terminal state
     TERMINAL_STATES.has(data.status) && stopPolling();
+
+    // 视频完成后同步画布（后端已更新占位节点）
+    const cStore = useCanvasStore.getState();
+    (data.status === 'completed' && cStore.theaterId) && cStore.syncTheater(cStore.theaterId);
   };
 
   const stopPolling = () => {

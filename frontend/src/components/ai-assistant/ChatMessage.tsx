@@ -177,6 +177,17 @@ function parseMusicMarkers(content: string): { cleanContent: string; musicCards:
   return { cleanContent, musicCards };
 }
 
+// ---------------------------------------------------------------------------
+// Media URL normalization: LLM may hallucinate full domain prefixes on local URLs
+// e.g. "https://api.mini.ai/media/UUID.jpg" → "/api/media/UUID.jpg"
+// ---------------------------------------------------------------------------
+const _MEDIA_UUID_RE = /(?:https?:\/\/[^/]+)?\/(?:api\/)?media\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]+)/i;
+
+function normalizeMediaUrl(url: string): string {
+  const match = _MEDIA_UUID_RE.exec(url);
+  return match ? `/api/media/${match[1]}` : url;
+}
+
 // Markdown组件配置：使用懒加载优化性能
 const createMarkdownComponents = (isStreaming: boolean) => ({
   code: ({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) => {
@@ -252,7 +263,7 @@ const createMarkdownComponents = (isStreaming: boolean) => ({
   ),
   // 使用懒加载图片组件
   img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
-    const srcString = typeof src === 'string' ? src : '';
+    const srcString = normalizeMediaUrl(typeof src === 'string' ? src : '');
     return (
       <LazyImage
         src={srcString}
