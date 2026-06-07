@@ -33,56 +33,6 @@ TOOL_SKILL_GATE_MAP: dict[str, frozenset[str]] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Tool groups: AgentScope-style dynamic tool group management
-# ---------------------------------------------------------------------------
-@dataclass
-class ToolGroupDef:
-    """Definition of a tool group that can be activated/deactivated at runtime."""
-    name: str
-    description: str
-    instructions: str = ""  # Returned to agent when group is activated
-
-
-TOOL_GROUPS: dict[str, ToolGroupDef] = {
-    "canvas": ToolGroupDef(
-        name="canvas",
-        description="Canvas node CRUD tools for creating and managing theater nodes.",
-        instructions="Always use list_canvas_nodes first to understand current state.",
-    ),
-    "image_gen": ToolGroupDef(
-        name="image_gen",
-        description="Generate images from text prompts.",
-    ),
-    "image_edit": ToolGroupDef(
-        name="image_edit",
-        description="Edit existing images (inpainting, style transfer).",
-    ),
-    "video_gen": ToolGroupDef(
-        name="video_gen",
-        description="Generate videos from text/image prompts.",
-    ),
-    "video_edit": ToolGroupDef(
-        name="video_edit",
-        description="Edit existing videos (extension, effects).",
-    ),
-    "music_gen": ToolGroupDef(
-        name="music_gen",
-        description="Generate music/audio from text prompts.",
-    ),
-}
-
-# Provider class name -> group name (for build_defs group-state lookup)
-PROVIDER_GROUP_MAP: dict[str, str] = {
-    "CanvasProvider": "canvas",
-    "ImageGenProvider": "image_gen",
-    "ImageEditProvider": "image_edit",
-    "VideoGenProvider": "video_gen",
-    "VideoEditProvider": "video_edit",
-    "MusicGenProvider": "music_gen",
-}
-
-
 @dataclass
 class ToolContext:
     """Immutable-ish context that travels with a single chat generation request."""
@@ -113,27 +63,11 @@ class ToolContext:
     # --- skill-gated tool tracking ---
     loaded_tool_skills: set = field(default_factory=set, repr=False)
 
-    # --- tool group overrides (AgentScope-style reset_tools) ---
-    _group_overrides: dict = field(default_factory=dict, repr=False)
-
     # --- transient event collectors ---
     video_tasks: list = field(default_factory=list, repr=False)
     music_tasks: list = field(default_factory=list, repr=False)
-
-    # ------------------------------------------------------------------
-    # Tool group helpers (AgentScope-style reset_tools)
-    # ------------------------------------------------------------------
-
-    def is_group_active(self, group_name: str | None) -> bool | None:
-        """Check group override state.
-
-        Returns None = use default logic, True = force active, False = force inactive.
-        """
-        return self._group_overrides.get(group_name) if group_name else None
-
-    def set_group_overrides(self, overrides: dict[str, bool]) -> None:
-        """Called by reset_tools execution. Replaces all overrides (final-state semantics)."""
-        self._group_overrides = {k: v for k, v in overrides.items() if k in TOOL_GROUPS}
+    # 图像桥接队列：并行工具执行时收集 URL，轮次结束后顺序创建画布节点
+    canvas_image_queue: list = field(default_factory=list, repr=False)
 
     # ------------------------------------------------------------------
     # Skill-gate helpers

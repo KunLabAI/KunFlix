@@ -20,8 +20,7 @@ from services.chat_tool_dispatch import append_tool_round, append_tool_round_wit
 from services.agent_executor import _extract_tool_results
 from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
-from services.tool_manager.context import TOOL_SKILL_GATE_MAP, TOOL_GROUPS
-from services.tool_manager.reset_tools import build_reset_tools_def
+from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
 from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_model, load_pricing
 from services.media_utils import MEDIA_DIR
@@ -58,21 +57,18 @@ def _extract_reasoning_to_msg(msg: dict) -> bool:
     return bool(match)
 
 
-def _is_group_potentially_available(group: str, agent: Any, theater_id: str | None) -> bool:
-    """Rough check whether a tool group is potentially relevant for the current agent.
-
-    Used to decide whether to expose the group in reset_tools schema.
-    Does NOT check global ToolConfig or skill-gate — just coarse eligibility.
-    """
-    _checks = {
-        "canvas": bool(theater_id and (agent.target_node_types or [])),
-        "image_gen": True,
-        "image_edit": True,
-        "video_gen": True,
-        "video_edit": True,
-        "music_gen": True,
-    }
-    return _checks.get(group, False)
+async def _flush_canvas_image_queue(ctx, theater_id: str) -> None:
+    """Sequentially create canvas image nodes from the queue (after parallel tools complete)."""
+    try:
+        from services.media_canvas_bridge import create_image_nodes
+        urls = [item["url"] for item in ctx.canvas_image_queue]
+        prompt = ctx.canvas_image_queue[0]["prompt"] if ctx.canvas_image_queue else ""
+        async with AsyncSessionLocal() as bridge_db:
+            await create_image_nodes(urls, theater_id, prompt, bridge_db)
+    except Exception as e:
+        logger.error("Flush canvas image queue failed: %s", e)
+    finally:
+        ctx.canvas_image_queue.clear()
 
 
 async def _wait_for_compaction(persist_task: asyncio.Task, persist_state: dict, timeout: float = 25.0) -> None:
@@ -220,32 +216,11 @@ async def generate_single_agent(
     ctx.loaded_tool_skills.update(s for s in loaded_skills if s in TOOL_SKILL_GATE_MAP)
     loaded_skills and logger.info(f"Restored skills from history: {loaded_skills}")
 
-    # 从聊天历史恢复工具组覆盖状态（reset_tools 的最后一次调用）
-    for msg in reversed(history[skip_count:]):
-        deserialized = (msg.role == "assistant") and deserialize_content(msg.content)
-        if isinstance(deserialized, dict) and deserialized.get("tool_calls"):
-            for tc_hist in deserialized["tool_calls"]:
-                if tc_hist.get("name") == "reset_tools":
-                    _restored_args = tc_hist.get("arguments", {})
-                    isinstance(_restored_args, str) and (_restored_args := {})
-                    ctx.set_group_overrides(_restored_args)
-                    logger.info(f"Restored tool group overrides: {ctx._group_overrides}")
-                    break
-            if ctx._group_overrides:
-                break
-
     tool_defs = await tool_manager.build_tool_defs(ctx)
 
     # 技能系统（与工具同级，独立编排）
     remaining_skills = [s for s in agent_skills if s not in loaded_skills]
     agent_skills and (tool_defs := (tool_defs or []) + [build_load_skill_tool_def(agent_skills)])
-
-    # reset_tools 元工具注册（当有可用工具组时）
-    _available_groups = [
-        g for g in TOOL_GROUPS
-        if _is_group_potentially_available(g, agent, theater_id)
-    ]
-    _available_groups and (tool_defs := (tool_defs or []) + [build_reset_tools_def(_available_groups)])
 
     # 注入技能信息到 system prompt
     # 已恢复的技能：注入完整内容（补偿工具调用轮次未持久化导致的上下文丢失）
@@ -517,25 +492,21 @@ async def generate_single_agent(
                 # 检测是否是工具Skill变更（需触发完整重建）
                 (skill_name in TOOL_SKILL_GATE_MAP) and (tool_skill_changed := True)
 
-            # 检测 reset_tools 调用 → 需完整重建工具定义
-            _reset_tools_called = any(tc.name == "reset_tools" for tc, _ in tool_calls_valid)
-
             # 重建工具定义（技能 enum 自动缩减）
-            # 如果有工具Skill被加载/卸载或工具组重置，需完整异步重建
+            # 如果有工具Skill被加载/卸载，需完整异步重建
             remaining_skills = [s for s in agent_skills if s not in loaded_skills]
             managed_defs = (
                 await tool_manager.build_tool_defs(ctx)
-                if (tool_skill_changed or _reset_tools_called)
+                if tool_skill_changed
                 else tool_manager.rebuild_after_round(ctx)
             )
             tool_defs = (managed_defs or [])
             agent_skills and (tool_defs := tool_defs + [build_load_skill_tool_def(agent_skills)])
-            _available_groups and (tool_defs := tool_defs + [build_reset_tools_def(_available_groups)])
             tool_defs = tool_defs or None
 
             # 输出重建后的工具列表（仅在发生变化时）
-            (tool_skill_changed or _reset_tools_called) and logger.info(
-                f"  [ToolGroup] Rebuilt tools: {[d.get('function', {}).get('name', '?') for d in (tool_defs or [])]}"
+            tool_skill_changed and logger.info(
+                f"  [Tools] Rebuilt tools: {[d.get('function', {}).get('name', '?') for d in (tool_defs or [])]}"
             )
 
             # 发送 tool 完成事件 (skill_loaded / skill_unloaded / tool_result)
@@ -552,19 +523,12 @@ async def generate_single_agent(
                 skill_event = "skill_unloaded" if skill_action == "unload" else "skill_loaded"
                 yield sse(skill_event if is_skill else "tool_result", event_data)
                 
-                # Canvas / edit_image 工具执行后发送画布更新事件，通知前端刷新
-                (is_canvas or tc.name == "edit_image") and theater_id and (
+                # Canvas / 媒体生成工具执行后发送画布更新事件，通知前端刷新
+                _triggers_canvas = is_canvas or tc.name in {"edit_image", "generate_image", "generate_video", "generate_music"}
+                (_triggers_canvas and theater_id) and (
                     yield sse("canvas_updated", {"theater_id": theater_id, "action": tc.name})
                 )
             
-            # 发送 reset_tools 事件通知前端
-            _reset_tools_called and (
-                yield sse("tools_reset", {
-                    "active_groups": [g for g, v in ctx._group_overrides.items() if v],
-                    "deactivated_groups": [g for g, v in ctx._group_overrides.items() if not v],
-                })
-            )
-
             # 发送错误调用的完成事件
             for tc, _ in tool_calls_with_error:
                 yield sse("tool_result", {"tool_name": tc.name, "success": False, "error": "JSON parse failed"})
@@ -592,6 +556,9 @@ async def generate_single_agent(
             for mt in ctx.music_tasks:
                 yield sse("music_task_created", mt)
             ctx.music_tasks.clear()
+
+            # 画布图像桥接：顺序创建节点（避免并行执行时位置重叠）
+            ctx.canvas_image_queue and await _flush_canvas_image_queue(ctx, theater_id)
 
     except Exception as e:
         generation_failed = True
@@ -811,28 +778,5 @@ async def generate_single_agent(
 
     # 发送计费信息和完成事件
     yield sse("billing", billing_event)
-
-    # 画布图像桥接：图像生成后自动创建/更新画布节点
-    # 使用全局 ToolConfig 判断图像生成是否启用
-    _node_types = set(agent.target_node_types or [])
-    _has_image_target = bool(_node_types & {"image", "character"})
-    _is_image_enabled = image_gen_enabled
-    _should_bridge = theater_id and _has_image_target and _is_image_enabled and result and result.full_response
-
-    if _should_bridge:
-        from services.image_canvas_bridge import bridge_images_to_canvas
-        try:
-            async with AsyncSessionLocal() as bridge_db:
-                bridge_actions = await bridge_images_to_canvas(
-                    response_text=result.full_response,
-                    theater_id=theater_id,
-                    target_node_id=target_node_id,
-                    agent=agent,
-                    db=bridge_db,
-                )
-                for action in bridge_actions:
-                    yield sse("canvas_updated", {"theater_id": theater_id, "action": action})
-        except Exception as e:
-            logger.error(f"Image canvas bridge failed: {e}")
 
     yield sse("done", {})

@@ -190,8 +190,8 @@ async def execute_music_task_background(
             task_id, audio_url, credit_cost, remaining_credits,
         )
 
-        # ---- 画布音频节点创建（可选） ----
-        theater_id and await _create_canvas_audio_node(db, theater_id, audio_url, task)
+        # ---- 画布占位节点更新（如果工具执行时创建了占位节点） ----
+        task.canvas_node_id and await _update_canvas_audio_node(db, task, audio_url, result.lyrics)
 
         # ---- 实时通知前端（兼容 arq worker 和 fallback 路径） ----
         await _push_music_event(user_id, task, billing_underpaid=billing_underpaid, remaining_credits=remaining_credits)
@@ -270,41 +270,31 @@ async def _calculate_and_deduct(
 
 
 # ---------------------------------------------------------------------------
-# 画布节点创建
+# 画布节点更新
 # ---------------------------------------------------------------------------
 
-async def _create_canvas_audio_node(
+async def _update_canvas_audio_node(
     db: "AsyncSession",
-    theater_id: str,
-    audio_url: str,
     task,
+    audio_url: str,
+    lyrics: str,
 ) -> None:
-    """在画布上自动创建音频节点。"""
-    from models import TheaterNode
-    import uuid as _uuid
-
+    """更新占位音频节点为实际媒体 URL。"""
     try:
-        node = TheaterNode(
-            id=str(_uuid.uuid4()),
-            theater_id=theater_id,
-            node_type="audio",
-            position_x=100,
-            position_y=100,
-            width=280,
-            height=180,
-            z_index=0,
-            data={
-                "name": (task.prompt[:30] + "...") if len(task.prompt) > 30 else task.prompt,
-                "description": task.lyrics[:100] if task.lyrics else "",
-                "audioUrl": audio_url,
-                "lyrics": task.lyrics or "",
-            },
+        from services.media_canvas_bridge import update_placeholder_node
+        from realtime.dispatcher import push_to_user
+        name = (task.prompt[:30] + "...") if len(task.prompt) > 30 else task.prompt
+        await update_placeholder_node(
+            task.canvas_node_id,
+            {"audioUrl": audio_url, "lyrics": lyrics or "", "name": name},
+            db,
         )
-        db.add(node)
-        await db.commit()
-        logger.info("Created canvas audio node for music task %s in theater %s", task.id, theater_id)
+        # 通知前端画布更新
+        task.user_id and await push_to_user(
+            task.user_id, "canvas.updated", {"action": "update_canvas_node"}
+        )
     except Exception:
-        logger.exception("Failed to create canvas audio node for task %s", task.id)
+        logger.exception("Failed to update canvas audio node for task %s", task.id)
 
 
 def _mark_failed(task, error_msg: str) -> None:

@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from services.tool_manager.context import ToolContext
     from services.tool_manager.protocol import ToolProvider
 
-from services.tool_manager.context import PROVIDER_GROUP_MAP
-
 logger = logging.getLogger(__name__)
 
 
@@ -44,16 +42,10 @@ class ToolManager:
     async def build_tool_defs(self, ctx: ToolContext) -> list[dict] | None:
         """Build all applicable tool definitions for the current context.
 
-        Respects tool group overrides: providers whose group is force-inactive
-        are skipped entirely. Returns ``None`` when no tools should be enabled.
+        Returns ``None`` when no tools should be enabled.
         """
         all_defs: list[dict] = []
         for provider in self._providers:
-            group_name = PROVIDER_GROUP_MAP.get(type(provider).__name__)
-            # Group force-inactive → skip this provider entirely
-            override = ctx.is_group_active(group_name)
-            if override is False:
-                continue
             all_defs.extend(await provider.build_defs(ctx))
 
         self._cached_defs = all_defs or None

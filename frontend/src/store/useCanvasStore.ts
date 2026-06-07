@@ -109,6 +109,8 @@ export type VideoNodeData = {
   pinPanel?: boolean;
   /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
   updatedAt?: string;
+  /** 后端媒体生成工具创建的占位节点，待任务完成后回填 URL */
+  _generating?: boolean;
 };
 
 export type AudioGenHistoryEntry = {
@@ -144,6 +146,8 @@ export type AudioNodeData = {
   pinPanel?: boolean;
   /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
   updatedAt?: string;
+  /** 后端媒体生成工具创建的占位节点，待任务完成后回填 URL */
+  _generating?: boolean;
 };
 
 export type PanoramaNodeData = {

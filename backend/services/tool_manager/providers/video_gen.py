@@ -349,6 +349,9 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
 
     logger.info("Video task created via tool: %s (%s: %s)", task.id, video_provider_type, video_result.task_id)
 
+    # 画布桥接：创建占位视频节点
+    ctx.theater_id and await _bridge_video_placeholder(task, prompt, ctx)
+
     # 将视频任务信息存入 ctx，供 chat_generation 发送 SSE 事件
     ctx.video_tasks.append({"task_id": task.id, "video_mode": video_mode, "model": model})
 
@@ -365,6 +368,21 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
         "The user will be notified when it's ready.\n\n"
         "<!-- __VIDEO_TASK__|" + task.id + "|" + video_mode + "|" + model + " -->"
     )
+
+
+async def _bridge_video_placeholder(task, prompt: str, ctx: "ToolContext") -> None:
+    """Create a placeholder video node on the canvas (errors swallowed)."""
+    try:
+        from database import AsyncSessionLocal
+        from services.media_canvas_bridge import create_placeholder_node
+        name = (prompt[:30] + "...") if len(prompt) > 30 else (prompt or "Generating Video")
+        async with AsyncSessionLocal() as bridge_db:
+            node_id = await create_placeholder_node("video", name, prompt, ctx.theater_id, bridge_db)
+        # Store node_id on the task record
+        task.canvas_node_id = node_id
+        await ctx.db.commit()
+    except Exception as e:
+        logger.error("Video canvas bridge failed: %s", e)
 
 
 # ---------------------------------------------------------------------------

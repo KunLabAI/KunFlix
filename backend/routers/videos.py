@@ -278,6 +278,9 @@ async def get_video_task_status(
             # 在聊天会话中插入视频消息
             task.session_id and await _insert_video_chat_message(db, task)
 
+            # 画布桥接：更新占位视频节点
+            task.canvas_node_id and await _update_video_canvas_node(task, local_url, db)
+
         except Exception as e:
             logger.error(f"Video completion processing failed: {e}")
             task.status = "failed"
@@ -331,6 +334,24 @@ async def _register_video_asset(local_url: str, user_id: str, db: AsyncSession) 
         logger.info("Registered video as asset: %s (user=%s)", filename, user_id)
     except Exception as e:
         logger.warning("Failed to register video asset: %s", e, exc_info=True)
+
+
+async def _update_video_canvas_node(task, local_url: str, db: AsyncSession) -> None:
+    """Update the placeholder canvas node with the real video URL."""
+    try:
+        from services.media_canvas_bridge import update_placeholder_node
+        name = (task.prompt[:30] + "...") if task.prompt and len(task.prompt) > 30 else (task.prompt or "Video")
+        await update_placeholder_node(
+            task.canvas_node_id,
+            {"videoUrl": local_url, "name": name},
+            db,
+        )
+        # Push canvas update to frontend
+        task.user_id and await push_to_user(
+            task.user_id, "canvas.updated", {"action": "update_canvas_node"}
+        )
+    except Exception as e:
+        logger.warning("Failed to update video canvas node: %s", e)
 
 
 @router.get("/session/{session_id}", response_model=list[VideoTaskResponse])

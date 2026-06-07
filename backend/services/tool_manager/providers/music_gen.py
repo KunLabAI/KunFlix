@@ -183,6 +183,9 @@ async def _execute_music_gen_tool(args: dict, ctx: "ToolContext") -> str:
     task_id = result["task_id"]
     logger.info("Music task created via tool: %s (%s)", task_id, model)
 
+    # 画布桥接：创建占位音频节点
+    ctx.theater_id and await _bridge_music_placeholder(task_id, prompt, ctx)
+
     # 将任务信息存入 ctx，供 chat_generation 发送 SSE 事件
     ctx.music_tasks.append({"task_id": task_id, "model": model})
 
@@ -197,6 +200,24 @@ async def _execute_music_gen_tool(args: dict, ctx: "ToolContext") -> str:
         "The user will be notified when it's ready.\n\n"
         "<!-- __MUSIC_TASK__|" + task_id + "|" + model + " -->"
     )
+
+
+async def _bridge_music_placeholder(task_id: str, prompt: str, ctx: "ToolContext") -> None:
+    """Create a placeholder audio node on the canvas (errors swallowed)."""
+    try:
+        from database import AsyncSessionLocal
+        from models import MusicTask
+        from services.media_canvas_bridge import create_placeholder_node
+        name = (prompt[:30] + "...") if len(prompt) > 30 else (prompt or "Generating Music")
+        async with AsyncSessionLocal() as bridge_db:
+            node_id = await create_placeholder_node("audio", name, prompt, ctx.theater_id, bridge_db)
+            # Store node_id on the task record
+            from sqlalchemy import select
+            task = (await bridge_db.execute(select(MusicTask).where(MusicTask.id == task_id))).scalar_one_or_none()
+            task and setattr(task, "canvas_node_id", node_id)
+            task and await bridge_db.commit()
+    except Exception as e:
+        logger.error("Music canvas bridge failed: %s", e)
 
 
 # ---------------------------------------------------------------------------

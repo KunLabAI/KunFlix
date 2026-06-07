@@ -564,6 +564,7 @@ async def _maybe_create_edit_node(
 
         return (
             f"Edited image:\n\n![edited image]({edited_url})\n\n"
+            f"[Use the above URL verbatim. Do NOT rewrite, prefix, or convert it.]\n\n"
             f"A new canvas node (id: {new_node.id}) has been created with the edited image "
             f"and connected to the original node (id: {source.id}) via an edge. "
             f"The original image is preserved. Do NOT call update_canvas_node."
@@ -708,7 +709,7 @@ async def _execute_image_edit_tool(args: dict, ctx: "ToolContext") -> str:
             
         # 画布上下文存在时，自动创建新节点并连线到源节点（保留原始节点不变）
         canvas_result = ctx.theater_id and await _maybe_create_edit_node(edited_url, primary_image_url, ctx)
-        return canvas_result or f"Edited image:\n\n![edited image]({edited_url})"
+        return canvas_result or f"Edited image:\n\n![edited image]({edited_url})\n\n[Use the above URL verbatim. Do NOT rewrite, prefix, or convert it.]"
     
     except Exception as e:
         logger.error("edit_image tool error: %s", e, exc_info=True)

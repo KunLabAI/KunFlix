@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { handleAudioDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 import { useAuth } from '@/context/AuthContext';
+import { useCanvasStore } from '@/store/useCanvasStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -181,6 +182,10 @@ export function MusicTaskCard({ task, className }: MusicTaskCardProps) {
     );
 
     TERMINAL_STATES.has(data.status) && stopPolling();
+
+    // 音乐完成后同步画布（后端已更新占位节点）
+    const cStore = useCanvasStore.getState();
+    (data.status === 'completed' && cStore.theaterId) && cStore.syncTheater(cStore.theaterId);
   };
 
   const stopPolling = () => {

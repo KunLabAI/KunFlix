@@ -292,9 +292,9 @@ const VideoNode = ({ id, data, selected }: NodeProps<Node<VideoNodeData>>) => {
 
         <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
-            {!data.videoUrl && !isUploading && !upload.uploadError && !taskActive && <EmptyPlaceholder />}
+            {!data.videoUrl && !isUploading && !upload.uploadError && !taskActive && !data._generating && <EmptyPlaceholder />}
 
-            <GenerationOverlay active={taskActive} elapsedMs={elapsedMs} />
+            <GenerationOverlay active={taskActive || !!data._generating} elapsedMs={elapsedMs} />
 
             {data.videoUrl && (
               <VideoDisplay
