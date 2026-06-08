@@ -106,7 +106,7 @@ const HOVER_PREVIEW_RENDERERS: Record<string, React.FC<{ asset: AssetItem }>> = 
       src={asset.url}
       alt={asset.original_name || asset.filename}
       draggable={false}
-      className="w-full h-full object-contain bg-black/5"
+      className="block max-w-full max-h-[384px] object-contain"
     />
   ),
   video: ({ asset }) => (
@@ -116,18 +116,18 @@ const HOVER_PREVIEW_RENDERERS: Record<string, React.FC<{ asset: AssetItem }>> = 
       muted
       controls
       playsInline
-      className="w-full h-full object-contain bg-black"
+      className="block max-w-full max-h-[384px] object-contain bg-black"
     />
   ),
   audio: ({ asset }) => (
-    <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-4 bg-secondary/30">
-      <div className="w-20 h-20 rounded-full bg-amber-500/10 flex items-center justify-center">
-        <Headphones className="w-10 h-10 text-amber-500/60" />
+    <div className="flex flex-col items-center gap-3 p-4 bg-secondary/30">
+      <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center">
+        <Headphones className="w-7 h-7 text-amber-500/60" />
       </div>
-      <span className="text-sm font-medium text-foreground truncate max-w-[90%] text-center">
+      <span className="text-sm font-medium text-foreground truncate max-w-[240px] text-center">
         {asset.original_name || asset.filename}
       </span>
-      <MiniAudioPlayer src={asset.url} autoPlay className="w-[90%]" />
+      <MiniAudioPlayer src={asset.url} autoPlay className="w-[240px]" />
     </div>
   ),
 };
@@ -155,7 +155,6 @@ export const Sidebar = () => {
   const { t } = useTranslation();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [activeAssetTab, setActiveAssetTab] = useState<'images' | 'videos' | 'audio'>('images');
-  let timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 每个 tab 独立分页状态
   const [tabData, setTabData] = useState<Record<string, TabState>>({
@@ -164,6 +163,18 @@ export const Sidebar = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const tabDataRef = useRef(tabData);
   tabDataRef.current = tabData;
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const assetPanelRef = useRef<HTMLDivElement>(null);
+
+  // ── 点击外部关闭菜单 ──
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      sidebarRef.current?.contains(target) || setActiveMenu(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   // ── 悬停预览状态 ──
   const [previewAsset, setPreviewAsset] = useState<AssetItem | null>(null);
@@ -176,13 +187,14 @@ export const Sidebar = () => {
   const handleAssetHoverEnter = useCallback((e: React.MouseEvent, asset: AssetItem) => {
     previewCloseRef.current && clearTimeout(previewCloseRef.current);
     previewHoverRef.current && clearTimeout(previewHoverRef.current);
-    const el = e.currentTarget as HTMLElement;
     // 已有预览时立即切换；否则延迟 1s
     const delay = previewAssetRef.current ? 0 : HOVER_DELAY_MS;
     previewHoverRef.current = setTimeout(() => {
-      const rect = el.getBoundingClientRect();
-      const top = Math.max(8, Math.min(rect.top, window.innerHeight - PREVIEW_H - 8));
-      const left = Math.min(rect.right + PREVIEW_GAP, window.innerWidth - PREVIEW_W - 8);
+      // 固定在资产面板右边缘
+      const panelEl = assetPanelRef.current;
+      const panelRect = panelEl?.getBoundingClientRect();
+      const left = (panelRect?.right ?? 0) + PREVIEW_GAP;
+      const top = panelRect ? panelRect.top + panelRect.height / 2 : 0;
       setPreviewPos({ top, left });
       setPreviewAsset(asset);
     }, delay);
@@ -263,15 +275,8 @@ export const Sidebar = () => {
   const ASSET_AUDIO = tabData.audio.items;
   const isLoading = curTab.loading && curTab.items.length === 0;
 
-  const handleMouseEnter = (menu: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setActiveMenu(menu);
-  };
-
-  const handleMouseLeave = () => {
-    timeoutRef.current = setTimeout(() => {
-      setActiveMenu(null);
-    }, 150);
+  const handleMenuClick = (menu: string) => {
+    setActiveMenu(prev => prev === menu ? null : menu);
   };
 
   const onDragStart = (event: React.DragEvent, nodeType: string, data?: any, initialDimensions?: {width: number, height: number}) => {
@@ -325,17 +330,17 @@ export const Sidebar = () => {
 
   return (
     <>
-    <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50">
+    <div className="fixed left-6 top-1/2 -translate-y-1/2 z-50" ref={sidebarRef}>
       <div 
         className="flex flex-col gap-2 p-1.5 rounded-xl bg-background border border-border/50 shadow-none"
-        onMouseLeave={handleMouseLeave}
       >
         {/* Node Library Button */}
         <div 
           className="relative"
-          onMouseEnter={() => handleMouseEnter('nodes')}
         >
-          <button className={cn(
+          <button
+            onClick={() => handleMenuClick('nodes')}
+            className={cn(
             "w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors duration-200 shadow-none",
             activeMenu === 'nodes' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}>
@@ -375,9 +380,10 @@ export const Sidebar = () => {
         {/* Asset Library Button */}
         <div 
           className="relative"
-          onMouseEnter={() => handleMouseEnter('assets')}
         >
-          <button className={cn(
+          <button
+            onClick={() => handleMenuClick('assets')}
+            className={cn(
             "w-8 h-8 rounded-[8px] flex items-center justify-center transition-colors duration-200 shadow-none",
             activeMenu === 'assets' ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}>
@@ -385,7 +391,7 @@ export const Sidebar = () => {
           </button>
           
           {/* Asset Library Panel */}
-          <div className={cn(
+          <div ref={assetPanelRef} className={cn(
             "absolute left-full top-0 ml-4 w-72 bg-background border border-border/50 rounded-xl p-3 transition-all duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none flex flex-col gap-3",
             activeMenu === 'assets' 
               ? "opacity-100 translate-x-0 pointer-events-auto" 
@@ -549,15 +555,16 @@ export const Sidebar = () => {
       </div>
     </div>
 
-    {/* 悬停预览浮层 */}
+    {/* 悬停预览浮层 - 固定在面板右侧，自适应内容大小 */}
     {previewAsset && PreviewRenderer && (
       <div
         className="fixed z-[60] bg-background border border-border/50 rounded-xl overflow-hidden shadow-xl animate-in fade-in zoom-in-95 duration-150"
         style={{
           top: previewPos.top,
           left: previewPos.left,
-          width: PREVIEW_W,
-          height: PREVIEW_H,
+          transform: 'translateY(-50%)',
+          maxWidth: PREVIEW_W,
+          maxHeight: PREVIEW_H,
         }}
         onMouseEnter={handlePreviewEnter}
         onMouseLeave={handlePreviewLeave}

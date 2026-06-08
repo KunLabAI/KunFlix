@@ -166,7 +166,6 @@ export function AIAssistantPanel() {
     switchToSession,
     deleteSession,
     switchAgent,
-    clearSession,
     invalidateSessionCache,
   } = useSessionManager();
 
@@ -189,7 +188,7 @@ export function AIAssistantPanel() {
 
   // 约束面板位置到可视区域内
   const constrainToViewport = useCallback((x: number, y: number, width: number, height: number) => {
-    const padding = 20; // 边缘安全距离
+    const padding = 0; // 贴边吸附，与 dragConstraints 的 inset-0 保持一致
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     

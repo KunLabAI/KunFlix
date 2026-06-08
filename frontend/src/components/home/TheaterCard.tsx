@@ -328,14 +328,6 @@ export default function TheaterCard({
                 </div>
               )}
             </div>
-
-            <div className="flex items-center justify-between rounded-xl px-4 py-3 backdrop-blur-md bg-background/20 border border-border/50 transition-all duration-300 group-hover:bg-background/30">
-              <div className="flex items-center gap-2">
-                <Play className="w-4 w-4 fill-current" />
-                <span className="text-sm font-semibold tracking-wide">{t("theater.openTheater")}</span>
-              </div>
-              <ArrowRight className="h-4 w-4 transform transition-transform duration-300 group-hover:translate-x-1" />
-            </div>
           </div>
         </div>
       </motion.div>

@@ -1,8 +1,6 @@
 ---
-name: Photography_Scene_Design
-description: "专业摄影器材与参数指南，用于角色、道具、场景的AI图像生成。涵盖主流相机机身、镜头品牌、焦距与光圈的详细说明，适用于GPT-image-2、nanobanana2.0、nanobanana pro等文生图/图生图模型。"
-metadata:
-  builtin_skill_version: "1.0"
+name: photography-scene-design
+description: "专业摄影器材、参数和案例配方指南，用于角色、道具、场景的 AI 图像生成。使用于需要把相机机身、镜头品牌、焦距、光圈、布光、景深、焦外、胶片或电影镜头质感转写成提示词的任务，适用于 GPT-image-2、nanobanana2、nanobananapro、seedream 5.0 等文生图/图生图模型。"
 ---
 
 # 摄影场景设计（角色·道具·场景）
@@ -21,7 +19,8 @@ metadata:
 1. **器材服务画面**：选择器材参数是为了实现特定视觉效果，不是堆砌品牌名
 2. **参数协调**：焦距、光圈、机身三者搭配需合理，避免不可能的组合
 3. **一句一器材**：提示词中明确一套器材参数即可，不混用多套
-4. **适配模型特性**：针对不同图像模型（GPT-image-2、nanobanana系列），器材描述融入自然语言
+4. **适配模型特性**：针对不同图像模型（GPT-image-2、nanobanana 系列、seedream 5.0），器材描述融入自然语言
+5. **优先使用案例配方**：遇到具体生成需求时，先查案例索引选择相近配方，再替换主体、场景、光线和风格变量
 
 ---
 
@@ -207,23 +206,31 @@ Photographed with Phase One IQ4 150MP and Schneider 120mm LS f/4 Macro, a luxury
 2. **nanobanana 2.0 / nanobanana pro**：将器材信息作为画面质感描述的一部分
    - 示例：`shot on Hasselblad medium format, 80mm lens at f/2, cinematic lighting, ultra-detailed skin texture`
 
-3. **通用格式**：`[器材信息] + [主体描述] + [光线环境] + [景深/焦外描述]`
+3. **seedream 5.0**：适合把摄影风格关键词、器材、布光和景深合并成完整画质描述
+   - 示例：`professional photography, Canon EOS R5, 85mm f/1.2L lens, f/1.4 aperture, natural window light, extremely shallow depth of field, creamy bokeh, warm golden tones, high detail skin texture`
+
+4. **通用格式**：`[器材信息] + [主体描述] + [光线环境] + [景深/焦外描述]`
 
 ### 注意事项
 
 - 器材参数为画质提示，模型不会真的模拟光学物理，但能引导风格方向
 - 可组合使用本技能与「电影镜头语言」技能，前者控制静态画质，后者控制动态运镜
 - 光圈值与焦距搭配需合理：超广角 f/1.2 镜头现实中极少存在
+- 案例配方中的主体、职业、材质和场景都可替换；优先保留器材、焦距、光圈和画面结果之间的关系
 
 ---
 
-## 完整器材提示词参考
+## 参考资料与案例库
 
 上方速查表提供快速选型。每种器材组合的**详细参数说明**和**可直接使用的完整提示词模板**，请参阅：
 
 👉 [摄影器材完整参考手册](./references/full_photography_guide.md)
 
+需要根据意图快速挑选案例时，先阅读：
+
+👉 [结构化案例索引](./references/case_index.md)
+
 使用方式：
-1. 从速查表中根据设计意图选定器材组合
-2. 打开完整参考手册查阅对应组合的详细提示词模板
+1. 从速查表或案例索引中根据设计意图选定器材组合
+2. 打开对应案例文件，读取适用、画面结果、可替换变量和避免项
 3. 根据具体角色/道具/场景需求微调后融入生成提示词
