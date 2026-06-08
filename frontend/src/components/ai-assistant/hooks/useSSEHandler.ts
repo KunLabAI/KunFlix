@@ -786,7 +786,13 @@ export function useSSEHandler() {
         setTimeout(() => {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
-            return last?.status === 'streaming' ? [...prev.slice(0, -1), { ...last, status: 'complete' }] : prev;
+            return last?.status === 'streaming' ? [...prev.slice(0, -1), {
+              ...last,
+              status: 'complete',
+              // 终结所有仍处于进行中状态的工具/技能调用，防止 loading 动画永不停止
+              tool_calls: last.tool_calls?.map(t => t.status === 'executing' ? { ...t, status: 'completed' as const } : t),
+              skill_calls: last.skill_calls?.map(s => s.status === 'loading' ? { ...s, status: 'loaded' as const } : s),
+            }] : prev;
           });
           resetStreamingState();
         }, 0);
@@ -808,6 +814,9 @@ export function useSSEHandler() {
             content: last?.role === 'ai' ? last.content : '',
             status: 'complete' as const,
             error: { code, detail: msg, retryable: !nonRetryable },
+            // 终结所有仍处于进行中状态的工具/技能调用，防止 loading 动画永不停止
+            tool_calls: (last?.role === 'ai' ? last.tool_calls : undefined)?.map(t => t.status === 'executing' ? { ...t, status: 'completed' as const } : t),
+            skill_calls: (last?.role === 'ai' ? last.skill_calls : undefined)?.map(s => s.status === 'loading' ? { ...s, status: 'loaded' as const } : s),
           };
           return last?.role === 'ai' && last?.status === 'streaming'
             ? [...prev.slice(0, -1), errorMsg]
