@@ -1,8 +1,8 @@
 """
 OpenRouter image generation / editing.
 
-统一调用路径：所有图像模型走 ``/v1/chat/completions`` + ``modalities=["image","text"]``
-+ ``image_config``（aspect_ratio / image_size）。
+统一调用路径：所有图像模型走 ``/v1/chat/completions`` + ``modalities`` + ``image_config``。
+modalities 自动适配：OpenAI 系列用 ["image","text"]，纯图像模型 (Flux/Sourceful 等) 用 ["image"]。
 
 公共能力：
   - 文本生图、图像编辑/参考、batch_count（并发模拟）
@@ -41,6 +41,14 @@ _QUALITY_TO_IMAGE_SIZE: dict[str, str] = {
 _OPENROUTER_ASPECT_RATIOS = {
     "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9",
 }
+
+# 支持 text+image 双模态输出的模型前缀（其余纯图像模型仅用 ["image"]）
+_TEXT_IMAGE_MODEL_PREFIXES = ("openai/",)
+
+
+def _resolve_modalities(model: str) -> list[str]:
+    """根据模型决定 modalities：多模态模型用 [image,text]，纯图像模型用 [image]。"""
+    return ["image", "text"] if model.startswith(_TEXT_IMAGE_MODEL_PREFIXES) else ["image"]
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +131,7 @@ async def _call_chat_image_path(
     image_config = _build_image_config(aspect_ratio, quality)
     body: dict[str, Any] = {
         "model": model,
-        "modalities": ["image", "text"],
+        "modalities": _resolve_modalities(model),
         "messages": [
             {
                 "role": "user",

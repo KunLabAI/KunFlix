@@ -44,6 +44,7 @@ export function useImageGenerationApply(
 
   const prevImagesRef = useRef<string[]>([]);
   const lastSubmitParamsRef = useRef<ImageCreateParams | null>(null);
+  const [batchCount, setBatchCount] = useState(1);
 
   // 生成中实时计时（每 100ms）
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -98,6 +99,7 @@ export function useImageGenerationApply(
   const submit = useCallback((params: ImageCreateParams) => {
     prevImagesRef.current = data.images || (data.imageUrl ? [data.imageUrl] : []);
     lastSubmitParamsRef.current = params;
+    setBatchCount(params.config?.batch_count ?? 1);
     imageTask.submit(params).catch(() => { /* error handled via hook */ });
   }, [data.images, data.imageUrl, imageTask]);
 
@@ -170,6 +172,7 @@ export function useImageGenerationApply(
     taskDone,
     taskFailed,
     elapsedMs,
+    batchCount,
     prevImagesRef,
     submit,
     applyToNode,

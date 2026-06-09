@@ -11,6 +11,8 @@ interface Props {
   onRemove: (index: number, e: React.MouseEvent) => void;
   onImageLoad: (e: React.SyntheticEvent<HTMLImageElement>) => void;
   onOpenPreview: (url: string) => void;
+  /** 启用逐格渐入动画（批量生成完成后使用） */
+  staggerIn?: boolean;
 }
 
 /**
@@ -19,7 +21,7 @@ interface Props {
  * - 3 张：上 1 下 2 特殊布局
  * - 其余：通用网格
  */
-export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPreview }: Props) {
+export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPreview, staggerIn }: Props) {
   const { t } = useTranslation();
   const count = imageList.length;
   const layout = getGridLayout(count);
@@ -111,10 +113,17 @@ export function ImageGrid({ imageList, name, onRemove, onImageLoad, onOpenPrevie
     gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
   };
 
+  // 逐格渐入动画样式
+  const cellAnim = (i: number): React.CSSProperties => {
+    return staggerIn ? {
+      animation: `fadeScaleIn 400ms ease-out ${i * 200}ms both`,
+    } : {};
+  };
+
   return (
     <div className="grid gap-0.5 w-full h-full" style={style}>
       {imageList.map((url, i) => (
-        <div key={i} className="relative group/img overflow-hidden">
+        <div key={i} className="relative group/img overflow-hidden" style={cellAnim(i)}>
           <img
             src={url}
             alt={`${name}-${i + 1}`}

@@ -111,7 +111,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
   }, [id, addNode, getNode, t]);
 
   const gen = useImageGenerationApply(id, data, { onCustomApply: handleCustomApply });
-  const { imageTask, taskActive, taskDone, taskFailed, elapsedMs, prevImagesRef } = gen;
+  const { imageTask, taskActive, taskDone, taskFailed, elapsedMs, batchCount, prevImagesRef } = gen;
 
   // ── 连线维护 ──
   const { linkNode, unlinkNode } = useImageNodeConnections(id);
@@ -400,7 +400,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               </div>
             )}
 
-            {imageList.length > 0 && (
+            {imageList.length > 0 && !taskActive && (
               <div ref={gridContainerRef} className="w-full h-full">
                 <ImageGrid
                   imageList={imageList}
@@ -408,6 +408,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
                   onRemove={(index, e) => { e.stopPropagation(); upload.removeImage(index); }}
                   onImageLoad={handleImageLoad}
                   onOpenPreview={preview.openPreview}
+                  staggerIn={taskDone && batchCount > 1}
                 />
               </div>
             )}
@@ -423,7 +424,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
               />
             )}
 
-            <GenerationOverlay active={taskActive} elapsedMs={elapsedMs} />
+            <GenerationOverlay active={taskActive} elapsedMs={elapsedMs} batchCount={batchCount} />
 
             {isUploading && <UploadingOverlay progress={upload.uploadProgress} />}
 
