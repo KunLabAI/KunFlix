@@ -35,7 +35,7 @@ export function HistorySidebar({
     <>
       <div
         className={cn(
-          'absolute right-full top-0 bottom-0 mr-4 flex flex-col nodrag nopan z-10 transition-all duration-200',
+          'absolute right-full top-0 bottom-0 flex flex-col nodrag nopan z-10 transition-all duration-200',
           showHistory ? 'w-[80px] opacity-100' : 'w-0 opacity-0 pointer-events-none',
         )}
       >
