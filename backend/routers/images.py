@@ -412,8 +412,11 @@ async def generate_images(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/images/generate/stream —— SSE 流式生图（OpenRouter gpt-image-* 专享，其他供应商降级为单帧）
+# POST /api/images/generate/stream —— SSE 流式生图（通用，所有供应商 + 心跳保活）
 # ---------------------------------------------------------------------------
+_HEARTBEAT_INTERVAL = 15.0  # 心跳间隔（秒），防止中间代理因空闲超时断连
+
+
 @router.post("/generate/stream")
 @limiter.limit(ENDPOINT_LIMITS["image_generate"])
 async def generate_images_stream(
@@ -422,20 +425,14 @@ async def generate_images_stream(
     current_user=Depends(get_current_active_user_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """流式生图 SSE 端点。
+    """流式生图 SSE 端点（带心跳保活）。
 
     事件 schema (data: <json>):
-      {"type":"partial_image", "index":0, "url":"/api/media/xxx"}
-      {"type":"final_image",   "index":0, "url":"/api/media/xxx", "revised_prompt":"..."}
+      {"type":"heartbeat"}
+      {"type":"final_image",   "index":0, "url":"/api/media/xxx"}
       {"type":"error",         "message":"..."}
-      {"type":"done",          "images":["/api/media/..."], "credit_cost":0.05}
-
-    限制：仅 mode=text_to_image；edit/reference_images 请使用同步 /generate 端点。
+      {"type":"done",          "images":["/api/media/..."], "credit_cost":0.05, ...}
     """
-    payload.mode == "text_to_image" or (_ for _ in ()).throw(
-        HTTPException(status_code=400, detail="Streaming only supports mode='text_to_image'")
-    )
-
     entity_id = current_user.id
     (await _get_global_image_enabled(db)) or (_ for _ in ()).throw(
         HTTPException(status_code=403, detail="Image generation is disabled globally")
@@ -463,24 +460,31 @@ async def generate_images_stream(
         HTTPException(status_code=400, detail=f"Model {payload.model} is not an image model")
     )
 
-    # 适配统一配置 → OpenRouter image_config
+    # 校验 mode
+    caps = IMAGE_PROVIDER_CAPABILITIES.get(provider_type) or {}
+    supported_modes = caps.get("supported_modes") or ["text_to_image"]
+    (payload.mode in supported_modes) or (_ for _ in ()).throw(
+        HTTPException(status_code=400, detail=f"Mode '{payload.mode}' not supported by provider '{provider_type}'")
+    )
+
+    # 构建统一配置并适配为供应商配置
     params = payload.config.model_dump(exclude_none=True) if payload.config else {}
     n = int(params.pop("batch_count", 1) or 1)
     unified = {"image_generation_enabled": True, "image_config": params}
     adapted = to_provider_config(provider_type, unified) or {"image_config": {}}
-    img_cfg = adapted.get("image_config") or {}
-
-    rate = float(((provider.model_costs or {}).get(payload.model, {}) or {}).get("image_generation", 0) or 0)
 
     return StreamingResponse(
-        _sse_stream_image_events(
+        _sse_stream_with_heartbeat(
+            mode=payload.mode,
+            provider_type=provider_type,
             provider=provider,
             model=payload.model,
             prompt=payload.prompt,
-            img_cfg=img_cfg,
+            reference_images=payload.reference_images,
+            adapted=adapted,
             n=n,
             user_id=entity_id,
-            rate=rate,
+            mask_url=payload.mask_url,
             db=db,
         ),
         media_type="text/event-stream",
@@ -492,131 +496,107 @@ def _sse_format(event: dict) -> bytes:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
 
 
-async def _sse_stream_image_events(
+async def _sse_stream_with_heartbeat(
     *,
-    provider,
-    model: str,
-    prompt: str,
-    img_cfg: dict,
-    n: int,
-    user_id: str,
-    rate: float,
-    db: AsyncSession,
-):
-    """流式图像生成 SSE 事件包装器，按 provider_type 分派到不同的流式生成器。"""
-    provider_type = (provider.provider_type or "").lower()
-
-    final_urls: list[str] = []
-    try:
-        async for evt in _dispatch_stream_generator(
-            provider_type=provider_type,
-            provider=provider,
-            model=model,
-            prompt=prompt,
-            img_cfg=img_cfg,
-            n=n,
-            user_id=user_id,
-        ):
-            evt.get("type") == "final_image" and evt.get("url") and final_urls.append(evt["url"])
-            # 'done' 事件交由后续联合资产注册后重新发送
-            evt.get("type") != "done" and (yield _sse_format(evt))
-    except Exception as e:
-        logger.error("image stream error: %s", e, exc_info=True)
-        yield _sse_format({"type": "error", "message": f"Image streaming failed: {e}"})
-        return
-
-    # 资产注册 + 计费
-    credit_cost = 0.0
-    if final_urls:
-        try:
-            await _register_generated_image_assets(final_urls, user_id, db)
-            credit_cost = rate * len(final_urls)
-            (credit_cost > 0) and await deduct_credits_atomic(
-                user_id=user_id,
-                cost=credit_cost,
-                session=db,
-                metadata={
-                    "kind": "image_generation",
-                    "provider_id": provider.id,
-                    "model": model,
-                    "count": len(final_urls),
-                    "rate": rate,
-                    "streaming": True,
-                },
-                transaction_type="consumption",
-            )
-            await db.commit()
-        except InsufficientCreditsError:
-            yield _sse_format({"type": "error", "message": "Insufficient credits"})
-            return
-        except Exception as e:
-            logger.error("image stream finalize error: %s", e, exc_info=True)
-            yield _sse_format({"type": "error", "message": f"Finalize failed: {e}"})
-            return
-
-    yield _sse_format({
-        "type": "done",
-        "images": final_urls,
-        "credit_cost": credit_cost,
-        "model": model,
-        "provider_id": provider.id,
-    })
-
-
-async def _dispatch_stream_generator(
-    *,
+    mode: str,
     provider_type: str,
     provider,
     model: str,
     prompt: str,
-    img_cfg: dict,
+    reference_images,
+    adapted: dict,
     n: int,
     user_id: str,
+    mask_url: Optional[str],
+    db: AsyncSession,
 ):
-    """按 provider_type 分派到对应的流式生成器。"""
-    from services.image_config_adapter import resolve_ark_pixel_size
-
-    # Ark/Seedream 流式生成
-    if provider_type == "ark":
-        from services.ark_image_gen import stream_generate_ark_images, ArkBatchImageConfig
-        quality = img_cfg.get("size") or "2K"
-        aspect_ratio = img_cfg.get("aspect_ratio")
-        resolved_size = resolve_ark_pixel_size(quality, aspect_ratio)
-        ark_config = ArkBatchImageConfig(
-            size=resolved_size,
-            n=1,
-            watermark=img_cfg.get("watermark", False),
-            output_format=img_cfg.get("output_format") or "png",
-            web_search=img_cfg.get("web_search", False),
-            sequential=(n > 1),
-            max_images=max(1, n),
-        )
-        async for evt in stream_generate_ark_images(
-            api_key=provider.api_key,
+    """通用 SSE 流式图像生成：复用 _dispatch_image_generation + 心跳保活。"""
+    # 创建生成任务
+    gen_task = asyncio.create_task(
+        _dispatch_image_generation(
+            mode=mode,
+            provider_type=provider_type,
+            provider=provider,
             model=model,
             prompt=prompt,
-            config=ark_config,
-            base_url=provider.base_url,
+            reference_images=reference_images,
+            adapted=adapted,
+            n=n,
             user_id=user_id,
-        ):
-            yield evt
+            mask_url=mask_url,
+        )
+    )
+
+    # 心跳等待循环：每 15s 发送一次心跳事件保持连接活跃
+    while not gen_task.done():
+        done, _ = await asyncio.wait({gen_task}, timeout=_HEARTBEAT_INTERVAL)
+        (not done) and (yield _sse_format({"type": "heartbeat"}))
+
+    # 检查任务结果
+    try:
+        image_urls, usage = gen_task.result()
+    except Exception as e:
+        logger.error("image stream error: %s", e, exc_info=True)
+        transient = is_transient_network_error(e)
+        yield _sse_format({"type": "error", "message": (
+            friendly_network_error_message(e, service="图像生成") if transient
+            else f"Image generation failed: {e}"
+        )})
         return
 
-    # OpenRouter 流式生成（降级为同步后单帧推送）
-    from services.openrouter_image_gen import stream_generate_openrouter_images
-    async for evt in stream_generate_openrouter_images(
-        api_key=provider.api_key,
-        base_url=provider.base_url,
-        model=model,
-        prompt=prompt,
-        aspect_ratio=img_cfg.get("aspect_ratio"),
-        quality=img_cfg.get("quality"),
-        output_format=img_cfg.get("output_format"),
-        output_compression=img_cfg.get("output_compression"),
-        background=img_cfg.get("background"),
-        moderation=img_cfg.get("moderation"),
-        n=n,
-        partial_images=2,
-        user_id=user_id,
-    ):
-        yield evt
+    # 发送每张图片的 final_image 事件
+    for idx, url in enumerate(image_urls):
+        yield _sse_format({"type": "final_image", "index": idx, "url": url})
+
+    # 资产注册 + 计费
+    credit_cost = 0.0
+    _billing_underpaid = False
+    _remaining_credits: Optional[float] = None
+    try:
+        await _register_generated_image_assets(image_urls, user_id, db)
+        from services.billing import load_pricing, BILLING_DIMENSIONS
+        rate_map = await load_pricing(provider.id, model, db)
+        input_tokens = int(usage.get("input_tokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or 0)
+        rate_input = float(rate_map.get("input", 0) or 0)
+        rate_image_output = float(rate_map.get("image_output", 0) or 0)
+        rate_per_image = float(rate_map.get("image_generation", 0) or 0)
+        credit_cost = (
+            rate_input * input_tokens / BILLING_DIMENSIONS["input"]
+            + rate_image_output * output_tokens / BILLING_DIMENSIONS["image_output"]
+            + rate_per_image * len(image_urls)
+        )
+        tx = (credit_cost > 0) and await deduct_credits_atomic(
+            user_id=user_id,
+            cost=credit_cost,
+            session=db,
+            metadata={
+                "kind": "image_generation",
+                "provider_id": provider.id,
+                "model": model,
+                "count": len(image_urls),
+                "streaming": True,
+            },
+            transaction_type="consumption",
+        )
+        tx and hasattr(tx, 'balance_after') and (_remaining_credits := float(tx.balance_after))
+    except InsufficientCreditsError:
+        _billing_underpaid = True
+        _remaining_credits = 0.0
+    except Exception as e:
+        logger.error("image stream finalize error: %s", e, exc_info=True)
+        yield _sse_format({"type": "error", "message": f"Finalize failed: {e}"})
+        return
+
+    await db.commit()
+
+    yield _sse_format({
+        "type": "done",
+        "images": image_urls,
+        "prompt": prompt,
+        "model": model,
+        "provider_id": provider.id,
+        "credit_cost": credit_cost,
+        "billing_underpaid": _billing_underpaid,
+        "remaining_credits": _remaining_credits,
+    })

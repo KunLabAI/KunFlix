@@ -311,11 +311,15 @@ export function useImageGenerationTask() {
   // 最近一次生成的总耗时（ms），导出给节点显示
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const mountedRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
   const { updateCredits } = useAuth();
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, []);
 
   const submit = useCallback(async (params: ImageCreateParams) => {
@@ -325,28 +329,98 @@ export function useImageGenerationTask() {
     setResult(null);
     setStartedAt(start);
     setLastDurationMs(null);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const { data } = await api.post<ImageGenerateResponse>('/images/generate', params);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+      const resp = await fetch('/api/images/generate/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(params),
+        signal: controller.signal,
+      });
+
+      // HTTP 错误（非 200）直接报错
+      resp.ok || (() => {
+        const statusText = resp.statusText || `HTTP ${resp.status}`;
+        throw new Error(statusText);
+      })();
+
+      // 读取 SSE 流
+      const reader = resp.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let doneData: ImageGenerateResponse | null = null;
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        done && (buffer += '\n\n'); // flush remaining
+        !done && (buffer += decoder.decode(value, { stream: true }));
+
+        // 解析 SSE 帧：data: {...}\n\n
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary !== -1) {
+          const frame = buffer.slice(0, boundary).trim();
+          buffer = buffer.slice(boundary + 2);
+          frame.startsWith('data: ') && (() => {
+            try {
+              const evt = JSON.parse(frame.slice(6));
+              // heartbeat 事件忽略
+              evt.type === 'error' && (() => { throw new Error(evt.message || 'Generation failed'); })();
+              evt.type === 'done' && (doneData = {
+                images: evt.images || [],
+                prompt: evt.prompt || params.prompt,
+                model: evt.model || params.model,
+                provider_id: evt.provider_id || params.provider_id,
+                credit_cost: evt.credit_cost || 0,
+                created_at: new Date().toISOString(),
+                billing_underpaid: evt.billing_underpaid || false,
+                remaining_credits: evt.remaining_credits ?? null,
+              });
+            } catch (parseErr: any) {
+              parseErr.message?.includes('Generation failed') && (() => { throw parseErr; })();
+            }
+          })();
+          boundary = buffer.indexOf('\n\n');
+        }
+
+        done && reader.cancel();
+        // break on stream end
+        if (done) break;
+      }
+
+      // 处理最终结果
+      doneData || (() => { throw new Error('No response received from server'); })();
+      const data = doneData!;
       const duration = Date.now() - start;
       mountedRef.current && (setResult(data), setLastDurationMs(duration));
-      // 后端扣费后同步最新余额到 AuthContext，驱动 useCreditsGuard 即时生效
       data.remaining_credits != null && updateCredits(data.remaining_credits);
-      // 后端扣费不足、余额被兜底扣到 0 时提示一次
       data.billing_underpaid && toast.warning(
         '本次操作已扣除您剩余的全部积分，余额已为 0。请充值后继续使用。',
         { duration: 4500 },
       );
       return data;
     } catch (e: any) {
-      const normalized = reportError(e);
-      mountedRef.current && setError(normalized.detail);
+      // AbortError 不报错
+      e.name === 'AbortError' || (() => {
+        const detail = e.message || 'Network error';
+        mountedRef.current && setError(detail);
+        toast.error(detail, { duration: 3000 });
+      })();
       throw e;
     } finally {
+      abortRef.current = null;
       mountedRef.current && (setIsSubmitting(false), setStartedAt(null));
     }
   }, [updateCredits]);
 
   const reset = useCallback(() => {
+    abortRef.current?.abort();
     setResult(null);
     setError(null);
     setIsSubmitting(false);
