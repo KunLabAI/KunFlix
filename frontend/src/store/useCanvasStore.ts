@@ -1,6 +1,5 @@
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
 import { v4 as uuidv4 } from 'uuid';
 import {
   Connection,
@@ -418,7 +417,6 @@ function applyDetail(detail: TheaterDetailResponse) {
 }
 
 export const useCanvasStore = create<CanvasState>()(
-  persist(
     (set, get) => ({
       nodes: [],
       edges: [],
@@ -1042,35 +1040,7 @@ export const useCanvasStore = create<CanvasState>()(
       clearAllNodeEffects: () => {
         set({ activeNodeEffects: {} });
       },
-    }),
-    {
-      name: 'infinite-theater-storage',
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        nodes: state.nodes,
-        edges: state.edges,
-        viewport: state.viewport,
-        theaterId: state.theaterId,
-        theaterTitle: state.theaterTitle,
-      }),
-      merge: (persistedState: unknown, currentState: CanvasState) => {
-        const merged = { ...currentState, ...(persistedState as Partial<CanvasState>) };
-        
-        // Deduplicate nodes by ID
-        if (merged.nodes && Array.isArray(merged.nodes)) {
-          const uniqueNodes = new Map();
-          merged.nodes.forEach((node) => {
-            if (!uniqueNodes.has(node.id)) {
-              uniqueNodes.set(node.id, node);
-            }
-          });
-          merged.nodes = Array.from(uniqueNodes.values());
-        }
-
-        return merged;
-      },
-    }
-  )
+    })
 );
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
