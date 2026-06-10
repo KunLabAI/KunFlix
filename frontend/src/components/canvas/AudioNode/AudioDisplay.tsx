@@ -420,13 +420,13 @@ export function AudioDisplay({ audioUrl, lyrics, selected = false }: Props) {
         {/* 居中播放/暂停按钮 */}
         <button
           onClick={togglePlay}
-          className="nodrag relative z-10 w-14 h-14 rounded-full flex items-center justify-center bg-white/15 backdrop-blur-md border border-white/20 hover:bg-white/25 hover:scale-105 active:scale-95 transition-all duration-200 shadow-lg"
+          className="nodrag relative z-10 w-14 h-14 rounded-full flex items-center justify-center bg-foreground/15 backdrop-blur-md border border-foreground/20 hover:bg-foreground/25 hover:scale-105 active:scale-95 transition-all duration-200"
           title={isPlaying ? t('canvas.node.audio.pause', '暂停') : t('canvas.node.audio.play', '播放')}
         >
           {isPlaying ? (
-            <Pause className="w-6 h-6 text-white" fill="white" />
+            <Pause className="w-6 h-6 text-foreground" fill="currentColor" />
           ) : (
-            <Play className="w-6 h-6 text-white ml-0.5" fill="white" />
+            <Play className="w-6 h-6 text-foreground ml-0.5" fill="currentColor" />
           )}
         </button>
 

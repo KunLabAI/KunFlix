@@ -1,7 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
+import { MoreHorizontal, ChevronsUpDown } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import {
   ASPECT_RATIO_LABELS,
@@ -9,9 +11,11 @@ import {
   IMAGE_MODE_LABELS,
   type ImageMode,
 } from '@/hooks/useImageGeneration';
-import { Dropdown, type DropdownOption } from './Dropdown';
 import { AspectRatioIcon } from './AspectRatioIcon';
 import { cn } from '@/lib/utils';
+
+// 特殊比例（默认折叠）
+const SPECIAL_RATIOS = new Set(['1:4', '4:1', '1:8', '8:1', '2:3', '3:2', '4:5', '5:4', '19.5:9', '9:19.5', '9:20', '1:2', '2:1']);
 
 interface Visibility {
   aspectRatioOptions: string[];
@@ -54,6 +58,75 @@ interface Props {
   setWebSearch: (v: boolean) => void;
 }
 
+/* ─── 通用 SegmentedControl：水平按钮组 + framer-motion 滑动指示器 ─── */
+/* 采用 index 百分比驱动而非 layoutId（避免父层 transform 拖拽时 DOM 位置测量偏移） */
+interface SegmentOption {
+  value: string;
+  label?: React.ReactNode;
+  leading?: React.ReactNode;
+  title?: string;
+}
+
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+  label,
+  vertical,
+}: {
+  options: SegmentOption[];
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+  vertical?: boolean;
+}) {
+  const activeIndex = options.findIndex((o) => o.value === value);
+  const count = options.length;
+
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+      )}
+      <div className="relative flex items-center gap-0.5 p-[3px] rounded-lg bg-muted/50">
+        {/* 滑动指示器：基于活动索引计算百分比位置，不依赖 DOM 测量 */}
+        {activeIndex >= 0 && (
+          <motion.span
+            className="absolute top-[3px] bottom-[3px] rounded-md bg-background shadow-sm"
+            animate={{
+              left: `calc(${(activeIndex / count) * 100}% + 3px)`,
+              width: `calc(${100 / count}% - ${count > 1 ? '3' : '0'}px)`,
+            }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+          />
+        )}
+        {options.map((opt) => {
+          const active = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              title={opt.title}
+              onClick={() => onChange(opt.value)}
+              className={cn(
+                'relative z-[1] flex-1 flex items-center justify-center rounded-md font-medium whitespace-nowrap',
+                'cursor-pointer select-none',
+                vertical ? 'flex-col gap-0.5 px-1.5 py-1' : 'gap-1 px-2.5 py-1 text-[11px]',
+                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70',
+              )}
+            >
+              <span className={cn('relative z-[1] flex items-center', vertical ? 'flex-col gap-0.5' : 'gap-1')}>
+                {opt.leading}
+                {opt.label && <span className={vertical ? 'text-[9px] leading-none' : ''}>{opt.label}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ConfigPanel({
   visibility,
   mode,
@@ -76,158 +149,169 @@ export function ConfigPanel({
   setWebSearch,
 }: Props) {
   const { t } = useTranslation();
+  const [showMoreRatios, setShowMoreRatios] = useState(false);
+  const [showExtra, setShowExtra] = useState(false);
 
-  const modeOptions: DropdownOption<ImageMode>[] = visibility.supportedModes.map((md) => ({
-    value: md as ImageMode,
-    label: t(`canvas.node.image.mode.${md}`, IMAGE_MODE_LABELS[md]),
-  }));
+  const BG_LABELS: Record<string, string> = { '': '默认', transparent: '透明', opaque: '不透明' };
+  const MOD_LABELS: Record<string, string> = { '': '默认', low: '宽松' };
 
-  const aspectOptions: DropdownOption<string>[] = visibility.aspectRatioOptions.map((ar) => ({
-    value: ar,
-    leading: <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', ar === aspectRatio ? 'text-primary' : 'text-muted-foreground')} />,
-    label: ASPECT_RATIO_LABELS[ar] || ar,
-  }));
-
-  const qualityOptions: DropdownOption<string>[] = visibility.qualityOptions.map((q) => ({
-    value: q,
-    label: QUALITY_LABELS[q] || q,
-  }));
-
-  const formatOptions: DropdownOption<string>[] = visibility.outputFormatOptions.map((f) => ({
-    value: f,
-    label: f.toUpperCase(),
-  }));
-
-  // P2 下拉选项：空值 '' 代表 「由供应商默认」，不透传给后端
-  const BG_LABELS: Record<string, string> = { auto: '默认', transparent: '透明', opaque: '不透明' };
-  const MOD_LABELS: Record<string, string> = { auto: '默认', low: '宽松' };
-  const backgroundOptions: DropdownOption<string>[] = [
-    { value: '', label: '默认' },
-    ...visibility.backgroundOptions.filter((b) => b !== 'auto').map((b) => ({ value: b, label: BG_LABELS[b] || b })),
-  ];
-  const moderationOptions: DropdownOption<string>[] = [
-    { value: '', label: '默认' },
-    ...visibility.moderationOptions.filter((m) => m !== 'auto').map((m) => ({ value: m, label: MOD_LABELS[m] || m })),
-  ];
+  // 画面比例分组：常用 vs 特殊
+  const commonRatios = visibility.aspectRatioOptions.filter((r) => !SPECIAL_RATIOS.has(r));
+  const specialRatios = visibility.aspectRatioOptions.filter((r) => SPECIAL_RATIOS.has(r));
 
   // output_compression 仅在 webp / jpeg 下有意义
   const showCompression = visibility.supportsOutputCompression && (outputFormat === 'webp' || outputFormat === 'jpeg');
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card p-2.5 space-y-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+    <div className="rounded-xl bg-card p-2.5 space-y-2.5 text-xs cursor-default animate-in fade-in slide-in-from-top-1 border duration-150">
       {/* Mode */}
       {visibility.supportedModes.length > 1 && (
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.modeTitle', '生成模式')}</label>
-          <Dropdown<ImageMode>
-            value={mode}
-            options={modeOptions}
-            onChange={setMode}
-            triggerContent={
-              <span className="flex-1 text-left">
-                {t(`canvas.node.image.mode.${mode}`, IMAGE_MODE_LABELS[mode])}
-              </span>
-            }
-            buttonClassName="justify-between"
-          />
-        </div>
+        <SegmentedControl
+          label={t('canvas.node.image.modeTitle', '生成模式')}
+          options={visibility.supportedModes.map((md) => ({
+            value: md,
+            label: t(`canvas.node.image.mode.${md}`, IMAGE_MODE_LABELS[md]),
+          }))}
+          value={mode}
+          onChange={(v) => setMode(v as ImageMode)}
+        />
       )}
 
-      {/* Aspect Ratio + Quality */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.aspectRatio', '画面比例')}</label>
-          <Dropdown
-            value={aspectRatio}
-            options={aspectOptions}
-            onChange={setAspectRatio}
-            triggerContent={
-              <>
-                <AspectRatioIcon ratio={aspectRatio} className="w-4 h-4 text-muted-foreground shrink-0" />
-                <span>{ASPECT_RATIO_LABELS[aspectRatio] || aspectRatio}</span>
-              </>
-            }
-            maxHeightClass="max-h-56"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.quality', '画质')}</label>
-          <Dropdown
-            value={quality}
-            options={qualityOptions}
-            onChange={setQuality}
-            triggerContent={<span className="flex-1 text-left">{QUALITY_LABELS[quality] || quality}</span>}
-            buttonClassName="justify-between"
-          />
-        </div>
-      </div>
-
-      {/* Batch Count */}
+      {/* Aspect Ratio — 图标 + 下方文字 */}
       <div className="space-y-1">
         <div className="flex items-center justify-between">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.batchCount', '生成数量')}</label>
-          <span className="text-[11px] font-medium">{batchCount}</span>
+          <label className="text-[11px] font-medium text-muted-foreground">
+            {t('canvas.node.image.aspectRatio', '画面比例')}
+          </label>
+          {specialRatios.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowMoreRatios((v) => !v)}
+              className={cn(
+                'flex items-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none',
+                showMoreRatios && 'text-foreground',
+              )}
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-        <Slider
-          value={[batchCount]}
-          onValueChange={(v) => setBatchCount(v[0])}
-          min={visibility.batchMin}
-          max={visibility.batchMax}
-          step={1}
+        <SegmentedControl
+          vertical
+          options={commonRatios.map((ar) => ({
+            value: ar,
+            leading: <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', ar === aspectRatio ? 'text-foreground' : 'text-muted-foreground')} />,
+            label: ASPECT_RATIO_LABELS[ar] || ar,
+          }))}
+          value={aspectRatio}
+          onChange={setAspectRatio}
         />
+        {/* 特殊比例（折叠）— 纯 CSS Grid 过渡，无拖动 */}
+        <div
+          className="grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ gridTemplateRows: showMoreRatios && specialRatios.length > 0 ? '1fr' : '0fr', opacity: showMoreRatios ? 1 : 0 }}
+        >
+          <div className="overflow-hidden">
+            <div className="pt-1">
+              <SegmentedControl
+                vertical
+                options={specialRatios.map((ar) => ({
+                  value: ar,
+                  leading: <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', ar === aspectRatio ? 'text-foreground' : 'text-muted-foreground')} />,
+                  label: ASPECT_RATIO_LABELS[ar] || ar,
+                }))}
+                value={aspectRatio}
+                onChange={setAspectRatio}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Output Format */}
-      {visibility.showOutputFormat && (
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.outputFormat', '输出格式')}</label>
-          <Dropdown
-            value={outputFormat}
-            options={formatOptions}
-            onChange={setOutputFormat}
-            triggerContent={
-              <span className="flex-1 text-left">
-                {(outputFormat || visibility.outputFormatOptions[0] || '').toUpperCase()}
-              </span>
-            }
-            buttonClassName="justify-between"
-          />
+      {/* Quality */}
+      <SegmentedControl
+        label={t('canvas.node.image.quality', '画质')}
+        options={visibility.qualityOptions.map((q) => ({
+          value: q,
+          label: QUALITY_LABELS[q] || q,
+        }))}
+        value={quality}
+        onChange={setQuality}
+      />
+
+      {/* Batch Count + Output Format — 折叠区 */}
+      <div className="space-y-1">
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowExtra((v) => !v)}
+            className={cn(
+              'flex items-center text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none',
+              showExtra && 'text-foreground',
+            )}
+          >
+            <ChevronsUpDown className={cn('w-3.5 h-3.5 transition-transform duration-200', showExtra && 'rotate-180')} />
+          </button>
         </div>
+        {/* 折叠内容 — 纯 CSS Grid 过渡 */}
+        <div
+          className="grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ gridTemplateRows: showExtra ? '1fr' : '0fr', opacity: showExtra ? 1 : 0 }}
+        >
+          <div className="overflow-hidden">
+            <div className="pt-1 space-y-2">
+              {/* Batch Count */}
+              <SegmentedControl
+                label={t('canvas.node.image.batchCount', '生成数量')}
+                options={Array.from({ length: visibility.batchMax - visibility.batchMin + 1 }, (_, i) => {
+                  const v = visibility.batchMin + i;
+                  return { value: String(v), label: String(v) };
+                })}
+                value={String(batchCount)}
+                onChange={(v) => setBatchCount(Number(v))}
+              />
+
+              {/* Output Format */}
+              {visibility.showOutputFormat && (
+                <SegmentedControl
+                  label={t('canvas.node.image.outputFormat', '输出格式')}
+                  options={visibility.outputFormatOptions.map((f) => ({
+                    value: f,
+                    label: f.toUpperCase(),
+                  }))}
+                  value={outputFormat}
+                  onChange={setOutputFormat}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Background */}
+      {visibility.backgroundOptions.length > 0 && (
+        <SegmentedControl
+          label={t('canvas.node.image.background', '背景')}
+          options={[
+            { value: '', label: '默认' },
+            ...visibility.backgroundOptions.filter((b) => b !== 'auto').map((b) => ({ value: b, label: BG_LABELS[b] || b })),
+          ]}
+          value={background}
+          onChange={setBackground}
+        />
       )}
 
-      {/* P2: Background / Moderation 双列 */}
-      {(visibility.backgroundOptions.length > 0 || visibility.moderationOptions.length > 0) && (
-        <div className="grid grid-cols-2 gap-2">
-          {visibility.backgroundOptions.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.background', '背景')}</label>
-              <Dropdown
-                value={background}
-                options={backgroundOptions}
-                onChange={setBackground}
-                triggerContent={
-                  <span className="flex-1 text-left">{(BG_LABELS[background] || '默认')}</span>
-                }
-                buttonClassName="justify-between"
-              />
-            </div>
-          )}
-          {visibility.moderationOptions.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.image.moderation', '安全等级')}</label>
-              <Dropdown
-                value={moderation}
-                options={moderationOptions}
-                onChange={setModeration}
-                triggerContent={
-                  <span className="flex-1 text-left">{(MOD_LABELS[moderation] || '默认')}</span>
-                }
-                buttonClassName="justify-between"
-              />
-            </div>
-          )}
-        </div>
+      {/* Moderation */}
+      {visibility.moderationOptions.length > 0 && (
+        <SegmentedControl
+          label={t('canvas.node.image.moderation', '安全等级')}
+          options={[
+            { value: '', label: '默认' },
+            ...visibility.moderationOptions.filter((m) => m !== 'auto').map((m) => ({ value: m, label: MOD_LABELS[m] || m })),
+          ]}
+          value={moderation}
+          onChange={setModeration}
+        />
       )}
 
       {/* Seedream: 联网搜索开关 */}

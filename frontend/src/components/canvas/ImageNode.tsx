@@ -392,7 +392,7 @@ const CharacterNode = ({ id, data, selected }: NodeProps<Node<CharacterNodeData>
           onKeyDown={title.onKeyDown}
         />
 
-        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
+        <Card className={`w-full h-full flex flex-col bg-muted ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
             {imageList.length === 0 && !isUploading && !upload.uploadError && (
               <div className="flex flex-col items-center justify-center gap-1 py-8">

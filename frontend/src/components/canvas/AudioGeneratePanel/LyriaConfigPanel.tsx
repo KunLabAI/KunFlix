@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { Check, Mic, MicOff } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, ChevronDown, Mic, MicOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { useDropdownOutside } from '@/hooks/useDropdownOutside';
@@ -15,8 +16,69 @@ import {
   MUSIC_OUTPUT_FORMAT_LABELS,
   type MusicModelCapabilities,
 } from '@/hooks/useMusicGeneration';
-import { SELECT_CLS, SELECT_ARROW_STYLE } from './constants';
 import { ToggleSwitch } from './ToggleSwitch';
+
+/* ─── SegmentedControl（像素级指示器，对齐 Video ConfigPanel） ─── */
+interface SegmentOption { value: string; label?: React.ReactNode; }
+
+function SegmentedControl({ options, value, onChange, label }: {
+  options: SegmentOption[];
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  const innerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  const measure = useCallback(() => {
+    const el = itemRefs.current.get(value);
+    el && setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [value]);
+
+  useEffect(() => {
+    measure();
+    const ro = new ResizeObserver(measure);
+    innerRef.current && ro.observe(innerRef.current);
+    return () => ro.disconnect();
+  }, [measure, options.length]);
+
+  return (
+    <div className="space-y-1">
+      {label && <label className="text-[11px] font-medium text-muted-foreground">{label}</label>}
+      <div ref={innerRef} className="relative flex items-center gap-0.5 p-[3px] rounded-lg bg-muted/50">
+        {indicator && (
+          <motion.span
+            className="absolute top-[3px] bottom-[3px] rounded-md bg-background shadow-sm"
+            animate={{ left: indicator.left, width: indicator.width }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+          />
+        )}
+        {options.map((opt) => {
+          const active = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              ref={(el) => { el ? itemRefs.current.set(opt.value, el) : itemRefs.current.delete(opt.value); }}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              className={cn(
+                'relative z-[1] flex-1 flex items-center justify-center rounded-md font-medium whitespace-nowrap',
+                'cursor-pointer select-none gap-1 px-2.5 py-1 text-[11px]',
+                active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70',
+              )}
+            >
+              <span className="relative z-[1]">{opt.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─── 统一下拉触发器样式 ─── */
+const TRIGGER_CLS = 'w-full h-7 rounded-md bg-muted/50 px-2 text-[11px] cursor-pointer focus:outline-none focus:ring-1 focus:ring-ring transition-colors hover:bg-muted/70';
 
 interface Props {
   capabilities: MusicModelCapabilities | null;
@@ -76,22 +138,18 @@ export function LyriaConfigPanel({
   const [keyOpen, setKeyOpen] = useState(false);
   const [moodOpen, setMoodOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
-  const [formatOpen, setFormatOpen] = useState(false);
 
   const genreRef = useRef<HTMLDivElement>(null);
   const instrumentsRef = useRef<HTMLDivElement>(null);
   const keyRef = useRef<HTMLDivElement>(null);
   const moodRef = useRef<HTMLDivElement>(null);
   const languageRef = useRef<HTMLDivElement>(null);
-  const formatRef = useRef<HTMLDivElement>(null);
-
   useDropdownOutside([
     [genreOpen, genreRef, setGenreOpen],
     [instrumentsOpen, instrumentsRef, setInstrumentsOpen],
     [keyOpen, keyRef, setKeyOpen],
     [moodOpen, moodRef, setMoodOpen],
     [languageOpen, languageRef, setLanguageOpen],
-    [formatOpen, formatRef, setFormatOpen],
   ]);
 
   // Pro 特有能力：WAV 输出 + timeline 编辑器
@@ -107,7 +165,7 @@ export function LyriaConfigPanel({
   };
 
   return (
-    <div className="rounded-lg border border-border/50 bg-card p-2.5 space-y-3 text-xs animate-in fade-in slide-in-from-top-1 duration-150">
+    <div className="rounded-xl bg-card p-2.5 space-y-2.5 text-xs cursor-default animate-in fade-in slide-in-from-top-1 border duration-150">
       {/* === 1. Genre + Mood === */}
       <div className="grid grid-cols-2 gap-2">
         {/* Genre */}
@@ -119,17 +177,17 @@ export function LyriaConfigPanel({
             <button
               type="button"
               onClick={() => setGenreOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center justify-between truncate')}
-              style={SELECT_ARROW_STYLE}
+              className={cn(TRIGGER_CLS, 'flex items-center justify-between')}
             >
-              {genre || t('canvas.node.audio.genrePlaceholder', '自动')}
+              <span className="truncate">{genre || t('canvas.node.audio.genrePlaceholder', '自动')}</span>
+              <ChevronDown className={cn('w-3 h-3 shrink-0 text-muted-foreground transition-transform', genreOpen && 'rotate-180')} />
             </button>
             {genreOpen && (
               <div className="absolute top-full left-0 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
                 <button
                   type="button"
                   onClick={() => { setGenre(''); setGenreOpen(false); }}
-                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent cursor-pointer"
                 >
                   {t('canvas.node.audio.clear', '清空')}
                 </button>
@@ -164,17 +222,17 @@ export function LyriaConfigPanel({
             <button
               type="button"
               onClick={() => setMoodOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center justify-between truncate')}
-              style={SELECT_ARROW_STYLE}
+              className={cn(TRIGGER_CLS, 'flex items-center justify-between')}
             >
-              {mood || t('canvas.node.audio.moodPlaceholder', '自动')}
+              <span className="truncate">{mood || t('canvas.node.audio.moodPlaceholder', '自动')}</span>
+              <ChevronDown className={cn('w-3 h-3 shrink-0 text-muted-foreground transition-transform', moodOpen && 'rotate-180')} />
             </button>
             {moodOpen && (
               <div className="absolute top-full left-0 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
                 <button
                   type="button"
                   onClick={() => { setMood(''); setMoodOpen(false); }}
-                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent cursor-pointer"
                 >
                   {t('canvas.node.audio.clear', '清空')}
                 </button>
@@ -210,12 +268,14 @@ export function LyriaConfigPanel({
           <button
             type="button"
             onClick={() => setInstrumentsOpen((v) => !v)}
-            className={cn(SELECT_CLS, 'flex items-center justify-between truncate')}
-            style={SELECT_ARROW_STYLE}
+            className={cn(TRIGGER_CLS, 'flex items-center justify-between')}
           >
-            {instruments.length > 0
-              ? instruments.join(' / ')
-              : t('canvas.node.audio.instrumentsPlaceholder', '自动')}
+            <span className="truncate">
+              {instruments.length > 0
+                ? instruments.join(' / ')
+                : t('canvas.node.audio.instrumentsPlaceholder', '自动')}
+            </span>
+            <ChevronDown className={cn('w-3 h-3 shrink-0 text-muted-foreground transition-transform', instrumentsOpen && 'rotate-180')} />
           </button>
           {instrumentsOpen && (
             <div className="absolute top-full left-0 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
@@ -267,17 +327,17 @@ export function LyriaConfigPanel({
             <button
               type="button"
               onClick={() => setKeyOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center justify-between truncate')}
-              style={SELECT_ARROW_STYLE}
+              className={cn(TRIGGER_CLS, 'flex items-center justify-between')}
             >
-              {keyScale || t('canvas.node.audio.keyScalePlaceholder', '自动')}
+              <span className="truncate">{keyScale || t('canvas.node.audio.keyScalePlaceholder', '自动')}</span>
+              <ChevronDown className={cn('w-3 h-3 shrink-0 text-muted-foreground transition-transform', keyOpen && 'rotate-180')} />
             </button>
             {keyOpen && (
               <div className="absolute top-full left-0 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
                 <button
                   type="button"
                   onClick={() => { setKeyScale(''); setKeyOpen(false); }}
-                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"
+                  className="w-full flex items-center px-2.5 py-1.5 text-[11px] text-muted-foreground hover:bg-accent cursor-pointer"
                 >
                   {t('canvas.node.audio.clear', '清空')}
                 </button>
@@ -316,13 +376,13 @@ export function LyriaConfigPanel({
               onClick={() => setLanguageOpen((v) => !v)}
               disabled={!vocals}
               className={cn(
-                SELECT_CLS,
-                'flex items-center justify-between truncate',
+                TRIGGER_CLS,
+                'flex items-center justify-between',
                 !vocals && 'opacity-50 cursor-not-allowed',
               )}
-              style={SELECT_ARROW_STYLE}
             >
-              {language || t('canvas.node.audio.languagePlaceholder', 'English')}
+              <span className="truncate">{language || t('canvas.node.audio.languagePlaceholder', 'English')}</span>
+              <ChevronDown className={cn('w-3 h-3 shrink-0 text-muted-foreground transition-transform', languageOpen && 'rotate-180')} />
             </button>
             {languageOpen && vocals && (
               <div className="absolute top-full left-0 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
@@ -407,43 +467,15 @@ export function LyriaConfigPanel({
       )}
 
       {/* === 7. Output Format === */}
-      <div className="space-y-1">
-        <label className="text-[11px] font-medium text-muted-foreground">
-          {t('canvas.node.audio.outputFormat', '输出格式')}
-        </label>
-        <div className="relative" ref={formatRef}>
-          <button
-            type="button"
-            onClick={() => setFormatOpen((v) => !v)}
-            className={cn(SELECT_CLS, 'flex items-center justify-between')}
-            style={SELECT_ARROW_STYLE}
-          >
-            {MUSIC_OUTPUT_FORMAT_LABELS[outputFormat] || outputFormat}
-          </button>
-          {formatOpen && (
-            <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-              {availableFormats.map((f) => {
-                const v = f as 'mp3' | 'wav';
-                const isSelected = v === outputFormat;
-                return (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => { setOutputFormat(v); setFormatOpen(false); }}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                      isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-accent',
-                    )}
-                  >
-                    <span className="flex-1 text-left">{MUSIC_OUTPUT_FORMAT_LABELS[f] || f}</span>
-                    {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <SegmentedControl
+        label={t('canvas.node.audio.outputFormat', '输出格式')}
+        options={availableFormats.map((f) => ({
+          value: f,
+          label: MUSIC_OUTPUT_FORMAT_LABELS[f] || f.toUpperCase(),
+        }))}
+        value={outputFormat}
+        onChange={(v) => setOutputFormat(v as 'mp3' | 'wav')}
+      />
     </div>
   );
 }

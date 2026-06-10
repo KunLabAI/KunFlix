@@ -352,7 +352,7 @@ const PanoramaNode = ({ id, data, selected }: NodeProps<Node<PanoramaNodeData>>)
           </div>
         </div>
 
-        <Card className={`w-full h-full flex flex-col bg-card ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
+        <Card className={`w-full h-full flex flex-col bg-muted ${selected ? 'ring-2 ring-primary' : ''} overflow-hidden relative z-[2]`}>
           <CardContent className="flex flex-col items-center justify-center relative custom-scrollbar flex-1 p-0 overflow-hidden">
             {/* 空态：提示词生成器（上传/资产库入口已由悬浮工具条提供，避免重复） */}
             {!hasPanorama && !isUploading && (

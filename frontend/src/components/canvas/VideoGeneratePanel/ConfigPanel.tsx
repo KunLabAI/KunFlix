@@ -1,18 +1,16 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
-import { Check, Sparkles, Zap } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Sparkles, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { Slider } from '@/components/ui/slider';
 import {
   VIDEO_MODE_LABELS,
   RESOLUTION_LABELS,
   ASPECT_RATIO_LABELS,
   type VideoModelCapabilities,
 } from '@/hooks/useVideoGeneration';
-import { useDropdownOutside } from '@/hooks/useDropdownOutside';
-import { SELECT_CLS, SELECT_ARROW_STYLE } from './constants';
 import { ToggleSwitch } from './ToggleSwitch';
 import { AspectRatioIcon } from '../ImageGeneratePanel/AspectRatioIcon';
 
@@ -43,6 +41,133 @@ interface Props {
   setFastPretreatment: (v: boolean) => void;
 }
 
+/* ─── 通用 SegmentedControl：水平按钮组 + framer-motion 滑动指示器 + 溢出横向滚动 ─── */
+interface SegmentOption {
+  value: string;
+  label?: React.ReactNode;
+  leading?: React.ReactNode;
+  title?: string;
+}
+
+function SegmentedControl({
+  options,
+  value,
+  onChange,
+  label,
+  vertical,
+}: {
+  options: SegmentOption[];
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+  vertical?: boolean;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    el && setCanScrollLeft(el.scrollLeft > 1);
+    el && setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  // 测量指示器位置（像素级，不依赖等宽假设）
+  const measureIndicator = useCallback(() => {
+    const activeEl = itemRefs.current.get(value);
+    activeEl && setIndicator({ left: activeEl.offsetLeft, width: activeEl.offsetWidth });
+  }, [value]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    const ro = new ResizeObserver(() => { checkScroll(); measureIndicator(); });
+    el && ro.observe(el);
+    el?.addEventListener('scroll', checkScroll, { passive: true });
+    checkScroll();
+    measureIndicator();
+    return () => { ro.disconnect(); el?.removeEventListener('scroll', checkScroll); };
+  }, [checkScroll, measureIndicator, options.length]);
+
+  const scroll = (dir: 'left' | 'right') => {
+    scrollRef.current?.scrollBy({ left: dir === 'left' ? -80 : 80, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="text-[11px] font-medium text-muted-foreground">{label}</label>
+      )}
+      <div className="relative">
+        {/* 左侧滚动按钮 */}
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scroll('left')}
+            className="absolute left-0 top-0 bottom-0 z-10 flex items-center pl-0.5 pr-1.5 rounded-l-lg bg-gradient-to-r from-muted/90 via-muted/60 to-transparent cursor-pointer"
+          >
+            <ChevronLeft className="w-3 h-3 text-muted-foreground" />
+          </button>
+        )}
+
+        {/* 滚动容器 */}
+        <div
+          ref={scrollRef}
+          className="overflow-x-auto rounded-lg"
+          style={{ scrollbarWidth: 'none' }}
+        >
+          <div ref={innerRef} className="relative flex items-center gap-0.5 p-[3px] rounded-lg bg-muted/50 min-w-full w-max">
+            {/* 滑动指示器（像素级定位） */}
+            {indicator && (
+              <motion.span
+                className="absolute top-[3px] bottom-[3px] rounded-md bg-background shadow-sm"
+                animate={{ left: indicator.left, width: indicator.width }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+              />
+            )}
+            {options.map((opt) => {
+              const active = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  ref={(el) => { el ? itemRefs.current.set(opt.value, el) : itemRefs.current.delete(opt.value); }}
+                  type="button"
+                  title={opt.title}
+                  onClick={() => onChange(opt.value)}
+                  className={cn(
+                    'relative z-[1] grow shrink-0 basis-auto flex items-center justify-center rounded-md font-medium whitespace-nowrap',
+                    'cursor-pointer select-none',
+                    vertical ? 'flex-col gap-0.5 px-1.5 py-1' : 'gap-1 px-2.5 py-1 text-[11px]',
+                    active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/70',
+                  )}
+                >
+                  <span className={cn('relative z-[1] flex items-center', vertical ? 'flex-col gap-0.5' : 'gap-1')}>
+                    {opt.leading}
+                    {opt.label && <span className={vertical ? 'text-[9px] leading-none' : ''}>{opt.label}</span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 右侧滚动按钮 */}
+        {canScrollRight && (
+          <button
+            type="button"
+            onClick={() => scroll('right')}
+            className="absolute right-0 top-0 bottom-0 z-10 flex items-center pr-0.5 pl-1.5 rounded-r-lg bg-gradient-to-l from-muted/90 via-muted/60 to-transparent cursor-pointer"
+          >
+            <ChevronRight className="w-3 h-3 text-muted-foreground" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** 展开式配置面板：mode / duration / quality / aspect / toggles */
 export function ConfigPanel({
   capabilities,
@@ -62,173 +187,55 @@ export function ConfigPanel({
 }: Props) {
   const { t } = useTranslation();
 
-  const [modeOpen, setModeOpen] = useState(false);
-  const [qualityOpen, setQualityOpen] = useState(false);
-  const [aspectOpen, setAspectOpen] = useState(false);
-  const modeRef = useRef<HTMLDivElement>(null);
-  const qualityRef = useRef<HTMLDivElement>(null);
-  const aspectRef = useRef<HTMLDivElement>(null);
-
-  useDropdownOutside([
-    [modeOpen, modeRef, setModeOpen],
-    [qualityOpen, qualityRef, setQualityOpen],
-    [aspectOpen, aspectRef, setAspectOpen],
-  ]);
-
-  const durationMin = visibility.durationOptions.length > 0 ? Math.min(...visibility.durationOptions) : 1;
-  const durationMax = visibility.durationOptions.length > 0 ? Math.max(...visibility.durationOptions) : 10;
-
   return (
-    <div
-      className="rounded-lg border border-border/50 bg-card p-2.5 space-y-2.5 text-xs animate-in fade-in slide-in-from-top-1 duration-150"
-    >
+    <div className="rounded-xl bg-card p-2.5 space-y-2.5 text-xs cursor-default animate-in fade-in slide-in-from-top-1 border duration-150">
       {/* Mode */}
       {visibility.showModeSelect && (
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.mode')}</label>
-          <div className="relative" ref={modeRef}>
-            <button
-              type="button"
-              onClick={() => setModeOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center justify-between')}
-              style={SELECT_ARROW_STYLE}
-            >
-              {VIDEO_MODE_LABELS[videoMode] || videoMode}
-            </button>
-            {modeOpen && (
-              <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                {capabilities?.modes.map((mode) => {
-                  const isSelected = mode === videoMode;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => { setVideoMode(mode); setModeOpen(false); }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                        isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-accent',
-                      )}
-                    >
-                      <span className="flex-1 text-left">{VIDEO_MODE_LABELS[mode] || mode}</span>
-                      {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+        <SegmentedControl
+          label={t('canvas.node.video.mode')}
+          options={(capabilities?.modes || []).map((mode) => ({
+            value: mode,
+            label: t(`canvas.node.video.mode_${mode}`, VIDEO_MODE_LABELS[mode] || mode),
+          }))}
+          value={videoMode}
+          onChange={setVideoMode}
+        />
       )}
 
       {/* Duration */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.duration')}</label>
-          <span className="text-[11px] font-medium">{duration === -1 ? 'Auto' : `${duration}s`}</span>
-        </div>
-        {visibility.showDurationSlider ? (
-          <Slider
-            value={[duration]}
-            onValueChange={(v) => setDuration(v[0])}
-            min={durationMin}
-            max={durationMax}
-            step={1}
-          />
-        ) : (
-          <div className="flex gap-1 flex-wrap">
-            {visibility.durationOptions.map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDuration(d)}
-                className={cn(
-                  'px-2 py-0.5 rounded text-[11px] font-medium border transition-colors',
-                  duration === d
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-background text-foreground border-border/50 hover:bg-secondary',
-                )}
-              >
-                {d === -1 ? 'Auto' : `${d}s`}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <SegmentedControl
+        label={t('canvas.node.video.duration')}
+        options={visibility.durationOptions.map((d) => ({
+          value: String(d),
+          label: d === -1 ? 'Auto' : `${d}s`,
+        }))}
+        value={String(duration)}
+        onChange={(v) => setDuration(Number(v))}
+      />
 
-      {/* Quality + Aspect Ratio */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.quality')}</label>
-          <div className="relative" ref={qualityRef}>
-            <button
-              type="button"
-              onClick={() => setQualityOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center justify-between')}
-              style={SELECT_ARROW_STYLE}
-            >
-              {RESOLUTION_LABELS[quality] || quality}
-            </button>
-            {qualityOpen && (
-              <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                {visibility.resolutionOptions.map((r) => {
-                  const isSelected = r === quality;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => { setQuality(r); setQualityOpen(false); }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                        isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-accent',
-                      )}
-                    >
-                      <span className="flex-1 text-left">{RESOLUTION_LABELS[r] || r}</span>
-                      {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
+      {/* Quality */}
+      <SegmentedControl
+        label={t('canvas.node.video.quality')}
+        options={visibility.resolutionOptions.map((r) => ({
+          value: r,
+          label: RESOLUTION_LABELS[r] || r,
+        }))}
+        value={quality}
+        onChange={setQuality}
+      />
 
-        <div className="space-y-1">
-          <label className="text-[11px] font-medium text-muted-foreground">{t('canvas.node.video.aspectRatio')}</label>
-          <div className="relative" ref={aspectRef}>
-            <button
-              type="button"
-              onClick={() => setAspectOpen((v) => !v)}
-              className={cn(SELECT_CLS, 'flex items-center gap-1.5')}
-              style={SELECT_ARROW_STYLE}
-            >
-              <AspectRatioIcon ratio={aspectRatio} className="w-4 h-4 text-muted-foreground shrink-0" />
-              {ASPECT_RATIO_LABELS[aspectRatio] || aspectRatio}
-            </button>
-            {aspectOpen && (
-              <div className="absolute top-full left-0 mt-1 w-full rounded-lg border border-border/50 bg-popover shadow-lg z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
-                {visibility.aspectRatioOptions.map((ar) => {
-                  const isSelected = ar === aspectRatio;
-                  return (
-                    <button
-                      key={ar}
-                      type="button"
-                      onClick={() => { setAspectRatio(ar); setAspectOpen(false); }}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] transition-colors cursor-pointer',
-                        isSelected ? 'bg-primary/10 text-primary font-medium' : 'text-foreground hover:bg-accent',
-                      )}
-                    >
-                      <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', isSelected ? 'text-primary' : 'text-muted-foreground')} />
-                      <span className="flex-1 text-left">{ASPECT_RATIO_LABELS[ar] || ar}</span>
-                      {isSelected && <Check className="w-3 h-3 shrink-0 text-primary" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Aspect Ratio */}
+      <SegmentedControl
+        label={t('canvas.node.video.aspectRatio')}
+        vertical
+        options={visibility.aspectRatioOptions.map((ar) => ({
+          value: ar,
+          leading: <AspectRatioIcon ratio={ar} className={cn('w-4 h-4 shrink-0', ar === aspectRatio ? 'text-foreground' : 'text-muted-foreground')} />,
+          label: ASPECT_RATIO_LABELS[ar] || ar,
+        }))}
+        value={aspectRatio}
+        onChange={setAspectRatio}
+      />
 
       {/* Advanced toggles */}
       {(visibility.showPromptOptimizer || visibility.showFastPretreatment) && (

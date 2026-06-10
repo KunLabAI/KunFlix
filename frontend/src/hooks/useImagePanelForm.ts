@@ -23,7 +23,7 @@ export function useImagePanelForm(initialConfig?: Partial<ImageGenHistoryEntry> 
 
   // Config state
   const [mode, setMode] = useState<ImageMode>('text_to_image');
-  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('standard');
   const [batchCount, setBatchCount] = useState(1);
   const [outputFormat, setOutputFormat] = useState('');
