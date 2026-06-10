@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { ChevronDown, MoreHorizontal, ChevronsUpDown } from 'lucide-react';
+import { MoreHorizontal, ChevronsUpDown } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import {
   ASPECT_RATIO_LABELS,
