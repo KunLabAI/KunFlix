@@ -58,7 +58,7 @@
     "dagre": "^0.8.5",
     "framer-motion": "^12.34.3",
     "html-to-image": "^1.11.13",
-    "i18next": "^26.0.3",
+    "i18next": "^26.3.1",
     "konva": "^10.3.0",
     "lodash.debounce": "^4.0.8",
     "lodash.throttle": "^4.1.1",
