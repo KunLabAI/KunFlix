@@ -2,7 +2,7 @@ fastapi>=0.136.1
 uvicorn[standard]>=0.41.0
 sqlalchemy>=2.0.46
 pydantic[email]>=2.13.4
-pydantic-settings>=2.13.0
+pydantic-settings>=2.14.1
 asyncpg>=0.31.0
 aiosqlite>=0.22.1
 # arq 0.28 仍锁 redis<6 且已进入 maintenance-only，这里必须加上限以避免 pip 飘到 redis 7.x 引发冲突
