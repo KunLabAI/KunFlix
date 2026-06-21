@@ -34,7 +34,7 @@ volcengine-python-sdk[ark]>=5.0.26
 # Ollama Python SDK——agentscope OllamaChatModel 内部调用 ollama.AsyncClient，不装则运行时报 ModuleNotFoundError
 ollama>=0.4.0
 httpx>=0.27.0
-python-frontmatter>=1.1.0
+python-frontmatter>=1.3.0
 packaging>=23.0
 user-agents>=2.2.0
 cachetools>=7.1.1
