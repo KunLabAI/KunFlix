@@ -43,4 +43,4 @@ cryptography>=48.0.0
 aioboto3>=12.3.0
 arq>=0.28.0
 purgatory>=3.0.0
-slowapi>=0.1.9
+slowapi>=0.1.10
