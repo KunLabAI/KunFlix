@@ -543,6 +543,7 @@
         "brand": "Brand",
         "brandPlaceholder": "Select a brand",
         "brandHint": "Click an icon to select the provider brand. The name will be auto-filled.",
+        "brandDocs": "Open {{name}} developer portal",
         "tags": "Tags",
         "tagsPlaceholder": "Type a tag and press Enter",
         "tagsDescription": "Used for categorization and filtering. Multiple tags supported."

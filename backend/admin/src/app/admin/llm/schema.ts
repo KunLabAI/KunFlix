@@ -52,19 +52,20 @@ export const PROVIDER_ICONS: Record<string, string> = {
 };
 
 // Provider brand labels come from the vendor itself (proper nouns), not translated.
+// docsUrl 指向厂商官方 API Key / 开发者平台入口，供品牌卡片快捷跳转使用。
 export const PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI', icon: PROVIDER_ICONS.openai },
-  { value: 'azure', label: 'Azure OpenAI', icon: PROVIDER_ICONS.azure },
-  { value: 'dashscope', label: 'Dashscope (Qwen)', icon: PROVIDER_ICONS.dashscope },
-  { value: 'anthropic', label: 'Anthropic (Claude)', icon: PROVIDER_ICONS.anthropic },
-  { value: 'gemini', label: 'Google Gemini', icon: PROVIDER_ICONS.gemini },
-  { value: 'deepseek', label: 'DeepSeek', icon: PROVIDER_ICONS.deepseek },
-  { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax },
-  { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
-  { value: 'kimi', label: 'Kimi (Moonshot)', icon: PROVIDER_ICONS.kimi },
-  { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
-  { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
-  { value: 'ollama', label: 'Ollama (Local)', icon: PROVIDER_ICONS.ollama },
+  { value: 'openai', label: 'OpenAI', icon: PROVIDER_ICONS.openai, docsUrl: 'https://platform.openai.com/api-keys' },
+  { value: 'azure', label: 'Azure OpenAI', icon: PROVIDER_ICONS.azure, docsUrl: 'https://oai.azure.com/portal' },
+  { value: 'dashscope', label: 'Dashscope (Qwen)', icon: PROVIDER_ICONS.dashscope, docsUrl: 'https://bailian.console.aliyun.com/?apiKey=1' },
+  { value: 'anthropic', label: 'Anthropic (Claude)', icon: PROVIDER_ICONS.anthropic, docsUrl: 'https://platform.claude.com/' },
+  { value: 'gemini', label: 'Google Gemini', icon: PROVIDER_ICONS.gemini, docsUrl: 'https://aistudio.google.com/apikey' },
+  { value: 'deepseek', label: 'DeepSeek', icon: PROVIDER_ICONS.deepseek, docsUrl: 'https://platform.deepseek.com/api_keys' },
+  { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax, docsUrl: 'https://platform.minimaxi.com/user-center/basic-information/interface-key' },
+  { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai, docsUrl: 'https://console.x.ai/' },
+  { value: 'kimi', label: 'Kimi (Moonshot)', icon: PROVIDER_ICONS.kimi, docsUrl: 'https://platform.kimi.ai/' },
+  { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark, docsUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey' },
+  { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter, docsUrl: 'https://openrouter.ai/settings/keys' },
+  { value: 'ollama', label: 'Ollama (Local)', icon: PROVIDER_ICONS.ollama, docsUrl: 'https://ollama.com/search' },
 ];
 
 // 本地部署且无鉴权的供应商（如 Ollama）允许 api_key 为空

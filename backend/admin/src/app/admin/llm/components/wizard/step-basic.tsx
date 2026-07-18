@@ -15,7 +15,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { X } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PROVIDER_OPTIONS, FormValues } from '../../schema';
 
@@ -51,26 +51,38 @@ export function StepBasic({ form, actions }: StepBasicProps) {
                   {PROVIDER_OPTIONS.map((option) => {
                     const selected = field.value === option.value;
                     return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => {
-                          field.onChange(option.value);
-                          // 名称为空或仍是上一品牌的自动填充值时，跟随新品牌覆盖；手动改过的名称保留
-                          const currentName = form.getValues('name');
-                          const isAutoFilled = PROVIDER_OPTIONS.some((o) => o.label === currentName);
-                          (currentName && !isAutoFilled) || form.setValue('name', option.label, { shouldValidate: true });
-                        }}
-                        className={cn(
-                          "flex flex-col items-center gap-2 rounded-lg border bg-background p-3 text-sm transition-all hover:border-primary/60 hover:bg-muted/50",
-                          selected && "border-primary ring-2 ring-primary/30 bg-primary/5 hover:bg-primary/5"
-                        )}
-                      >
-                        <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md">
-                          <Image src={option.icon} alt={option.label} fill className="object-contain" />
-                        </div>
-                        <span className="text-xs font-medium text-center leading-tight">{option.label}</span>
-                      </button>
+                      <div key={option.value} className="relative group">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            field.onChange(option.value);
+                            // 名称为空或仍是上一品牌的自动填充值时，跟随新品牌覆盖；手动改过的名称保留
+                            const currentName = form.getValues('name');
+                            const isAutoFilled = PROVIDER_OPTIONS.some((o) => o.label === currentName);
+                            (currentName && !isAutoFilled) || form.setValue('name', option.label, { shouldValidate: true });
+                          }}
+                          className={cn(
+                            "flex w-full flex-col items-center gap-2 rounded-lg border bg-background p-3 text-sm transition-all hover:border-primary/60 hover:bg-muted/50",
+                            selected && "border-primary ring-2 ring-primary/30 bg-primary/5 hover:bg-primary/5"
+                          )}
+                        >
+                          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-md">
+                            <Image src={option.icon} alt={option.label} fill className="object-contain" />
+                          </div>
+                          <span className="text-xs font-medium text-center leading-tight">{option.label}</span>
+                        </button>
+                        <a
+                          href={option.docsUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={t('llm.form.basic.brandDocs', { name: option.label })}
+                          title={t('llm.form.basic.brandDocs', { name: option.label })}
+                          className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded text-muted-foreground/50 opacity-70 transition-all hover:bg-background hover:text-primary hover:opacity-100 hover:shadow-sm focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-hover:opacity-100"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
                     );
                   })}
                 </div>
