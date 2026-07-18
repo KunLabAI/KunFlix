@@ -1,42 +1,34 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { useTranslation } from 'react-i18next';
 import api from '@/lib/axios';
 import { mutate } from 'swr';
 import { Button } from '@/components/ui/button';
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { Form } from '@/components/ui/form';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/use-toast';
-import { Plus, Trash2, Plug, X, ChevronDown, ChevronRight, Save, ArrowLeft, Eye, EyeOff, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PRESET_COST_DIMENSIONS, MODEL_TYPE_OPTIONS, PROVIDER_OPTIONS, createFormSchema, FormValues, LLMProvider } from '../schema';
+import { Plug, Save, ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { createFormSchema, FormValues, LLMProvider } from '../schema';
+import { FormStepper, StepMeta } from './wizard/form-stepper';
+import { StepBasic } from './wizard/step-basic';
+import { StepConnection } from './wizard/step-connection';
+import { StepModels } from './wizard/step-models';
 
 interface ProviderFormProps {
   initialData?: LLMProvider;
 }
+
+// 步骤注册表：key 对应 i18n llm.form.steps.* 与步骤内容组件，fields 用于分步校验门控
+const STEP_DEFINITIONS: { key: string; fields: (keyof FormValues)[] }[] = [
+  { key: 'basic', fields: ['name', 'provider_type'] },
+  { key: 'connection', fields: ['base_url', 'api_key', 'config_json'] },
+  { key: 'models', fields: ['models'] },
+];
 
 export function ProviderForm({ initialData }: ProviderFormProps) {
   const router = useRouter();
@@ -44,11 +36,12 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   const { t } = useTranslation();
   const [isTesting, setIsTesting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncingOllama, setIsSyncingOllama] = useState(false);
-  const [tagInput, setTagInput] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
+  // 编辑模式默认开放全部步骤跳转；创建模式仅开放已访问步骤
+  const [visitedSteps, setVisitedSteps] = useState<number[]>(() =>
+    initialData ? STEP_DEFINITIONS.map((_, i) => i) : [0]
+  );
   const [modelCosts, setModelCosts] = useState<Record<string, Record<string, number>>>(initialData?.model_costs || {});
-  const [expandedModels, setExpandedModels] = useState<Record<string, boolean>>({});
-  const [showApiKey, setShowApiKey] = useState(false);
 
   const formSchema = useMemo(() => createFormSchema(t), [t]);
 
@@ -68,60 +61,42 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
     },
   });
 
-  const { fields, append, remove, replace } = useFieldArray({
-    control: form.control,
-    name: "models",
-  });
+  const steps: StepMeta[] = STEP_DEFINITIONS.map((def) => ({
+    key: def.key,
+    title: t(`llm.form.steps.${def.key}.title`),
+    description: t(`llm.form.steps.${def.key}.description`),
+  }));
 
-  // 同步本地 Ollama 模型列表：调用后端代理 GET /api/tags，
-  // 合并保留已有同名条目的别名/类型配置；cost 配置仍由 modelCosts state 按名匹配。
-  const handleSyncOllamaModels = async () => {
-    try {
-      setIsSyncingOllama(true);
-      const baseUrl = (form.getValues('base_url') || '').trim() || 'http://localhost:11434';
-      const res = await api.post('/admin/llm-providers/ollama-models', { base_url: baseUrl });
-      if (!res.data?.success) {
-        toast({
-          variant: 'destructive',
-          title: '同步失败',
-          description: res.data?.message || '未能连接本地 Ollama 服务',
-        });
-        return;
-      }
-      const remoteNames: string[] = res.data.models || [];
-      if (remoteNames.length === 0) {
-        toast({
-          variant: 'destructive',
-          title: '本地未发现模型',
-          description: '请先使用 `ollama pull <model>` 拉取至少一个模型',
-        });
-        return;
-      }
-      // 按 value 合并：本地列表为准，同名条目保留已有 type/display_name
-      const existing = new Map(
-        (form.getValues('models') || []).map((m: { value: string; type?: string; display_name?: string }) => [m.value, m]),
-      );
-      const merged = remoteNames.map((name) => existing.get(name) || { value: name, type: 'language', display_name: '' });
-      replace(merged);
-      toast({
-        title: '同步成功',
-        description: `已从 Ollama 拉取 ${remoteNames.length} 个模型`,
-      });
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: '同步出错',
-        description: err?.message || '请检查 Base URL 与后端服务',
-      });
-    } finally {
-      setIsSyncingOllama(false);
-    }
+  const goToStep = (index: number) => {
+    setVisitedSteps((prev) => (prev.includes(index) ? prev : [...prev, index]));
+    setCurrentStep(index);
+  };
+
+  const handleNext = async () => {
+    const valid = await form.trigger(STEP_DEFINITIONS[currentStep].fields as any);
+    valid && goToStep(currentStep + 1);
+  };
+
+  const handlePrev = () => goToStep(currentStep - 1);
+
+  const handleStepClick = (index: number) => {
+    visitedSteps.includes(index) && setCurrentStep(index);
+  };
+
+  // 校验失败时跳转到首个包含错误字段的步骤，使错误信息可见
+  const goToFirstErrorStep = () => {
+    const errorKeys = Object.keys(form.formState.errors);
+    const stepIndex = STEP_DEFINITIONS.findIndex((def) => def.fields.some((f) => errorKeys.includes(f)));
+    stepIndex >= 0 && goToStep(stepIndex);
   };
 
   const handleTestConnection = async () => {
     try {
       const values = await form.trigger();
-      if (!values) return;
+      if (!values) {
+        goToFirstErrorStep();
+        return;
+      }
 
       const data = form.getValues();
       if (!data.models || data.models.length === 0 || !data.models[0].value) {
@@ -221,486 +196,89 @@ export function ProviderForm({ initialData }: ProviderFormProps) {
   };
 
   const handleSave = () => {
-    form.handleSubmit(onSubmit as any)();
+    form.handleSubmit(onSubmit as any, goToFirstErrorStep)();
   };
 
+  // 步骤头部右侧的圆形图标操作组：上一步 / 下一步 / 测试连接 / 保存，hover 时显示 tooltip
+  const renderStepActions = (stepIndex: number) => {
+    const isLast = stepIndex === STEP_DEFINITIONS.length - 1;
+    return (
+      <div className="flex items-center gap-1">
+        {stepIndex > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={handlePrev}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('llm.form.wizard.prev')}</TooltipContent>
+          </Tooltip>
+        )}
+        {isLast && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" variant="outline" size="icon" className="rounded-full" onClick={handleTestConnection} disabled={isTesting}>
+                {isTesting ? <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Plug className="h-4 w-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('llm.form.testConnection')}</TooltipContent>
+          </Tooltip>
+        )}
+        {isLast ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" size="icon" className="rounded-full" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Save className="h-4 w-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('llm.form.save')}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button type="button" size="icon" className="rounded-full" onClick={handleNext}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('llm.form.wizard.next')}</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    );
+  };
+
+  // 步骤内容注册表：按当前步骤索引渲染，避免条件分支
+  const stepContents = [
+    <StepBasic key="basic" form={form} actions={renderStepActions(0)} />,
+    <StepConnection key="connection" form={form} actions={renderStepActions(1)} />,
+    <StepModels key="models" form={form} modelCosts={modelCosts} setModelCosts={setModelCosts} actions={renderStepActions(2)} />,
+  ];
+
   return (
-    <>
+    <TooltipProvider delayDuration={200}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{initialData ? t('llm.form.editTitle') : t('llm.form.createTitle')}</h2>
-          <p className="text-muted-foreground mt-1">{t('llm.form.subtitle')}</p>
+      <div className="flex items-center gap-4">
+        <Button type="button" variant="ghost" size="icon" onClick={() => router.back()} title={t('llm.form.back')}>
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        <div className="min-w-0">
+          <h2 className="text-2xl font-bold tracking-tight truncate">{initialData ? t('llm.form.editTitle') : t('llm.form.createTitle')}</h2>
+          <p className="text-sm text-muted-foreground mt-1">{t('llm.form.subtitle')}</p>
         </div>
-        <div className="flex gap-3 items-center">
-          {initialData && <span className="text-xs text-muted-foreground mr-2">{t('llm.form.idLabel', { id: initialData.id })}</span>}
-          <Button type="button" variant="outline" onClick={handleTestConnection} disabled={isTesting}>
-            {isTesting ? <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <Plug className="mr-2 h-4 w-4" />}
-            {t('llm.form.testConnection')}
-          </Button>
-          <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> {t('llm.form.back')}
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? t('llm.form.saving') : <><Save className="mr-2 h-4 w-4" /> {t('llm.form.save')}</>}
-          </Button>
-        </div>
+        {initialData && (
+          <span className="ml-auto text-xs text-muted-foreground shrink-0">{t('llm.form.idLabel', { id: initialData.id })}</span>
+        )}
       </div>
 
-      {/* Content: Left-Right layout */}
+      {/* Stepper */}
+      <FormStepper steps={steps} currentStep={currentStep} visitedSteps={visitedSteps} onStepClick={handleStepClick} />
+
+      {/* Step Content */}
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit as any)}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* ==================== Left Column ==================== */}
-            <div className="space-y-6">
-              {/* 基本信息 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('llm.form.basic.title')}</CardTitle>
-                  <CardDescription>{t('llm.form.basic.description')}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('llm.form.basic.name')}</FormLabel>
-                          <FormControl>
-                            <Input placeholder={t('llm.form.basic.namePlaceholder')} {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="provider_type"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{t('llm.form.basic.brand')}</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder={t('llm.form.basic.brandPlaceholder')} />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {PROVIDER_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  <div className="flex items-center gap-2">
-                                    <div className="relative h-5 w-5 shrink-0 overflow-hidden rounded-sm">
-                                      <Image src={option.icon} alt={option.label} fill className="object-contain" />
-                                    </div>
-                                    <span>{option.label}</span>
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="tags"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('llm.form.basic.tags')}</FormLabel>
-                        <FormControl>
-                          <div className="flex flex-wrap items-center gap-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 min-h-[2.5rem]">
-                            {field.value?.map((tag, index) => (
-                              <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                                {tag}
-                                <X
-                                  className="h-3 w-3 cursor-pointer hover:text-destructive"
-                                  onClick={() => {
-                                    const newTags = [...(field.value || [])];
-                                    newTags.splice(index, 1);
-                                    field.onChange(newTags);
-                                  }}
-                                />
-                              </Badge>
-                            ))}
-                            <input
-                              className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[120px]"
-                              placeholder={field.value?.length ? "" : t('llm.form.basic.tagsPlaceholder')}
-                              value={tagInput}
-                              onChange={(e) => setTagInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  const val = tagInput.trim();
-                                  if (val) {
-                                    const currentTags = field.value || [];
-                                    if (!currentTags.includes(val)) {
-                                      field.onChange([...currentTags, val]);
-                                    }
-                                    setTagInput("");
-                                  }
-                                } else if (e.key === 'Backspace' && !tagInput && field.value?.length) {
-                                  const newTags = [...(field.value || [])];
-                                  newTags.pop();
-                                  field.onChange(newTags);
-                                }
-                              }}
-                            />
-                          </div>
-                        </FormControl>
-                        <FormDescription>{t('llm.form.basic.tagsDescription')}</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-
-              {/* 连接与认证 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('llm.form.connection.title')}</CardTitle>
-                  <CardDescription>{t('llm.form.connection.description')}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="base_url"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('llm.form.connection.baseUrl')}</FormLabel>
-                        <FormControl>
-                          <Input placeholder={t('llm.form.connection.baseUrlPlaceholder')} {...field} />
-                        </FormControl>
-                        <FormDescription>{t('llm.form.connection.baseUrlDescription')}</FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="api_key"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('llm.form.connection.apiKey')}</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              type={showApiKey ? 'text' : 'password'}
-                              placeholder={t('llm.form.connection.apiKeyPlaceholder')}
-                              autoComplete="off"
-                              className="pr-10"
-                              {...field}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowApiKey((v) => !v)}
-                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                              tabIndex={-1}
-                              aria-label={showApiKey ? t('llm.form.connection.hideApiKey') : t('llm.form.connection.showApiKey')}
-                              title={showApiKey ? t('llm.form.connection.hideApiKey') : t('llm.form.connection.showApiKey')}
-                            >
-                              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="config_json"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('llm.form.connection.advancedConfig')}</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            rows={5}
-                            placeholder={t('llm.form.connection.advancedConfigPlaceholder')}
-                            className="font-mono text-sm"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* ==================== Right Column ==================== */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1.5">
-                      <CardTitle>{t('llm.form.models.title')}</CardTitle>
-                      <CardDescription>{t('llm.form.models.description')}</CardDescription>
-                    </div>
-                    {form.watch('provider_type') === 'ollama' && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleSyncOllamaModels}
-                        disabled={isSyncingOllama}
-                        className="shrink-0"
-                      >
-                        {isSyncingOllama ? (
-                          <div className="animate-spin mr-2 h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                        )}
-                        同步本地模型
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex gap-3 items-start">
-                        <FormField
-                          control={form.control}
-                          name={`models.${index}.value`}
-                          render={({ field }) => (
-                            <FormItem className="flex-1">
-                              <FormControl>
-                                <Input placeholder={t('llm.form.models.modelNamePlaceholder')} {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`models.${index}.display_name`}
-                          render={({ field }) => (
-                            <FormItem className="w-[140px]">
-                              <FormControl>
-                                <Input placeholder={t('llm.form.models.aliasPlaceholder')} {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`models.${index}.type`}
-                          render={({ field }) => (
-                            <FormItem className="w-[120px]">
-                              <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder={t('llm.form.models.typePlaceholder')} />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {MODEL_TYPE_OPTIONS.map((opt) => (
-                                    <SelectItem key={opt.value} value={opt.value}>{t(opt.labelKey)}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(index)}
-                          disabled={fields.length === 1}
-                          className="mt-1"
-                        >
-                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
-                        </Button>
-                      </div>
-                    ))}
-
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => append({ value: "", type: "", display_name: "" })}
-                      className="w-full border-dashed"
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> {t('llm.form.models.addModel')}
-                    </Button>
-                    {form.formState.errors.models?.message && (
-                      <p className="text-sm font-medium text-destructive">{String(form.formState.errors.models.message)}</p>
-                    )}
-                  </div>
-
-                  {/* 模型成本配置 */}
-                  {fields.length > 0 && fields.some(f => form.getValues(`models.${fields.indexOf(f)}.value`)) && (
-                    <div className="space-y-4 pt-4 border-t">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-medium">{t('llm.form.models.costsTitle')}</h4>
-                        <span className="text-xs text-muted-foreground">{t('llm.form.models.costsUnit')}</span>
-                      </div>
-
-                      <div className="space-y-3">
-                        {fields.map((field, index) => {
-                          const modelName = form.watch(`models.${index}.value`);
-                          if (!modelName) return null;
-                          const isExpanded = expandedModels[modelName] || false;
-                          const costs = modelCosts[modelName] || {};
-                          const customKeys = Object.keys(costs).filter(k => !(k in PRESET_COST_DIMENSIONS));
-
-                          return (
-                            <div key={field.id + '-cost'} className="rounded-lg border bg-card text-card-foreground shadow-sm">
-                              <button
-                                type="button"
-                                className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted/50 transition-colors rounded-t-lg"
-                                onClick={() => setExpandedModels(prev => ({ ...prev, [modelName]: !prev[modelName] }))}
-                              >
-                                {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                                <span className="font-mono text-sm font-medium">{modelName}</span>
-                                {Object.keys(costs).length > 0 && (
-                                  <Badge variant="secondary" className="ml-auto text-xs font-normal">
-                                    {t('llm.form.models.configCount', { count: Object.keys(costs).length })}
-                                  </Badge>
-                                )}
-                              </button>
-
-                              {isExpanded && (
-                                <div className="p-4 pt-0 space-y-4 border-t bg-muted/10">
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                                    {Object.entries(PRESET_COST_DIMENSIONS).map(([dimKey, dimConfig]) => (
-                                      <div key={dimKey} className="space-y-1.5">
-                                        <label className="text-xs font-medium text-muted-foreground flex justify-between">
-                                          {t(dimConfig.labelKey)}
-                                          <span className="opacity-70">{dimConfig.unit}</span>
-                                        </label>
-                                        <Input
-                                          type="number"
-                                          step="0.000001"
-                                          min={0}
-                                          placeholder="0"
-                                          value={costs[dimKey] ?? ''}
-                                          onChange={(e) => {
-                                            const val = e.target.value;
-                                            setModelCosts(prev => {
-                                              const updated = { ...prev };
-                                              const modelEntry = { ...(updated[modelName] || {}) };
-                                              if (val === '') {
-                                                delete modelEntry[dimKey];
-                                              } else {
-                                                modelEntry[dimKey] = Number(val);
-                                              }
-                                              updated[modelName] = modelEntry;
-                                              return updated;
-                                            });
-                                          }}
-                                          className="font-mono h-9 bg-background"
-                                        />
-                                      </div>
-                                    ))}
-                                  </div>
-
-                                  {/* 自定义参数 */}
-                                  {customKeys.length > 0 && (
-                                    <div className="space-y-3 pt-2">
-                                      <h5 className="text-xs font-semibold text-muted-foreground">{t('llm.form.models.customParamsTitle')}</h5>
-                                      {customKeys.map((customKey) => (
-                                        <div key={customKey} className="flex gap-3 items-end p-2 bg-background rounded-md border">
-                                          <div className="flex-1 space-y-1">
-                                            <label className="text-xs text-muted-foreground">{t('llm.form.models.customParamName')}</label>
-                                            <div className="font-mono text-sm px-2 py-1 bg-muted rounded">{customKey}</div>
-                                          </div>
-                                          <div className="flex-1 space-y-1">
-                                            <label className="text-xs text-muted-foreground">{t('llm.form.models.customParamCost')}</label>
-                                            <Input
-                                              type="number"
-                                              step="0.000001"
-                                              min={0}
-                                              value={costs[customKey] ?? ''}
-                                              onChange={(e) => {
-                                                const val = e.target.value;
-                                                setModelCosts(prev => {
-                                                  const updated = { ...prev };
-                                                  const modelEntry = { ...(updated[modelName] || {}) };
-                                                  if (val === '') {
-                                                    delete modelEntry[customKey];
-                                                  } else {
-                                                    modelEntry[customKey] = Number(val);
-                                                  }
-                                                  updated[modelName] = modelEntry;
-                                                  return updated;
-                                                });
-                                              }}
-                                              className="font-mono h-8"
-                                            />
-                                          </div>
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
-                                            onClick={() => {
-                                              setModelCosts(prev => {
-                                                const updated = { ...prev };
-                                                const modelEntry = { ...(updated[modelName] || {}) };
-                                                delete modelEntry[customKey];
-                                                updated[modelName] = modelEntry;
-                                                return updated;
-                                              });
-                                            }}
-                                          >
-                                            <X className="h-4 w-4" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full border-dashed text-xs"
-                                    onClick={() => {
-                                      const name = prompt(t('llm.form.models.customParamPrompt'));
-                                      if (!name) return;
-                                      if (!name.match(/^[a-z_][a-z0-9_]*$/)) {
-                                        toast({ variant: "destructive", title: t('llm.form.models.customParamFormatError'), description: t('llm.form.models.customParamFormatErrorDesc') });
-                                        return;
-                                      }
-                                      if (name in PRESET_COST_DIMENSIONS || (costs[name] !== undefined)) {
-                                        toast({ variant: "destructive", title: t('llm.form.models.customParamExists') });
-                                        return;
-                                      }
-                                      setModelCosts(prev => {
-                                        const updated = { ...prev };
-                                        updated[modelName] = { ...(updated[modelName] || {}), [name]: 0 };
-                                        return updated;
-                                      });
-                                    }}
-                                  >
-                                    <Plus className="mr-1 h-3 w-3" /> {t('llm.form.models.addCustomParam')}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+        <form onSubmit={(e) => e.preventDefault()}>
+          {stepContents[currentStep]}
         </form>
       </Form>
-    </>
+    </TooltipProvider>
   );
 }

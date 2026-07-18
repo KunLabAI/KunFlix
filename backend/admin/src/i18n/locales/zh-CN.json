@@ -93,7 +93,16 @@
       "admins": "管理员",
       "system": "系统设置",
       "emailProviders": "邮件服务商",
-      "toggleMenu": "切换菜单"
+      "toggleMenu": "切换菜单",
+      "groups": {
+        "overview": "概览",
+        "ai": "模型与 AI",
+        "agents": "智能体",
+        "content": "内容资产",
+        "business": "商业运营",
+        "access": "用户与权限",
+        "system": "系统设置"
+      }
     },
     "account": {
       "admin": "管理员",
@@ -517,6 +526,15 @@
       "save": "保存",
       "saving": "保存中...",
       "idLabel": "ID: {{id}}",
+      "steps": {
+        "basic": { "title": "基本信息", "description": "选择品牌并命名供应商" },
+        "connection": { "title": "连接认证", "description": "配置 API 地址与访问密钥" },
+        "models": { "title": "模型与成本", "description": "添加模型并配置成本参数" }
+      },
+      "wizard": {
+        "next": "下一步",
+        "prev": "上一步"
+      },
       "basic": {
         "title": "基本信息",
         "description": "配置供应商的名称、品牌和标签。",
@@ -524,6 +542,8 @@
         "namePlaceholder": "输入名称 (如 OpenAI)",
         "brand": "品牌",
         "brandPlaceholder": "选择品牌",
+        "brandHint": "点击图标选择供应商品牌，选择后自动填充名称。",
+        "brandDocs": "打开 {{name}} 开发者平台",
         "tags": "标签",
         "tagsPlaceholder": "输入标签后按回车添加",
         "tagsDescription": "用于分类和筛选，支持多个标签。"
@@ -548,6 +568,7 @@
         "aliasPlaceholder": "别称（选填）",
         "typePlaceholder": "类型",
         "addModel": "添加模型",
+        "syncOllama": "同步本地模型",
         "costsTitle": "模型成本配置 (选填)",
         "costsUnit": "USD / Unit",
         "configCount": "{{count}} 项配置",
