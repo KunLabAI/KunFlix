@@ -55,14 +55,20 @@ def _block_text(block) -> str:
 
 def _extract_tool_results(new_messages: list, is_anthropic: bool) -> dict:
     """Extract tool results from messages appended by append_tool_round_with_errors.
-    Returns {tool_call_id: result_content} mapping.
+    Returns {tool_call_id: result_content_str} mapping.
+    Multimodal list content is flattened to text for SSE transport.
     """
     results = {}
     for msg in new_messages:
         # OpenAI format: {"role": "tool", "tool_call_id": ..., "content": ...}
-        (not is_anthropic and msg.get("role") == "tool") and results.__setitem__(
-            msg.get("tool_call_id", ""), msg.get("content", "")
-        )
+        if not is_anthropic and msg.get("role") == "tool":
+            content = msg.get("content", "")
+            # 多模态 content (list) → 提取 text 部分作为摘要
+            text_val = (
+                next((p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"), "[multimodal content]")
+                if isinstance(content, list) else content
+            )
+            results[msg.get("tool_call_id", "")] = text_val
         # Anthropic format: {"role": "user", "content": [{"type": "tool_result", ...}]}
         is_anthropic and msg.get("role") == "user" and isinstance(msg.get("content"), list) and [
             results.__setitem__(block.get("tool_use_id", ""), block.get("content", ""))

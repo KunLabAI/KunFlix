@@ -48,6 +48,7 @@ export const PROVIDER_ICONS: Record<string, string> = {
   sora: withBasePath('/provider/sora-color.svg'),
   ark: withBasePath('/provider/volcengine-color.svg'),
   ollama: withBasePath('/provider/ollama.svg'),
+  kimi: withBasePath('/provider/kimi-color.svg'),
 };
 
 // Provider brand labels come from the vendor itself (proper nouns), not translated.
@@ -60,6 +61,7 @@ export const PROVIDER_OPTIONS = [
   { value: 'deepseek', label: 'DeepSeek', icon: PROVIDER_ICONS.deepseek },
   { value: 'minimax', label: 'MiniMax', icon: PROVIDER_ICONS.minimax },
   { value: 'xai', label: 'xAI (Grok)', icon: PROVIDER_ICONS.xai },
+  { value: 'kimi', label: 'Kimi (Moonshot)', icon: PROVIDER_ICONS.kimi },
   { value: 'ark', label: '火山方舟 (Ark)', icon: PROVIDER_ICONS.ark },
   { value: 'openrouter', label: 'OpenRouter', icon: PROVIDER_ICONS.openrouter },
   { value: 'ollama', label: 'Ollama (Local)', icon: PROVIDER_ICONS.ollama },
