@@ -11,6 +11,7 @@ Use this skill when the user asks to view, create, update, or delete content on 
 Loading this skill activates the following tools:
 - `list_canvas_nodes` — List all nodes on the canvas
 - `get_canvas_node` — Get full details of a specific node
+- `view_node_media` — View actual image/video content of a media node
 - `create_canvas_node` — Create a new node
 - `update_canvas_node` — Update an existing node
 - `delete_canvas_node` — Delete a node
@@ -132,9 +133,29 @@ Delete a node from the canvas.
 Parameters:
 - `node_id` (string, required) — ID of the node to delete
 
+## Tool: view_node_media
+
+View the actual media content of an image or video node. This injects the file content into the conversation context so you can truly see and analyze the visual content.
+
+Parameters:
+- `node_id` (string, required) — ID of the image/video node to view
+
+Supported node types:
+- `image` — Returns the image as a viewable content part
+- `video` — Returns the video as a viewable content part
+- `audio` — Returns metadata only (audio playback not supported in tool results)
+
+Use this tool when you need to:
+- Describe or analyze an existing image on the canvas
+- Compare visual content between nodes
+- Make decisions based on actual image/video content rather than just metadata
+
+Note: `get_canvas_node` returns only metadata (URL paths, names); use `view_node_media` when you need to actually see the content.
+
 ## Tips
 
 - Always use `list_canvas_nodes` first to see what exists before creating or modifying.
+- Use `view_node_media` when you need to see/analyze actual image or video content.
 - When creating nodes, omit position to let the system auto-place them.
 - Only include fields you want to change in `update_canvas_node`.
 - Node types are restricted by agent configuration — you can only create/access allowed types.

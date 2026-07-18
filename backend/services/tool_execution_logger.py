@@ -100,12 +100,17 @@ async def _write_record(
 def record_tool_execution(
     tool_name: str,
     args: dict,
-    result: str,
+    result: str | list,
     status: str,
     duration_ms: int,
     ctx: "ToolContext",
 ) -> None:
     """Schedule a non-blocking write of a tool execution record."""
+    # 多模态 tool result (list) 序列化为文本摘要，避免 SQLite 绑定错误
+    result_str = (
+        next((p.get("text", "") for p in result if isinstance(p, dict) and p.get("type") == "text"), "[multimodal content]")
+        if isinstance(result, list) else result
+    )
     asyncio.create_task(
-        _write_record(tool_name, args, result, status, duration_ms, ctx)
+        _write_record(tool_name, args, result_str, status, duration_ms, ctx)
     )

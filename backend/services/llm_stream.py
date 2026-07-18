@@ -58,6 +58,7 @@ DEFAULT_BASE_URLS = {
     "ark": "https://ark.cn-beijing.volces.com/api/v3",
     "doubao": "https://ark.cn-beijing.volces.com/api/v3",
     "openrouter": "https://openrouter.ai/api/v1",
+    "kimi": "https://api.moonshot.ai/v1",
 }
 
 # 供应商注册表：provider_type -> stream handler
@@ -264,6 +265,172 @@ async def stream_ollama(ctx: StreamContext, result: StreamResult) -> AsyncGenera
     )
     async for chunk in _PROVIDER_REGISTRY["openai"](patched, result):
         yield chunk
+
+
+# ============================================================
+# Kimi (Moonshot AI) 供应商 — OpenAI 兼容 + thinking/reasoning_effort
+# ============================================================
+
+
+def _convert_inline_data_for_kimi(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 inline_data parts 转换为 Kimi 兼容格式。
+
+    Kimi 多模态支持：
+    - image_url → 直接透传（Kimi 原生支持 OpenAI image_url 格式）
+    - video inline_data → {"type": "video_url", "video_url": {"url": "data:video/mp4;base64,..."}}
+    - image inline_data → {"type": "image_url", "image_url": {"url": "data:image/...;base64,..."}}
+    - audio inline_data → 文本占位符（Kimi 不支持音频输入）
+    """
+    converted = []
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            converted.append(msg)
+            continue
+        new_parts = []
+        for part in content:
+            if not isinstance(part, dict) or part.get("type") != "inline_data":
+                new_parts.append(part)
+                continue
+            inline = part.get("inline_data", {})
+            mime = inline.get("mime_type", "")
+            data = inline.get("data", "")
+            # 视频 → Kimi video_url 格式
+            if mime.startswith("video/"):
+                new_parts.append({"type": "video_url", "video_url": {"url": f"data:{mime};base64,{data}"}})
+            # 图片 → 标准 image_url 格式
+            elif mime.startswith("image/"):
+                new_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{data}"}})
+            # 音频 → Kimi 不支持音频输入，转为文本提示
+            elif mime.startswith("audio/"):
+                new_parts.append({"type": "text", "text": "[Audio content — not supported by this model]"})
+            else:
+                new_parts.append({"type": "text", "text": f"[Unsupported media: {mime}]"})
+        converted.append({**msg, "content": new_parts})
+    return converted
+
+# Kimi 模型关键词 → thinking 模式 extra_body 映射
+# K3: 使用顶层 reasoning_effort; K2.7-code: thinking 始终开启无需传参;
+# K2.6/K2.5: 通过 thinking 参数控制
+_KIMI_MODEL_PATTERNS = {
+    "k3": "reasoning_effort",    # kimi-k3 → reasoning_effort: "max"
+    "k2.7": "thinking_always",   # kimi-k2.7-code → 始终 thinking，无需额外参数
+    "k2.6": "thinking_toggle",   # kimi-k2.6 → thinking 可控
+    "k2.5": "thinking_toggle",   # kimi-k2.5 → thinking 可控
+}
+
+
+def _resolve_kimi_thinking_mode(model: str) -> str:
+    """根据模型名称确定 Kimi 的 thinking 控制策略。"""
+    model_lower = model.lower()
+    return next(
+        (mode for pattern, mode in _KIMI_MODEL_PATTERNS.items() if pattern in model_lower),
+        "none",  # moonshot-v1 等旧模型无 thinking 支持
+    )
+
+
+@register_provider("kimi")
+async def stream_kimi(ctx: StreamContext, result: StreamResult) -> AsyncGenerator[str, None]:
+    """Kimi (Moonshot AI) 流式调用
+
+    特性：
+    - OpenAI 兼容 API（base_url=https://api.moonshot.ai/v1）
+    - K3: reasoning_effort="max"（顶层参数），始终推理
+    - K2.7-code: thinking 始终开启，无需传参
+    - K2.6/K2.5: thinking 通过 extra_body 控制
+    - 所有 K2.6+ 模型 temperature 固定，不可传递
+    """
+    client = _get_openai_client(ctx.api_key, get_effective_base_url(ctx))
+
+    # 将 inline_data parts 转为 Kimi 兼容格式（video→video_url, image→image_url, audio→不支持）
+    effective_messages = _convert_inline_data_for_kimi(ctx.messages)
+
+    create_params = {
+        "model": ctx.model,
+        "messages": effective_messages,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    # 注意：不传递 temperature（Kimi K2.6+ 模型 temperature 固定，传递会报错）
+
+    ctx.tools and create_params.update(tools=ctx.tools)
+
+    # Thinking 模式处理（数据驱动，避免 if 分支）
+    thinking_mode_type = _resolve_kimi_thinking_mode(ctx.model)
+    extra_body: Dict[str, Any] = {}
+
+    # K3: reasoning_effort 顶层参数
+    (thinking_mode_type == "reasoning_effort") and extra_body.update(reasoning_effort="max")
+
+    # K2.6/K2.5: thinking 参数可控
+    (thinking_mode_type == "thinking_toggle" and ctx.thinking_mode) and extra_body.update(
+        thinking={"type": "enabled", "keep": "all"}
+    )
+    (thinking_mode_type == "thinking_toggle" and not ctx.thinking_mode) and extra_body.update(
+        thinking={"type": "disabled"}
+    )
+
+    # K2.7-code: thinking 始终开启，无需额外参数（模型默认行为）
+
+    extra_body and create_params.update(extra_body=extra_body)
+
+    logger.info(
+        f"Kimi stream: model={ctx.model}, thinking_type={thinking_mode_type}, "
+        f"extra_body={extra_body or 'none'}"
+    )
+
+    stream = await client.chat.completions.create(**create_params)
+
+    thinking_started = False
+    pending_tool_calls: dict[int, dict] = {}
+
+    async for chunk in stream:
+        # 处理 reasoning_content (thinking mode)
+        if ctx.thinking_mode and chunk.choices and hasattr(chunk.choices[0].delta, 'reasoning_content'):
+            rc = chunk.choices[0].delta.reasoning_content
+            if rc:
+                if not thinking_started:
+                    yield "<think>"
+                    thinking_started = True
+                result.reasoning_content += rc
+                yield rc
+
+        if chunk.choices and chunk.choices[0].delta.content:
+            if thinking_started:
+                yield "</think>"
+                thinking_started = False
+            content = chunk.choices[0].delta.content
+            result.full_response += content
+            yield content
+
+        # Collect tool_calls from delta
+        if chunk.choices and hasattr(chunk.choices[0].delta, 'tool_calls') and chunk.choices[0].delta.tool_calls:
+            for tc_delta in chunk.choices[0].delta.tool_calls:
+                idx = tc_delta.index
+                entry = pending_tool_calls.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                tc_delta.id and entry.update(id=tc_delta.id)
+                _new_name = tc_delta.function and tc_delta.function.name
+                _new_name and not entry["name"] and (yield f"__TOOL_PENDING__:{_new_name}")
+                _new_name and entry.update(name=_new_name)
+                _arg_chunk = tc_delta.function and tc_delta.function.arguments
+                _arg_chunk and entry.update(arguments=entry["arguments"] + _arg_chunk)
+                (_arg_chunk and entry["name"]) and (yield f"__TOOL_DELTA__:{entry['name']}:{_arg_chunk}")
+
+        if hasattr(chunk, 'usage') and chunk.usage:
+            result.input_tokens = chunk.usage.prompt_tokens
+            result.output_tokens = chunk.usage.completion_tokens
+
+    if thinking_started:
+        yield "</think>"
+
+    # Convert collected tool calls to result
+    if pending_tool_calls:
+        result.tool_calls = [
+            ToolCallResult(id=tc["id"], name=tc["name"], arguments=tc["arguments"])
+            for tc in pending_tool_calls.values()
+            if tc["name"]
+        ]
+
 
 # xAI 推理参数配置（模型关键词 → thinking_mode 开启时的 extra_body）
 # grok-3-mini: 支持 reasoning_effort，Chat Completions 返回 reasoning_content

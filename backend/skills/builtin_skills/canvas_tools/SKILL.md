@@ -11,6 +11,7 @@ Use this skill when the user asks to view, create, update, or delete content on 
 Loading this skill activates the following tools:
 - `list_canvas_nodes` — List all nodes on the canvas
 - `get_canvas_node` — Get full details of a specific node
+- `view_node_media` — View actual image/video content of a media node
 - `create_canvas_node` — Create a new node
 - `update_canvas_node` — Update an existing node
 - `delete_canvas_node` — Delete a node

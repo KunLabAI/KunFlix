@@ -27,8 +27,11 @@ logger = logging.getLogger(__name__)
 
 async def get_tool_result(
     tool_manager: "ToolManager", tc_name: str, tc_args: dict, ctx: "ToolContext",
-) -> str:
-    """Dispatch tool execution with timing and logging."""
+) -> str | list:
+    """Dispatch tool execution with timing and logging.
+
+    Returns str (text result) or list (multimodal content array for tools like view_node_media).
+    """
     # 容错：LLM 可能发送 "skill_name:tool_name" 格式（如 "video_tools:generate_video"），自动提取真实工具名
     tc_name = tc_name.rsplit(":", 1)[-1] if ":" in tc_name else tc_name
     start = time.perf_counter()
@@ -131,7 +134,8 @@ async def _execute_valid_calls_parallel(
     if len(valid_calls) == 1:
         tc, args = valid_calls[0]
         content = await get_tool_result(tool_manager, tc.name, args, ctx)
-        logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+        _log_len = len(content) if isinstance(content, str) else f"multimodal({len(content)} parts)"
+        logger.info(f"  {tc.name}({args}) → {_log_len}")
         return [(tc.id, content)]
 
     # Split into sequential (canvas mutations) and parallel (everything else)
@@ -145,7 +149,8 @@ async def _execute_valid_calls_parallel(
         async with AsyncSessionLocal() as session:
             isolated_ctx = replace(ctx, db=session)
             content = await get_tool_result(tool_manager, tc.name, args, isolated_ctx)
-            logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+            _log_len = len(content) if isinstance(content, str) else f"multimodal({len(content)} parts)"
+            logger.info(f"  {tc.name}({args}) → {_log_len}")
             return tc.id, content
 
     # Run canvas mutations sequentially (each needs to see prior commits)
@@ -155,7 +160,8 @@ async def _execute_valid_calls_parallel(
             async with AsyncSessionLocal() as session:
                 isolated_ctx = replace(ctx, db=session)
                 content = await get_tool_result(tool_manager, tc.name, args, isolated_ctx)
-                logger.info(f"  {tc.name}({args}) → {len(content)} chars")
+                _log_len = len(content) if isinstance(content, str) else f"multimodal({len(content)} parts)"
+                logger.info(f"  {tc.name}({args}) → {_log_len}")
                 seq_results.append((tc.id, content))
         return seq_results
 
@@ -180,6 +186,15 @@ async def _execute_valid_calls_parallel(
     return results
 
 
+def _flatten_content_for_anthropic(content: str | list) -> str:
+    """Anthropic tool_result content 仅支持 string，多模态 list 降级为纯文本。"""
+    if isinstance(content, str):
+        return content
+    # 从多模态 content parts 中提取所有 text 部分
+    text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+    return "\n".join(text_parts) or "[Media content — view in multimodal-capable provider]"
+
+
 async def _append_anthropic_tool_round(
     messages: list, result, tool_manager: "ToolManager", ctx: "ToolContext",
 ):
@@ -197,7 +212,7 @@ async def _append_anthropic_tool_round(
         [(tc, json.loads(tc.arguments)) for tc in result.tool_calls], tool_manager, ctx,
     )
     tool_results = [
-        {"type": "tool_result", "tool_use_id": tc_id, "content": content}
+        {"type": "tool_result", "tool_use_id": tc_id, "content": _flatten_content_for_anthropic(content)}
         for tc_id, content in results
     ]
     messages.append({"role": "user", "content": tool_results})
@@ -231,7 +246,7 @@ async def _append_anthropic_tool_round_with_errors(
     results_map = dict(results)
     
     tool_results = [
-        {"type": "tool_result", "tool_use_id": tc.id, "content": results_map[tc.id]}
+        {"type": "tool_result", "tool_use_id": tc.id, "content": _flatten_content_for_anthropic(results_map[tc.id])}
         for tc, _ in valid_calls
     ]
     # 处理错误调用 - 直接返回错误信息

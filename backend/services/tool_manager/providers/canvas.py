@@ -27,6 +27,7 @@ CANVAS_TOOL_NAMES_SET = frozenset({
     "list_canvas_nodes", "get_canvas_node", "create_canvas_node",
     "update_canvas_node", "delete_canvas_node",
     "list_canvas_edges", "create_canvas_edge", "delete_canvas_edge",
+    "view_node_media",
 })
 
 # Legacy node type migration mapping (old -> new)
@@ -108,6 +109,23 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
                         "node_id": {
                             "type": "string",
                             "description": "节点UUID。",
+                        },
+                    },
+                    "required": ["node_id"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "view_node_media",
+                "description": "查看图像/视频节点的实际媒体内容。调用后将文件内容注入对话上下文，使你能真正看到图像或视频内容。仅适用于 image/video 类型节点。",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {
+                            "type": "string",
+                            "description": "要查看的节点UUID。",
                         },
                     },
                     "required": ["node_id"],
@@ -695,12 +713,108 @@ async def _exec_delete_edge(
 
 
 # ---------------------------------------------------------------------------
+# View node media — multimodal content injection
+# ---------------------------------------------------------------------------
+
+# URL 字段名 → 媒体类型映射
+_MEDIA_URL_FIELDS = {
+    "imageUrl": "image",
+    "videoUrl": "video",
+    "audioUrl": "audio",
+}
+
+
+async def _exec_view_node_media(
+    args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
+) -> str | list:
+    """读取节点中的媒体文件并返回多模态 content parts，使 LLM 能看到实际内容。
+
+    返回 list（多模态 content array）而非 string，由分发层注入 tool result。
+    """
+    from services.media_utils import resolve_media_filepath
+    from services.chat_utils import image_file_to_data_url, media_file_to_inline_data
+
+    node_id = args.get("node_id", "")
+
+    query = select(TheaterNode).where(
+        TheaterNode.id == node_id,
+        TheaterNode.theater_id == theater_id,
+    )
+    result = await db.execute(query)
+    node = result.scalar_one_or_none()
+
+    if not node:
+        return _error_result("Node not found")
+
+    # 检查节点类型是否包含媒体
+    data = node.data or {}
+    media_url = ""
+    media_type = ""
+    for field, mtype in _MEDIA_URL_FIELDS.items():
+        url_val = data.get(field)
+        if url_val:
+            media_url = url_val
+            media_type = mtype
+            break
+
+    if not media_url:
+        return _error_result(
+            f"Node '{node_id}' (type={node.node_type}) has no media content. "
+            "Use get_canvas_node for text/storyboard nodes."
+        )
+
+    # 从 URL 路径中提取文件名并解析本地路径
+    filename = media_url.rsplit("/", 1)[-1]
+    local_path = resolve_media_filepath(filename)
+
+    if not local_path:
+        return _error_result(f"Media file not found: {filename}")
+
+    node_name = data.get("name", node_id)
+    text_desc = f"Media from node '{node_name}' ({node.node_type}): /media/{filename}"
+
+    # 图像：转为 base64 data URL → image_url content part
+    if media_type == "image":
+        data_url = await image_file_to_data_url(str(local_path))
+        if not data_url:
+            return _error_result(f"Failed to read image file: {filename}")
+        return [
+            {"type": "text", "text": text_desc},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]
+
+    # 视频：转为 base64 → video_url content part
+    if media_type == "video":
+        inline_part = await media_file_to_inline_data(str(local_path))
+        if not inline_part:
+            return _error_result(f"Failed to read video file (may exceed size limit): {filename}")
+        inline = inline_part.get("inline_data", {})
+        mime = inline.get("mime_type", "video/mp4")
+        b64_data = inline.get("data", "")
+        return [
+            {"type": "text", "text": text_desc},
+            {"type": "video_url", "video_url": {"url": f"data:{mime};base64,{b64_data}"}},
+        ]
+
+    # 音频：大部分模型不支持音频 tool result，返回纯文本描述
+    return _json_result({
+        "node_id": node_id,
+        "node_type": node.node_type,
+        "name": node_name,
+        "description": data.get("description", ""),
+        "audioUrl": media_url,
+        "note": "Audio playback not available in tool results. Content accessible via URL path.",
+    })
+
+
+# ---------------------------------------------------------------------------
 # Executor lookup map
 # ---------------------------------------------------------------------------
 
 _EXECUTORS: dict[str, callable] = {
     "list_canvas_nodes": _exec_list_nodes,
     "get_canvas_node": _exec_get_node,
+    "view_node_media": _exec_view_node_media,
     "create_canvas_node": _exec_create_node,
     "update_canvas_node": _exec_update_node,
     "delete_canvas_node": _exec_delete_node,

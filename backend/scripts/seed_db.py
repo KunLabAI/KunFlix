@@ -74,6 +74,12 @@ DEFAULT_PROVIDERS = [
         "tags": ["llm"],
     },
     {
+        "name": "Kimi",
+        "provider_type": "kimi",
+        "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+        "tags": ["llm"],
+    },
+    {
         # Ollama 本地部署：api_key 留空；models 留空交由后台「同步本地模型」按钮拉取
         # base_url 默认 localhost，若部署在 Docker 中需手动改为 http://host.docker.internal:11434
         "name": "Ollama",
