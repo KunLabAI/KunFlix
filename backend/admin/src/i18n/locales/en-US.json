@@ -93,7 +93,16 @@
       "admins": "Administrators",
       "system": "System Settings",
       "emailProviders": "Email Providers",
-      "toggleMenu": "Toggle Menu"
+      "toggleMenu": "Toggle Menu",
+      "groups": {
+        "overview": "Overview",
+        "ai": "Models & AI",
+        "agents": "Agents",
+        "content": "Content",
+        "business": "Business",
+        "access": "Users & Access",
+        "system": "System"
+      }
     },
     "account": {
       "admin": "Administrator",
@@ -517,6 +526,15 @@
       "save": "Save",
       "saving": "Saving...",
       "idLabel": "ID: {{id}}",
+      "steps": {
+        "basic": { "title": "Basic Info", "description": "Choose a brand and name the provider" },
+        "connection": { "title": "Connection", "description": "Configure the API endpoint and credentials" },
+        "models": { "title": "Models & Costs", "description": "Add models and configure cost parameters" }
+      },
+      "wizard": {
+        "next": "Next",
+        "prev": "Back"
+      },
       "basic": {
         "title": "Basic Info",
         "description": "Configure provider name, brand, and tags.",
@@ -524,6 +542,7 @@
         "namePlaceholder": "Enter a name (e.g. OpenAI)",
         "brand": "Brand",
         "brandPlaceholder": "Select a brand",
+        "brandHint": "Click an icon to select the provider brand. The name will be auto-filled.",
         "tags": "Tags",
         "tagsPlaceholder": "Type a tag and press Enter",
         "tagsDescription": "Used for categorization and filtering. Multiple tags supported."
@@ -548,6 +567,7 @@
         "aliasPlaceholder": "Alias (optional)",
         "typePlaceholder": "Type",
         "addModel": "Add Model",
+        "syncOllama": "Sync Local Models",
         "costsTitle": "Model Cost Configuration (optional)",
         "costsUnit": "USD / Unit",
         "configCount": "{{count}} config(s)",

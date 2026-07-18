@@ -16,7 +16,6 @@ import {
   Shield,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   LogOut,
   MoreHorizontal,
   FileCode2,
@@ -27,11 +26,11 @@ import {
   UserCircle,
   Languages,
   Check,
-  Settings,
   Mail,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +51,6 @@ const LANGUAGES = [
 
 const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const pathname = usePathname();
   const { logout, user } = useAuth();
   const { t, i18n } = useTranslation();
@@ -62,39 +60,70 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     return <>{children}<Toaster /></>;
   }
 
+  type NavLeaf = { title: string; href: string; icon: React.ElementType };
+  type NavSection = { key: string; title: string; items: NavLeaf[] };
 
-  type NavLeaf = { kind: 'leaf'; title: string; href: string; icon: React.ElementType };
-  type NavGroup = { kind: 'group'; key: string; title: string; icon: React.ElementType; children: NavLeaf[] };
-  type NavItem = NavLeaf | NavGroup;
-
-  const items: NavItem[] = [
-    { kind: 'leaf', title: t('layout.sidebar.dashboard'), href: '/admin', icon: LayoutDashboard },
-    { kind: 'leaf', title: t('layout.sidebar.llm'), href: '/admin/llm', icon: Bot },
-    { kind: 'leaf', title: t('layout.sidebar.pricing', '计费定价'), href: '/admin/pricing', icon: Coins },
-    { kind: 'leaf', title: t('layout.sidebar.agents'), href: '/admin/agents', icon: Zap },
-    { kind: 'leaf', title: t('layout.sidebar.skills'), href: '/admin/skills', icon: Blocks },
-    { kind: 'leaf', title: t('layout.sidebar.mcp'), href: '/admin/mcp', icon: ServerCog },
-    { kind: 'leaf', title: t('layout.sidebar.tools'), href: '/admin/tools', icon: Wrench },
-    { kind: 'leaf', title: t('layout.sidebar.videos'), href: '/admin/videos', icon: Film },
-    { kind: 'leaf', title: t('layout.sidebar.virtualHumans'), href: '/admin/virtual-humans', icon: UserCircle },
-    { kind: 'leaf', title: t('layout.sidebar.promptTemplates'), href: '/admin/prompt-templates', icon: FileCode2 },
-    { kind: 'leaf', title: t('layout.sidebar.users'), href: '/admin/users', icon: Users },
-    { kind: 'leaf', title: t('layout.sidebar.subscriptions'), href: '/admin/subscriptions', icon: CreditCard },
-    { kind: 'leaf', title: t('layout.sidebar.admins'), href: '/admin/admins', icon: Shield },
+  const sections: NavSection[] = [
     {
-      kind: 'group',
+      key: 'overview',
+      title: t('layout.sidebar.groups.overview', '概览'),
+      items: [
+        { title: t('layout.sidebar.dashboard'), href: '/admin', icon: LayoutDashboard },
+      ],
+    },
+    {
+      key: 'ai',
+      title: t('layout.sidebar.groups.ai', '模型与 AI'),
+      items: [
+        { title: t('layout.sidebar.llm'), href: '/admin/llm', icon: Bot },
+        { title: t('layout.sidebar.promptTemplates'), href: '/admin/prompt-templates', icon: FileCode2 },
+        { title: t('layout.sidebar.mcp'), href: '/admin/mcp', icon: ServerCog },
+        { title: t('layout.sidebar.tools'), href: '/admin/tools', icon: Wrench },
+      ],
+    },
+    {
+      key: 'agents',
+      title: t('layout.sidebar.groups.agents', '智能体'),
+      items: [
+        { title: t('layout.sidebar.agents'), href: '/admin/agents', icon: Zap },
+        { title: t('layout.sidebar.skills'), href: '/admin/skills', icon: Blocks },
+      ],
+    },
+    {
+      key: 'content',
+      title: t('layout.sidebar.groups.content', '内容资产'),
+      items: [
+        { title: t('layout.sidebar.videos'), href: '/admin/videos', icon: Film },
+        { title: t('layout.sidebar.virtualHumans'), href: '/admin/virtual-humans', icon: UserCircle },
+      ],
+    },
+    {
+      key: 'business',
+      title: t('layout.sidebar.groups.business', '商业运营'),
+      items: [
+        { title: t('layout.sidebar.pricing', '计费定价'), href: '/admin/pricing', icon: Coins },
+        { title: t('layout.sidebar.subscriptions'), href: '/admin/subscriptions', icon: CreditCard },
+      ],
+    },
+    {
+      key: 'access',
+      title: t('layout.sidebar.groups.access', '用户与权限'),
+      items: [
+        { title: t('layout.sidebar.users'), href: '/admin/users', icon: Users },
+        { title: t('layout.sidebar.admins'), href: '/admin/admins', icon: Shield },
+      ],
+    },
+    {
       key: 'system',
-      title: t('layout.sidebar.system'),
-      icon: Settings,
-      children: [
-        { kind: 'leaf', title: t('layout.sidebar.emailProviders'), href: '/admin/system/email-providers', icon: Mail },
+      title: t('layout.sidebar.groups.system', '系统设置'),
+      items: [
+        { title: t('layout.sidebar.emailProviders'), href: '/admin/system/email-providers', icon: Mail },
       ],
     },
   ];
 
-  // 跳转或子路由命中时自动展开对应分组
+  // 跳转或子路由命中时高亮对应菜单项
   const isLeafActive = (href: string) => href === '/admin' ? pathname === href : pathname.startsWith(href);
-  const isGroupActive = (group: NavGroup) => group.children.some((c) => isLeafActive(c.href));
 
   // 某些子页面需要全屏/无内边距布局（如：创建/编辑智能体页面有自己的滚动和分栏机制）
   const isFullScreenPage = pathname?.match(/^\/admin\/agents\/[^/]+$/);
@@ -117,7 +146,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Button
             variant="ghost"
             size="icon"
-            className={cn("h-8 w-8", collapsed ? "" : "")}
+            className="h-8 w-8"
             onClick={() => setCollapsed(!collapsed)}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -127,83 +156,34 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-            {items.map((item) => {
-              if (item.kind === 'leaf') {
-                const isActive = isLeafActive(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
-                      isActive ? "bg-muted text-primary" : "text-muted-foreground",
-                      collapsed && "justify-center px-2"
-                    )}
-                    title={collapsed ? item.title : undefined}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {!collapsed && item.title}
-                  </Link>
-                );
-              }
-              // group
-              const groupActive = isGroupActive(item);
-              const isOpen = openGroups[item.key] ?? groupActive;
-              const Icon = item.icon;
-              // 折叠模式：直接展示顶图标，点击跳到首个子项
-              if (collapsed) {
-                const firstChild = item.children[0];
-                return (
-                  <Link
-                    key={item.key}
-                    href={firstChild.href}
-                    className={cn(
-                      "flex items-center justify-center px-2 py-2 rounded-lg transition-all hover:text-primary",
-                      groupActive ? "bg-muted text-primary" : "text-muted-foreground"
-                    )}
-                    title={item.title}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </Link>
-                );
-              }
-              return (
-                <div key={item.key}>
-                  <button
-                    type="button"
-                    onClick={() => setOpenGroups((s) => ({ ...s, [item.key]: !isOpen }))}
-                    className={cn(
-                      "w-full flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
-                      groupActive ? "text-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="flex-1 text-left">{item.title}</span>
-                    <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen && "rotate-180")} />
-                  </button>
-                  {isOpen && (
-                    <div className="mt-1 ml-4 pl-3 border-l border-border space-y-0.5">
-                      {item.children.map((child) => {
-                        const childActive = isLeafActive(child.href);
-                        return (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            className={cn(
-                              "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-all hover:text-primary",
-                              childActive ? "bg-muted text-primary" : "text-muted-foreground"
-                            )}
-                          >
-                            <child.icon className="h-3.5 w-3.5" />
-                            {child.title}
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {sections.map((section, sectionIndex) => (
+              <div key={section.key} className={cn(!collapsed && sectionIndex > 0 && "mt-5")}>
+                {collapsed && sectionIndex > 0 && <Separator className="my-2" />}
+                {!collapsed && (
+                  <div className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {section.title}
+                  </div>
+                )}
+                {section.items.map((item) => {
+                  const isActive = isLeafActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                        isActive ? "bg-muted text-primary" : "text-muted-foreground",
+                        collapsed && "justify-center px-2"
+                      )}
+                      title={collapsed ? item.title : undefined}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {!collapsed && item.title}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
         
