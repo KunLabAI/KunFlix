@@ -111,7 +111,7 @@ class VideoProviderAdapter(ABC):
         """
         pass
     
-    async def get_video_url(self, file_id: str) -> str:
+    async def get_video_url(self, api_key: str, file_id: str) -> str:
         """
         获取视频下载链接
         
@@ -119,6 +119,7 @@ class VideoProviderAdapter(ABC):
         xAI 等供应商直接在 poll 结果中返回 URL，无需实现此方法。
         
         Args:
+            api_key: 供应商 API Key
             file_id: 文件 ID
             
         Returns:
