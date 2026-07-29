@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import TheaterNode, TheaterEdge
 from services.tool_manager.context import ToolContext
 from services.tool_manager.providers._canvas_edge_rules import validate_edge
@@ -426,7 +427,7 @@ async def _do_create_node(
     )
 
     db.add(node)
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(node)
 
     logger.info("Created node %s (type=%s) in theater %s", node.id, node_type, theater_id)
@@ -529,7 +530,7 @@ async def _do_update_node(
     merged_data = {**(node.data or {}), **filtered_new_data} if filtered_new_data else node.data
     node.data = merged_data
 
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(node)
 
     logger.info("Updated node %s", node.id)
@@ -567,7 +568,7 @@ async def _do_delete_node(node: TheaterNode, node_id: str, theater_id: str, db: 
     await db.execute(edge_delete)
 
     await db.delete(node)
-    await db.commit()
+    await safe_commit(db)
 
     logger.info("Deleted node %s and associated edges", node_id)
     return _json_result({
@@ -669,7 +670,7 @@ async def _exec_create_edge(
     )
 
     db.add(edge)
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(edge)
 
     logger.info(
@@ -700,7 +701,7 @@ async def _exec_delete_edge(
         return _error_result("Edge not found")
 
     await db.delete(edge)
-    await db.commit()
+    await safe_commit(db)
 
     logger.info("Deleted edge from %s to %s", source_node_id, target_node_id)
     return _json_result({

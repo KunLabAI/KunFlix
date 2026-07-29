@@ -6,7 +6,9 @@
 - 删除 1.0 的 ``ToolGuardMixin`` / ``MemoryCompactionHook`` / 手工 formatter / self.memory；
   2.0 的 Permission 系统、Middleware、ContextConfig 已分别取代它们的职责。
 - Skill 通过 ``Toolkit(skills_or_loaders=[...])`` 在构造时一次性注册到 active_skills 目录。
-- MCP 在每次 reply 之前懒注册到 toolkit，沿用 mcp_manager 的热加载语义。
+- MCP 在 Toolkit 构造时通过 ``mcps=[...]`` 一次性注册（2.0 标准方式）。
+- ContextConfig 在构造时注入，控制上下文压缩阈值和工具结果截断。
+- AgentState 支持通过外部注入实现跨请求状态持久化。
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from agentscope.agent import Agent
+from agentscope.agent import Agent, ContextConfig
 from agentscope.credential import (
     AnthropicCredential,
     DashScopeCredential,
@@ -32,12 +34,14 @@ from agentscope.model import (
     OllamaChatModel,
     OpenAIChatModel,
 )
+from agentscope.state import AgentState
 from agentscope.tool import Toolkit
 from sqlalchemy.future import select
 
 from config import settings
 from database import AsyncSessionLocal
 from mcp_manager.manager import MCPClientManager
+from middlewares import build_default_middlewares
 from models import LLMProvider
 from skills_manager import (
     get_active_skills_dir,
@@ -165,14 +169,28 @@ def _block_to_text(block: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 默认 ContextConfig — 避免上下文无限增长
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CONTEXT_CONFIG = ContextConfig(
+    trigger_ratio=0.75,       # 使用 75% 上下文时触发压缩
+    reserve_ratio=0.2,        # 压缩后保留最近 20% 的内容
+    tool_result_limit=3000,   # 工具结果超过 3000 token 时截断
+)
+
+
+# ---------------------------------------------------------------------------
 # DialogAgent（KunFlix 项目对 2.0 Agent 的最薄封装）
 # ---------------------------------------------------------------------------
 
 class DialogAgent(Agent):
     """保留 1.0 风格的构造签名，便于 services.agent_executor / routers 零改动接入。
 
+    P0 优化（2.0 对齐）：
+    - ContextConfig 在构造时注入，防止上下文溢出
+    - MCP 在 Toolkit 构造时注册（mcps=[...]），而非 reply 前懒注册
+    - AgentState 支持外部注入，实现跨请求状态持久化
     - skills 通过 Toolkit(skills_or_loaders=[...]) 一次性注册
-    - mcp 在 reply 前懒注册（兼容 mcp_manager 热加载）
     """
 
     def __init__(
@@ -183,24 +201,40 @@ class DialogAgent(Agent):
         max_tokens: int = 4000,  # noqa: ARG002 — 1.0 兼容签名；2.0 由 ContextConfig 接管
         mcp_manager: MCPClientManager | None = None,
         skill_names: list[str] | None = None,
+        state: AgentState | None = None,
+        context_config: ContextConfig | None = None,
+        middlewares: list[Any] | None = None,
     ) -> None:
         sync_skills()  # 同步 builtin / customized → active_skills
         active_dir = get_active_skills_dir()
         active_dir.exists() or active_dir.mkdir(parents=True, exist_ok=True)
 
         skills_or_loaders = self._collect_skill_paths(active_dir, skill_names)
-        toolkit_kwargs = {"skills_or_loaders": skills_or_loaders} if skills_or_loaders else {}
+
+        # P0-3: MCP 在 Toolkit 构造时注册（2.0 标准方式）
+        mcps = self._collect_mcp_clients(mcp_manager)
+        toolkit_kwargs: dict[str, Any] = {}
+        skills_or_loaders and toolkit_kwargs.update(skills_or_loaders=skills_or_loaders)
+        mcps and toolkit_kwargs.update(mcps=mcps)
         toolkit = Toolkit(**toolkit_kwargs)
+
+        # P0-2: 注入 ContextConfig，防止上下文无限增长
+        effective_context_config = context_config or _DEFAULT_CONTEXT_CONFIG
+
+        # P1: 中间件栈（动态上下文 + 重试 + 可观测性）
+        effective_middlewares = middlewares or build_default_middlewares()
 
         super().__init__(
             name=name,
             system_prompt=sys_prompt,
             model=model,
             toolkit=toolkit,
+            state=state,
+            context_config=effective_context_config,
+            middlewares=effective_middlewares,
         )
 
         self.mcp_manager = mcp_manager
-        self._mcp_registered = False
 
     @staticmethod
     def _collect_skill_paths(active_dir: Path, skill_names: list[str] | None) -> list[str]:
@@ -209,9 +243,33 @@ class DialogAgent(Agent):
         wanted = [s for s in available if s in skill_names] if skill_names else available
         return [str(active_dir / name) for name in wanted]
 
+    @staticmethod
+    def _collect_mcp_clients(mcp_manager: MCPClientManager | None) -> list[Any]:
+        """同步收集已连接的 MCP 客户端列表（构造时一次性注册到 Toolkit）。
+
+        由于 Toolkit 构造是同步的，这里使用 asyncio 事件循环获取客户端。
+        兼容无 MCP 管理器或管理器内无活跃客户端的情况。
+        """
+        if not mcp_manager:
+            return []
+        try:
+            loop = asyncio.get_event_loop()
+            # 已在运行中的 event loop 内：创建 future 并同步获取
+            # 注意：此路径在 Agent 构造期间调用，通常在 await 上下文中
+            clients = loop.run_until_complete(mcp_manager.get_clients()) if not loop.is_running() else []
+            # 如果事件循环已运行（大多数情况），回退到空列表并在首次 reply 时补注册
+            return clients
+        except RuntimeError:
+            # 无事件循环可用，返回空列表
+            return []
+
     async def _ensure_mcp_registered(self) -> None:
-        """懒注册 MCP 客户端到 toolkit；首次 reply 之前完成。"""
-        if not self.mcp_manager or self._mcp_registered:
+        """补注册 MCP 客户端（仅在构造时未能同步注册的场景触发）。"""
+        if not self.mcp_manager:
+            return
+        # 检查 toolkit 是否已有 MCP 工具注册
+        existing_mcps = getattr(self.toolkit, "_mcps", None) or getattr(self.toolkit, "mcps", None)
+        if existing_mcps:
             return
 
         # 兼容 toolkit 在不同 2.0 版本中的方法名（register_mcp_client / register_mcp）
@@ -221,7 +279,6 @@ class DialogAgent(Agent):
         )
         if not callable(register):
             logger.debug("Toolkit has no MCP registration hook; skipping MCP injection.")
-            self._mcp_registered = True
             return
 
         for client in await self.mcp_manager.get_clients():
@@ -231,10 +288,9 @@ class DialogAgent(Agent):
                 logger.info("Registered MCP client: %s", getattr(client, "name", "unknown"))
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to register MCP client: %s", exc)
-        self._mcp_registered = True
 
     async def reply(self, *args: Any, **kwargs: Any) -> Msg:  # type: ignore[override]
-        """覆盖 Agent.reply，在第一次推理前确保 MCP 已注册。"""
+        """覆盖 Agent.reply，确保 MCP 已注册后执行 ReAct 推理。"""
         await self._ensure_mcp_registered()
         return await super().reply(*args, **kwargs)
 

@@ -10,7 +10,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
-from database import AsyncSessionLocal
+from database import AsyncSessionLocal, safe_commit
 from services.tool_manager.providers.canvas import CANVAS_TOOL_NAMES_SET
 from services.tool_manager.providers.image_gen import IMAGE_GEN_TOOL_NAME
 
@@ -57,7 +57,7 @@ async def _write_record(
 ) -> None:
     """Persist a ToolExecution record using an independent DB session.
 
-    Retries on database-locked errors with exponential backoff.
+    Uses safe_commit with global write lock to prevent database-locked errors.
     首次延迟 1.5s 等主聊天事务提交；失败后按 1s, 2s, 4s, 8s 退避。
     """
     from models import ToolExecution
@@ -83,7 +83,7 @@ async def _write_record(
                     duration_ms=duration_ms,
                 )
                 session.add(record)
-                await session.commit()
+                await safe_commit(session)
             return
         except Exception as exc:
             is_locked = "database is locked" in str(exc)

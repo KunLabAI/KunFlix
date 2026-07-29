@@ -9,7 +9,7 @@ aiosqlite>=0.22.1
 redis[hiredis]>=5.0.0,<6.0.0
 websockets>=16.0
 python-dotenv>=1.2.1
-agentscope>=2.0.2
+agentscope>=2.0.4.post1
 # ripgrep 15.x 无预编译 Linux wheel 需 Rust 从源码编译（首次构建 30+ min），
 # 14.1.0 提供 manylinux wheel，功能上 agentscope 无版本约束，锁定以避免 Rust 工具链
 ripgrep==14.1.0

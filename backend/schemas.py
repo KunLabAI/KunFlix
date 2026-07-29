@@ -300,6 +300,14 @@ class AgentBase(BaseModel):
     member_agent_ids: List[str] = Field(default_factory=list)
     max_subtasks: int = Field(default=10, ge=1, le=20)
     enable_auto_review: bool = True
+    # P0-4: 评审策略 —— disabled / final_only / per_subtask / threshold_based
+    review_policy: Optional[Literal["disabled", "final_only", "per_subtask", "threshold_based"]] = "final_only"
+    # P1-3: 极简 Permission Mode
+    permission_mode: Optional[Literal["explore", "default", "bypass"]] = "default"
+    # P1-1: 可派生蓝图 type 列表
+    sub_agent_template_types: List[str] = Field(default_factory=list)
+    # P1-4: 编排模式
+    orchestration_style: Optional[Literal["legacy_json", "team_tools"]] = "legacy_json"
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
     # xAI 图像生成配置
@@ -348,6 +356,14 @@ class AgentUpdate(BaseModel):
     member_agent_ids: Optional[List[str]] = None
     max_subtasks: Optional[int] = Field(None, ge=1, le=20)
     enable_auto_review: Optional[bool] = None
+    # P0-4: 评审策略（可选更新）
+    review_policy: Optional[Literal["disabled", "final_only", "per_subtask", "threshold_based"]] = None
+    # P1-3: Permission mode（可选更新）
+    permission_mode: Optional[Literal["explore", "default", "bypass"]] = None
+    # P1-1: 可派生蓝图 type 列表（可选更新）
+    sub_agent_template_types: Optional[List[str]] = None
+    # P1-4: 编排模式（可选更新）
+    orchestration_style: Optional[Literal["legacy_json", "team_tools"]] = None
     # Gemini 3.1 配置
     gemini_config: Optional[GeminiConfig] = None
     # xAI 图像生成配置
@@ -532,6 +548,41 @@ class TaskExecutionResponse(BaseModel):
     subtasks: List[SubTaskResponse] = Field(default_factory=list)
     created_at: Any
     completed_at: Optional[Any] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# P1-1: SubAgentTemplate schemas
+# ---------------------------------------------------------------------------
+class SubAgentTemplateBase(BaseModel):
+    type: str = Field(..., min_length=1, max_length=50)
+    description: str = Field(..., min_length=1, max_length=500)
+    system_prompt_template: str = Field(..., min_length=1)
+    permission_mode: Optional[Literal["explore", "default", "bypass"]] = "default"
+    context_config: Optional[Dict[str, Any]] = None
+    tools: List[str] = Field(default_factory=list)
+    max_tool_rounds: int = Field(default=50, ge=5, le=200)
+
+
+class SubAgentTemplateCreate(SubAgentTemplateBase):
+    pass
+
+
+class SubAgentTemplateUpdate(BaseModel):
+    type: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None, max_length=500)
+    system_prompt_template: Optional[str] = None
+    permission_mode: Optional[Literal["explore", "default", "bypass"]] = None
+    context_config: Optional[Dict[str, Any]] = None
+    tools: Optional[List[str]] = None
+    max_tool_rounds: Optional[int] = Field(None, ge=5, le=200)
+
+
+class SubAgentTemplateResponse(SubAgentTemplateBase):
+    id: str
+    created_at: Any
+    updated_at: Optional[Any] = None
 
     model_config = ConfigDict(from_attributes=True)
 

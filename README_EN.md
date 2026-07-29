@@ -108,7 +108,7 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 </tr>
 <tr>
 <td>Database</td>
-<td>SQLite (Dev) / PostgreSQL (Prod) + SQLAlchemy</td>
+<td>PostgreSQL + SQLAlchemy (unified for dev & prod)</td>
 </tr>
 <tr>
 <td>Frontend</td>
@@ -132,7 +132,7 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 - **Rust 1.85+** (only when compiling ripgrep from source; triggered on first install, see [UPGRADE.md](./UPGRADE.md))
 - Node.js 20+
 - Docker 24+ (required for Docker deployment)
-- SQLite (Development) / PostgreSQL (Production)
+- PostgreSQL 18 (unified for dev & prod; start locally with `docker compose -f deploy/docker-compose.dev.yml up -d` for PostgreSQL + Redis)
 
 > If you are upgrading from 1.0 to 2.0, please read [UPGRADE.md](./UPGRADE.md) first.
 

@@ -9,7 +9,7 @@ import asyncio
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import AsyncSessionLocal
+from database import AsyncSessionLocal, safe_commit
 from models import Agent, ChatSession, ChatMessage, LLMProvider, User, Admin, ToolConfig
 from services.chat_utils import (
     sse, deserialize_content, extract_media_filename,
@@ -22,7 +22,8 @@ from services.llm_stream import stream_completion
 from services.tool_manager import ToolManager, ToolContext, CANVAS_TOOL_NAMES, IMAGE_GEN_TOOL_NAME
 from services.tool_manager.context import TOOL_SKILL_GATE_MAP
 from services.skill_tools import build_skill_prompt, build_load_skill_tool_def, load_skill_content
-from services.billing import calculate_credit_cost, deduct_credits_atomic, InsufficientCreditsError, BalanceFrozenError, require_positive_balance, is_paid_model, load_pricing
+from services.billing import calculate_credit_cost, InsufficientCreditsError, BalanceFrozenError, is_paid_model, load_pricing
+from services.billing_policy import get_default_billing_policy
 from services.media_utils import MEDIA_DIR
 from services.image_config_adapter import resolve_global_image_configs
 
@@ -58,17 +59,14 @@ def _extract_reasoning_to_msg(msg: dict) -> bool:
 
 
 async def _flush_canvas_image_queue(ctx, theater_id: str) -> None:
-    """Sequentially create canvas image nodes from the queue (after parallel tools complete)."""
-    try:
-        from services.media_canvas_bridge import create_image_nodes
-        urls = [item["url"] for item in ctx.canvas_image_queue]
-        prompt = ctx.canvas_image_queue[0]["prompt"] if ctx.canvas_image_queue else ""
-        async with AsyncSessionLocal() as bridge_db:
-            await create_image_nodes(urls, theater_id, prompt, bridge_db)
-    except Exception as e:
-        logger.error("Flush canvas image queue failed: %s", e)
-    finally:
-        ctx.canvas_image_queue.clear()
+    """Sequentially create canvas image nodes from the queue (after parallel tools complete).
+
+    Thin wrapper preserved for backwards-compatible call sites; the real logic
+    lives in services.media_canvas_bridge.flush_canvas_image_queue so the
+    multi-agent orchestrator can share the same implementation.
+    """
+    from services.media_canvas_bridge import flush_canvas_image_queue
+    await flush_canvas_image_queue(ctx, theater_id)
 
 
 async def _wait_for_compaction(persist_task: asyncio.Task, persist_state: dict, timeout: float = 25.0) -> None:
@@ -198,7 +196,8 @@ async def generate_single_agent(
     # 工具管理器 — 构建工具定义
     tool_manager = ToolManager()
     ctx = ToolContext(theater_id=theater_id, agent=agent, db=db,
-                      session_id=session_id, user_id=entity_id, is_admin=is_admin)
+                      session_id=session_id, user_id=entity_id, is_admin=is_admin,
+                      permission_mode=(agent.permission_mode or "default"))
     agent_skills = agent.tools or []
 
     # 从聊天历史恢复已加载的技能（渐进式披露：跨轮次持久化）
@@ -276,13 +275,14 @@ async def generate_single_agent(
 
     # 调用 LLM 流式接口（含工具调用循环）
     # 二次余额防护：服务层在 LLM 调用前再次验证（防止路由层检查后余额被并发消耗）
-    # 使用 require_positive_balance 修复 credits>=0 漏洞
+    # P1-6: 通过 BillingPolicy 调用，与 orchestrator 同路径可替换
+    billing_policy = get_default_billing_policy()
     async with AsyncSessionLocal() as _pre_db:
         _agent_rate_map = await load_pricing(getattr(agent, 'provider_id', None), getattr(agent, 'model', None), _pre_db)
     if is_paid_model(_agent_rate_map):
         try:
             async with AsyncSessionLocal() as _pre_db:
-                await require_positive_balance(entity_id, _pre_db)
+                await billing_policy.ensure_positive_balance(entity_id, _pre_db)
         except InsufficientCreditsError:
             yield sse("error", {"code": "INSUFFICIENT_CREDITS", "message": "积分余额不足，请充值后继续使用"})
             return
@@ -642,7 +642,7 @@ async def generate_single_agent(
                         session_id=session_id, role="assistant", content=final_content,
                     )
                     session.add(assistant_msg)
-                    await session.commit()
+                    await safe_commit(session)
                     assistant_msg_id = assistant_msg.id
                 break
             except Exception as exc:
@@ -684,12 +684,13 @@ async def generate_single_agent(
                     entity and setattr(entity, 'total_input_chars', (entity.total_input_chars or 0) + input_chars)
                     entity and setattr(entity, 'total_output_chars', (entity.total_output_chars or 0) + len(result.full_response))
 
-                    # 积分扣费（统一原子扣费，User 和 Admin 均走 deduct_credits_atomic）
+                    # 积分扣费（统一原子扣费，User 和 Admin 均走 billing_policy.charge）
+                    # P1-6: 通过 BillingPolicy，幂等键 ``chat:{assistant_msg_id}`` 保持不变
                     credit_cost, billing_metadata = calculate_credit_cost(result, _agent_rate_map, agent=agent)
                     billing_event["credit_cost"] = round(credit_cost, 6)
 
                     try:
-                        tx = (credit_cost > 0) and await deduct_credits_atomic(
+                        tx = await billing_policy.charge(
                             user_id=entity_id,
                             cost=credit_cost,
                             session=session,
@@ -723,7 +724,7 @@ async def generate_single_agent(
                         agent, provider, session, session_id, session_obj=s,
                     )
 
-                await session.commit()
+                await safe_commit(session)
                 logger.info("Message/billing saved successfully (background)")
         except Exception as e:
             # Phase 2 失败不影响消息可见性，仅记录告警

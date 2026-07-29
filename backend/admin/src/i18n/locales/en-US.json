@@ -82,6 +82,8 @@
       "llm": "AI Providers",
       "pricing": "Pricing",
       "agents": "Agents",
+      "teams": "Agent Teams",
+      "templates": "Blueprints",
       "skills": "Skills",
       "mcp": "MCP Clients",
       "tools": "Tools",
@@ -725,10 +727,13 @@
         "importTemplate": "Import from template",
         "placeholder": "You are a professional assistant...",
         "dialogTitle": "Select a Prompt Template",
+        "dialogHint": "Choosing a template will auto-fill the agent name, description, and system prompt. You can still fine-tune them afterwards.",
         "searchPlaceholder": "Search template names...",
         "allCategories": "All Categories",
         "noMatch": "No matching templates",
-        "default": "Default"
+        "default": "Default",
+        "appliedTitle": "Template applied",
+        "appliedDesc": "Auto-filled name, description, and system prompt from \"{{name}}\"."
       },
       "leader": {
         "leaderMode": "Leader Mode",
@@ -739,7 +744,40 @@
         "maxSubtasks": "Max Subtasks",
         "maxSubtasksDesc": "Limit the number of subtasks a single task can be split into",
         "autoReview": "Auto Review",
-        "autoReviewDesc": "Leader automatically reviews results after subtasks complete"
+        "autoReviewDesc": "Leader automatically reviews results after subtasks complete",
+        "reviewPolicy": "Review Policy",
+        "reviewPolicyOptions": {
+          "disabled": "Disabled",
+          "final_only": "Final only (default)",
+          "per_subtask": "Per subtask",
+          "threshold_based": "Threshold (≥ 3 subtasks)"
+        },
+        "reviewPolicyDescMap": {
+          "disabled": "No review at all; adopt subtask outputs directly. Best for high-throughput scenarios where quality is not critical.",
+          "final_only": "Review only at Leader integration; balances quality and cost (N+2 LLM calls).",
+          "per_subtask": "Review each subtask individually; highest quality but expensive (2N+1 LLM calls).",
+          "threshold_based": "Per-subtask review only when there are ≥ 3 subtasks; a middle ground."
+        },
+        "permissionMode": "Permission Mode",
+        "permissionModeOptions": {
+          "default": "Default",
+          "explore": "Explore (read-only)",
+          "bypass": "Bypass (trusted)"
+        },
+        "permissionModeDescMap": {
+          "default": "Delegate tool permission to skill_gate and per-tool checks; no additional interception. Recommended for most cases.",
+          "explore": "Only whitelisted read-only tools (e.g. list_canvas_nodes / get_canvas_node) are allowed; all write tools are denied. Useful for retrieval / analysis workers.",
+          "bypass": "Fully trusted; no interception. Only for background batch jobs / trusted automation."
+        },
+        "orchestrationStyle": "Orchestration Mode",
+        "orchestrationStyleOptions": {
+          "legacy_json": "JSON Plan (default)",
+          "team_tools": "Team Tools"
+        },
+        "orchestrationStyleDescMap": {
+          "legacy_json": "Leader emits a JSON plan in a single LLM call, then executes subtasks in dependency order (existing behavior).",
+          "team_tools": "Leader uses team_create / worker_spawn / worker_say / team_end tools to incrementally coordinate workers (new mode, spawns from blueprints)."
+        }
       },
       "parameters": {
         "thinkingMode": "Thinking Mode",
@@ -918,6 +956,88 @@
         "failed": "Unable to load image",
         "continueEdit": "Continue Editing"
       }
+    }
+  },
+  "teams": {
+    "title": "Agent Teams",
+    "subtitle": "Manage multi-agent collaboration: Leader agents and the member agents they can dispatch.",
+    "empty": {
+      "title": "No teams configured yet",
+      "desc": "Turn any agent into a Leader and select members to see a team card here.",
+      "createBtn": "Go create an agent"
+    },
+    "card": {
+      "leader": "Leader",
+      "members": "Members",
+      "noMembers": "No members configured",
+      "maxSubtasks": "Max subtasks",
+      "reviewPolicy": "Review policy",
+      "permissionMode": "Permission mode",
+      "autoReviewOn": "Auto review on",
+      "autoReviewOff": "No auto review",
+      "editTeam": "Edit team",
+      "editMember": "Edit member",
+      "dissolve": "Dissolve"
+    },
+    "stats": {
+      "totalTeams": "Total teams",
+      "totalMembers": "Member seats",
+      "avgMembers": "Avg members"
+    },
+    "filter": {
+      "all": "All",
+      "searchPlaceholder": "Search team name..."
+    },
+    "create": {
+      "title": "Create Agent Team",
+      "selectLeader": "Select Leader Agent",
+      "selectLeaderDesc": "Choose an agent to be the team leader (coordinates other members)",
+      "selectMembers": "Select Member Agents",
+      "selectMembersDesc": "Check agents that the Leader can dispatch",
+      "settings": "Team Settings",
+      "maxSubtasks": "Max Subtasks",
+      "reviewPolicy": "Review Policy",
+      "permissionMode": "Permission Mode",
+      "autoReview": "Auto Review",
+      "autoReviewDesc": "Leader automatically reviews subtask results",
+      "submit": "Create Team",
+      "noAvailableAgents": "No agents available. Create agents first."
+    },
+    "edit": {
+      "title": "Edit Team",
+      "submit": "Save Changes"
+    },
+    "dissolve": {
+      "title": "Dissolve Team",
+      "desc": "This will remove the Leader role and clear all member associations. The agents themselves will not be deleted.",
+      "confirm": "Confirm Dissolve"
+    },
+    "toast": {
+      "createSuccess": "Team created successfully",
+      "editSuccess": "Team configuration updated",
+      "dissolveSuccess": "Team dissolved",
+      "error": "Operation failed"
+    },
+    "loading": "Loading...",
+    "error": "Failed to load teams"
+  },
+  "templates": {
+    "title": "Blueprint Templates",
+    "subtitle": "Define reusable Worker role blueprints (system prompt + permission + tools) for Leader agents to dynamically spawn sub-agents.",
+    "createBtn": "New Blueprint",
+    "empty": "No blueprints yet. Click \"New Blueprint\" to create one.",
+    "form": {
+      "type": "Type (unique identifier)",
+      "typePlaceholder": "e.g., scriptwriter, character_designer",
+      "description": "Role Description",
+      "descriptionPlaceholder": "Brief explanation of this blueprint's responsibilities",
+      "systemPrompt": "System Prompt Template",
+      "systemPromptPlaceholder": "You are {member_name}, part of team '{team_name}'...",
+      "placeholderHint": "Placeholders: {team_name}, {team_description}, {member_name}, {member_description}, {leader_name}",
+      "permissionMode": "Permission Mode",
+      "maxToolRounds": "Max Tool Rounds",
+      "tools": "Enabled Skills (comma separated)",
+      "toolsPlaceholder": "e.g., image_tools, video_tools, canvas_tools"
     }
   },
   "skills": {

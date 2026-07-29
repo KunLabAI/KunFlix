@@ -82,6 +82,8 @@
       "llm": "AI 供应商",
       "pricing": "计费定价",
       "agents": "智能体管理",
+      "teams": "智能体团队",
+      "templates": "蓝图模板",
       "skills": "技能管理 (Skills)",
       "mcp": "MCP 客户端",
       "tools": "工具管理",
@@ -725,10 +727,13 @@
         "importTemplate": "从模板导入",
         "placeholder": "你是一个专业的助手...",
         "dialogTitle": "选择提示词模板",
+        "dialogHint": "选择后将自动填充「名称」「描述」和「系统提示词」，可再手动微调。",
         "searchPlaceholder": "搜索模板名称...",
         "allCategories": "全部分类",
         "noMatch": "没有匹配的模板",
-        "default": "默认"
+        "default": "默认",
+        "appliedTitle": "已应用模板",
+        "appliedDesc": "已按「{{name}}」自动填充名称、描述和系统提示词。"
       },
       "leader": {
         "leaderMode": "Leader 模式",
@@ -739,7 +744,40 @@
         "maxSubtasks": "最大子任务数",
         "maxSubtasksDesc": "限制单次任务可拆解的子任务数量",
         "autoReview": "自动审查",
-        "autoReviewDesc": "子任务完成后由 Leader 自动审查结果"
+        "autoReviewDesc": "子任务完成后由 Leader 自动审查结果",
+        "reviewPolicy": "评审策略",
+        "reviewPolicyOptions": {
+          "disabled": "不评审",
+          "final_only": "仅最终整合（默认）",
+          "per_subtask": "逐子任务评审",
+          "threshold_based": "按阈值（≥ 3 子任务）"
+        },
+        "reviewPolicyDescMap": {
+          "disabled": "完全不评审，直接采纳子任务输出。适合对质量不敏感的高吞吐场景。",
+          "final_only": "仅在 Leader 整合阶段做一次评审，平衡质量与成本（N+2 LLM 调用）。",
+          "per_subtask": "每个子任务单独评审，最高质量，但成本高（2N+1 LLM 调用）。",
+          "threshold_based": "仅当子任务 ≥ 3 时逐条评审，权衡常见场景。"
+        },
+        "permissionMode": "权限模式",
+        "permissionModeOptions": {
+          "default": "默认",
+          "explore": "只读探索",
+          "bypass": "完全信任"
+        },
+        "permissionModeDescMap": {
+          "default": "将工具权限委托给既有 skill_gate 与工具内部检查，不额外拦截（适合大多数场景）。",
+          "explore": "只允许白名单内的只读工具（如 list_canvas_nodes / get_canvas_node），写入工具均拒绝。适合仅需检索 / 分析不产生副作用的 worker。",
+          "bypass": "完全信任，不拦截任何工具。仅适合后台批处理 / 可信自动化。"
+        },
+        "orchestrationStyle": "编排模式",
+        "orchestrationStyleOptions": {
+          "legacy_json": "JSON 计划（默认）",
+          "team_tools": "Team 工具"
+        },
+        "orchestrationStyleDescMap": {
+          "legacy_json": "Leader 用一次 LLM 调用输出 JSON 计划，然后按依赖图并行执行子任务（既有行为）。",
+          "team_tools": "Leader 通过 team_create / worker_spawn / worker_say / team_end 工具增量协调 worker（新模式，按蓝图派生）。"
+        }
       },
       "parameters": {
         "thinkingMode": "思考模式",
@@ -918,6 +956,88 @@
         "failed": "无法加载图片",
         "continueEdit": "继续编辑"
       }
+    }
+  },
+  "teams": {
+    "title": "智能体团队",
+    "subtitle": "管理多智能体协作关系：Leader 智能体以及其可调度的成员智能体。",
+    "empty": {
+      "title": "暂无已配置的团队",
+      "desc": "将任何智能体设为 Leader 并选择成员，即可在此处看到一个团队。",
+      "createBtn": "去创建智能体"
+    },
+    "card": {
+      "leader": "Leader",
+      "members": "成员",
+      "noMembers": "未配置成员",
+      "maxSubtasks": "最大子任务",
+      "reviewPolicy": "评审策略",
+      "permissionMode": "权限模式",
+      "autoReviewOn": "自动审查",
+      "autoReviewOff": "无自动审查",
+      "editTeam": "编辑团队",
+      "editMember": "编辑成员",
+      "dissolve": "解散团队"
+    },
+    "stats": {
+      "totalTeams": "团队总数",
+      "totalMembers": "成员岗位总数",
+      "avgMembers": "平均成员数"
+    },
+    "filter": {
+      "all": "全部",
+      "searchPlaceholder": "搜索团队名称..."
+    },
+    "create": {
+      "title": "创建智能体团队",
+      "selectLeader": "选择 Leader 智能体",
+      "selectLeaderDesc": "选择一个智能体作为团队的领导者（协调其他成员完成任务）",
+      "selectMembers": "选择成员智能体",
+      "selectMembersDesc": "勾选 Leader 可以调度的成员智能体",
+      "settings": "团队配置",
+      "maxSubtasks": "最大子任务数",
+      "reviewPolicy": "评审策略",
+      "permissionMode": "权限模式",
+      "autoReview": "自动审查",
+      "autoReviewDesc": "Leader 在子任务完成后自动审查结果",
+      "submit": "创建团队",
+      "noAvailableAgents": "没有可用的智能体，请先创建智能体"
+    },
+    "edit": {
+      "title": "编辑团队",
+      "submit": "保存修改"
+    },
+    "dissolve": {
+      "title": "解散团队",
+      "desc": "解散后该智能体将不再作为 Leader，成员关联将被清除。智能体本身不会被删除。",
+      "confirm": "确认解散"
+    },
+    "toast": {
+      "createSuccess": "团队创建成功",
+      "editSuccess": "团队配置已更新",
+      "dissolveSuccess": "团队已解散",
+      "error": "操作失败"
+    },
+    "loading": "加载中...",
+    "error": "团队列表加载失败"
+  },
+  "templates": {
+    "title": "蓝图模板",
+    "subtitle": "定义可复用的 Worker 角色蓝图（系统提示词 + 权限 + 工具），供 Leader 智能体动态派生子智能体使用。",
+    "createBtn": "新建蓝图",
+    "empty": "暂无蓝图模板，点击\u201c新建蓝图\u201d创建第一个。",
+    "form": {
+      "type": "类型标识（唯一）",
+      "typePlaceholder": "如 scriptwriter、character_designer",
+      "description": "角色描述",
+      "descriptionPlaceholder": "简述该蓝图的职责和能力",
+      "systemPrompt": "系统提示词模板",
+      "systemPromptPlaceholder": "你是 {member_name}，团队「{team_name}」中的...",
+      "placeholderHint": "支持占位符：{team_name}、{team_description}、{member_name}、{member_description}、{leader_name}",
+      "permissionMode": "权限模式",
+      "maxToolRounds": "最大工具轮次",
+      "tools": "启用技能（英文逗号分隔）",
+      "toolsPlaceholder": "如 image_tools, video_tools, canvas_tools"
     }
   },
   "skills": {

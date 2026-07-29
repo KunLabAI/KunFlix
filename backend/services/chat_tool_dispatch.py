@@ -126,6 +126,9 @@ async def _execute_valid_calls_parallel(
     sequentially so each call sees the previous commit and auto-position
     calculations don't collide.
 
+    When ctx.sequential_tools is True (多智能体子任务模式), ALL tools run
+    sequentially to avoid concurrent resource contention (image gen, DB writes, etc.).
+
     Each parallel task gets its own AsyncSession to avoid SQLAlchemy
     ``IllegalStateChangeError`` when multiple tools commit concurrently.
     """
@@ -137,6 +140,18 @@ async def _execute_valid_calls_parallel(
         _log_len = len(content) if isinstance(content, str) else f"multimodal({len(content)} parts)"
         logger.info(f"  {tc.name}({args}) → {_log_len}")
         return [(tc.id, content)]
+
+    # 队列模式：多智能体子任务下所有工具顺序执行，避免并发竞争
+    if ctx.sequential_tools:
+        results = []
+        for tc, args in valid_calls:
+            async with AsyncSessionLocal() as session:
+                isolated_ctx = replace(ctx, db=session)
+                content = await get_tool_result(tool_manager, tc.name, args, isolated_ctx)
+                _log_len = len(content) if isinstance(content, str) else f"multimodal({len(content)} parts)"
+                logger.info(f"  {tc.name}({args}) → {_log_len}")
+                results.append((tc.id, content))
+        return results
 
     # Split into sequential (canvas mutations) and parallel (everything else)
     sequential_calls = [(tc, args) for tc, args in valid_calls if tc.name in _CANVAS_SEQUENTIAL_TOOLS]

@@ -11,6 +11,7 @@ import {
   Bot,
   Zap,
   Users,
+  Users2,
   CreditCard,
   Coins,
   Shield,
@@ -86,6 +87,7 @@ const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       title: t('layout.sidebar.groups.agents', '智能体'),
       items: [
         { title: t('layout.sidebar.agents'), href: '/admin/agents', icon: Zap },
+        { title: t('layout.sidebar.teams'), href: '/admin/teams', icon: Users2 },
         { title: t('layout.sidebar.skills'), href: '/admin/skills', icon: Blocks },
       ],
     },

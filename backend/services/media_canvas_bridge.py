@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import TheaterNode
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ async def create_image_nodes(
             data=data,
         )
         db.add(node)
-        await db.commit()
+        await safe_commit(db)
         await db.refresh(node)
         node_ids.append(node.id)
         logger.info("Bridge: created image node %s in theater %s", node.id, theater_id)
@@ -115,7 +116,7 @@ async def create_placeholder_node(
         data=data,
     )
     db.add(node)
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(node)
     logger.info("Bridge: created placeholder %s node %s in theater %s", node_type, node.id, theater_id)
     return node.id
@@ -146,6 +147,37 @@ async def update_placeholder_node(
     current_data.update(updates)
     current_data.pop("_generating", None)
     node.data = current_data
-    await db.commit()
+    await safe_commit(db)
     logger.info("Bridge: updated placeholder node %s with media URL", node_id)
     return True
+
+
+async def flush_canvas_image_queue(ctx, theater_id: str) -> None:
+    """将 ctx.canvas_image_queue 中累积的 URL 顺序落地为画布 image 节点。
+
+    单智能体 chat_generation 与多智能体 orchestrator 共用此入口，
+    避免多路径重复实现导致「多智能体生成图片不入画布」这类漏刷问题。
+
+    会话选择策略（避免 SQLite 写锁竞争）：
+    - 直接使用 ctx.db（调用方已持有写锁时复用同一连接提交，无需争抢）
+    - finally 清空队列（成功/失败均清，防止累积重复写入）
+    - theater_id 为空或队列为空时静默返回
+    """
+    if not theater_id:
+        return
+    queue = getattr(ctx, "canvas_image_queue", None) or []
+    if not queue:
+        return
+    try:
+        urls = [item["url"] for item in queue]
+        prompt = queue[0]["prompt"] if queue else ""
+        # 优先复用 ctx.db：多智能体路径 orchestrator 的 self.db 已持有 SQLite WAL
+        # 写锁（safe_flush 留下的未提交事务），若开新会话写入必然等锁超时。
+        # 复用同一连接可直接在已有事务中追加 INSERT + COMMIT，绕开锁竞争。
+        # 单智能体路径 ctx.db 来自 FastAPI 请求 session，不存在锁竞争，同样可复用。
+        ctx_db = getattr(ctx, "db", None)
+        await create_image_nodes(urls, theater_id, prompt, ctx_db)
+    except Exception as e:
+        logger.error("Flush canvas image queue failed: %s", e)
+    finally:
+        ctx.canvas_image_queue.clear()

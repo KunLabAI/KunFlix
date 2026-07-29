@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type HarnessEvent } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type HarnessEvent, type OrchestrationStyle, type MultiAgentData } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
-import type { MultiAgentData } from '@/components/canvas/MultiAgentSteps';
 
 interface SSEEvent {
   event: string;
@@ -60,7 +59,28 @@ interface StreamingState {
   roundHasTools: boolean;
   doneScheduled: boolean;
   harnessEvents: HarnessEvent[];
+  // team_tools 编排：leader 自己的工具调用无 subtask_id，需要一个虚拟步骤承载
+  orchestrationStyle?: OrchestrationStyle;
+  leaderStepId?: string;
 }
+
+// team_tools 虚拟 leader 步骤的稳定 subtask_id
+const LEADER_STEP_ID = '__leader__';
+
+// 媒体生成类工具 → 本地占位节点类型映射（供 applyMediaOptimisticNode 使用）
+const MEDIA_TOOL_TO_PLACEHOLDER: Record<string, 'video' | 'audio' | 'image'> = {
+  generate_image: 'image',
+  edit_image: 'image',
+  generate_video: 'video',
+  edit_video: 'video',
+  generate_music: 'audio',
+};
+
+// tool_result 后需要触发 syncTheater 的工具（包括媒体生成与画布操作）
+const CANVAS_SYNC_TOOL_NAMES = new Set([
+  'create_canvas_node', 'update_canvas_node', 'delete_canvas_node',
+  'batch_create_nodes', 'edit_image', 'generate_image', 'generate_video', 'generate_music',
+]);
 
 /** Calculate auto position for compaction summary node (right side of canvas) */
 function calcAutoPositionForCompaction(nodes: { position: { x: number; y: number }; width?: number; height?: number; measured?: { width?: number; height?: number } }[]): { x: number; y: number } {
@@ -84,6 +104,17 @@ export function useSSEHandler() {
   // Debounced timer for clearing canvas node effects after tool chain completes
   const effectClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Debounced timer for syncTheater：多子智能体并发工具时，避免短时间内并发拉取 theater（SQLite 写锁与前端拉取争抢）
+  const syncTheaterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleSyncTheater = useCallback((theaterId: string, delayMs = 400) => {
+    syncTheaterTimerRef.current && clearTimeout(syncTheaterTimerRef.current);
+    syncTheaterTimerRef.current = setTimeout(() => {
+      syncTheaterTimerRef.current = null;
+      const s = useCanvasStore.getState();
+      (s.theaterId === theaterId) && s.syncTheater(theaterId);
+    }, delayMs);
+  }, []);
+
   // Accumulated tool argument JSON for streaming storyboard creation
   const streamingArgsRef = useRef<{ toolName: string; accumulated: string; lastParseLen: number; replaced: boolean }>({
     toolName: '', accumulated: '', lastParseLen: 0, replaced: false,
@@ -104,6 +135,8 @@ export function useSSEHandler() {
     roundHasTools: false,
     doneScheduled: false,
     harnessEvents: [],
+    orchestrationStyle: undefined,
+    leaderStepId: undefined,
   });
 
   const resetStreamingState = useCallback(() => {
@@ -119,10 +152,14 @@ export function useSSEHandler() {
       roundHasTools: false,
       doneScheduled: false,
       harnessEvents: [],
+      orchestrationStyle: undefined,
+      leaderStepId: undefined,
     };
     // Reset streaming args accumulator
     streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: false };
     parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
+    // 清理 syncTheater debounce，避免上一轮的尾巴拉取混入下一轮
+    syncTheaterTimerRef.current && (clearTimeout(syncTheaterTimerRef.current), syncTheaterTimerRef.current = null);
   }, []);
 
   const parseSSELine = useCallback((line: string): SSEEvent | null => {
@@ -139,10 +176,49 @@ export function useSSEHandler() {
   const handleSSEEvent = useCallback((eventType: string, data: unknown) => {
     const state = streamingStateRef.current;
 
+    // ── 共用辅助：对已有节点应用画布视觉反馈（reading/updating/deleting/scanning/connecting） ──
+    // 不含 create_canvas_node 的 ghost/streaming replace（那属于 tool_call 流式参数专有逻辑）
+    const applyCanvasToolEffect = (toolName: string, args?: Record<string, unknown>) => {
+      const canvasStore = useCanvasStore.getState();
+      const EFFECT_MAP: Record<string, () => void> = {
+        get_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'reading'),
+        update_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'updating'),
+        delete_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'deleting'),
+        list_canvas_nodes: () => {
+          const effects: Record<string, 'scanning'> = {};
+          canvasStore.nodes.forEach((n) => { n.type !== 'ghost' && (effects[n.id] = 'scanning'); });
+          Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+        },
+        create_canvas_edge: () => {
+          const effects: Record<string, 'connecting'> = {};
+          args?.source_node_id && (effects[args.source_node_id as string] = 'connecting');
+          args?.target_node_id && (effects[args.target_node_id as string] = 'connecting');
+          Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+        },
+      };
+      EFFECT_MAP[toolName]?.();
+    };
+
+    // ── 共用辅助：媒体生成工具的乐观预建（ghost 节点作为视觉预告） ──
+    // video_task_created / music_task_created 事件到达后会进一步创建 local-<type>-<task_id> 占位节点
+    const applyMediaOptimisticNode = (toolName: string) => {
+      const canvasStore = useCanvasStore.getState();
+      const placeholderType = MEDIA_TOOL_TO_PLACEHOLDER[toolName];
+      placeholderType && canvasStore.addGhostNode(placeholderType);
+    };
+
     const handlers: Record<string, () => void> = {
-      // Leader 任务分析完成（简单任务无需多智能体UI，复杂任务后续由 subtask_created 初始化）
+      // Leader 任务分析完成：记录编排风格；team_tools 模式预置 multiAgent（因为不会有 subtask_created 事件触发初始化）
       task_analyzed: () => {
-        // No-op: simple tasks flow into text events; complex tasks flow into subtask_created
+        const d = data as { is_simple?: boolean; orchestration_style?: OrchestrationStyle };
+        state.orchestrationStyle = d.orchestration_style || 'legacy_json';
+        (d.orchestration_style === 'team_tools') && (state.multiAgent = state.multiAgent || {
+          steps: state.steps,
+          finalResult: '',
+          totalTokens: { input: 0, output: 0 },
+          creditCost: 0,
+          orchestrationStyle: 'team_tools',
+        });
       },
 
       // 流式文本（单智能体 + 多智能体简单任务共用）
@@ -237,38 +313,25 @@ export function useSSEHandler() {
         // Canvas visual effects: show real-time feedback on affected nodes
         // Cancel any pending clear — a new tool is starting, keep effects alive
         effectClearTimerRef.current && (clearTimeout(effectClearTimerRef.current), effectClearTimerRef.current = null);
+
+        // create_canvas_node 专用：使用完整 args 直接用本地节点替换 ghost/streaming
         const canvasStore = useCanvasStore.getState();
-        const CANVAS_EFFECT_MAP: Record<string, () => void> = {
-          create_canvas_node: () => {
-            // tool_call has complete args — replace ghost/streaming with real local node immediately
-            const nodeType = (args?.node_type as string) || 'text';
-            const nodeData = (args?.data as Record<string, unknown>) || {};
-            // If agent provided explicit position, use it for the local node
-            const posX = args?.position_x as number | undefined;
-            const posY = args?.position_y as number | undefined;
-            const explicitPos = (posX != null && posY != null) ? { x: posX, y: posY } : undefined;
-            // Clear streaming args state
-            streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: true };
-            parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
-            // Replace ghost/streaming node with a fully-formed local node
-            canvasStore.replaceGhostWithLocalNode(nodeType, nodeData, explicitPos);
-          },
-          get_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'reading'),
-          update_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'updating'),
-          delete_canvas_node: () => args?.node_id && canvasStore.setNodeEffect(args.node_id as string, 'deleting'),
-          list_canvas_nodes: () => {
-            const effects: Record<string, 'scanning'> = {};
-            canvasStore.nodes.forEach((n) => { n.type !== 'ghost' && (effects[n.id] = 'scanning'); });
-            Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
-          },
-          create_canvas_edge: () => {
-            const effects: Record<string, 'connecting'> = {};
-            args?.source_node_id && (effects[args.source_node_id as string] = 'connecting');
-            args?.target_node_id && (effects[args.target_node_id as string] = 'connecting');
-            Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
-          },
-        };
-        CANVAS_EFFECT_MAP[toolName]?.();
+        (toolName === 'create_canvas_node') && (() => {
+          const nodeType = (args?.node_type as string) || 'text';
+          const nodeData = (args?.data as Record<string, unknown>) || {};
+          const posX = args?.position_x as number | undefined;
+          const posY = args?.position_y as number | undefined;
+          const explicitPos = (posX != null && posY != null) ? { x: posX, y: posY } : undefined;
+          // Clear streaming args state
+          streamingArgsRef.current = { toolName: '', accumulated: '', lastParseLen: 0, replaced: true };
+          parseThrottleRef.current && (clearTimeout(parseThrottleRef.current), parseThrottleRef.current = null);
+          canvasStore.replaceGhostWithLocalNode(nodeType, nodeData, explicitPos);
+        })();
+
+        // 其余画布工具：对现有节点应用视觉反馈
+        applyCanvasToolEffect(toolName, args);
+        // 媒体生成工具：ghost 预告
+        applyMediaOptimisticNode(toolName);
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -370,14 +433,18 @@ export function useSSEHandler() {
       },
 
       // 视频任务创建（generate_video 工具执行后由后端发送）
+      // 后端 media_canvas_bridge 已并行创建占位节点；前端乐观预建 local-video-<task_id>
+      // 读焦一致后，syncTheater 会用后端真实节点替换 local-* 占位
       video_task_created: () => {
-        const d = data as { task_id?: string; video_mode?: string; model?: string };
+        const d = data as { task_id?: string; video_mode?: string; model?: string; prompt?: string };
         const task: VideoTaskData = {
           task_id: d.task_id || '',
           video_mode: d.video_mode || '',
           model: d.model || '',
         };
         state.videoTasks.push(task);
+        const _cStore = useCanvasStore.getState();
+        (d.task_id && _cStore.theaterId) && _cStore.addLocalMediaPlaceholder('video', d.task_id, d.prompt || '');
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           return (last?.role === 'ai' && last?.status === 'streaming')
@@ -388,17 +455,133 @@ export function useSSEHandler() {
 
       // 音乐任务创建（generate_music 工具执行后由后端发送）
       music_task_created: () => {
-        const d = data as { task_id?: string; model?: string };
+        const d = data as { task_id?: string; model?: string; prompt?: string };
         const task: MusicTaskData = {
           task_id: d.task_id || '',
           model: d.model || '',
         };
         state.musicTasks.push(task);
+        const _cStore = useCanvasStore.getState();
+        (d.task_id && _cStore.theaterId) && _cStore.addLocalMediaPlaceholder('audio', d.task_id, d.prompt || '');
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           return (last?.role === 'ai' && last?.status === 'streaming')
             ? [...prev.slice(0, -1), { ...last, music_tasks: [...state.musicTasks] }]
             : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, music_tasks: [...state.musicTasks] }];
+        });
+      },
+
+      // team_tools：团队初始化——作为虚拟 leader 步骤承载后续 leader 自己的工具调用
+      team_created: () => {
+        const d = data as { team_name?: string; agent_name?: string; message?: string };
+        state.multiAgent = state.multiAgent || {
+          steps: state.steps,
+          finalResult: '',
+          totalTokens: { input: 0, output: 0 },
+          creditCost: 0,
+        };
+        state.multiAgent.orchestrationStyle = 'team_tools';
+        state.multiAgent.teamName = d.team_name || '';
+        state.multiAgent.teamDescription = d.message || '';
+        state.multiAgent.leaderName = d.agent_name || '';
+
+        const leaderStep: AgentStep = {
+          subtask_id: LEADER_STEP_ID,
+          agent_name: d.agent_name || 'Leader',
+          description: d.message || '协调团队执行任务',
+          status: 'running',
+          isLeader: true,
+        };
+        state.stepMap.set(LEADER_STEP_ID, leaderStep);
+        state.steps.push(leaderStep);
+        state.leaderStepId = LEADER_STEP_ID;
+
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          const baseContent = last?.role === 'ai' ? last.content : `团队协作中: ${d.team_name || 'Team'}`;
+          const newMsg: Message = {
+            role: 'ai',
+            content: baseContent,
+            status: 'streaming',
+            multi_agent: { ...state.multiAgent!, steps: [...state.steps] },
+          };
+          state.assistantMsg = newMsg;
+          return last?.role === 'ai' ? [...prev.slice(0, -1), newMsg] : [...prev, newMsg];
+        });
+      },
+
+      // team_tools：worker 派生（blueprint 实例化一个 subtask）
+      worker_spawned: () => {
+        const d = data as { worker_key?: string; worker_template_type?: string; agent_name?: string; message?: string };
+        const workerKey = d.worker_key || '';
+        const step: AgentStep = {
+          subtask_id: workerKey,
+          agent_name: d.agent_name || workerKey,
+          description: d.message || '',
+          status: 'running',
+          templateType: d.worker_template_type,
+        };
+        state.stepMap.set(workerKey, step);
+        state.steps.push(step);
+
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // team_tools：leader → worker follow-up，后端同步含子智能体回复内容，前端组装为时间线
+      worker_message: () => {
+        const d = data as { worker_key?: string; agent_name?: string; message?: string; result?: string };
+        const step = state.stepMap.get(d.worker_key || '');
+        step && (step.messages = [...(step.messages || []), { request: d.message || '', reply: d.result }]);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // team_tools：worker 完成（worker_spawn 内联完成后发送）
+      worker_completed: () => {
+        const d = data as { worker_key?: string; agent_name?: string; result?: string };
+        const step = state.stepMap.get(d.worker_key || '');
+        step && (step.status = 'completed', step.result = d.result, step.agent_name = d.agent_name || step.agent_name);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // team_tools：worker 解散（leader 主动调用 worker_dismiss）
+      worker_dismissed: () => {
+        const d = data as { worker_key?: string };
+        const step = state.stepMap.get(d.worker_key || '');
+        step && (step.status = 'completed');
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
+        });
+      },
+
+      // team_tools：团队解散（team_end），Leader 步骤完成 + finalResult 回填
+      team_dissolved: () => {
+        const d = data as { team_name?: string; result?: string };
+        const leaderStep = state.stepMap.get(LEADER_STEP_ID);
+        leaderStep && (leaderStep.status = 'completed');
+        state.multiAgent && (state.multiAgent.finalResult = d.result || state.multiAgent.finalResult);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai')
+            ? [...prev.slice(0, -1), { ...last, multi_agent: { ...state.multiAgent!, steps: [...state.steps] } }]
+            : prev;
         });
       },
 
@@ -487,12 +670,37 @@ export function useSSEHandler() {
       },
 
       // 多智能体：子任务工具调用开始
+      // team_tools 模式下，leader 自己的工具调用无 subtask_id，需回退到虚拟 leader 步骤上累积
       subtask_tool_call: () => {
         const d = data as { subtask_id?: string; tool_name?: string; arguments?: Record<string, unknown> };
-        const step = state.stepMap.get(d.subtask_id || '');
+        const effectiveSubtaskId = d.subtask_id || state.leaderStepId || '';
+        const step = state.stepMap.get(effectiveSubtaskId);
         step && (step.tool_calls = [...(step.tool_calls || []), {
           tool_name: d.tool_name || '', arguments: d.arguments, status: 'executing' as const,
         }]);
+
+        // 与主智能体一致的画布视觉反馈 + 媒体乐观预建
+        effectClearTimerRef.current && (clearTimeout(effectClearTimerRef.current), effectClearTimerRef.current = null);
+
+        // create_canvas_node 专用：与主智能体路径对齐——多智能体无 tool_pending / tool_call_delta
+        // 事件（agent_executor 显式过滤了内联信号前缀），仅在 subtask_tool_call 到达时
+        // 一次性拿到完整 args。此处立即用完整数据创建本地节点，避免用户等待 syncTheater 拉取
+        // 期间看到「已创建但内容为空」的空节点。local- 前缀会在真实节点回来后被 syncTheater
+        // 自动替换并继承位置。
+        const canvasStore = useCanvasStore.getState();
+        (d.tool_name === 'create_canvas_node') && (() => {
+          const args = d.arguments || {};
+          const nodeType = (args.node_type as string) || 'text';
+          const nodeData = (args.data as Record<string, unknown>) || {};
+          const posX = args.position_x as number | undefined;
+          const posY = args.position_y as number | undefined;
+          const explicitPos = (posX != null && posY != null) ? { x: posX, y: posY } : undefined;
+          canvasStore.replaceGhostWithLocalNode(nodeType, nodeData, explicitPos);
+        })();
+
+        applyCanvasToolEffect(d.tool_name || '', d.arguments);
+        applyMediaOptimisticNode(d.tool_name || '');
+
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           return (last?.role === 'ai')
@@ -504,14 +712,22 @@ export function useSSEHandler() {
       // 多智能体：子任务工具调用完成
       subtask_tool_result: () => {
         const d = data as { subtask_id?: string; tool_name?: string; success?: boolean; result?: string };
-        const step = state.stepMap.get(d.subtask_id || '');
+        const effectiveSubtaskId = d.subtask_id || state.leaderStepId || '';
+        const step = state.stepMap.get(effectiveSubtaskId);
         const tool = step?.tool_calls?.find((t) => t.tool_name === d.tool_name && t.status === 'executing');
         tool && (tool.status = 'completed', tool.result = d.result);
 
-        // 画布工具完成时触发前端刷新
-        const canvasToolNames = ['create_canvas_node', 'update_canvas_node', 'delete_canvas_node', 'batch_create_nodes', 'edit_image'];
+        // 画布/媒体工具完成后触发后端同步，本地 ghost/local-* 会被真实节点替换
+        // 多子智能体并发时会短时间内发出大量 tool_result，统一走 debounce 降低后端拉取压力
         const _cStore = useCanvasStore.getState();
-        (canvasToolNames.includes(d.tool_name || '') && d.success && _cStore.theaterId) && _cStore.syncTheater(_cStore.theaterId);
+        (CANVAS_SYNC_TOOL_NAMES.has(d.tool_name || '') && d.success && _cStore.theaterId) && scheduleSyncTheater(_cStore.theaterId, 400);
+
+        // Debounced clear：与单智能体 tool_result 一致的效果清理策略
+        effectClearTimerRef.current && clearTimeout(effectClearTimerRef.current);
+        effectClearTimerRef.current = setTimeout(() => {
+          useCanvasStore.getState().clearAllNodeEffects();
+          effectClearTimerRef.current = null;
+        }, 1500);
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -718,10 +934,8 @@ export function useSSEHandler() {
         // For local nodes (from tool_call immediate creation), sync immediately.
         const hasLocalNodes = store.nodes.some((n) => n.id.startsWith('local-'));
         const syncDelay = hasLocalNodes ? 0 : (hasGhostNodes || hasStreamingNodes) ? 1200 : 0;
-        setTimeout(() => {
-          const s = useCanvasStore.getState();
-          (s.theaterId === theater_id) && s.syncTheater(theater_id);
-        }, syncDelay);
+        // 同样走 debounce，合并同一时间多个 canvas_updated / subtask_tool_result 的拉取请求
+        scheduleSyncTheater(theater_id, Math.max(syncDelay, 400));
       },
 
       // 上下文压缩开始（电池图标显示 loading 动画）
@@ -827,7 +1041,7 @@ export function useSSEHandler() {
     };
 
     handlers[eventType]?.();
-  }, [setMessages, resetStreamingState, updateCredits, setContextUsage, updateChatTitleInList]);
+  }, [setMessages, resetStreamingState, updateCredits, setContextUsage, setIsCompacting, updateChatTitleInList, scheduleSyncTheater]);
 
   return {
     parseSSELine,

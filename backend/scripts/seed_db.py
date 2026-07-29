@@ -46,7 +46,7 @@ DEFAULT_PROVIDERS = [
     {
         "name": "Gemini",
         "provider_type": "gemini",
-        "models": ["gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview", "gemini-3.1-flash-image-preview", "veo-3.1-lite-generate-preview", "lyria-3-clip-preview", "lyria-3-pro-preview"],
+        "models": ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "veo-3.1-lite-generate-preview", "lyria-3-clip-preview", "lyria-3-pro-preview"],
         "tags": ["llm", "image", "video", "audio"],
     },
     {
@@ -58,7 +58,7 @@ DEFAULT_PROVIDERS = [
     {
         "name": "Grok",
         "provider_type": "xai",
-        "models": ["grok-4-1-fast-non-reasoning", "grok-4-1-fast-reasoning", "grok-imagine-image-pro", "grok-imagine-image", "grok-imagine-video"],
+        "models": ["grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning", "grok-imagine-image-pro", "grok-imagine-image", "grok-imagine-video"],
         "tags": ["llm", "image"],
     },
     {
@@ -70,7 +70,7 @@ DEFAULT_PROVIDERS = [
     {
         "name": "DeepSeek",
         "provider_type": "deepseek",
-        "models": ["deepseek-chat", "deepseek-reasoner"],
+        "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
         "tags": ["llm"],
     },
     {

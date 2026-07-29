@@ -7,11 +7,16 @@ and the manual dispatch in chat_tool_dispatch.py.
 NOTE: Skills (load_skill) are a peer-level concept and NOT managed here.
 Skill orchestration (prompt injection, tool def, enum shrinking) is handled
 independently at the chat generation / admin_debug layer.
+
+P1-3: dispatch 前插入权限前置检查（security.permission.check_tool_permission）：
+EXPLORE 模式下非只读工具直接返回结构化 error 字符串，不真正执行。
 """
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+
+from security.permission import check_tool_permission
 
 if TYPE_CHECKING:
     from services.tool_manager.context import ToolContext
@@ -85,7 +90,22 @@ class ToolManager:
     # ------------------------------------------------------------------
 
     async def execute_tool(self, name: str, args: dict, ctx: ToolContext) -> str:
-        """Dispatch tool execution by name (O(1) lookup)."""
+        """Dispatch tool execution by name (O(1) lookup).
+
+        P1-3: 前置权限检查 —— EXPLORE 模式下非只读工具直接返回
+        结构化 error 字符串（LLM 可读），不真正 dispatch。
+        """
+        decision = check_tool_permission(
+            getattr(ctx, "permission_mode", "default"),
+            name,
+        )
+        if decision.denied:
+            logger.warning(
+                "[Permission] Denied tool=%s mode=%s reason=%s",
+                name, getattr(ctx, "permission_mode", "default"), decision.reason,
+            )
+            return decision.as_error_message(name)
+
         provider = self._dispatch_map.get(name)
         return await provider.execute(name, args, ctx) if provider else f"Unknown tool: {name}"
 

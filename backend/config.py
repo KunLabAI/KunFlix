@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------
     # Database
     # ---------------------------------------------------------------
-    # 默认 SQLite 本地文件，生产通过 .env 覆盖为 PostgreSQL：
-    #   DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/kunflix
-    DATABASE_URL: str = f"sqlite+aiosqlite:///{DB_PATH}"
+    # 默认 PostgreSQL（与 deploy/docker-compose.dev.yml 账号一致），按需通过 .env 覆盖；
+    # 多智能体并发读写超出 SQLite 承载能力，仅保留 sqlite+aiosqlite 作为旧数据过渡通道。
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/kunflix_db"
 
     # 连接池参数（PostgreSQL 生产建议：DB_POOL_SIZE=20, DB_MAX_OVERFLOW=30）
     DB_POOL_SIZE: int = 10

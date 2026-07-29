@@ -77,6 +77,21 @@ export const createAgentFormSchema = (t: TFunction) => z.object({
   member_agent_ids: z.array(z.string()).optional().default([]),
   max_subtasks: z.number().min(1).max(20).optional().default(10),
   enable_auto_review: z.boolean().optional().default(true),
+  // P0-4: 评审策略
+  review_policy: z.preprocess(
+    emptyStringToNull,
+    z.enum(["disabled", "final_only", "per_subtask", "threshold_based"]).optional().nullable(),
+  ).default("final_only"),
+  // P1-3: 权限模式
+  permission_mode: z.preprocess(
+    emptyStringToNull,
+    z.enum(["explore", "default", "bypass"]).optional().nullable(),
+  ).default("default"),
+  // P1-4: 编排模式
+  orchestration_style: z.preprocess(
+    emptyStringToNull,
+    z.enum(["legacy_json", "team_tools"]).optional().nullable(),
+  ).default("legacy_json"),
   // Gemini 3.1 配置
   gemini_config: geminiConfigSchema,
   // 统一图像生成配置

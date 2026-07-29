@@ -14,7 +14,6 @@ import BasicInfo from './BasicInfo';
 import SystemPrompt from './SystemPrompt';
 import { GenerationParams, SessionManagement, PricingOverview } from './Parameters';
 import Tools from './Tools';
-import LeaderConfig from './LeaderConfig';
 import { Form } from '@/components/ui/form';
 import {
   UserCircle2,
@@ -23,7 +22,6 @@ import {
   History,
   Wrench,
   CircleDollarSign,
-  Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -140,6 +138,8 @@ export default function AgentForm({
       member_agent_ids: [],
       max_subtasks: 10,
       enable_auto_review: true,
+      review_policy: 'final_only',
+      permission_mode: 'default',
       gemini_config: defaultGeminiConfig,
       image_config: defaultImageConfig,
       video_config: defaultVideoConfig,
@@ -181,6 +181,8 @@ export default function AgentForm({
         member_agent_ids: initialValues.member_agent_ids || [],
         max_subtasks: Number(initialValues.max_subtasks) || 10,
         enable_auto_review: initialValues.enable_auto_review !== false,
+        review_policy: (initialValues.review_policy || 'final_only') as 'disabled' | 'final_only' | 'per_subtask' | 'threshold_based',
+        permission_mode: (initialValues.permission_mode || 'default') as 'explore' | 'default' | 'bypass',
         gemini_config: initialValues.gemini_config || defaultGeminiConfig,
         image_config: initialValues.image_config || defaultImageConfig,
         video_config: (initialValues.video_config as any) || defaultVideoConfig,
@@ -220,6 +222,8 @@ export default function AgentForm({
         member_agent_ids: [],
         max_subtasks: 10,
         enable_auto_review: true,
+        review_policy: 'final_only',
+        permission_mode: 'default',
         gemini_config: defaultGeminiConfig,
         image_config: defaultImageConfig,
         video_config: defaultVideoConfig,
@@ -395,14 +399,6 @@ export default function AgentForm({
         subtitle={t('agents.form.sections.pricingDesc')}
       >
         <PricingOverview disabled={loading} providers={activeProviders || []} />
-      </SectionCard>
-
-      <SectionCard
-        icon={Users}
-        title={t('agents.form.sections.leader')}
-        subtitle={t('agents.form.sections.leaderDesc')}
-      >
-        <LeaderConfig disabled={loading} availableAgents={availableAgents || []} />
       </SectionCard>
     </div>
   );

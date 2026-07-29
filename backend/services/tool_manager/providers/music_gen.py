@@ -17,6 +17,7 @@ from typing import Any, TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import LLMProvider, MusicTask, ToolConfig
 from services.music_providers import MUSIC_PROVIDER_TYPES, extract_music_provider_type
 from services.music_providers.base import MusicContext
@@ -215,7 +216,7 @@ async def _bridge_music_placeholder(task_id: str, prompt: str, ctx: "ToolContext
             from sqlalchemy import select
             task = (await bridge_db.execute(select(MusicTask).where(MusicTask.id == task_id))).scalar_one_or_none()
             task and setattr(task, "canvas_node_id", node_id)
-            task and await bridge_db.commit()
+            task and await safe_commit(bridge_db)
     except Exception as e:
         logger.error("Music canvas bridge failed: %s", e)
 

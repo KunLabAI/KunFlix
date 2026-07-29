@@ -70,6 +70,14 @@ export interface Agent {
   member_agent_ids: string[];
   max_subtasks: number;
   enable_auto_review: boolean;
+  // P0-4: 评审策略 —— disabled / final_only(默认) / per_subtask / threshold_based
+  review_policy?: 'disabled' | 'final_only' | 'per_subtask' | 'threshold_based' | null;
+  // P1-3: 权限模式 —— explore / default(默认) / bypass
+  permission_mode?: 'explore' | 'default' | 'bypass' | null;
+  // P1-1: 可派生蓝图 type 列表
+  sub_agent_template_types?: string[];
+  // P1-4: 编排模式
+  orchestration_style?: 'legacy_json' | 'team_tools' | null;
   // Gemini 3.1 配置
   gemini_config?: GeminiConfig;
   // 统一图像生成配置

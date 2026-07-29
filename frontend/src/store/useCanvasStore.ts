@@ -191,6 +191,10 @@ interface CanvasState {
   lastSavedAt: number | null;
   isDirty: boolean;
   isSyncing: boolean;
+
+  // AI 当前是否正在推理（多智能体/单智能体 SSE 流未完结）
+  // 供 auto-save 判断是否跳过保存，避免与后端 media_canvas_bridge 并发写入 SQLite 时撞锁
+  isAiBusy: boolean;
   
   // History
   history: HistoryState[];
@@ -250,6 +254,15 @@ interface CanvasState {
   // Ghost nodes (AI creating animation)
   addGhostNode: (nodeType: string, positionX?: number, positionY?: number) => void;
   removeGhostNodes: () => void;
+
+  // Local media placeholder for optimistic pre-creation.
+  // Backend media_canvas_bridge 会在异步任务完成后创建真实节点，
+  // syncTheater 的 local- 前缀合并逻辑会自动用后端节点替换本地占位。
+  // 返回占位节点的 id（便于后续追踪/取消）。
+  addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image', taskId: string, prompt: string) => string;
+
+  // AI busy 开关：SSE handler 在推理开始/结束时调用
+  setAiBusy: (busy: boolean) => void;
 
   // Streaming node: progressive storyboard creation from tool argument deltas
   updateStreamingNode: (partialData: Partial<StoryboardNodeData>) => void;
@@ -430,6 +443,8 @@ export const useCanvasStore = create<CanvasState>()(
       lastSavedAt: null,
       isDirty: false,
       isSyncing: false,
+      isAiBusy: false,
+      setAiBusy: (busy: boolean) => set({ isAiBusy: busy }),
 
       history: [],
       historyIndex: -1,
@@ -949,6 +964,49 @@ export const useCanvasStore = create<CanvasState>()(
         const { nodes } = get();
         const filtered = nodes.filter((n) => n.type !== 'ghost');
         (filtered.length !== nodes.length) && set({ nodes: filtered });
+      },
+
+      // Optimistic media placeholder（video/audio/image）
+      // Backend media_canvas_bridge 会将异步任务结果回填到真实节点。
+      // 使用 local- 前缀命名，syncTheater 合并阶段将自动用后端节点替换本地占位。
+      addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image', taskId: string, prompt: string) => {
+        const { nodes } = get();
+        // 防重：已存在相同 taskId 的占位就直接返回现有 id
+        const existing = nodes.find((n) => n.id === `local-${mediaType}-${taskId}`);
+        if (existing) return existing.id;
+
+        const { x, y } = calcAutoPosition(nodes);
+        const shortPrompt = prompt.length > 80 ? `${prompt.slice(0, 80)}...` : prompt;
+        const placeholderName = mediaType === 'video'
+          ? 'Generating Video'
+          : mediaType === 'audio' ? 'Generating Music' : 'Generating Image';
+
+        // 不同媒体类型的 data payload 字段与后端 media_canvas_bridge 保持一致
+        const dataBuilders: Record<'video' | 'audio' | 'image', () => Record<string, unknown>> = {
+          video: () => ({ name: placeholderName, description: shortPrompt, videoUrl: '', fitMode: 'cover', _generating: true }),
+          audio: () => ({ name: placeholderName, description: shortPrompt, audioUrl: '', lyrics: '', _generating: true }),
+          image: () => ({ name: placeholderName, description: shortPrompt, imageUrl: '', fitMode: 'cover', _generating: true }),
+        };
+
+        const localId = `local-${mediaType}-${taskId}`;
+        const placeholderNode: CanvasNode = {
+          id: localId,
+          type: mediaType,
+          position: { x, y },
+          width: 420,
+          height: 300,
+          data: dataBuilders[mediaType]() as VideoNodeData | AudioNodeData | CharacterNodeData,
+        };
+        set({ nodes: [...nodes, placeholderNode] });
+
+        // 与 ghost node 一样触发自动居中，确保用户看到新创建的占位
+        typeof window !== 'undefined' && window.dispatchEvent(
+          new CustomEvent('ghost-node-added', {
+            detail: { x: x + 210, y: y + 150 },
+          })
+        );
+
+        return localId;
       },
 
       // Replace ghost node with a streaming storyboard node (first delta data arrived)

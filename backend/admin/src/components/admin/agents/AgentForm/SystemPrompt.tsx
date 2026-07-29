@@ -26,6 +26,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { FileCode2, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
 import { usePromptTemplates } from '@/hooks/usePromptTemplates';
 import { PromptTemplate } from '@/types';
 
@@ -36,6 +37,7 @@ interface SystemPromptProps {
 const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
   const { control, setValue } = useFormContext();
   const { t: tr } = useTranslation();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('__all__');
@@ -50,9 +52,18 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
 
   const templateTypes = Array.from(new Set((templates || []).map((t) => t.template_type)));
 
+  const applyOpts = { shouldDirty: true, shouldValidate: true } as const;
+
   const handleApply = (template: PromptTemplate) => {
-    setValue('system_prompt', template.system_prompt_template, { shouldDirty: true });
+    // 一次性自动填充：名称、描述、系统提示词（避免用户重复手动拷贝）
+    setValue('name', template.name, applyOpts);
+    setValue('description', template.description ?? '', applyOpts);
+    setValue('system_prompt', template.system_prompt_template, applyOpts);
     setOpen(false);
+    toast({
+      title: tr('agents.form.systemPrompt.appliedTitle'),
+      description: tr('agents.form.systemPrompt.appliedDesc', { name: template.name }),
+    });
   };
 
   return (
@@ -93,6 +104,9 @@ const SystemPrompt: React.FC<SystemPromptProps> = ({ disabled }) => {
         <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
             <DialogTitle>{tr('agents.form.systemPrompt.dialogTitle')}</DialogTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              {tr('agents.form.systemPrompt.dialogHint')}
+            </p>
           </DialogHeader>
 
           {/* 搜索 & 筛选 */}

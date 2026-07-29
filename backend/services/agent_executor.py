@@ -175,6 +175,9 @@ class AgentExecutor:
         response_msg = await dialog_agent.reply(input_msg)
         content_str = _normalize_content(response_msg.content)
 
+        # P0-1: reply 后持久化 AgentState
+        await self.save_agent_state(agent_config, provider, dialog_agent)
+
         metadata = getattr(response_msg, "metadata", {}) or {}
 
         return ExecutionResult(
@@ -255,6 +258,16 @@ class AgentExecutor:
         current_tools = tools
         last_result: Optional[StreamResult] = None
 
+        # ── stream_completion 内联信号前缀（与 chat_generation.py 保持一致）──
+        # 这两个前缀是 llm_stream 层用来在文本流里夹带 工具预告 / 参数增量 信号的：
+        #   __TOOL_PENDING__:<tool_name>
+        #   __TOOL_DELTA__:<tool_name>:<arg_chunk>
+        # 单智能体路径会将它们转为 SSE tool_pending / tool_call_delta 事件。
+        # 多智能体子智能体路径：不需要精细预告（tool_call 到达时前端会自动触发 ghost），
+        # 这里直接过滤掉，避免它们作为普通文本 chunk 泄入子任务 result / subtask_chunk 流。
+        _TOOL_PENDING_PREFIX = "__TOOL_PENDING__:"
+        _TOOL_DELTA_PREFIX = "__TOOL_DELTA__:"
+
         for _round in range(max_tool_rounds + 1):
             is_last_round = _round == max_tool_rounds
             round_tools = None if is_last_round else current_tools
@@ -274,6 +287,9 @@ class AgentExecutor:
                 user_id=user_id,
             ):
                 last_result = result
+                # 过滤内联信号前缀，不往上游 yield（防止子任务 result 混入 __TOOL_PENDING__/__TOOL_DELTA__ 原始标记）
+                if chunk.startswith(_TOOL_PENDING_PREFIX) or chunk.startswith(_TOOL_DELTA_PREFIX):
+                    continue
                 yield ("chunk", chunk, result)
 
             has_tool_calls = last_result and last_result.tool_calls
@@ -322,6 +338,20 @@ class AgentExecutor:
                 )
             for tc, _ in tool_calls_with_error:
                 yield ("tool_result", {"tool_name": tc.name, "success": False}, None)
+
+            # 画布图像桥接：本轮工具中若累积了 generate_image 生成的 URL，
+            # 立即落地为画布 image 节点（与单智能体 chat_generation.py 保持一致）。
+            # 此前多智能体路径漏掉此步骤，导致子智能体的图片只出现在对话文本中，
+            # 无法在画布上呈现为节点。共享 media_canvas_bridge.flush_canvas_image_queue，
+            # 内部使用独立 AsyncSessionLocal 会话以避免 autoflush 与 ctx.db 竞争。
+            _has_queue = (
+                tool_context is not None
+                and getattr(tool_context, "theater_id", None)
+                and getattr(tool_context, "canvas_image_queue", None)
+            )
+            if _has_queue:
+                from services.media_canvas_bridge import flush_canvas_image_queue
+                await flush_canvas_image_queue(tool_context, tool_context.theater_id)
 
             current_tools = tool_manager.rebuild_after_round(tool_context) or tools
 
@@ -395,7 +425,10 @@ class AgentExecutor:
         return provider
 
     async def _get_dialog_agent(self, agent_config: Agent, provider: LLMProvider) -> DialogAgent:
-        """Get-or-create cached DialogAgent under per-key lock (防缓存击穿)."""
+        """Get-or-create cached DialogAgent under per-key lock (防缓存击穿).
+
+        P0-1: 支持 AgentState 持久化 — 从 L2 Redis 恢复 state，reply 后回写。
+        """
         cache_key = f"{agent_config.id}_{provider.id}"
 
         cached = self._agent_cache.get(cache_key)
@@ -408,15 +441,146 @@ class AgentExecutor:
             if cached is not None:
                 return cached
 
+            # P0-1: 尝试从 L2 恢复 AgentState
+            state = await self._load_agent_state(cache_key)
+
             model = _create_llm_model(provider, agent_config.model)
             dialog_agent = DialogAgent(
                 name=agent_config.name,
                 sys_prompt=agent_config.system_prompt,
                 model=model,
                 skill_names=agent_config.tools or None,
+                state=state,
             )
             self._agent_cache[cache_key] = dialog_agent
             return dialog_agent
+
+    async def save_agent_state(self, agent_config: Agent, provider: LLMProvider, dialog_agent: DialogAgent) -> None:
+        """P0-1: 将 AgentState 持久化到 L2 Redis，跨请求/跨重启保留上下文。"""
+        cache_key = f"{agent_config.id}_{provider.id}"
+        state_key = f"agent_state:{cache_key}"
+        try:
+            state_data = dialog_agent.state.model_dump() if hasattr(dialog_agent.state, 'model_dump') else None
+            state_data and await _L2_CACHE.set(state_key, state_data, ttl=3600)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to persist AgentState for %s: %s", cache_key, exc)
+
+    async def _load_agent_state(self, cache_key: str):
+        """P0-1: 从 L2 Redis 恢复 AgentState；未命中时返回 None（框架自动创建新 state）。"""
+        state_key = f"agent_state:{cache_key}"
+        try:
+            from agentscope.state import AgentState
+            cached_state = await _L2_CACHE.get(state_key)
+            return AgentState(**cached_state) if cached_state else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not restore AgentState for %s: %s", cache_key, exc)
+            return None
+
+    # ---------------------------------------------------------------------
+    # P1-2: Per-subtask AgentState persistence
+    # ---------------------------------------------------------------------
+    #
+    # 与 leader 级别的 (agent_id, provider_id) 级缓存分开，以 subtask_state_key
+    # 为维度存储（推荐形式："{task_execution_id}:{subtask_id}"）。rework 时同 key
+    # 会续用上次的上下文，实现 "worker 记得自己上次做了什么"。TTL 缩短到
+    # 1800s，避免长期占用 Redis。
+
+    async def _load_subtask_state(self, subtask_state_key: str):
+        """P1-2: 加载 subtask 独立的 AgentState；未命中返回 None（首次执行）。"""
+        state_key = f"agent_state:sub:{subtask_state_key}"
+        try:
+            from agentscope.state import AgentState
+            cached_state = await _L2_CACHE.get(state_key)
+            return AgentState(**cached_state) if cached_state else None
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not restore subtask AgentState for %s: %s", subtask_state_key, exc)
+            return None
+
+    async def _save_subtask_state(self, subtask_state_key: str, dialog_agent: DialogAgent) -> None:
+        """P1-2: 将当前 dialog_agent 的 state 持久化到 subtask 独立的 L2 key。
+
+        任何序列化/下发失败都只告警 —— subtask 主流程不能因为 state 落库异常失败。
+        """
+        state_key = f"agent_state:sub:{subtask_state_key}"
+        try:
+            state_data = (
+                dialog_agent.state.model_dump()
+                if hasattr(dialog_agent.state, "model_dump")
+                else None
+            )
+            state_data and await _L2_CACHE.set(state_key, state_data, ttl=1800)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to persist subtask AgentState for %s: %s", subtask_state_key, exc)
+
+    async def execute_for_subtask(
+        self,
+        agent_id: str,
+        messages: List[Dict[str, str]],
+        subtask_state_key: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> ExecutionResult:
+        """P1-2: Execute agent with per-subtask AgentState persistence.
+
+        与 ``execute()`` 的差异：
+        - **不使用** ``_get_dialog_agent`` 缓存，每次 fresh 一个 DialogAgent 实例
+          （否则多 subtask 并发会共享同一个 state 而互相污染）
+        - state 存到 ``agent_state:sub:{subtask_state_key}`` 独立 key
+        - reply 后自动 save state，为 rework/多轮子任务提供上下文连续性
+
+        Args:
+            agent_id: Sub-agent id
+            messages: 只用 messages[-1] 作为本轮 user 输入（保留 list 参数兼容既有调用点）
+            subtask_state_key: 推荐形式 "{task_execution_id}:{subtask_id}"
+            context: 无语义；仅追加到 metadata，便于上层日志
+        """
+        agent_config = await self._load_agent(agent_id)
+        provider = await self._load_provider(agent_config.provider_id)
+
+        # P1-2: 加载 subtask 独立 state（首次为 None，框架自动创建新 state）
+        state = await self._load_subtask_state(subtask_state_key)
+
+        model = _create_llm_model(provider, agent_config.model)
+        dialog_agent = DialogAgent(
+            name=agent_config.name,
+            sys_prompt=agent_config.system_prompt,
+            model=model,
+            # 不传 skill_names：非流式执行路径不支持工具调用（工具仅在 execute_streaming_with_tools 中由 ToolManager 处理）。
+            # 传入 agent_config.tools 会被 AgentScope 作为内置 Skill 注册，导致 Gemini thought_signature 报错。
+            skill_names=None,
+            state=state,
+        )
+
+        input_content = messages[-1]["content"] if messages else ""
+        input_msg = UserMsg(name="User", content=input_content)
+        input_chars = sum(len(m.get("content", "")) for m in messages)
+
+        logger.info(
+            "Executing subtask agent '%s' (ID: %s, state_key=%s, resumed=%s)",
+            agent_config.name, agent_id, subtask_state_key, state is not None,
+        )
+        response_msg = await dialog_agent.reply(input_msg)
+        content_str = _normalize_content(response_msg.content)
+
+        # P1-2: 保存回 L2 供下次 rework 读取
+        await self._save_subtask_state(subtask_state_key, dialog_agent)
+
+        metadata = getattr(response_msg, "metadata", {}) or {}
+
+        return ExecutionResult(
+            content=content_str,
+            input_tokens=metadata.get("input_tokens", 0),
+            output_tokens=metadata.get("output_tokens", 0),
+            input_chars=input_chars,
+            output_chars=len(content_str),
+            metadata={
+                "agent_id": agent_id,
+                "agent_name": agent_config.name,
+                "model": agent_config.model,
+                "subtask_state_key": subtask_state_key,
+                "state_resumed": state is not None,
+                "context": context,
+            },
+        )
 
     def _create_model(self, provider: LLMProvider, model_name: str):
         """Backward-compat instance method; delegates to module-level factory."""

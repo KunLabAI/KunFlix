@@ -8,7 +8,7 @@ from sqlalchemy import select, func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import require_admin
-from database import get_db
+from database import get_db, safe_commit
 from models import Admin, Agent, ToolExecution, ToolConfig
 from services.tool_manager import ToolManager
 from services.image_config_adapter import IMAGE_PROVIDER_CAPABILITIES
@@ -267,6 +267,6 @@ async def update_tool_config(
         )
         db.add(config)
     
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(config)
     return config

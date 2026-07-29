@@ -278,6 +278,24 @@ class Agent(Base):
     member_agent_ids = Column(JSON, default=[])    # UUIDs of agents this leader can orchestrate
     max_subtasks = Column(Integer, default=10)
     enable_auto_review = Column(Boolean, default=True)
+    # P0-4: 评审策略分层
+    # disabled / final_only(默认) / per_subtask / threshold_based
+    # 存为字符串而非 ENUM，方便将来新增策略而不迁移。
+    review_policy = Column(String(20), default="final_only", nullable=True)
+
+    # P1-3: 极简 Permission Mode
+    # explore / default(默认) / bypass
+    # 由 services.tool_manager 在工具 dispatch 前做前置检查（check_tool_permission）。
+    permission_mode = Column(String(20), default="default", nullable=True)
+
+    # P1-1: SubAgentTemplate 蓝图派生（leader 可使用的蓝图 type 列表）
+    # 与 member_agent_ids 共存：静态成员 + 动态蓝图同时可用。
+    sub_agent_template_types = Column(JSON, default=[])
+
+    # P1-4: 编排模式灰度开关
+    # legacy_json: 一次 JSON 计划 + UnifiedStrategy（默认，完全不改变既有行为）
+    # team_tools: leader ReAct 循环 + 5 个 team 内置工具增量编排
+    orchestration_style = Column(String(20), default="legacy_json", nullable=True)
 
     # Gemini 3.1 配置 (thinking_level, media_resolution, image_config)
     gemini_config = Column(JSON, default=dict)
@@ -734,5 +752,36 @@ class ModelPricing(Base):
     dimensions = Column(JSON, default=dict, nullable=False)  # {dim_name: rate}
     is_active = Column(Boolean, default=True, nullable=False)
     notes = Column(Text, nullable=True)  # 运营备注
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+# =============================================================================
+# P1-1: SubAgentTemplate —— Worker 蓝图模板
+# =============================================================================
+
+class SubAgentTemplate(Base):
+    """P1-1: 可复用的 Worker 蓝图模板。
+
+    Leader agent 的 ``sub_agent_template_types`` 字段引用本表的 ``type`` 值，
+    在未来 P1-4 Team 工具骨架中，Leader 可通过 worker_spawn 工具按蓝图派生 worker。
+
+    系统提示词模板支持 Python format 占位符（与 AgentScope 2.0 SubAgentTemplate 对齐）：
+    - ``{team_name}``、``{team_description}``、``{member_name}``、``{member_description}``、``{leader_name}``
+    """
+    __tablename__ = "sub_agent_templates"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    type = Column(String(50), unique=True, nullable=False, index=True)  # "researcher" / "writer" / "reviewer"
+    description = Column(Text, nullable=False)
+    system_prompt_template = Column(Text, nullable=False)  # Python {}-format
+
+    # 蓝图配置
+    permission_mode = Column(String(20), default="default")  # explore / default / bypass
+    context_config = Column(JSON, default=dict)  # {trigger_ratio, reserve_ratio, tool_result_limit}
+    tools = Column(JSON, default=[])  # 蓝图默认启用的技能列表
+    max_tool_rounds = Column(Integer, default=50)
+
+    # 审计
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

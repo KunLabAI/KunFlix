@@ -17,6 +17,7 @@ from typing import Any, TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import LLMProvider, VideoTask, ToolConfig
 from services.video_generation import submit_video_task, infer_provider_type
 from services.video_providers import VIDEO_PROVIDER_TYPES, extract_video_provider_type
@@ -344,7 +345,7 @@ async def _execute_video_gen_tool(args: dict, ctx: "ToolContext") -> str:
         input_image_count=input_image_count,
     )
     db.add(task)
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(task)
 
     logger.info("Video task created via tool: %s (%s: %s)", task.id, video_provider_type, video_result.task_id)
@@ -380,7 +381,7 @@ async def _bridge_video_placeholder(task, prompt: str, ctx: "ToolContext") -> No
             node_id = await create_placeholder_node("video", name, prompt, ctx.theater_id, bridge_db)
         # Store node_id on the task record
         task.canvas_node_id = node_id
-        await ctx.db.commit()
+        await safe_commit(ctx.db)
     except Exception as e:
         logger.error("Video canvas bridge failed: %s", e)
 
