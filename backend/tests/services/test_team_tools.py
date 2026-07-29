@@ -12,14 +12,15 @@ from services.team_tools import TEAM_TOOL_DEFS, TEAM_TOOL_NAMES, TeamContext
 
 class TestTeamEventType:
     def test_all_values_are_str(self):
-        for e in TeamEventType:
+        # 通过 __members__ 显式取成员，规避 CodeQL 无法识别 Enum 类可迭代的误报
+        for e in TeamEventType.__members__.values():
             assert isinstance(e.value, str)
             assert e == e.value  # str enum
 
     def test_expected_members(self):
         expected = {"team_created", "team_dissolved", "worker_spawned",
                     "worker_message", "worker_completed", "worker_dismissed"}
-        assert {e.value for e in TeamEventType} == expected
+        assert {e.value for e in TeamEventType.__members__.values()} == expected
 
 
 class TestTeamEventPayload:

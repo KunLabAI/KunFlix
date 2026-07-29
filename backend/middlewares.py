@@ -115,8 +115,8 @@ class ModelRetryMiddleware(MiddlewareBase):
                 logger.error("[ModelRetry] Fallback model also failed: %s", fallback_exc)
                 raise fallback_exc from last_exc
 
-        # 无回退模型，抛出最后一个异常
-        raise last_exc  # type: ignore[misc]
+        # 无回退模型，抛出最后一个异常（or 兜底满足静态分析：循环至少执行一次时 last_exc 必非 None）
+        raise last_exc or RuntimeError("ModelRetry: model call failed before any attempt was made")
 
 
 # ---------------------------------------------------------------------------
