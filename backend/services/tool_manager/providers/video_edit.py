@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import LLMProvider, VideoTask, ToolConfig
 from services.video_generation import submit_video_task, infer_provider_type
 from services.video_providers import extract_video_provider_type
@@ -270,7 +271,7 @@ async def _execute_video_edit_tool(args: dict, ctx: "ToolContext") -> str:
         input_image_count=input_image_count,
     )
     db.add(task)
-    await db.commit()
+    await safe_commit(db)
     await db.refresh(task)
 
     logger.info("Video edit task created via tool: %s (%s: %s)", task.id, provider_type, video_result.task_id)

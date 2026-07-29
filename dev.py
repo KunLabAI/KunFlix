@@ -6,6 +6,14 @@ import sys
 import threading
 import time
 
+# Windows 中文 locale 默认 stdout 为 GBK，无法直接打印子进程返回的 UTF-8 诊断
+# （如 asyncpg 的 WinError 1225 中文说明），会抛 UnicodeEncodeError 直接崩 dev.py。
+# 在启动时统一将自己的 stdout / stderr reconfigure 为 utf-8 + replace 堆叠策略，
+# 比在每个 log() 中重复防御更干净。
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    _reconfigure and _reconfigure(encoding="utf-8", errors="replace")
+
 # 定义项目路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(BASE_DIR, "backend")
@@ -143,6 +151,79 @@ def setup_backend():
         
     return python_exec
 
+# 数据库不可达时向开发者展示的 3 条 fallback 指引（映射表，避免 if 分支堆叠）
+# body 的每一行统一由 _emit_db_fallback_hints 控制缩进，不在字面量里预填空格。
+_DB_FALLBACK_HINTS = (
+    ("1", "Docker 一键启动（推荐）", [
+        "docker compose -f deploy/docker-compose.dev.yml up -d",
+    ]),
+    ("2", "本机装 PostgreSQL 18", [
+        "Windows : winget install -e --id PostgreSQL.PostgreSQL.18",
+        "macOS   : brew install postgresql@18 && brew services start postgresql@18",
+        "Linux   : 按发行版包管理器安装",
+        "随后建库：createdb -U postgres kunflix_db",
+    ]),
+    ("3", "临时降级到 SQLite", [
+        "在 backend/.env 里设置：",
+        "DATABASE_URL=sqlite+aiosqlite:///./kunflix.db",
+    ]),
+)
+
+
+def _check_database_connectivity(python_exec):
+    """启动前探测 DATABASE_URL 是否可达；不可达时 fail-fast 并给出修复引导。
+
+    通过独立子进程调用 backend/scripts/probe_db.py，让 backend venv 决定用哪个
+    驱动（asyncpg / aiosqlite）。返回码语义见 probe_db.main。
+    """
+    log("Probing database connectivity...", "[DATABASE]")
+    probe_script = os.path.join(BACKEND_DIR, "scripts", "probe_db.py")
+    try:
+        result = subprocess.run(
+            [python_exec, probe_script],
+            cwd=BACKEND_DIR,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        log("Probe timed out after 15s (network / DNS issue?)", "[DATABASE]")
+        _emit_db_fallback_hints()
+        sys.exit(1)
+
+    # 返回码 -> 处理策略（映射表：0 通过 / 2 跳过 / 其余 fail-fast）
+    handlers = {
+        0: lambda: log("Database is reachable.", "[DATABASE]"),
+        2: lambda: log(
+            "Probe skipped (backend deps not ready); will rely on Alembic to surface errors.",
+            "[DATABASE]",
+        ),
+    }
+    action = handlers.get(result.returncode)
+    if action is not None:
+        action()
+        return
+
+    # 不可达：把 probe 的诊断行透传出来，再打 3 条 fallback
+    diagnostic = (result.stderr or "").strip() or "(no diagnostic output)"
+    for line in diagnostic.splitlines():
+        log(line, "[DATABASE]")
+    _emit_db_fallback_hints()
+    sys.exit(1)
+
+
+def _emit_db_fallback_hints():
+    log("", "[DATABASE]")
+    log("Cannot connect to the database. Pick one of the fixes below:", "[DATABASE]")
+    for tag, title, lines in _DB_FALLBACK_HINTS:
+        log(f"  {tag}) {title}", "[DATABASE]")
+        for body_line in lines:
+            log(f"       {body_line}", "[DATABASE]")
+    log("", "[DATABASE]")
+
+
 def init_database(python_exec):
     """初始化数据库（执行迁移和种子数据），幂等操作"""
     log("Initializing database...", "[DATABASE]")
@@ -228,6 +309,10 @@ def main():
     log("Checking admin dashboard environment...", "[ADMIN]")
     _ensure_node_deps(ADMIN_DIR, "[ADMIN]")
 
+    # 在建库前先探测连通性——连不上就 fail-fast 给出 3 条修复命令，
+    # 避免 seed_db.py 内部 asyncpg 抛出难以定位的深层堆栈。
+    _check_database_connectivity(python_exec)
+
     # Initialize database (migrations + seed data), idempotent operation
     init_database(python_exec)
 
@@ -239,7 +324,16 @@ def main():
     # Exclude skills/active_skills from watchfiles to prevent reload loop when toggling skills
     # Must use absolute path: uvicorn FileFilter compares exclude_dir against absolute paths from watchfiles
     active_skills_abs = os.path.join(BACKEND_DIR, "skills", "active_skills")
-    backend_cmd = f'"{python_exec}" -m uvicorn main:app --reload --reload-exclude "{active_skills_abs}" --host 127.0.0.1 --port 8000 --loop asyncio'
+    # SQLite WAL 模式下 kunflix.db-wal/-shm 会随读写频繁变动；uvicorn 层
+    # 通过 FileFilter 兜底排除，watchfiles 层刷屏问题另在 main.py 抑制日志
+    reload_excludes = [
+        active_skills_abs,
+        "*.db",
+        "*.db-wal",
+        "*.db-shm",
+    ]
+    exclude_flags = " ".join(f'--reload-exclude "{pat}"' for pat in reload_excludes)
+    backend_cmd = f'"{python_exec}" -m uvicorn main:app --reload {exclude_flags} --host 127.0.0.1 --port 8000 --loop asyncio'
     
     # Frontend Command
     frontend_cmd = "npm run dev"

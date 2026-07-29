@@ -34,7 +34,16 @@ export interface AgentStep {
   // 子任务工具调用记录
   tool_calls?: ToolCall[];
   circuitBreaker?: boolean;
+  // team_tools 编排扩展：worker 蓝图类型 / leader 标识 / worker_say 消息时间线
+  templateType?: string;
+  isLeader?: boolean;
+  messages?: { request: string; reply?: string }[];
 }
+
+// 多智能体编排风格（后端 orchestrator 决定）
+//   - legacy_json: 传统 subtask 分解模式
+//   - team_tools:  Leader 通过 team_create / worker_spawn / ... 工具增量组建团队
+export type OrchestrationStyle = 'legacy_json' | 'team_tools';
 
 // 多智能体数据
 export interface MultiAgentData {
@@ -42,6 +51,11 @@ export interface MultiAgentData {
   finalResult: string;
   totalTokens: { input: number; output: number };
   creditCost: number;
+  // team_tools 编排扩展
+  orchestrationStyle?: OrchestrationStyle;
+  teamName?: string;
+  teamDescription?: string;
+  leaderName?: string;
 }
 
 // 多模态内容

@@ -655,6 +655,10 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
                     <ThinkPanel
                       steps={message.multi_agent.steps}
                       isThinking={isMultiAgentThinking}
+                      orchestrationStyle={message.multi_agent.orchestrationStyle}
+                      teamName={message.multi_agent.teamName}
+                      leaderName={message.multi_agent.leaderName}
+                      finalResult={message.multi_agent.finalResult}
                       className="mb-2"
                     />
                   )}

@@ -1,0 +1,8 @@
+# P0-7: Development / testing dependencies (not required for production runtime)
+#
+# 安装：
+#   pip install -r requirements-dev.txt
+#
+# 与 requirements.txt 分离，避免生产镜像携带 pytest 生态。
+pytest>=8.0.0
+pytest-asyncio>=0.24.0

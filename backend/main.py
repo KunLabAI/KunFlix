@@ -147,10 +147,15 @@ logging.basicConfig(
 )
 
 # 日志噪音抑制策略（映射表驱动）
+# watchfiles.main: uvicorn --reload 底层的文件监听器，SQLite WAL 模式下
+# kunflix.db-wal/-shm 会因每次连接/查询频繁变动，触发 "N change(s) detected"
+# INFO 刷屏；uvicorn 的 FileFilter 只匹配 *.py 不会真的 reload，因此这里
+# 直接抑制 INFO 级别，避免掩盖真正有意义的日志。
 _LOGGER_LEVELS = {
     "sqlalchemy.engine": logging.WARNING,
     "sqlalchemy.pool": logging.WARNING,
     "uvicorn.access": logging.WARNING,
+    "watchfiles.main": logging.WARNING,
 }
 for _name, _level in _LOGGER_LEVELS.items():
     logging.getLogger(_name).setLevel(_level)
@@ -168,6 +173,7 @@ from routers import (  # noqa: E402
     admin_debug,
     admin_email_providers,
     admin_pricing,
+    admin_sub_agent_templates,
     admin_system_settings,
     admin_tools,
     admin_virtual_humans,
@@ -291,6 +297,7 @@ _ROUTERS = (
     music.router,
     admin_dashboard.router,
     admin_virtual_humans.router,
+    admin_sub_agent_templates.router,
     sse_router.router,
 )
 for _router in _ROUTERS:

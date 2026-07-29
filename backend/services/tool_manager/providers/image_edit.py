@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database import safe_commit
 from models import Agent, LLMProvider, ToolConfig, TheaterNode, TheaterEdge, Asset, User, generate_uuid
 from services.image_config_adapter import to_provider_config, IMAGE_PROVIDER_CAPABILITIES
 from services.media_utils import MEDIA_DIR, get_relative_path, resolve_media_filepath
@@ -556,7 +557,7 @@ async def _maybe_create_edit_node(
         )
         db.add(edge)
 
-        await db.commit()
+        await safe_commit(db)
         logger.info(
             "edit_image: created edit node %s linked to source %s",
             new_node.id, source.id,

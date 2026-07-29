@@ -108,7 +108,7 @@ KunFlix 专为**影视广告与短剧创作**打造的开放式AI内容创作生
 </tr>
 <tr>
 <td>数据库</td>
-<td>SQLite (开发) / PostgreSQL (生产) + SQLAlchemy</td>
+<td>PostgreSQL + SQLAlchemy（开发与生产统一）</td>
 </tr>
 <tr>
 <td>前端框架</td>
@@ -132,7 +132,7 @@ KunFlix 专为**影视广告与短剧创作**打造的开放式AI内容创作生
 - **Rust 1.85+**（仅当从源码编译 ripgrep 时需要；首次安装会触发，参见 [UPGRADE.md](./UPGRADE.md)）
 - Node.js 20+
 - Docker 24+（Docker 部署时需要）
-- SQLite（开发）/ PostgreSQL（生产）
+- PostgreSQL 18（开发与生产统一；本地可用 `docker compose -f deploy/docker-compose.dev.yml up -d` 一键启动 PostgreSQL + Redis）
 
 > 从 1.0 升级到 2.0 的开发者请先阅读 [UPGRADE.md](./UPGRADE.md)。
 

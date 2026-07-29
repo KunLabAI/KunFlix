@@ -12,7 +12,7 @@ from database import get_db
 from models import TaskExecution, SubTask, User
 from schemas import OrchestrationRequest, TaskExecutionResponse, SubTaskResponse
 from auth import get_current_active_user
-from services.orchestrator import DynamicOrchestrator
+from services.orchestrator import DynamicOrchestrator, cancel_task
 from services.billing import require_positive_balance, BalanceFrozenError, InsufficientCreditsError
 from ratelimit import limiter, ENDPOINT_LIMITS
 from errors import BizError
@@ -167,7 +167,14 @@ async def cancel_task_execution(
 ):
     """
     Cancel a running task execution.
+
+    P0-1: 先向取消注册表发起真正的 asyncio.Task.cancel()（否则旧逻辑只会改 DB
+    状态但协程仍在跑）。如果注册表 miss（进程重启 / 不在本实例 / 早已完成），
+    回滚到仅改 DB 状态的兜底行为，保障前端 UX 一致。
+    真正的 cancel 后续由 orchestrator.execute 内部的 CancelledError 处理分支完成
+    数据库清理与部分计费。
     """
+    # 权限 & 存在性校验
     result = await db.execute(
         select(TaskExecution).filter(
             TaskExecution.id == task_execution_id,
@@ -185,12 +192,21 @@ async def cancel_task_execution(
             detail=f"Cannot cancel task with status: {task_execution.status}"
         )
 
-    task_execution.status = "failed"
+    # P0-1: 先发起 asyncio 级别的 cancel
+    cancelled = await cancel_task(task_execution_id)
+    if cancelled:
+        # 交给 orchestrator.execute 的 CancelledError 分支完成 DB 清理（_handle_cancellation）
+        # 本接口即时返回，不写 DB，避免与 cancel 分支同时写入时的写冲突
+        return {"message": "Task cancellation requested", "id": task_execution_id, "actual_cancel": True}
+
+    # Fallback: 未在本实例注册表命中（多实例 / 重启 / 已自行完成）
+    task_execution.status = "cancelled"
     task_execution.execution_metadata = {
         **(task_execution.execution_metadata or {}),
         "cancelled": True,
-        "cancelled_by": current_user.id
+        "cancelled_by": current_user.id,
+        "cancel_source": "registry_miss",
     }
 
     await db.commit()
-    return {"message": "Task execution cancelled", "id": task_execution_id}
+    return {"message": "Task execution cancelled (fallback path)", "id": task_execution_id, "actual_cancel": False}

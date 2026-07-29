@@ -46,6 +46,10 @@ class ToolContext:
     user_id: str | None = None
     is_admin: bool = False
 
+    # P1-3: 权限模式（explore / default / bypass）—— 与 Agent.permission_mode 对齐
+    # ToolManager.execute_tool 会在 dispatch 前带入 check_tool_permission 做前置拦截。
+    permission_mode: str = "default"
+
     # --- lazy-resolved caches (private) ---
     _active_skills_dir: Path | None = field(default=None, repr=False)
     _image_provider_type: str | None = field(default=None, repr=False)
@@ -68,6 +72,10 @@ class ToolContext:
     music_tasks: list = field(default_factory=list, repr=False)
     # 图像桥接队列：并行工具执行时收集 URL，轮次结束后顺序创建画布节点
     canvas_image_queue: list = field(default_factory=list, repr=False)
+
+    # --- 工具执行模式 ---
+    # True 时所有工具调用顺序执行（队列模式），用于多智能体子任务避免并发竞争
+    sequential_tools: bool = False
 
     # ------------------------------------------------------------------
     # Skill-gate helpers

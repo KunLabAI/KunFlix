@@ -13,12 +13,26 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Agent } from '@/types';
 
 interface LeaderConfigProps {
   disabled?: boolean;
   availableAgents?: Agent[];
 }
+
+// P0-4 评审策略选项（与 backend/services/orchestrator.py 的枚举一致）
+const REVIEW_POLICY_OPTIONS = ['final_only', 'per_subtask', 'threshold_based', 'disabled'] as const;
+// P1-3 权限模式选项（与 backend/security/permission.py 一致）
+const PERMISSION_MODE_OPTIONS = ['default', 'explore', 'bypass'] as const;
+// P1-4 编排模式选项
+const ORCHESTRATION_STYLE_OPTIONS = ['legacy_json', 'team_tools'] as const;
 
 const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents = [] }) => {
   const { control, watch } = useFormContext();
@@ -160,6 +174,105 @@ const LeaderConfig: React.FC<LeaderConfigProps> = ({ disabled, availableAgents =
               )}
             />
           </div>
+
+          {/* P0-4: Review Policy */}
+          <FormField
+            control={control}
+            name="review_policy"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('agents.form.leader.reviewPolicy')}</FormLabel>
+                <Select
+                  value={field.value || 'final_only'}
+                  onValueChange={field.onChange}
+                  disabled={disabled}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {REVIEW_POLICY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {t(`agents.form.leader.reviewPolicyOptions.${opt}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  {t(`agents.form.leader.reviewPolicyDescMap.${field.value || 'final_only'}`)}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* P1-3: Permission Mode */}
+          <FormField
+            control={control}
+            name="permission_mode"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('agents.form.leader.permissionMode')}</FormLabel>
+                <Select
+                  value={field.value || 'default'}
+                  onValueChange={field.onChange}
+                  disabled={disabled}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {PERMISSION_MODE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {t(`agents.form.leader.permissionModeOptions.${opt}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  {t(`agents.form.leader.permissionModeDescMap.${field.value || 'default'}`)}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* P1-4: Orchestration Style */}
+          <FormField
+            control={control}
+            name="orchestration_style"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('agents.form.leader.orchestrationStyle')}</FormLabel>
+                <Select
+                  value={field.value || 'legacy_json'}
+                  onValueChange={field.onChange}
+                  disabled={disabled}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {ORCHESTRATION_STYLE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt} value={opt}>
+                        {t(`agents.form.leader.orchestrationStyleOptions.${opt}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormDescription>
+                  {t(`agents.form.leader.orchestrationStyleDescMap.${field.value || 'legacy_json'}`)}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
       )}
     </div>

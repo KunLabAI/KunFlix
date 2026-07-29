@@ -1,0 +1,70 @@
+# ============================================================================
+# KunFlix - Docker Compose（本地开发依赖：PostgreSQL + Redis）
+# ----------------------------------------------------------------------------
+# 用途：只启动本地开发所需的**依赖服务**（数据库、缓存），backend / frontend /
+#       admin 仍由 dev.py 在宿主机上直接跑，享受热重载 + 断点调试。
+#
+# 使用：
+#   docker compose -f deploy/docker-compose.dev.yml up -d       # 启动
+#   docker compose -f deploy/docker-compose.dev.yml down        # 停止（保留数据）
+#   docker compose -f deploy/docker-compose.dev.yml down -v     # 停止 + 清空数据
+#
+# 端口映射（对齐 backend/.env.example）：
+#   PostgreSQL  5432 → 宿主 5432   账号 postgres / postgres   DB kunflix_db
+#   Redis       6379 → 宿主 6379   无密码（本地开发）
+#
+# 与生产 docker-compose.yml 的差异：
+#   - 无 healthcheck / 资源限制 / cap_drop：本地开发追求启动快、无门槛
+#   - 无 nginx / backend / worker / frontend / admin：本机跑更利于调试
+#   - Redis 不 requirepass：本地端口 6379 不对外暴露 (localhost only)
+#   - 命名卷加 _dev 后缀：与生产的 pgdata / redisdata 隔离，可并存
+# ============================================================================
+
+name: kunflix-dev
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 18 —— 与生产同版本，避免 client / server 协议差异
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:18-alpine
+    container_name: kunflix-dev-postgres
+    environment:
+      POSTGRES_DB: kunflix_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: Asia/Shanghai
+      LANG: en_US.utf8
+      # PG18+ 要求数据必须位于挂载点子目录（配合未来 pg_upgrade --link）
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      # 仅绑定 127.0.0.1，避免局域网内其他机器扫到本机开发 DB
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks: [kunflix_dev_net]
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 —— 缓存 / Pub-Sub / SSE Stream / 限流 / arq 队列
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: kunflix-dev-redis
+    # 使用默认配置，不挂载 deploy/redis/redis.conf（那份是生产配置，含 AOF
+    # 双保险与 maxmemory 限制，本地开发不必要）
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata_dev:/data
+    restart: unless-stopped
+    networks: [kunflix_dev_net]
+
+networks:
+  kunflix_dev_net:
+    driver: bridge
+
+volumes:
+  pgdata_dev:
+  redisdata_dev:

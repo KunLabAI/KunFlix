@@ -3,7 +3,7 @@
 import React from 'react';
 import { SingleAgentThinkPanel } from './SingleAgentThinkPanel';
 import { MultiAgentPanel } from './MultiAgentPanel';
-import type { AgentStep } from '@/store/useAIAssistantStore';
+import type { AgentStep, OrchestrationStyle } from '@/store/useAIAssistantStore';
 
 interface ThinkPanelProps {
   steps?: AgentStep[];      // 多智能体步骤（可选）
@@ -12,6 +12,11 @@ interface ThinkPanelProps {
   thinkingContent?: string; // 思考过程内容（流式输出）
   className?: string;
   children?: React.ReactNode; // 思考完成后的最终内容
+  // team_tools 编排模式的元信息（仅多智能体模式使用）
+  orchestrationStyle?: OrchestrationStyle;
+  teamName?: string;
+  leaderName?: string;
+  finalResult?: string;
 }
 
 /**
@@ -25,7 +30,10 @@ interface ThinkPanelProps {
  * - 自动模式切换：根据参数自动选择合适的子组件
  * - 完全向后兼容：保持原有 API 不变
  */
-export function ThinkPanel({ steps = [], isThinking = false, agentName, thinkingContent, className, children }: ThinkPanelProps) {
+export function ThinkPanel({
+  steps = [], isThinking = false, agentName, thinkingContent, className, children,
+  orchestrationStyle, teamName, leaderName, finalResult,
+}: ThinkPanelProps) {
   // 判断是单智能体还是多智能体模式
   const isMultiAgent = steps.length > 0;
 
@@ -35,6 +43,10 @@ export function ThinkPanel({ steps = [], isThinking = false, agentName, thinking
       steps={steps}
       isThinking={isThinking}
       className={className}
+      orchestrationStyle={orchestrationStyle}
+      teamName={teamName}
+      leaderName={leaderName}
+      finalResult={finalResult}
     />
   );
 

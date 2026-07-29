@@ -147,11 +147,14 @@ export function useSessionManager() {
           : null;
       setContextUsage(resolvedContextUsage);
 
-      // 反序列化消息历史
-      const historyMessages = messagesRes.data.map((m: { role: string; content: string }) => ({
+      // 反序列化消息历史（包含扩展字段：skill_calls, tool_calls, multi_agent）
+      const historyMessages = messagesRes.data.map((m: { role: string; content: string; skill_calls?: unknown[]; tool_calls?: unknown[]; multi_agent?: unknown }) => ({
         role: m.role === 'assistant' ? 'ai' : m.role,
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         status: 'complete' as const,
+        ...(m.skill_calls?.length ? { skill_calls: m.skill_calls } : {}),
+        ...(m.tool_calls?.length ? { tool_calls: m.tool_calls } : {}),
+        ...(m.multi_agent ? { multi_agent: m.multi_agent } : {}),
       }));
       const finalMessages = historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES];
       setMessages(finalMessages);

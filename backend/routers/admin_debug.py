@@ -349,7 +349,8 @@ async def _generate_single_agent_debug(
     # 工具配置（统一工具管理器，调试模式 theater_id=None）
     tool_manager = ToolManager()
     ctx = ToolContext(theater_id=None, agent=agent, db=db,
-                      session_id=session_id, user_id=admin_id, is_admin=True)
+                      session_id=session_id, user_id=admin_id, is_admin=True,
+                      permission_mode=(agent.permission_mode or "default"))
     agent_skills = agent.tools or []
 
     # 从聊天历史恢复已加载的技能（渐进式披露：跨轮次持久化）

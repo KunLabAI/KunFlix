@@ -246,6 +246,8 @@ export function AIAssistantPanel() {
     abortControllerRef.current = null;
     resetStreamingState();
     setIsLoading(false);
+    // 释放 auto-save（与 handleSend 的 finally 对称）
+    useCanvasStore.getState().setAiBusy(false);
     // 将最后一条流式消息标记为完成
     setMessages((prev) => {
       const last = prev[prev.length - 1];
@@ -280,6 +282,9 @@ export function AIAssistantPanel() {
       // 取消之前的请求
       abortControllerRef.current?.abort();
       abortControllerRef.current = new AbortController();
+
+      // 标记 AI 推理开始，避免该期间 auto-save 与后端 media_canvas_bridge 争抢 SQLite 写锁
+      useCanvasStore.getState().setAiBusy(true);
 
       // 添加用户消息 + 空的AI流式消息（触发思考面板显示）
       setMessages((prev) => [
@@ -402,6 +407,8 @@ export function AIAssistantPanel() {
         }
       } finally {
         setIsLoading(false);
+        // 标记 AI 推理结束，释放 auto-save
+        useCanvasStore.getState().setAiBusy(false);
         clearImageEditContext();
         clearNodeAttachments();
         clearUploadedFiles();
