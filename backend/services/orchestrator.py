@@ -740,15 +740,13 @@ class UnifiedStrategy(CollaborationStrategy):
                 spec = spec_map[sid]
                 dep_outputs = [completed_outputs[dep] for dep in resolved_deps[sid]]
 
-                # 依赖传递由 Leader 控制：摘要而非原文
-                task_input = user_input
+                # 依赖传递由 Leader 控制：摘要而非原文；无依赖时直接用任务描述
+                task_input = spec.description
                 if dep_outputs:
                     summarized = await self._summarize_dependency_output(
                         dep_outputs, spec.description
                     )
                     task_input = f"## Background Context\n{summarized}\n\n## Your Task\n{spec.description}"
-                else:
-                    task_input = spec.description
 
                 ready_tasks.append((subtask, task_input))
 
