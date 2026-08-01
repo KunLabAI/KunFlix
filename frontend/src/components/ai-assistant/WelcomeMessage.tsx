@@ -1,80 +1,78 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { motion } from 'framer-motion';
-import { useAuth } from '@/context/AuthContext';
-import { Sparkles, UserRound, Film, MessageSquareText } from 'lucide-react';
+import { DraggableOrb } from '@/components/canvas/DraggableOrb';
 
-// 预设对话列表：icon + labelKey + messageKey（通过 t() 在渲染时解析）
-const PRESET_PROMPTS = [
-  { icon: Sparkles, labelKey: 'ai.presets.scifiScript', messageKey: 'ai.presets.scifiScriptMsg' },
-  { icon: UserRound, labelKey: 'ai.presets.designCharacter', messageKey: 'ai.presets.designCharacterMsg' },
-  { icon: Film, labelKey: 'ai.presets.storyboard', messageKey: 'ai.presets.storyboardMsg' },
-  { icon: MessageSquareText, labelKey: 'ai.presets.polishStory', messageKey: 'ai.presets.polishStoryMsg' },
+// 气泡轮播内容：欢迎词 + 预设提示词，labelKey 为气泡展示的短标题，messageKey 为点击后注入输入框的完整文案
+interface PresetEntry {
+  labelKey: string;
+  messageKey: string;
+  /** false 表示纯展示不可点击注入（如欢迎词） */
+  clickable?: boolean;
+}
+const PRESET_PROMPTS: PresetEntry[] = [
+  { labelKey: 'ai.welcome.subtitle', messageKey: 'ai.welcome.subtitle', clickable: false },
+  { labelKey: 'ai.presets.scifiScript', messageKey: 'ai.presets.scifiScriptMsg' },
+  { labelKey: 'ai.presets.designCharacter', messageKey: 'ai.presets.designCharacterMsg' },
+  { labelKey: 'ai.presets.storyboard', messageKey: 'ai.presets.storyboardMsg' },
+  { labelKey: 'ai.presets.polishStory', messageKey: 'ai.presets.polishStoryMsg' },
 ];
 
 interface WelcomeMessageProps {
-  onSend?: (message: string) => void;
+  /** 把预设提示词注入输入框（不直接发送），由父级转交给 MessageInput */
+  onInjectPrompt?: (message: string) => void;
+  /** 空间边界元素（AI 面板容器）：小球拖到四壁即被挤压压扁，无法拖出 */
+  boundsRef?: React.RefObject<HTMLElement | null>;
+  /** 底部障碍元素（如输入区）：小球向下拖到其顶边即被硬挡住并触发碰撞 */
+  barrierRef?: React.RefObject<HTMLElement | null>;
+  /** 当前登录用户昵称，用于欢迎词插值 */
+  userName?: string;
 }
 
 /**
- * 欢迎消息组件 - AI助手面板默认状态下的欢迎文案 + 预设对话快捷入口
+ * 欢迎消息组件 - AI助手面板默认空状态下的欢迎页
  *
- * 显示：
- * - 第一行：👋{username}，欢迎回来！（摇手emoji带动画）
- * - 第二行：我们一起来创作吧~
- * - 下方：可点击的预设对话按钮
+ * 显示：AI 助手小球 Orbie 动态头像，对话气泡中随机轮换展示欢迎词与预设提示词（短标题），
+ * 点击气泡或小球即把对应的完整文案注入输入框，供用户编辑后发送。
  */
-export function WelcomeMessage({ onSend }: WelcomeMessageProps) {
+export function WelcomeMessage({ onInjectPrompt, boundsRef, barrierRef, userName }: WelcomeMessageProps) {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const username = user?.nickname || t('ai.welcome.defaultUser');
+
+  // 气泡展示→留白→切换循环：展示 8~12s 后收起留白 3~5s，
+  // 留白结束时切到下一条（+1 起步保证不重复停留），降低切换频率并增加呼吸感
+  const [presetIndex, setPresetIndex] = useState(() => Math.floor(Math.random() * PRESET_PROMPTS.length));
+  const [showBubble, setShowBubble] = useState(true);
+  useEffect(() => {
+    const delay = showBubble ? 8000 + Math.random() * 4000 : 3000 + Math.random() * 2000;
+    const timer = setTimeout(() => {
+      setShowBubble(s => !s);
+      // 仅在留白→展示的切换点推进提示词
+      !showBubble && setPresetIndex(i => (i + 1 + Math.floor(Math.random() * (PRESET_PROMPTS.length - 1))) % PRESET_PROMPTS.length);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [showBubble, presetIndex]);
+
+  const preset = PRESET_PROMPTS[presetIndex];
+  // 欢迎词含 {{name}} 插值，未登录时用默认昵称；提示词模板无插值，t() 自动忽略多余参数
+  const tOpts = { name: userName || t('ai.welcome.defaultUser') };
+  // 点击气泡 / 轻点小球：把当前预设的完整文案注入输入框（拖拽小球不会走到这里）
+  const handleInject = () => onInjectPrompt?.(t(preset.messageKey, tOpts));
+  // 未接注入回调或当前条目不可点击时气泡不响应点击，避免给出无效的可点击暗示
+  const injectHandler = onInjectPrompt && preset.clickable !== false ? handleInject : undefined;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* 欢迎文案 */}
-      <div className="flex flex-col gap-1 text-[var(--color-text-primary)]">
-        <div className="flex items-center gap-0.5 text-xl">
-          <motion.span
-            className="inline-block origin-[70%_70%]"
-            animate={{ rotate: [0, 14, -8, 14, -4, 10, 0] }}
-            transition={{
-              duration: 2.5,
-              ease: 'easeInOut',
-              repeat: Infinity,
-              repeatDelay: 1,
-            }}
-          >
-            👋
-          </motion.span>
-          <span className="font-medium">{username}</span>
-          <span>{t('ai.welcome.greeting')}</span>
-        </div>
-        <div className="text-2xl font-bold text-[var(--color-text-secondary)]">
-          {t('ai.welcome.subtitle')}
-        </div>
-      </div>
-
-      {/* 预设对话快捷入口 */}
-      <div className="grid grid-cols-2 gap-2">
-        {PRESET_PROMPTS.map((preset) => (
-          <motion.button
-            key={preset.labelKey}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={() => onSend?.(t(preset.messageKey))}
-            className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs text-left
-              bg-[var(--color-bg-panel)] hover:bg-[var(--color-bg-elevated)]
-              border border-[var(--color-border-light)] hover:border-[var(--color-border)]
-              text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]
-              transition-colors cursor-pointer"
-          >
-            <preset.icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
-            <span className="leading-tight">{t(preset.labelKey)}</span>
-          </motion.button>
-        ))}
-      </div>
+    <div className="flex flex-col items-center">
+      {/* AI 小球头像（可拖拽，受面板四壁阻挡），气泡展示欢迎词/预设提示词、点击即注入输入框 */}
+      <DraggableOrb
+        size={72}
+        boundsRef={boundsRef}
+        barrierRef={barrierRef}
+        onTap={injectHandler}
+        onBubbleClick={injectHandler}
+        bubble={showBubble ? t(preset.labelKey, tOpts) : undefined}
+        className="mt-12"
+      />
     </div>
   );
 }

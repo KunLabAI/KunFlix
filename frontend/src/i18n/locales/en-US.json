@@ -754,19 +754,20 @@
     "uploading": "Uploading...",
     "waitForUpload": "Please wait for files to finish uploading",
     "welcome": {
+      "hi": "HI, ",
       "greeting": ", welcome back!",
-      "subtitle": "Let's create together~",
+      "subtitle": "Hi~ {{name}},\nlet's create together!",
       "defaultUser": "Creator"
     },
     "presets": {
       "scifiScript": "Create a sci-fi romance script",
-      "scifiScriptMsg": "Start creating a script with a sci-fi romance theme.",
+      "scifiScriptMsg": "Write a short-drama script with a sci-fi romance theme. Requirements: 1) establish a unique near-future world; 2) create two protagonists with sharply contrasting backgrounds; 3) build the core conflict around the tension between technology and emotion; 4) structure it into scenes following setup, development, twist, and resolution, each with a scene description, dialogue, and an emotional turn.",
       "designCharacter": "Design a character",
-      "designCharacterMsg": "Start designing a character.",
+      "designCharacterMsg": "Help me design a well-rounded character, including: name and age, appearance, personality traits, background story, core desire and inner fear, character arc, and one signature line that reflects their personality.",
       "storyboard": "Generate a storyboard",
-      "storyboardMsg": "Help me generate a storyboard script.",
+      "storyboardMsg": "Help me generate a professional storyboard presented as a table, where each shot includes: shot number, shot size (wide/medium/close-up/extreme close-up), visual content, camera movement, duration, and sound or music cues.",
       "polishStory": "Polish a story",
-      "polishStoryMsg": "Help me polish a story copy."
+      "polishStoryMsg": "I will provide a piece of story text. Please polish it while preserving the original meaning: enhance visual imagery and emotional tension, improve narrative pacing and word choice, and briefly explain the key changes and the reasons behind them."
     },
     "image": {
       "dragToCanvas": "Drag to canvas",

@@ -7,7 +7,9 @@ DB_PATH = os.path.join(BASE_DIR, "kunflix.db")
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "KunFlix"
-    VERSION: str = "1.0.0"
+    # 后端版本号 —— 全项目版本的单一来源，与 frontend/package.json、
+    # backend/admin/package.json 及 CHANGELOG.md 保持同步
+    VERSION: str = "0.1.1"
 
     # ---------------------------------------------------------------
     # Database

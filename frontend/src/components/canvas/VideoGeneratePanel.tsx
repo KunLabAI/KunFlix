@@ -22,6 +22,7 @@ import {
   ApplyButton,
 } from './VideoGeneratePanel/PanelActionButtons';
 import { ConfigPanel } from './VideoGeneratePanel/ConfigPanel';
+import { VIDEO_PROMPT_MAX } from './VideoGeneratePanel/constants';
 import type { VideoGeneratePanelProps } from './VideoGeneratePanel/types';
 
 // 对外类型 re-export —— 保持向后兼容
@@ -218,7 +219,7 @@ export default function VideoGeneratePanel(props: VideoGeneratePanelProps) {
       provider_id: m.provider_id,
       model: m.model_name,
       video_mode: form.videoMode,
-      prompt: form.prompt.trim().slice(0, TEXT_PROMPT_MAX),
+      prompt: form.prompt.trim().slice(0, VIDEO_PROMPT_MAX),
       image_url: firstFrame || undefined,
       last_frame_image: lastFrame || undefined,
       reference_images: isRef && imgUrls.length > 0 ? imgUrls.map((url) => ({ url })) : undefined,

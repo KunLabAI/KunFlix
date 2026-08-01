@@ -6,8 +6,8 @@
 from typing import Dict, List, TypedDict
 
 
-class VideoModelCapabilities(TypedDict):
-    """视频模型能力配置"""
+class _VideoModelCapabilitiesBase(TypedDict):
+    """视频模型能力配置 — 所有模型必填项"""
     provider: str
     modes: List[str]
     durations: List[int]
@@ -24,11 +24,45 @@ class VideoModelCapabilities(TypedDict):
     aspect_ratios: List[str]
 
 
+class VideoModelCapabilities(_VideoModelCapabilitiesBase, total=False):
+    """视频模型能力配置 — 含仅部分模型声明的可选能力"""
+    supports_reference_videos: bool
+    max_reference_videos: int
+    supports_reference_audios: bool
+    max_reference_audios: int
+    supports_return_last_frame: bool
+    supports_web_search: bool
+    supports_auto_duration: bool
+
+
 # 视频生成模型能力配置表
 VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
     # =========================================================================
     # MiniMax 模型
     # =========================================================================
+    
+    # MiniMax-H3 (Hailuo-03): v2 多模态接口 — T2V / I2V(首尾帧) / 多模态参考, 2K 输出, 4-15 秒
+    "MiniMax-H3": {
+        "provider": "minimax",
+        "modes": ["text_to_video", "image_to_video", "reference_images"],
+        "durations": list(range(4, 16)),  # 4-15 秒
+        "resolutions": ["2k"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_reference_videos": True,
+        "max_reference_videos": 3,
+        "supports_reference_audios": True,
+        "max_reference_audios": 3,
+        "supports_video_extension": False,
+        "supports_video_edit": False,
+        "supports_audio": True,
+        "max_reference_images": 9,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        # adaptive 由输入素材决定; 文生视频场景适配器会把 adaptive 归一到 16:9
+        "aspect_ratios": ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9", "adaptive"],
+    },
     
     # MiniMax-Hailuo-2.3: 多功能模型，支持 T2V 和 I2V
     "MiniMax-Hailuo-2.3": {

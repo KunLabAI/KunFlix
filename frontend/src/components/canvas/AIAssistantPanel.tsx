@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence, useDragControls } from 'framer-motion';
-import { Sparkles, X, ImageIcon } from 'lucide-react';
+import { X, ImageIcon } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +25,7 @@ import { useSSEHandler, useSessionManager } from '@/components/ai-assistant';
 import { VirtualMessageList, ScrollToBottomButton, useVirtualListRef } from '@/components/ai-assistant';
 import { usePerformanceMonitor } from '@/components/ai-assistant';
 import { WelcomeMessage } from '@/components/ai-assistant/WelcomeMessage';
+import { AiOrb } from '@/components/canvas/AiOrb';
 import type { NodeAttachment, UploadedFile, PastedContent } from '@/store/useAIAssistantStore';
 
 // 格式化表格数据为 Markdown 表格
@@ -99,7 +100,7 @@ export function AIAssistantPanel() {
   const { t } = useTranslation();
 
   // 登录状态
-  const { isAuthenticated, refreshToken, logout } = useAuth();
+  const { user, isAuthenticated, refreshToken, logout } = useAuth();
   
   // 创建带有自动token刷新的fetch包装器
   const authFetch = React.useMemo(
@@ -178,11 +179,22 @@ export function AIAssistantPanel() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [showReloginDialog, setShowReloginDialog] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isOrbDragging, setIsOrbDragging] = useState(false);
   const [isSnapping, setIsSnapping] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  // 预设提示词注入：小球气泡被点击后把完整提示词填入输入框（nonce 保证同文案可重复注入）
+  const [injectedPrompt, setInjectedPrompt] = useState<{ text: string; nonce: number } | null>(null);
+  const handleInjectPrompt = useCallback((text: string) => {
+    setInjectedPrompt((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
   const theaterId = useCanvasStore((state) => state.theaterId);
   const abortControllerRef = useRef<AbortController | null>(null);
   const constraintsRef = useRef<HTMLDivElement>(null);
+  // AI 面板元素本身：作为小球拖拽的空间边界（四壁），
+  // 不借用内部滚动容器，避免其 padding 缩减可拖拽范围
+  const panelRef = useRef<HTMLDivElement>(null);
+  // 输入区元素：作为小球拖拽的底部"地板"障碍，防止小球拖入输入框区域
+  const inputAreaRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
   const { ref: virtualListRef, scrollToBottom: scrollToBottomVirtual } = useVirtualListRef();
 
@@ -503,28 +515,37 @@ export function AIAssistantPanel() {
 
       <AnimatePresence initial={false} mode="wait">
         {!isOpen ? (
-          // AI按钮
+          // AI按钮（支持拖拽后橡皮筋弹回；拖动中不触发点击展开）
           <motion.div
             key="ai-button"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ duration: 0.3, ease: 'easeInOut' }}
-            className="pointer-events-auto"
+            drag
+            dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={0.4}
+            dragTransition={{ bounceStiffness: 450, bounceDamping: 12 }}
+            whileDrag={{ scale: 1.15, cursor: 'grabbing' }}
+            whileTap={{ scale: 0.92 }}
+            onTap={() => setIsOpen(true)}
+            onDragStart={() => setIsOrbDragging(true)}
+            onDragEnd={() => setIsOrbDragging(false)}
+            className="pointer-events-auto cursor-grab outline-none"
           >
             <Button
-              onClick={() => setIsOpen(true)}
-              className="h-10 w-10 rounded-full shadow-lg bg-primary hover:bg-primary/90 flex items-center justify-center animate-pulse group relative overflow-hidden"
+              className="h-10 w-10 p-0 rounded-full bg-transparent hover:bg-transparent flex items-center justify-center group relative transition-transform duration-300 ease-out hover:scale-110"
               title={t('ai.openButton')}
             >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+              <AiOrb size={40} sweating={isOrbDragging} />
+              <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 ease-out" />
             </Button>
           </motion.div>
         ) : (
           // AI面板
           <motion.div
             key="ai-panel"
+            ref={panelRef}
             drag={!isResizing}
             dragListener={false}
             dragControls={dragControls}
@@ -601,8 +622,10 @@ export function AIAssistantPanel() {
 
               {/* 欢迎状态：仅有欢迎消息时，布局在底部 */}
               {messages.length === 1 && messages[0].isWelcome ? (
-                <div className="flex flex-col justify-end h-full px-4 pb-10 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-                  <WelcomeMessage onSend={handleSend} />
+                <div
+                  className="flex flex-col justify-center h-full px-4 pb-10 overflow-y-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent"
+                >
+                  <WelcomeMessage onInjectPrompt={handleInjectPrompt} boundsRef={panelRef} barrierRef={inputAreaRef} userName={user?.nickname} />
                 </div>
               ) : (
                 <>
@@ -667,11 +690,13 @@ export function AIAssistantPanel() {
               </div>
             )}
 
-            {/* 输入区域（包含Agent选择器、附件预览和发送按钮） */}
+            {/* 输入区域（包含Agent选择器、附件预览和发送按钮）：包裹 ref 作为小球底部障碍 */}
+            <div ref={inputAreaRef} className="shrink-0">
             <MessageInput
               onSend={handleSend}
               onStop={handleStop}
               isLoading={isLoading}
+              injectedPrompt={injectedPrompt}
               isDragOverPanel={isDragOverPanel}
               agentName={agentName}
               availableAgents={availableAgents}
@@ -698,6 +723,7 @@ export function AIAssistantPanel() {
                   })
                 : undefined}
             />
+            </div>
 
             {/* 调整大小手柄 - 四边和四角 */}
             {/* 左边 */}

@@ -196,7 +196,7 @@ from startup import lifespan  # noqa: E402
 from ratelimit import install_rate_limit  # noqa: E402
 
 
-app = FastAPI(title="KunFlix", lifespan=lifespan)
+app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION, lifespan=lifespan)
 install_rate_limit(app)
 
 
@@ -306,7 +306,7 @@ for _router in _ROUTERS:
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the KunFlix API"}
+    return {"message": "Welcome to the KunFlix API", "version": settings.VERSION}
 
 
 @app.websocket("/api/ws")

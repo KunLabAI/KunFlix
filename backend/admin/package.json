@@ -1,6 +1,6 @@
 {
   "name": "admin-dashboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3888",
@@ -64,7 +64,7 @@
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
     "@vitejs/plugin-react": "^6.0.1",
-    "@xmldom/xmldom": "0.9.10",    
+    "@xmldom/xmldom": "0.9.10",
     "autoprefixer": "^10.4.24",
     "eslint": "^10.3.0",
     "eslint-config-next": "^16.2.4",

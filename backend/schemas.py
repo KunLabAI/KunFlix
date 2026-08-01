@@ -757,7 +757,9 @@ class AIGenerateResponse(BaseModel):
 class VideoConfig(BaseModel):
     """视频生成配置"""
     duration: int = Field(default=6, ge=1, le=15)
-    quality: Literal["480p", "720p", "768p", "1080p"] = "720p"
+    # 取值与 video_providers/model_capabilities.py 中各模型声明的 resolutions 保持一致
+    # (512p: Hailuo-02 / 2k: MiniMax-H3 / 4k: Veo 3.1)
+    quality: Literal["480p", "512p", "720p", "768p", "1080p", "2k", "4k"] = "720p"
     aspect_ratio: str = "16:9"
     mode: str = "normal"  # 保留字段兼容前端，部分 API 不使用
     # MiniMax 特有配置
@@ -771,13 +773,14 @@ class VideoGenerateRequest(BaseModel):
     model: str
     session_id: Optional[str] = None
     video_mode: Literal["text_to_video", "image_to_video", "edit", "reference_images", "video_extension"] = "text_to_video"
-    prompt: str = Field(..., min_length=1, max_length=2000)
+    # 上限对齐能力最强的模型 (MiniMax-H3 单条 text 支持 7000 字符)
+    prompt: str = Field(..., min_length=1, max_length=7000)
     image_url: Optional[str] = None  # 首帧图片 (image_to_video/edit)
-    last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 / Seedance 2.0 支持)
-    reference_images: Optional[List[dict]] = None  # 参考图片列表 (Grok/Gemini Veo 3.1/Seedance 2.0)
+    last_frame_image: Optional[str] = None  # 尾帧图片 (MiniMax-Hailuo-02 / MiniMax-H3 / Seedance 2.0 支持)
+    reference_images: Optional[List[dict]] = None  # 参考图片列表 (Grok/Gemini Veo 3.1/Seedance 2.0/MiniMax-H3)
     extension_video_url: Optional[str] = None  # 视频扩展源视频 URL (向后兼容)
-    reference_videos: Optional[List[dict]] = None  # 参考视频列表 (Seedance 2.0, 最多 3 个)
-    reference_audios: Optional[List[dict]] = None  # 参考音频列表 (Seedance 2.0, 最多 3 个)
+    reference_videos: Optional[List[dict]] = None  # 参考视频列表 (Seedance 2.0 / MiniMax-H3, 最多 3 个)
+    reference_audios: Optional[List[dict]] = None  # 参考音频列表 (Seedance 2.0 / MiniMax-H3, 最多 3 个)
     return_last_frame: bool = False  # 返回视频尾帧图像 (Seedance 2.0)
     config: Optional[VideoConfig] = None
 

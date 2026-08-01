@@ -32,6 +32,9 @@ export const PICKER_MODE_MAP: Record<string, PickerMode> = {
 /** 模型未声明能力时的参考图上限兜底 */
 export const DEFAULT_MAX_REFS = 5;
 
+/** 提交给后端的提示词字符上限（与 schemas.VideoGenerateRequest.prompt 对齐） */
+export const VIDEO_PROMPT_MAX = 7000;
+
 /** 参考类型 → prompt 中的 tag 前缀 */
 export const TAG_PREFIX_MAP: Record<RefType, string> = {
   image: 'IMAGE',

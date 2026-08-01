@@ -3,7 +3,7 @@
 
 支持供应商:
   - xAI (Grok Video)
-  - MiniMax (Hailuo)
+  - MiniMax (Hailuo v1 / MiniMax-H3 v2)
   - Gemini (Veo)
   - Ark (Seedance)
   - DashScope (HappyHorse)
@@ -90,6 +90,14 @@ def register_provider(provider_type: str, adapter_cls: Type[VideoProviderAdapter
 # ---------------------------------------------------------------------------
 MAX_POLL_FAILURES = 10
 
+# 各供应商 poll_with_key 的额外关键字参数 (base_url, model) -> kwargs
+_POLL_EXTRA_KWARGS = {
+    # DashScope 支持北京/新加坡地域切换
+    "dashscope": lambda base_url, model: {"base_url": base_url},
+    # MiniMax 需据模型区分 v1 (Hailuo) / v2 (MiniMax-H3) 查询端点
+    "minimax": lambda base_url, model: {"base_url": base_url, "model": model},
+}
+
 
 async def submit_video_task(ctx: VideoContext) -> VideoResult:
     """
@@ -109,6 +117,7 @@ async def poll_video_task(
     task_id: str,
     provider_type: str = "xai",
     base_url: Optional[str] = None,
+    model: str = "",
 ) -> VideoResult:
     """
     轮询视频任务状态 (统一入口)
@@ -117,25 +126,40 @@ async def poll_video_task(
         api_key: API 密钥
         task_id: 任务 ID
         provider_type: 供应商类型 (默认 xai)
-        base_url: 供应商 Endpoint 覆盖 (DashScope 支持地域切换)
+        base_url: 供应商 Endpoint 覆盖 (DashScope 支持地域切换; MiniMax-H3 支持)
+        model: 模型名 (MiniMax 需据此区分 v1 Hailuo / v2 MiniMax-H3 端点)
         
     Returns:
         VideoResult: 轮询结果
     """
     adapter = get_provider_adapter(provider_type)
     
-    # DashScope 支持 base_url 参数; 其他供应商保持兼容签名
-    if provider_type == "dashscope":
-        result = await adapter.poll_with_key(api_key, task_id, base_url=base_url)
-    else:
-        result = await adapter.poll_with_key(api_key, task_id)
+    # 各供应商 poll 的额外参数 (未列出的保持 (api_key, task_id) 兼容签名)
+    extra = _POLL_EXTRA_KWARGS.get(provider_type, lambda _b, _m: {})(base_url, model)
+    result = await adapter.poll_with_key(api_key, task_id, **extra)
     
-    # MiniMax 需要额外获取视频 URL
+    # MiniMax v1 (Hailuo) 需要额外获取视频 URL; v2 (MiniMax-H3) 直接返回 content.url
     (provider_type == "minimax" and result.status == "completed" and result.file_id) and (
         setattr(result, "video_url", await adapter.get_video_url(api_key, result.file_id))
     )
     
     return result
+
+
+async def cancel_video_task(
+    api_key: str,
+    task_id: str,
+    provider_type: str = "xai",
+    model: str = "",
+    base_url: Optional[str] = None,
+) -> bool:
+    """
+    取消 / 删除上游任务 (统一入口, best-effort)
+    
+    仅部分供应商提供该端点 (如 MiniMax-H3)，不支持时返回 False。
+    """
+    adapter = get_provider_adapter(provider_type)
+    return await adapter.delete_task(api_key, task_id, model=model, base_url=base_url)
 
 
 # ---------------------------------------------------------------------------

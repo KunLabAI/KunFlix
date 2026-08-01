@@ -104,8 +104,12 @@ class TheaterService:
         query = apply_filter(query)
         count_query = apply_filter(count_query)
 
-        # 排序和分页
-        query = query.order_by(Theater.updated_at.desc().nullslast(), Theater.created_at.desc())
+        # 排序和分页：coalesce 让从未修改过的剧场（updated_at 为 NULL）按创建时间参与排序，
+        # 避免 nullslast 把新建剧场排到列表末尾
+        query = query.order_by(
+            func.coalesce(Theater.updated_at, Theater.created_at).desc(),
+            Theater.created_at.desc(),
+        )
         query = query.offset((page - 1) * page_size).limit(page_size)
 
         total_result = await self.db.execute(count_query)

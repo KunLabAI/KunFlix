@@ -258,6 +258,8 @@ interface MessageInputProps {
   onSend: (content: string, files: UploadedFile[], pastedContents: PastedContent[]) => void;
   onStop?: () => void;
   isLoading: boolean;
+  /** 外部注入的提示词（如小球气泡点击）：nonce 变化时填入输入框并聚焦 */
+  injectedPrompt?: { text: string; nonce: number } | null;
   isDragOverPanel?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -295,6 +297,7 @@ export function MessageInput({
   onSend,
   onStop,
   isLoading,
+  injectedPrompt = null,
   isDragOverPanel = false,
   disabled = false,
   placeholder,
@@ -407,6 +410,11 @@ export function MessageInput({
   useEffect(() => {
     !isLoading && textareaRef.current?.focus();
   }, [isLoading]);
+
+  // 预设提示词注入：小球气泡点击后把完整提示词填入输入框并聚焦（供用户编辑后发送）
+  useEffect(() => {
+    injectedPrompt && (setInputValue(injectedPrompt.text), textareaRef.current?.focus());
+  }, [injectedPrompt]);
 
   // 自动调整高度（最大10行，约240px）
   useEffect(() => {
@@ -554,7 +562,7 @@ export function MessageInput({
 
   return (
     <div
-      className={cn('p-3 bg-background relative', className)}
+      className={cn('pl-3 pr-3 pb-3 bg-background relative', className)}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
