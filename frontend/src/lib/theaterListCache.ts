@@ -13,8 +13,8 @@
  */
 import type { TheaterResponse } from "@/lib/theaterApi";
 
-/** 新鲜窗口：1 分钟内视为新鲜，超过则触发后台刷新但仍可作占位 */
-const FRESH_TTL_MS = 60_000;
+/** 新鲜窗口：6 秒内视为新鲜，超过则触发后台刷新但仍可作占位 */
+const FRESH_TTL_MS = 6_000;
 
 interface Snapshot {
   items: TheaterResponse[];

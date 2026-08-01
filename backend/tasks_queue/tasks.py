@@ -58,7 +58,10 @@ async def poll_video_task_job(ctx: dict, task_id: str) -> dict:
 
             ptype = extract_video_provider_type(provider.provider_type) or infer_provider_type(task.model or "", provider.provider_type)
             try:
-                poll = await poll_video_task(provider.api_key, task.xai_task_id, ptype, base_url=provider.base_url)
+                poll = await poll_video_task(
+                    provider.api_key, task.xai_task_id, ptype,
+                    base_url=provider.base_url, model=task.model or "",
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("poll_video_task_job upstream error attempt=%d: %s", attempt, exc)
                 await asyncio.sleep(_POLL_INTERVAL_SEC)

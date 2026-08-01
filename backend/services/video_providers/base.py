@@ -111,7 +111,7 @@ class VideoProviderAdapter(ABC):
         """
         pass
     
-    async def get_video_url(self, file_id: str) -> str:
+    async def get_video_url(self, api_key: str, file_id: str) -> str:
         """
         获取视频下载链接
         
@@ -119,12 +119,37 @@ class VideoProviderAdapter(ABC):
         xAI 等供应商直接在 poll 结果中返回 URL，无需实现此方法。
         
         Args:
+            api_key: 供应商 API Key
             file_id: 文件 ID
             
         Returns:
             str: 视频下载 URL
         """
         return ""
+    
+    async def delete_task(
+        self,
+        api_key: str,
+        task_id: str,
+        model: str = "",
+        base_url: Optional[str] = None,
+    ) -> bool:
+        """
+        取消 / 删除上游任务
+        
+        部分供应商 (如 MiniMax-H3) 提供任务取消或记录删除端点，
+        本地任务被删除时可顺带清理上游残留。默认视为不支持。
+        
+        Args:
+            api_key: 供应商 API Key
+            task_id: 供应商任务 ID
+            model: 模型名 (同一供应商不同代次 API 可能不同)
+            base_url: 供应商 Endpoint 覆盖
+            
+        Returns:
+            bool: 上游是否成功取消/删除
+        """
+        return False
     
     def _map_status(self, raw_status: str) -> str:
         """将供应商状态映射为内部状态"""

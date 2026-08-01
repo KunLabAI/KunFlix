@@ -754,19 +754,20 @@
     "uploading": "上传中...",
     "waitForUpload": "请等待文件上传完成",
     "welcome": {
+      "hi": "HI，",
       "greeting": "，欢迎回来！",
-      "subtitle": "我们一起来创作吧~",
+      "subtitle": "Hi~ {{name}}，\n我们一起来创作吧！",
       "defaultUser": "创作者"
     },
     "presets": {
       "scifiScript": "创建科幻爱情剧本",
-      "scifiScriptMsg": "开始创建一个剧本，科幻爱情题材。",
+      "scifiScriptMsg": "请以科幻爱情为主题创作一个短剧剧本。要求：1）设定一个独特的近未来世界观；2）塑造两位背景反差鲜明的主角；3）围绕科技与情感的冲突展开核心矛盾；4）按起承转合划分场景，每个场景包含场景描述、人物对白与情绪转折。",
       "designCharacter": "设计一个角色人物",
-      "designCharacterMsg": "开始设计一个角色人物。",
+      "designCharacterMsg": "请帮我设计一个立体的角色人物，需包含：姓名与年龄、外貌特征、性格标签、成长背景、核心欲望与内心恐惧、人物成长弧光，以及一句能体现其性格的代表性台词。",
       "storyboard": "生成一段分镜脚本",
-      "storyboardMsg": "帮我生成一段分镜脚本。",
+      "storyboardMsg": "请帮我生成一段专业的分镜脚本，以表格形式呈现，每个镜头包含：镜号、景别（远景/中景/近景/特写）、画面内容、镜头运动、时长以及音效或配乐提示。",
       "polishStory": "润色一段故事文案",
-      "polishStoryMsg": "帮我润色一段故事文案。"
+      "polishStoryMsg": "我将提供一段故事文案，请在保持原意的前提下进行润色：增强画面感与情绪张力，优化叙事节奏与用词，并简要说明主要修改点及理由。"
     },
     "image": {
       "dragToCanvas": "拖拽到画布",

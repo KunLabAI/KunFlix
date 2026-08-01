@@ -42,6 +42,8 @@ export function useSessionManager() {
   // 新建对话防抖状态（UI 反馈 + 重入拦截）
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const isCreatingChatRef = useRef(false);
+  // 初始化会话防重入：记录正在初始化的 theaterId，拦截并发重复创建（如多个 effect 竞态、StrictMode 双调用）
+  const initializingTheaterRef = useRef<string | null>(null);
   
   // 跟踪是否已恢复过上下文统计
   const restoredSessionRef = useRef<string | null>(null);
@@ -178,6 +180,9 @@ export function useSessionManager() {
   // 为指定theater创建会话（初始化时使用，加载最近一条或创建新的）
   const createSessionForTheater = useCallback(
     async (targetTheaterId: string): Promise<{ sessionId: string; agentId: string; agentName: string } | null> => {
+      // 重入拦截：同一 theater 的初始化正在进行中，直接返回，避免并发重复创建会话
+      if (initializingTheaterRef.current === targetTheaterId) return null;
+      initializingTheaterRef.current = targetTheaterId;
       try {
         // 同时加载会话列表
         const chatList = await loadTheaterSessions(targetTheaterId);
@@ -227,6 +232,9 @@ export function useSessionManager() {
       } catch (err) {
         console.error('Failed to initialize AI assistant:', err);
         return null;
+      } finally {
+        // 仅清除本次初始化的标记（期间可能已切换到其他 theater）
+        initializingTheaterRef.current === targetTheaterId && (initializingTheaterRef.current = null);
       }
     },
     [loadAgents, loadTheaterSessions, loadSessionData, agentId, setSessionId, setAgentId, setAgentName, setMessages, addChatToList]

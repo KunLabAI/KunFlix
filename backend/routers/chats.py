@@ -2,12 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func
+from sqlalchemy import func, update
 from typing import List, Optional
 import logging
 
 from database import get_db
-from models import Agent, ChatSession, ChatMessage
+from models import Agent, ChatSession, ChatMessage, Theater
 from schemas import ChatSessionCreate, ChatSessionUpdate, ChatSessionResponse, ChatMessageCreate
 from auth import get_current_active_user_or_admin, scoped_query, is_admin_entity
 from services.chat_utils import serialize_content, deserialize_content
@@ -181,6 +181,14 @@ async def send_message(
     # 2. 保存用户消息（多模态内容序列化为 JSON）
     user_msg = ChatMessage(session_id=session_id, role="user", content=serialize_content(message.content))
     db.add(user_msg)
+    # 对话视为剧场活跃行为：触达 Theater.updated_at，驱动首页「最近剧场」按最后活跃排序
+    # 限定归属当前用户，防止客户端传入他人 theater_id 误触
+    theater_ref = chat_session.theater_id or message.theater_id
+    theater_ref and await db.execute(
+        update(Theater)
+        .where(Theater.id == theater_ref, Theater.user_id == current_user.id)
+        .values(updated_at=func.now())
+    )
     await db.commit()
 
     # 捕获上下文变量

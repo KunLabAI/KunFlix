@@ -192,12 +192,14 @@ async def toggle_skill(skill_name: str, current_admin=Depends(require_admin)):
     """Toggle a skill's active status."""
     active_path = get_active_skills_dir(get_skills_base_dir()) / skill_name
 
+    # 选择分支时直接绑定完整调用，消除“函数与参数分离选择”的歧义
+    # （disable_skill 无 force 参数；enable_skill 需 force=True 覆盖同步）
     action, new_state = (
-        (_skill_service.disable_skill, "inactive")
+        ((lambda: _skill_service.disable_skill(skill_name)), "inactive")
         if active_path.exists()
-        else (_skill_service.enable_skill, "active")
+        else ((lambda: _skill_service.enable_skill(skill_name, force=True)), "active")
     )
-    success = action(skill_name) if new_state == "inactive" else action(skill_name, force=True)
+    success = action()
 
     if not success:
         raise HTTPException(status_code=500, detail=f"Failed to toggle skill {skill_name}")

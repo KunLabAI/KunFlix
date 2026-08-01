@@ -3,7 +3,7 @@
 
 支持多供应商统一管理:
 - xAI (Grok Video)
-- MiniMax (Hailuo)
+- MiniMax (Hailuo v1 / MiniMax-H3 v2)
 - Gemini (Veo)
 - Ark (Seedance)
 - DashScope (HappyHorse)

@@ -29,6 +29,7 @@ export const RESOLUTION_LABELS: Record<string, string> = {
   '720p': '720p (高清)',
   '768p': '768p',
   '1080p': '1080p (全高清)',
+  '2k': '2K',
   '4k': '4K (超高清)',
 };
 
@@ -37,6 +38,10 @@ export const ASPECT_RATIO_LABELS: Record<string, string> = {
   '16:9': '16:9 (横屏)',
   '9:16': '9:16 (竖屏)',
   '1:1': '1:1 (方形)',
+  '4:3': '4:3',
+  '3:4': '3:4',
+  '21:9': '21:9 (宽银幕)',
+  adaptive: '自适应',
 };
 
 // 默认能力配置（当模型未定义时使用）

@@ -13,7 +13,7 @@ from database import get_db
 from models import LLMProvider, VideoTask, ChatMessage, Asset, User, generate_uuid
 from schemas import VideoGenerateRequest, VideoTaskResponse, VideoTaskListResponse, VideoConfig
 from auth import get_current_active_user_or_admin, is_admin_entity, scoped_query
-from services.video_generation import submit_video_task, poll_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
+from services.video_generation import submit_video_task, poll_video_task, cancel_video_task, VideoContext, MAX_POLL_FAILURES, infer_provider_type
 from services.video_providers import extract_video_provider_type
 from services.video_providers.model_capabilities import get_model_capabilities
 from services.video_providers.virtual_human_presets import list_presets as list_virtual_human_presets
@@ -221,7 +221,10 @@ async def get_video_task_status(
 
     # 轮询供应商 (根据 provider_type 自动选择适配器)
     provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(task.model or "", provider.provider_type)
-    poll_result = await poll_video_task(provider.api_key, task.xai_task_id, provider_type, base_url=provider.base_url)
+    poll_result = await poll_video_task(
+        provider.api_key, task.xai_task_id, provider_type,
+        base_url=provider.base_url, model=task.model or "",
+    )
 
     # 超时保护：pending 且有错误超过 5 分钟 → 判定失败
     poll_has_error = poll_result.error and poll_result.status == "pending"
@@ -438,6 +441,9 @@ async def delete_video_task(
         HTTPException(status_code=400, detail="只能删除已完成或失败的任务")
     )
 
+    # 顺带清理上游任务记录 (仅部分供应商支持, best-effort 不阻断本地删除)
+    task.xai_task_id and await _cleanup_upstream_task(task, db)
+
     # 删除本地视频文件（路径格式: /api/media/{uuid}.mp4）
     video_path = task.result_video_url
     video_path and _try_delete_local_file(video_path)
@@ -463,6 +469,30 @@ def _try_delete_local_file(media_url: str):
     filepath = resolve_media_filepath(filename) or (MEDIA_DIR / filename)
     filepath.unlink(missing_ok=True)
     logger.info(f"Deleted local file: {filepath}")
+
+
+async def _cleanup_upstream_task(task: VideoTask, db: AsyncSession) -> None:
+    """删除本地任务时顺带取消/删除上游任务记录 (best-effort)
+
+    仅部分供应商提供该端点 (如 MiniMax-H3 的 DELETE /v2/video_generation/{task_id})，
+    不支持或调用失败均不影响本地删除。
+    """
+    try:
+        provider = (await db.execute(
+            select(LLMProvider).where(LLMProvider.id == task.provider_id)
+        )).scalar_one_or_none()
+        if not provider:
+            return
+        provider_type = extract_video_provider_type(provider.provider_type) or infer_provider_type(
+            task.model or "", provider.provider_type
+        )
+        ok = await cancel_video_task(
+            provider.api_key, task.xai_task_id, provider_type,
+            model=task.model or "", base_url=provider.base_url,
+        )
+        ok and logger.info(f"Upstream video task cleaned up: {task.xai_task_id} ({provider_type})")
+    except Exception as e:
+        logger.warning(f"Upstream video task cleanup failed for {task.xai_task_id}: {e}")
 
 
 def _build_task_response(task: VideoTask, provider_name: str = None, billing_underpaid: bool = False, remaining_credits: Optional[float] = None) -> VideoTaskResponse:
