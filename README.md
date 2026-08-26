@@ -134,6 +134,8 @@ KunFlix 专为**影视广告与短剧创作**打造的开放式AI内容创作生
 - Docker 24+（Docker 部署时需要）
 - PostgreSQL 18（开发与生产统一；本地可用 `docker compose -f deploy/docker-compose.dev.yml up -d` 一键启动 PostgreSQL + Redis）
 
+> 💡 **没装 PostgreSQL 也能跑**：`python dev.py` 探测到数据库不可达时会提供交互菜单，选 **[1] 自动降级 SQLite** 即可零依赖完整启动项目（仅适合本地开发/快速体验；生产环境与多智能体协作请务必使用 PostgreSQL）。
+
 > 从 1.0 升级到 2.0 的开发者请先阅读 [UPGRADE.md](./UPGRADE.md)。
 
 ### 三种启动模式
@@ -157,6 +159,8 @@ python dev.py
 ```
 
 自动完成：创建虚拟环境 → 安装依赖 → 初始化数据库 → 并行启动 Backend + Frontend + Admin 三个服务。
+
+> 数据库首选 PostgreSQL；未安装时 `dev.py` 会在探测失败后给出交互选项，一键降级 SQLite 兜底，保证项目可完整启动（详见上方环境要求的提示）。
 
 #### 方式二：[本地 Docker](./DEPLOY.md)
 

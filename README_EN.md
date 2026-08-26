@@ -134,6 +134,8 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 - Docker 24+ (required for Docker deployment)
 - PostgreSQL 18 (unified for dev & prod; start locally with `docker compose -f deploy/docker-compose.dev.yml up -d` for PostgreSQL + Redis)
 
+> 💡 **Works even without PostgreSQL**: when `python dev.py` detects an unreachable database, it offers an interactive menu — pick **[1] Auto-fallback to SQLite** to fully launch the project with zero extra dependencies (local dev / quick trial only; always use PostgreSQL for production and team Agent).
+
 > If you are upgrading from 1.0 to 2.0, please read [UPGRADE.md](./UPGRADE.md) first.
 
 ### Three Deployment Modes
@@ -157,6 +159,8 @@ python dev.py
 ```
 
 Automatically: creates venv → installs dependencies → initializes database → starts Backend + Frontend + Admin in parallel.
+
+> PostgreSQL is the preferred database; if it's not installed, `dev.py` offers an interactive one-click SQLite fallback after the connectivity probe fails, so the project can always fully start (see the note in Prerequisites above).
 
 #### Option 2: [Local Docker](./DEPLOY_EN.md)
 

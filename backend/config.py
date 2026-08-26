@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "KunFlix"
     # 后端版本号 —— 全项目版本的单一来源，与 frontend/package.json、
     # backend/admin/package.json 及 CHANGELOG.md 保持同步
-    VERSION: str = "0.1.1"
+    VERSION: str = "0.1.2"
 
     # ---------------------------------------------------------------
     # Database

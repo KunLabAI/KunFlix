@@ -6,6 +6,78 @@
 
 ---
 
+## [v0.1.2] - 2026-08-26
+
+**主题：安装与启动体验修复 —— 前端依赖冲突清理、PostgreSQL 空库引导兼容、SQLite 免安装兜底**
+
+上一版本：`v0.1.1`。本版本无 schema 变更，无新增第三方依赖。
+
+### ✨ 新增
+
+#### dev.py SQLite 免安装兜底
+
+新手开发者未安装 PostgreSQL 时，项目此前会在数据库探测失败处 fail-fast。现在 `dev.py` 探测失败后进入交互菜单：
+
+- **[1] 自动降级 SQLite 继续启动**：自动把 `backend/.env` 的 `DATABASE_URL` 改写（或追加）为 `sqlite+aiosqlite:///./kunflix.db`，重新探测通过后继续完整启动，零依赖跑起全栈。
+- **[2] 我已修复，重新探测**：装好 PostgreSQL / Docker 后原地重试，无需重跑依赖安装。
+- **[3] 退出**：手动处理后再运行 `dev.py`。
+- 非交互终端（CI / 管道）`input()` 抛 EOFError 时按退出处理，保持原有 fail-fast 行为不变。
+- SQLite 兜底仅面向本地开发/快速体验；后端内置的 SQLite 方言支持（PRAGMA 调优、全局写锁、连接池配置）自动生效。
+
+#### README 引导补充
+
+`README.md` / `README_EN.md` 双语同步：环境要求处新增「没装 PostgreSQL 也能跑」提示，本地开发章节补充 SQLite 兜底说明。
+
+### 🔧 改进
+
+- **数据库引导统一走快通道**：`seed_db.py` 的建库策略与 `startup.py` 的 `_try_fast_bootstrap` 对齐 —— 空库直接 `Base.metadata.create_all()` 建终态 schema + `alembic stamp head`，不再重放历史迁移。
+- **seed 引擎隔离**：`seed_db.py` 使用独立的 `create_async_engine` 与 session 工厂，避免 alembic 的 env.py dispose 全局 engine 的事件循环导致后续连接报 `Event loop is closed`。
+- **alembic stamp 移出事件循环**：`alembic stamp` 内部会再启 `asyncio.run`，改为在 `asyncio.run(_bootstrap())` 返回后同步执行，消除嵌套循环 RuntimeError。
+- seed 失败时以非零退出码终止启动，避免带残缺数据起服务。
+
+### 🐛 修复
+
+- **前端依赖 ERESOLVE 冲突**：`package.json` 中 27 个 `@tiptap/*` 包混用 `^3.20.4` ~ `^3.23.6` 多个版本范围，而 tiptap v3 各包要求 peer 精确同版本，导致 `npm ci` 直接失败；已统一为 `^3.23.6` 并重新生成 lock 文件。
+- **React 版本不匹配**：`react@19.2.3` 与 `react-dom@19.2.7` 版本错位触发 Next.js 启动报错，已在 `dependencies` 与 `overrides` 两处统一为 `19.2.3`。
+- **PostgreSQL 空库初始化失败**：alembic 历史迁移含 SQLite 专用语法（`PRAGMA`、`sqlite_master` 等）且存在外键类型时序问题（`credit_transactions.session_id` 为 VARCHAR 却引用当时还是 INTEGER 的 `chat_sessions.id`），在 PG 空库重放必失败；现改走 create_all + stamp 快通道彻底绕过。
+
+### 🔢 版本管理同步
+
+| 位置 | v0.1.1 | v0.1.2 |
+|---|---|---|
+| `backend/config.py` → `Settings.VERSION` | `0.1.1` | `0.1.2` |
+| `frontend/package.json` | `0.1.1` | `0.1.2` |
+| `backend/admin/package.json` | `0.1.1` | `0.1.2` |
+| 两侧 `package-lock.json` | `0.1.1` | `0.1.2` |
+
+### ✅ 测试与验证
+
+- 模拟 PostgreSQL 不可达 → 选 [1] 自动降级 SQLite：配置写入、重新探测通过（exit 0）。
+- SQLite 模式完整初始化（create_all + stamp + 全部种子数据）：exit 0。
+- PostgreSQL 模式全栈启动验证：Backend / Frontend / Admin 三服务全部 200，`GET /api/auth/public-settings` 响应正常。
+
+### 📌 升级说明
+
+1. **无 schema 变更，无需迁移**。
+2. 已有 PostgreSQL 库且 `alembic_version` 已 stamp 的部署不受影响；全新空库此后走 create_all + stamp 快通道。
+3. SQLite 兜底生成的 `backend/kunflix.db` 仅供本地开发，请勿提交到 Git；生产与多智能体协作请务必使用 PostgreSQL。
+
+### 📁 主要变更文件
+
+```
+dev.py                                数据库探测失败交互兜底、SQLite 自动降级
+backend/scripts/seed_db.py            快通道建库、独立引擎、stamp 移出事件循环
+backend/config.py                     版本号 0.1.1 → 0.1.2
+frontend/package.json                 tiptap 版本统一、react-dom 对齐、版本号
+frontend/package-lock.json            重新生成（tiptap 统一版本）
+backend/admin/package.json            版本号
+backend/admin/package-lock.json       版本号
+README.md / README_EN.md              PostgreSQL 兜底引导（双语）
+CHANGELOG.md                          本文件
+```
+
+---
+
 ## [v0.1.1] - 2026-08-01
 
 **主题：MiniMax-H3 视频模型接入 + AI 助手交互体验重做**
