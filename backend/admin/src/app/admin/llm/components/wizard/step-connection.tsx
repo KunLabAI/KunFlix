@@ -17,7 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, Eye, EyeOff, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FormValues } from '../../schema';
+import { FormValues, PROVIDERS_REQUIRE_BASE_URL } from '../../schema';
 
 interface StepConnectionProps {
   form: UseFormReturn<FormValues>;
@@ -28,6 +28,8 @@ export function StepConnection({ form, actions }: StepConnectionProps) {
   const { t } = useTranslation();
   const [showApiKey, setShowApiKey] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  // DashScope 百炼: base_url 为同地域 Endpoint 必填, 展示专属引导文案与必填标记
+  const isDashscope = PROVIDERS_REQUIRE_BASE_URL(form.watch('provider_type') || '');
 
   return (
     <Card>
@@ -46,11 +48,25 @@ export function StepConnection({ form, actions }: StepConnectionProps) {
           name="base_url"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{t('llm.form.connection.baseUrl')}</FormLabel>
+              <FormLabel>
+                {isDashscope ? t('llm.form.connection.baseUrlRequiredLabel') : t('llm.form.connection.baseUrl')}
+                {isDashscope && <span className="ml-1 text-destructive">*</span>}
+              </FormLabel>
               <FormControl>
-                <Input placeholder={t('llm.form.connection.baseUrlPlaceholder')} {...field} />
+                <Input
+                  placeholder={
+                    isDashscope
+                      ? t('llm.form.connection.baseUrlPlaceholderDashscope')
+                      : t('llm.form.connection.baseUrlPlaceholder')
+                  }
+                  {...field}
+                />
               </FormControl>
-              <FormDescription>{t('llm.form.connection.baseUrlDescription')}</FormDescription>
+              <FormDescription>
+                {isDashscope
+                  ? t('llm.form.connection.baseUrlDescriptionDashscope')
+                  : t('llm.form.connection.baseUrlDescription')}
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

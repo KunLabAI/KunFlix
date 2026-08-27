@@ -1,19 +1,25 @@
 """
-阿里云 DashScope 百炼 HappyHorse 视频生成适配器
+阿里云 DashScope 百炼视频生成适配器 (HappyHorse / Wan3.0)
 
 支持模型:
   - happyhorse-1.0-t2v         (文生视频)
   - happyhorse-1.0-i2v         (图生视频, 首帧)
   - happyhorse-1.0-r2v         (参考生视频, 多图)
   - happyhorse-1.0-video-edit  (视频编辑)
+  - wan3.0-video-prime         (全能参考模型高速版)
+  - wan3.0-video               (全能参考模型标准版)
 
-REST 端点:
+REST 端点 (异步: 创建任务 -> 轮询获取):
   提交: POST {base}/api/v1/services/aigc/video-generation/video-synthesis
   轮询: GET  {base}/api/v1/tasks/{task_id}
   上传策略: GET {base}/api/v1/uploads?action=getPolicy&model={model}
 
-HappyHorse 要求媒体必须为公网 HTTP(S) URL 或 oss:// URL；本地文件需通过 DashScope
+媒体要求公网 HTTP(S) URL 或 oss:// URL；本地文件需通过 DashScope
 文件上传策略先上传到 OSS 后再引用。
+
+Wan3.0 地域限制: 模型、Endpoint URL 和 API Key 必须属于同一地域,
+供应商 base_url 需配置为 https://{WorkspaceId}.{region}.maas.aliyuncs.com
+(如北京: https://llm-xxxx.cn-beijing.maas.aliyuncs.com)，跨地域调用会失败。
 """
 from __future__ import annotations
 
@@ -39,13 +45,15 @@ _MEDIA_DIR = Path(__file__).resolve().parents[2] / "media"
 
 
 class DashScopeVideoAdapter(VideoProviderAdapter):
-    """DashScope 百炼 HappyHorse 视频适配器"""
+    """DashScope 百炼视频适配器 (HappyHorse / Wan3.0)"""
 
     SUPPORTED_MODELS: ClassVar[List[str]] = [
         "happyhorse-1.0-t2v",
         "happyhorse-1.0-i2v",
         "happyhorse-1.0-r2v",
         "happyhorse-1.0-video-edit",
+        "wan3.0-video-prime",
+        "wan3.0-video",
     ]
 
     STATUS_MAP: ClassVar[Dict[str, str]] = {
@@ -73,15 +81,41 @@ class DashScopeVideoAdapter(VideoProviderAdapter):
     _R2V_MODELS: ClassVar[set] = {"happyhorse-1.0-r2v"}
     _EDIT_MODELS: ClassVar[set] = {"happyhorse-1.0-video-edit"}
 
+    # -------------------------------------------------------------------------
+    # Wan3.0 全能参考模型 (All-in-One): T2V / I2V首尾帧 / 多模态参考 / 编辑 / 延长
+    # -------------------------------------------------------------------------
+    _WAN3_MODELS: ClassVar[frozenset] = frozenset({"wan3.0-video-prime", "wan3.0-video"})
+
+    # Wan3.0 分辨率映射 (原生支持 480P)
+    _WAN3_RESOLUTION_MAP: ClassVar[Dict[str, str]] = {
+        "480p": "480P",
+        "720p": "720P",
+        "1080p": "1080P",
+    }
+
+    # Wan3.0 支持的宽高比 (adaptive: 根据输入媒体比例自适应)
+    _WAN3_RATIOS: ClassVar[frozenset] = frozenset({"adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"})
+
+    # Wan3.0 地域 Endpoint 主机后缀 — 模型/URL/API Key 必须同地域, 主机前缀为业务空间 ID。
+    # 地域清单: 北京 / 新加坡 / 日本(东京) / 德国(法兰克福) / 美国(弗吉尼亚)
+    _WAN3_REGION_HOSTS: ClassVar[tuple] = (
+        ".cn-beijing.maas.aliyuncs.com",
+        ".ap-southeast-1.maas.aliyuncs.com",
+        ".ap-northeast-1.maas.aliyuncs.com",
+        ".eu-central-1.maas.aliyuncs.com",
+        ".us-east-1.maas.aliyuncs.com",
+    )
+
     # ---------------------------------------------------------------------
     # 提交
     # ---------------------------------------------------------------------
     async def submit(self, ctx: VideoContext) -> VideoResult:
-        """提交 HappyHorse 视频生成任务"""
+        """提交百炼视频生成任务 (HappyHorse / Wan3.0)"""
         base_url = self._resolve_base_url(ctx.base_url)
 
-        # 按模型构造请求 body (含媒体 URL 规范化)
+        # 按模型构造请求 body (含媒体 URL 规范化 + Wan3.0 地域校验)
         try:
+            (ctx.model in self._WAN3_MODELS) and self._assert_wan3_region(base_url)
             payload = await self._build_payload(ctx, base_url)
         except Exception as exc:
             logger.error(f"DashScope build payload failed: {exc}", exc_info=True)
@@ -94,8 +128,117 @@ class DashScopeVideoAdapter(VideoProviderAdapter):
         cleaned = (base_url or "").rstrip("/")
         return cleaned or _DEFAULT_BASE_URL
 
+    def _assert_wan3_region(self, base_url: str) -> None:
+        """Wan3.0 地域校验: Endpoint 必须为 https://{WorkspaceId}.{region}.maas.aliyuncs.com
+
+        模型、Endpoint URL 和 API Key 必须属于同一地域, 跨地域调用会失败。
+        """
+        from urllib.parse import urlparse
+        host = urlparse(base_url).hostname or ""
+        matched = [suffix for suffix in self._WAN3_REGION_HOSTS if host.endswith(suffix)]
+        # 主机需含 {WorkspaceId} 前缀 + 地域后缀 (排除裸域名/其他地域/默认 dashscope 地址)
+        valid = matched and host.rsplit(matched[0], 1)[0].strip() != ""
+        valid or (_ for _ in ()).throw(ValueError(
+            "Wan3.0 需同地域 Endpoint (模型/URL/API Key 必须同地域), 请在供应商配置中把 base_url 设为 "
+            "https://{业务空间ID}.{地域}.maas.aliyuncs.com, 如 https://llm-xxxx.cn-beijing.maas.aliyuncs.com "
+            f"(当前值: {base_url})"
+        ))
+
     async def _build_payload(self, ctx: VideoContext, base_url: str) -> dict:
-        """根据模型类型构造请求 payload"""
+        """构造请求 payload — 按模型系列分派"""
+        return (
+            await self._build_wan3_payload(ctx, base_url)
+            if ctx.model in self._WAN3_MODELS
+            else await self._build_happyhorse_payload(ctx, base_url)
+        )
+
+    # ---------------------------------------------------------------------
+    # Wan3.0 payload (All-in-One: prompt + media 数组)
+    # ---------------------------------------------------------------------
+    async def _build_wan3_payload(self, ctx: VideoContext, base_url: str) -> dict:
+        """构造 Wan3.0 请求 payload
+
+        media 类型约束 (上游 API 强制校验):
+          - first_frame/last_frame 与 reference_xx/file/link 互斥, 由 video_mode 区分;
+          - 参考图 ≤ 10 张, 参考视频 ≤ 5 段(总时长 ≤15秒), 参考音频 ≤ 5 段(总时长 ≤15秒);
+          - file / link 各最多 1 个且互斥。
+        """
+        model = ctx.model
+        mode = ctx.video_mode
+        media: List[dict] = []
+        norm = lambda u: self._ensure_public_url(ctx.api_key, u, model, base_url)
+
+        # I2V 首尾帧模式: first_frame + last_frame (严格作为视频首帧/尾帧)
+        (mode == "image_to_video" and ctx.image_url) and media.append(
+            {"type": "first_frame", "url": await norm(ctx.image_url)}
+        )
+        (mode == "image_to_video" and ctx.last_frame_image) and media.append(
+            {"type": "last_frame", "url": await norm(ctx.last_frame_image)}
+        )
+
+        # 编辑 / 视频延长: 源视频以 reference_video 传入 (延长需 prompt 含延长意图关键词)
+        source_video = ctx.extension_video_url or ""
+        (not source_video and mode in ("edit", "video_extension") and ctx.reference_videos) and (
+            source_video := (ctx.reference_videos[0] or {}).get("url", "")
+        )
+        (mode in ("edit", "video_extension") and source_video) and media.append(
+            {"type": "reference_video", "url": await norm(source_video)}
+        )
+
+        # 多模态参考模式: 图/视频/音频/文件/网页链接 (prompt 中用"图1""视频1"等指代)
+        is_ref = mode == "reference_images"
+        is_ref and media.extend([
+            {"type": "reference_image", "url": await norm(img.get("url", ""))}
+            for img in (ctx.reference_images or [])[:10] if img and img.get("url")
+        ])
+        is_ref and media.extend([
+            {"type": "reference_video", "url": await norm(v.get("url", ""))}
+            for v in (ctx.reference_videos or [])[:5] if v and v.get("url")
+        ])
+        is_ref and media.extend([
+            {"type": "reference_audio", "url": await norm(a.get("url", ""))}
+            for a in (ctx.reference_audios or [])[:5] if a and a.get("url")
+        ])
+        # file: 文件参考 (≤ 100MB, ≤ 50 页); link: 公开网页链接 (不可与 file 同时传)
+        (is_ref and ctx.reference_files) and media.append(
+            {"type": "file", "url": await norm((ctx.reference_files[0] or {}).get("url", ""))}
+        )
+        (is_ref and ctx.reference_links) and media.append(
+            {"type": "link", "url": (ctx.reference_links[0] or {}).get("url", "")}
+        )
+
+        # 组装 input: prompt 与 media 必填其一
+        input_body: dict = {"prompt": ctx.prompt or ""}
+        media and input_body.update({"media": media})
+
+        return {
+            "model": model,
+            "input": input_body,
+            "parameters": self._build_wan3_parameters(ctx),
+        }
+
+    def _build_wan3_parameters(self, ctx: VideoContext) -> dict:
+        """构造 Wan3.0 parameters (resolution / ratio / duration / prompt_extend / seed)"""
+        duration = int(ctx.duration or 5)
+        # 时长: -1 智能时长模式; 否则钳制到 2-30 秒 (有视频输入时输入+输出 ≤30秒由上游强制)
+        # 宽高比: 视频延长必须 adaptive; 非法值回退 adaptive (默认值)
+        ratio = ctx.aspect_ratio if ctx.aspect_ratio in self._WAN3_RATIOS else "adaptive"
+        params: dict = {
+            "resolution": self._WAN3_RESOLUTION_MAP.get((ctx.quality or "").lower(), "1080P"),
+            "ratio": "adaptive" if ctx.video_mode == "video_extension" else ratio,
+            "duration": -1 if duration == -1 else max(2, min(30, duration)),
+            # prompt_extend: prompt 智能改写 (映射前端 promptOptimizer 开关)
+            "prompt_extend": bool(ctx.prompt_optimizer),
+        }
+        # audio 默认 true (有声), 不主动下发; watermark 默认 false, 不暴露给用户
+        (ctx.seed is not None) and params.update({"seed": int(ctx.seed)})
+        return params
+
+    # ---------------------------------------------------------------------
+    # HappyHorse payload
+    # ---------------------------------------------------------------------
+    async def _build_happyhorse_payload(self, ctx: VideoContext, base_url: str) -> dict:
+        """根据模型类型构造 HappyHorse 请求 payload"""
         model = ctx.model
         media: List[dict] = []
 

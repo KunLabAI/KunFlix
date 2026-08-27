@@ -130,6 +130,13 @@ async def create_video_task(
     reference_audios = [
         {**a, "url": _prep(a.get("url"))} for a in (payload.reference_audios or [])
     ]
+    # Wan3.0 全能参考: 文件 (需上传策略转 OSS) / 网页链接 (公开 URL 透传)
+    reference_files = [
+        {**f, "url": _prep(f.get("url"))} for f in (payload.reference_files or [])
+    ]
+    reference_links = [
+        {**l, "url": l.get("url", "")} for l in (payload.reference_links or [])
+    ]
 
     # 构建视频上下文
     ctx = VideoContext(
@@ -150,6 +157,8 @@ async def create_video_task(
         extension_video_url=extension_video_url,
         reference_videos=reference_videos,
         reference_audios=reference_audios,
+        reference_files=reference_files,
+        reference_links=reference_links,
         return_last_frame=payload.return_last_frame,
         base_url=provider.base_url,
     )

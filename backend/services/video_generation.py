@@ -171,7 +171,7 @@ _MODEL_PREFIX_PROVIDER_MAP = [
     (["veo-"], "gemini"),
     (["hailuo", "minimax", "t2v-01", "i2v-01", "s2v-01"], "minimax"),
     (["seedance", "doubao-seedance"], "ark"),
-    (["happyhorse"], "dashscope"),
+    (["happyhorse", "wan3.0", "wanx"], "dashscope"),
 ]
 
 

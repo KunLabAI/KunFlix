@@ -756,7 +756,8 @@ class AIGenerateResponse(BaseModel):
 # ---------------------------------------------------------------------------
 class VideoConfig(BaseModel):
     """视频生成配置"""
-    duration: int = Field(default=6, ge=1, le=15)
+    # 上限对齐 Wan3.0 (2-30 秒, -1 智能时长); 其余模型由适配器钳制到各自范围
+    duration: int = Field(default=6, ge=-1, le=30)
     # 取值与 video_providers/model_capabilities.py 中各模型声明的 resolutions 保持一致
     # (512p: Hailuo-02 / 2k: MiniMax-H3 / 4k: Veo 3.1)
     quality: Literal["480p", "512p", "720p", "768p", "1080p", "2k", "4k"] = "720p"
@@ -781,6 +782,8 @@ class VideoGenerateRequest(BaseModel):
     extension_video_url: Optional[str] = None  # 视频扩展源视频 URL (向后兼容)
     reference_videos: Optional[List[dict]] = None  # 参考视频列表 (Seedance 2.0 / MiniMax-H3, 最多 3 个)
     reference_audios: Optional[List[dict]] = None  # 参考音频列表 (Seedance 2.0 / MiniMax-H3, 最多 3 个)
+    reference_files: Optional[List[dict]] = None  # 参考文件列表 (Wan3.0, 最多 1 个, 与 reference_links 互斥)
+    reference_links: Optional[List[dict]] = None  # 网页链接参考 (Wan3.0, 最多 1 个, 与 reference_files 互斥)
     return_last_frame: bool = False  # 返回视频尾帧图像 (Seedance 2.0)
     config: Optional[VideoConfig] = None
 

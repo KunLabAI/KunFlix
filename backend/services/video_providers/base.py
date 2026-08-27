@@ -42,6 +42,10 @@ class VideoContext:
     reference_audios: List[Dict] = field(default_factory=list)
     # 多参考视频 (Seedance 2.0 支持, 最多 3 个)
     reference_videos: List[Dict] = field(default_factory=list)
+    # 参考文件 (Wan3.0 全能参考模式支持, 最多 1 个, 与网页链接互斥)
+    reference_files: List[Dict] = field(default_factory=list)
+    # 网页链接参考 (Wan3.0 全能参考模式支持, 最多 1 个, 与文件互斥)
+    reference_links: List[Dict] = field(default_factory=list)
     # 是否返回生成视频的尾帧图像 (用于连续视频生成)
     return_last_frame: bool = False
     # 联网搜索工具 (Seedance 2.0 支持)

@@ -30,6 +30,8 @@ class VideoModelCapabilities(_VideoModelCapabilitiesBase, total=False):
     max_reference_videos: int
     supports_reference_audios: bool
     max_reference_audios: int
+    supports_reference_files: bool  # 文件参考生视频 (Wan3.0)
+    supports_reference_links: bool  # 网页链接参考生视频 (Wan3.0)
     supports_return_last_frame: bool
     supports_web_search: bool
     supports_auto_duration: bool
@@ -580,6 +582,62 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "supports_fast_pretreatment": False,
         # 宽高比跟随输入视频
         "aspect_ratios": ["adaptive"],
+    },
+
+    # =========================================================================
+    # 阿里云百炼 Wan3.0 全能参考视频模型 (All-in-One)
+    # =========================================================================
+
+    # Wan3.0 Prime (高速版): 能力对齐标准版, 端到端速度显著提升。
+    # 统一支持文生视频 / 图生视频(首尾帧) / 多模态参考(图/视频/音频/文件/网页) / 编辑 / 延长,
+    # 最长 30 秒 (无视频输入 2-30 秒, -1 智能时长; 有视频输入时输入+输出 ≤ 30 秒), 30fps, 默认有声。
+    "wan3.0-video-prime": {
+        "provider": "dashscope",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "edit", "video_extension"],
+        "durations": [-1] + list(range(2, 31)),
+        "resolutions": ["480p", "720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_reference_videos": True,
+        "max_reference_videos": 5,  # 参考视频总时长 ≤ 15 秒
+        "supports_reference_audios": True,
+        "max_reference_audios": 5,  # 参考音频总时长 ≤ 15 秒
+        "supports_reference_files": True,
+        "supports_reference_links": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": True,
+        "max_reference_images": 10,
+        "supports_prompt_optimizer": True,  # 映射 prompt_extend 智能改写
+        "supports_fast_pretreatment": False,
+        "supports_auto_duration": True,
+        "aspect_ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
+    },
+
+    # Wan3.0 (标准版): 与高速版同等能力 (全能参考 / 首尾帧 / 编辑 / 延长)
+    "wan3.0-video": {
+        "provider": "dashscope",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "edit", "video_extension"],
+        "durations": [-1] + list(range(2, 31)),
+        "resolutions": ["480p", "720p", "1080p"],
+        "supports_first_frame": True,
+        "supports_last_frame": True,
+        "supports_reference_images": True,
+        "supports_reference_videos": True,
+        "max_reference_videos": 5,
+        "supports_reference_audios": True,
+        "max_reference_audios": 5,
+        "supports_reference_files": True,
+        "supports_reference_links": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": True,
+        "max_reference_images": 10,
+        "supports_prompt_optimizer": True,
+        "supports_fast_pretreatment": False,
+        "supports_auto_duration": True,
+        "aspect_ratios": ["adaptive", "16:9", "4:3", "1:1", "3:4", "9:16"],
     },
 }
 

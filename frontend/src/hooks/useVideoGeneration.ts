@@ -33,6 +33,8 @@ export interface VideoModelCapabilities {
   max_reference_videos?: number;
   supports_reference_audios?: boolean;
   max_reference_audios?: number;
+  supports_reference_files?: boolean; // 文件参考生视频 (Wan3.0)
+  supports_reference_links?: boolean; // 网页链接参考 (Wan3.0)
   supports_prompt_optimizer: boolean;
   supports_fast_pretreatment: boolean;
   aspect_ratios: string[];
@@ -48,6 +50,8 @@ export interface VideoCreateParams {
   reference_images?: { url: string }[];
   reference_videos?: { url: string }[];
   reference_audios?: { url: string }[];
+  reference_files?: { url: string }[]; // 文件参考 (Wan3.0, 最多 1 个, 与 reference_links 互斥)
+  reference_links?: { url: string }[]; // 网页链接参考 (Wan3.0, 最多 1 个, 与 reference_files 互斥)
   extension_video_url?: string;
   config?: {
     duration: number;
