@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -151,7 +152,7 @@ def setup_backend():
         
     return python_exec
 
-# 数据库不可达时向开发者展示的 3 条 fallback 指引（映射表，避免 if 分支堆叠）
+# 数据库不可达时向开发者展示的 fallback 指引（映射表，避免 if 分支堆叠）
 # body 的每一行统一由 _emit_db_fallback_hints 控制缩进，不在字面量里预填空格。
 _DB_FALLBACK_HINTS = (
     ("1", "Docker 一键启动（推荐）", [
@@ -163,11 +164,19 @@ _DB_FALLBACK_HINTS = (
         "Linux   : 按发行版包管理器安装",
         "随后建库：createdb -U postgres kunflix_db",
     ]),
-    ("3", "临时降级到 SQLite", [
+    ("3", "手动降级到 SQLite", [
         "在 backend/.env 里设置：",
         "DATABASE_URL=sqlite+aiosqlite:///./kunflix.db",
     ]),
+    ("4", "自动降级 SQLite（免安装兜底）", [
+        "选择下方交互菜单的 [1]，dev.py 会自动写入 backend/.env",
+        "并以 SQLite 完成完整启动（仅适合本地开发/快速体验）",
+    ]),
 )
+
+# SQLite 兜底连接串：写入 backend/.env 后由 config.py 加载，
+# database.py 的 SQLite 方言映射（PRAGMA/写锁/池调优）自动生效。
+_SQLITE_FALLBACK_URL = "sqlite+aiosqlite:///./kunflix.db"
 
 
 def _check_database_connectivity(python_exec):
@@ -193,7 +202,7 @@ def _check_database_connectivity(python_exec):
         _emit_db_fallback_hints()
         sys.exit(1)
 
-    # 返回码 -> 处理策略（映射表：0 通过 / 2 跳过 / 其余 fail-fast）
+    # 返回码 -> 处理策略（映射表：0 通过 / 2 跳过 / 其余进入兜底交互）
     handlers = {
         0: lambda: log("Database is reachable.", "[DATABASE]"),
         2: lambda: log(
@@ -206,12 +215,12 @@ def _check_database_connectivity(python_exec):
         action()
         return
 
-    # 不可达：把 probe 的诊断行透传出来，再打 3 条 fallback
+    # 不可达：把 probe 的诊断行透传出来，给出 fallback 指引 + 交互兜底
     diagnostic = (result.stderr or "").strip() or "(no diagnostic output)"
     for line in diagnostic.splitlines():
         log(line, "[DATABASE]")
     _emit_db_fallback_hints()
-    sys.exit(1)
+    _offer_db_fallback_choice(python_exec)
 
 
 def _emit_db_fallback_hints():
@@ -222,6 +231,51 @@ def _emit_db_fallback_hints():
         for body_line in lines:
             log(f"       {body_line}", "[DATABASE]")
     log("", "[DATABASE]")
+
+
+def _offer_db_fallback_choice(python_exec) -> None:
+    """探测失败后的交互兜底：自动降级 SQLite / 重试探测 / 退出。
+
+    新手开发者未装 PostgreSQL 时选 [1] 即可零依赖完整启动项目；
+    非交互终端（CI / 管道）input() 抛 EOFError，按退出处理，
+    保持原有的 fail-fast 行为不变。
+    """
+    log("[1] 自动降级 SQLite 继续启动（兜底，仅本地开发）", "[DATABASE]")
+    log("[2] 我已修复，重新探测", "[DATABASE]")
+    log("[3] 退出，手动处理后再运行 dev.py", "[DATABASE]")
+    try:
+        choice = input("[DATABASE] 请选择 [1/2/3]（默认 3）: ").strip() or "3"
+    except (EOFError, KeyboardInterrupt):
+        log("非交互终端或已取消，按退出处理。", "[DATABASE]")
+        sys.exit(1)
+    actions = {
+        "1": lambda: _apply_sqlite_fallback(python_exec),
+        "2": lambda: _check_database_connectivity(python_exec),
+    }
+    chosen = actions.get(choice)
+    chosen and chosen()
+    # 非 1/2 的选择视为退出
+    chosen or sys.exit(1)
+
+
+def _apply_sqlite_fallback(python_exec) -> None:
+    """把 backend/.env 的 DATABASE_URL 改写为 SQLite（不存在则追加），
+    随后重新探测连通性，通过即继续完整启动流程。"""
+    env_path = os.path.join(BACKEND_DIR, ".env")
+    sqlite_line = f"DATABASE_URL={_SQLITE_FALLBACK_URL}"
+    try:
+        with open(env_path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+    except FileNotFoundError:
+        content = ""
+    # 已有 DATABASE_URL 行就替换，否则追加到文件末尾
+    replaced, count = re.subn(r"^DATABASE_URL=.*$", sqlite_line, content, flags=re.MULTILINE)
+    updated = f"{replaced.rstrip()}\n{sqlite_line}\n" if count else (content.rstrip() + "\n" if content else "") + f"{sqlite_line}\n"
+    with open(env_path, "w", encoding="utf-8") as fh:
+        fh.write(updated)
+    log(f"已将 DATABASE_URL 降级为 SQLite（{env_path}）", "[DATABASE]")
+    log("提示：SQLite 仅供本地开发/快速体验，生产与多人协作请切回 PostgreSQL。", "[DATABASE]")
+    _check_database_connectivity(python_exec)
 
 
 def init_database(python_exec):

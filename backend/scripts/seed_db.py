@@ -11,35 +11,63 @@ sys.path.insert(0, _BACKEND_DIR)
 sys.path.append(os.path.abspath(os.path.join(_BACKEND_DIR, "deps")))
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from database import AsyncSessionLocal
-from models import LLMProvider, Admin, PromptTemplate, SubscriptionPlan, EmailTemplate
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from config import settings
+from models import LLMProvider, Admin, PromptTemplate, SubscriptionPlan, EmailTemplate
 import bcrypt
 # from passlib.context import CryptContext
 
 # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# seed 专用引擎：与 database.py 的全局 engine 隔离。_stamp_head 里的 alembic
+# env.py 会 dispose 并关闭全局 engine 的事件循环，若 seed 复用全局 engine，
+# 后续 commit/关连接会撞上 "Event loop is closed"。
+_seed_engine = create_async_engine(settings.DATABASE_URL)
+AsyncSessionLocal = async_sessionmaker(_seed_engine, expire_on_commit=False)
+
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 def run_migrations():
-    """执行 Alembic 数据库迁移，创建所有表"""
-    from alembic.config import Config
-    from alembic import command
-    
-    print("Running database migrations...")
-    
-    # 获取 alembic.ini 的路径（位于 backend 根目录）
-    alembic_ini_path = os.path.join(_BACKEND_DIR, "alembic.ini")
-    
-    # 创建 Alembic 配置
-    alembic_cfg = Config(alembic_ini_path)
-    
-    # 执行迁移到最新版本
-    command.upgrade(alembic_cfg, "head")
-    
+    """确保 schema 就绪：空库走 create_all + alembic stamp head 快通道。
+
+    整条 alembic 迁移链是面向 SQLite 手写的（PRAGMA / sqlite_master /
+    UUID 转换时序），在 PostgreSQL 上从零重放会因外键类型不匹配失败；
+    与 startup._try_fast_bootstrap 相同的策略：直建终态 schema 后
+    stamp head，增量迁移仍交由后续 alembic upgrade 处理。
+    """
+    import asyncio
+
+    from sqlalchemy import inspect
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from database import Base
+
+    print("Ensuring database schema...")
+
+    async def _bootstrap() -> bool:
+        bootstrap_engine = create_async_engine(settings.DATABASE_URL)
+        async with bootstrap_engine.begin() as conn:
+            tables = await conn.run_sync(lambda sc: inspect(sc).get_table_names())
+            is_fresh = "users" not in tables
+            is_fresh and await conn.run_sync(Base.metadata.create_all)
+        await bootstrap_engine.dispose()
+        return is_fresh
+
+    # stamp 必须在 asyncio.run 之外：alembic env.py 内部会再起 asyncio.run，
+    # 在运行中的循环里嵌套调用会报 RuntimeError
+    is_fresh = asyncio.run(_bootstrap())
+    is_fresh and _stamp_head()
     print("Database migrations completed.")
+
+
+def _stamp_head():
+    """create_all 建库后把 alembic 版本标记到 head，避免重放历史迁移。"""
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_ini_path = os.path.join(_BACKEND_DIR, "alembic.ini")
+    command.stamp(Config(alembic_ini_path), "head")
 
 # 默认供应商配置（不包含 API Key，需在部署后配置）
 DEFAULT_PROVIDERS = [
@@ -340,6 +368,7 @@ async def seed():
                 print(f"Email template {tpl['name']} ({tpl['locale']}) already exists.")
 
         await session.commit()
+    await _seed_engine.dispose()
     print("Seeding completed.")
 
 if __name__ == "__main__":
@@ -350,3 +379,4 @@ if __name__ == "__main__":
         asyncio.run(seed())
     except Exception as e:
         print(f"Seeding failed: {e}")
+        sys.exit(1)
