@@ -315,6 +315,7 @@ def _generate_video_poster(src: Path, dst: Path, max_size: int) -> bool:
     tmp = dst.with_suffix(dst.suffix + f".{uuid.uuid4().hex}.tmp")
     # -ss 1 跳到 1 秒位置抽帧（避开常见黑帧开场）；视频不足 1 秒 ffmpeg 会回退到首帧。
     # scale='min(W,iw)':-2 保证长边 ≤ W 且高度为偶数。
+    # -f image2: tmp 后缀非标准, 必须显式指定输出格式, 否则报错 "Unable to choose an output format"。
     cmd = [
         ffmpeg,
         "-y",
@@ -323,6 +324,7 @@ def _generate_video_poster(src: Path, dst: Path, max_size: int) -> bool:
         "-frames:v", "1",
         "-vf", f"scale='min({max_size},iw)':-2",
         "-q:v", "6",
+        "-f", "image2",
         "-loglevel", "error",
         str(tmp),
     ]

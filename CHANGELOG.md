@@ -6,6 +6,113 @@
 
 ---
 
+## [v0.1.3] - 2026-08-27
+
+**主题：阿里百炼 Wan3.0 全能参考视频模型接入 + 管理端地域 Endpoint 强约束**
+
+上一版本：`v0.1.2`。本版本无数据库迁移，无新增第三方依赖。
+
+### ✨ 新增
+
+#### 阿里百炼 Wan3.0 视频生成模型（All-in-One）
+
+在既有 DashScope 供应商框架上接入万相 3.0 系列（`wan3.0-video-prime` 高速版 / `wan3.0-video` 标准版），全能参考模型，五种生成场景：
+
+- **文生视频**：纯提示词生成，`ratio` 支持 `adaptive` 自适应构图。
+- **图生视频**：首帧、尾帧、首尾帧组合；双帧输入时宽高比自动按素材推导。
+- **参考生视频**：参考图 ≤ 10、参考视频 ≤ 5（总时长 ≤ 15 秒）、参考音频 ≤ 5（总时长 ≤ 15 秒），另支持文件参考（≤ 1）与网页链接参考（≤ 1），与首尾帧互斥。
+- **视频编辑**：基于已有视频按提示词重绘 / 风格迁移。
+- **视频延长**：从原视频结尾自然续写，时长自动设为 `-1` 智能模式、宽高比强制 `adaptive`。
+
+关键能力：
+
+- **参数体系**：分辨率 480P / 720P / 1080P；时长 2–30 秒整数与 `-1` 智能时长（有视频输入时输入+输出总长 ≤ 30 秒）；宽高比 `adaptive` + 16:9 / 4:3 / 1:1 / 3:4 / 9:16；`audio`（默认 true）、`seed`、`watermark`。
+- **提示词智能改写**：能力开关 `supports_prompt_optimizer` 映射 API 参数 `prompt_extend`（默认开启，短提示词提升明显但增加耗时）。
+- **地域限制强校验**：Wan3.0 要求模型、Endpoint URL、API Key 同地域。提交前校验 `base_url` 必须为 `https://{业务空间ID}.{地域}.maas.aliyuncs.com` 五地域格式（北京 / 新加坡 / 东京 / 法兰克福 / 弗吉尼亚），不符时快速失败并返回中文配置指引，避免无效上游请求。
+- **异步处理**：复用 DashScope 既有的创建任务（`X-DashScope-Async: enable`）→ arq 后台轮询管道，响应解析无需改动。
+- **本地媒体适配**：本地文件经 `_ensure_public_url` OSS 上传策略转公网 URL（dashscope 继续走 `base64` 旁路），网页链接透传不规范化。
+- **默认供应商注册**：`seed_db.py` 新增阿里百炼供应商（`model_metadata` 含 `model_type=video` 展示名），并补齐种子脚本对 `model_metadata` 字段的持久化；新实例开箱即用。
+- **数据管道贯通**：`VideoConfig.duration` 范围放宽至 `-1 ~ 30`；`VideoGenerateRequest` / `VideoContext` 新增 `reference_files` / `reference_links` 字段，路由层透传到适配器。
+- 前端表单保持能力驱动：`model_capabilities` 声明后时长滑块（2–30 秒 + Auto）、分辨率、宽高比、提示词优化开关自动适配，无需逐模型改 UI。
+
+#### 管理端：DashScope 基础 URL 必填与引导文案
+
+- AI 供应商向导选择 DashScope 时，基础 URL 由选填改为**必填**（标签加红色星号 + 提交校验拦截）。
+- 输入框引导文案：（如北京 `https://{业务空间ID}.cn-beijing.maas.aliyuncs.com`）；描述文案同步提示同地域要求，中英双语。
+
+### 🎬 效果演示（Wan3.0 生成样例）
+
+<video src="https://github.com/user-attachments/assets/9949381b-383c-481d-ad77-4bee4aed5b47" controls></video>
+
+<video src="https://github.com/user-attachments/assets/c33da244-bb9b-4ffa-9e9d-e111813de5cf" controls></video>
+
+<video src="https://github.com/user-attachments/assets/acb0a93a-607f-4025-8989-168e8adba3fc" controls></video>
+
+
+### 🔧 改进
+
+- **设置对话框「更新日志」渲染重做**：手写逐行解析器替换为 `react-markdown` + `remark-gfm`，完整支持标题 / 表格 / 代码块（语言角标 + 行内/块级区分）/ 引用 / 链接 / 图片；release body 内联的原始 HTML `<img>` / `<video>` 标签按段提取并渲染为真实媒体；发布列表改为固定高度独立滚动区 + 底部渐隐提示，历史版本可在对话框内连续浏览；版本卡片样式统一（取消首张蓝色高亮）。
+- **模型前缀推断表**：`wan3.0` / `wanx` 前缀归入 dashscope 供应商，避免供应商匹配歧义。
+- **能力声明扩展**：`VideoModelCapabilities` 新增 `supports_reference_files` / `supports_reference_links` 可选键。
+
+### 🐛 修复
+
+- **视频封面截取失败**：`_generate_video_poster` 写临时文件以 `.tmp` 结尾，ffmpeg 无法从扩展名推断输出容器格式（`Unable to choose an output format`，rc=-22），显式追加 `-f image2` 指定格式；已用真实视频验证，存量视频无需重传，下次请求列表时懒加载自动生成。
+- **种子脚本丢失模型元数据**：`seed_db.py` 创建 `LLMProvider` 时未传入 `model_metadata`，导致用户端视频供应商列表不展示新模型；本次补齐。
+
+### ✅ 测试与验证
+
+- Wan3.0 适配器冒烟测试 10 项场景全部通过：能力声明、供应商路由、地域校验、文生/图生/首尾帧/参考/链接/延长各场景 payload 组装、参数钳制、HappyHorse 兼容回归、种子配置。
+- 后端模块导入链验证通过；`frontend` 与 `backend/admin` `tsc --noEmit` 均无新增错误。
+- ffmpeg 修复经真实视频文件验证（成功生成 480px 封面）。
+
+### 📌 升级说明
+
+1. **无需执行数据库迁移**。
+2. 新实例运行 `seed_db.py` 自动注册阿里百炼供应商；已存在实例需在管理后台手动添加 DashScope 供应商，模型填 `wan3.0-video-prime` / `wan3.0-video`，并设置 `model_metadata.model_type = "video"`。
+3. **必须**为该供应商配置与模型、API Key **同地域**的 `base_url`（如北京 `https://{业务空间ID}.cn-beijing.maas.aliyuncs.com`）；Wan3.0 与 HappyHorse 系列如并存，建议使用独立的供应商条目分别配置。
+4. Wan3.0 计费沿用既有视频计费维度（按输出秒），在管理后台定价表按模型配置即可。
+5. 前端「提示词优化」开关对 Wan3.0 生效，对应 `prompt_extend` 参数（API 默认开启）。
+
+### 📁 主要变更文件
+
+**后端**
+
+```
+backend/config.py                                       版本号 0.1.3（单一来源）
+backend/schemas.py                                      duration -1~30、reference_files/links 字段
+backend/routers/videos.py                               参考文件/链接透传
+backend/services/video_generation.py                    wan3.0/wanx 前缀 → dashscope 映射
+backend/services/media_utils.py                         ffmpeg -f image2 封面修复
+backend/services/video_providers/model_capabilities.py  Wan3.0 双模型能力、新增能力键
+backend/services/video_providers/dashscope_provider.py  Wan3.0 payload 组装、地域校验、参数映射
+backend/services/video_providers/base.py                VideoContext 参考文件/链接字段
+backend/scripts/seed_db.py                              阿里百炼供应商、model_metadata 持久化
+```
+
+**管理端**
+
+```
+backend/admin/src/app/admin/llm/schema.ts                              DashScope base_url 必填校验
+backend/admin/src/app/admin/llm/components/wizard/step-connection.tsx  必填标记与专属引导文案
+backend/admin/src/i18n/locales/{zh-CN,en-US}.json                      新增文案键
+```
+
+**前端**
+
+```
+frontend/src/hooks/useVideoGeneration.ts       能力类型与创建参数新增文件/链接字段
+frontend/src/components/SettingsDialog.tsx     更新日志 Markdown 渲染重做（含媒体段提取、滚动区）
+```
+
+**文档**
+
+```
+CHANGELOG.md                 本文件
+```
+
+---
+
 ## [v0.1.2] - 2026-08-26
 
 **主题：安装与启动体验修复 —— 前端依赖冲突清理、PostgreSQL 空库引导兼容、SQLite 免安装兜底**

@@ -96,6 +96,19 @@ DEFAULT_PROVIDERS = [
         "tags": ["llm", "video"],
     },
     {
+        # 阿里百炼：Wan3.0 全能参考视频模型 (All-in-One: 文生视频 / 图生视频 / 参考生视频 / 编辑 / 延长)
+        # 地域限制：模型、Endpoint URL、API Key 必须同地域，部署后需将 base_url 配置为
+        # https://{业务空间ID}.{地域}.maas.aliyuncs.com（如北京: https://llm-xxxx.cn-beijing.maas.aliyuncs.com）
+        "name": "阿里百炼",
+        "provider_type": "dashscope",
+        "models": ["wan3.0-video-prime", "wan3.0-video"],
+        "tags": ["video"],
+        "model_metadata": {
+            "wan3.0-video-prime": {"model_type": "video", "display_name": "万相3.0 高速版"},
+            "wan3.0-video": {"model_type": "video", "display_name": "万相3.0 标准版"},
+        },
+    },
+    {
         "name": "DeepSeek",
         "provider_type": "deepseek",
         "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
@@ -258,10 +271,12 @@ async def seed():
                 provider = LLMProvider(
                     name=provider_config["name"],
                     provider_type=provider_config["provider_type"],
-                    api_key="",  # API Key 需在部署后配置
-                    base_url=provider_config.get("base_url"),  # 本地供应商（如 Ollama）预填默认地址
+                    api_key="",  # API Key 需在部署后配置（地域必须与模型/Endpoint 一致）
+                    base_url=provider_config.get("base_url"),  # 本地供应商（如 Ollama）预填默认地址；百炼需配置同地域 Endpoint
                     models=provider_config["models"],
                     tags=provider_config.get("tags", []),
+                    # 模型元数据 (model_type: video 等 + display_name)，用户端供应商列表据此展示
+                    model_metadata=provider_config.get("model_metadata", {}),
                     is_active=True,
                     is_default=False
                 )

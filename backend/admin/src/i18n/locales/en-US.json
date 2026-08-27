@@ -554,8 +554,11 @@
         "title": "Connection & Authentication",
         "description": "Configure API key and advanced options.",
         "baseUrl": "Base URL (optional)",
+        "baseUrlRequiredLabel": "Base URL (required)",
         "baseUrlPlaceholder": "e.g. https://api.openai.com/v1",
+        "baseUrlPlaceholderDashscope": "(e.g. Beijing https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com)",
         "baseUrlDescription": "Fill in if you use a proxy or custom endpoint.",
+        "baseUrlDescriptionDashscope": "Wan3.0 requires the model, endpoint URL and API key to belong to the same region. Format: https://{WorkspaceId}.{region}.maas.aliyuncs.com",
         "apiKey": "API Key",
         "apiKeyPlaceholder": "sk-...",
         "showApiKey": "Show key",
@@ -600,6 +603,7 @@
         "modelNameRequired": "Please enter the model name",
         "modelsRequired": "At least one model is required",
         "apiKeyRequired": "Please enter the API key",
+        "baseUrlRequiredDashscope": "DashScope requires a same-region endpoint (e.g. Beijing https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com)",
         "invalidJson": "Please enter valid JSON"
       }
     },

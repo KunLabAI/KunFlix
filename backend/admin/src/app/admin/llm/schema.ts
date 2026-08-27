@@ -71,6 +71,11 @@ export const PROVIDER_OPTIONS = [
 // 本地部署且无鉴权的供应商（如 Ollama）允许 api_key 为空
 const PROVIDERS_WITHOUT_AUTH = new Set(['ollama']);
 
+// base_url 必填的供应商：DashScope 百炼 Wan3.0 要求模型/Endpoint/API Key 同地域，
+// 必须配置为 https://{业务空间ID}.{地域}.maas.aliyuncs.com
+export const PROVIDERS_REQUIRE_BASE_URL = (providerType: string) =>
+  (providerType || '').startsWith('dashscope');
+
 export const createFormSchema = (t: TFunction) => z.object({
   name: z.string().min(1, t('llm.form.validation.nameRequired')),
   provider_type: z.string().min(1, t('llm.form.validation.providerRequired')),
@@ -98,6 +103,12 @@ export const createFormSchema = (t: TFunction) => z.object({
     code: z.ZodIssueCode.custom,
     path: ['api_key'],
     message: t('llm.form.validation.apiKeyRequired'),
+  });
+  // DashScope 百炼: 同地域 Endpoint 必填
+  PROVIDERS_REQUIRE_BASE_URL(data.provider_type) && !(data.base_url || '').trim() && ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['base_url'],
+    message: t('llm.form.validation.baseUrlRequiredDashscope'),
   });
 });
 

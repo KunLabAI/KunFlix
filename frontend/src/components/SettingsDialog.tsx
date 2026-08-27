@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "next/navigation";
 import {
@@ -38,6 +38,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useTheme } from "@/context/ThemeContext";
 import api from "@/lib/api";
 import { App } from "antd";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import EmailCodeField from "@/components/EmailCodeField";
 import { useGitHubReleases } from "@/hooks/useGitHubReleases";
 import {
@@ -72,6 +74,144 @@ const TOOLTIP_STYLE = {
   borderColor: "hsl(var(--border))",
   color: "hsl(var(--card-foreground))",
 };
+
+// ── 更新日志 markdown 渲染（react-markdown + remark-gfm）────────────────────
+// GitHub release body 是完整 markdown（标题/表格/代码块/链接/引用等），
+// 与 TypewriterText 的组件映射同一模式：code 按有无 className 区分行内/块级，
+// pre 透传给 code 块自渲染，表格外包横向滚动容器。
+const RELEASE_MD_COMPONENTS: Components = {
+  h1: ({ children }) => <h4 className="text-base font-bold text-foreground mt-4 mb-2">{children}</h4>,
+  h2: ({ children }) => <h4 className="text-sm font-bold text-foreground mt-4 mb-1.5">{children}</h4>,
+  h3: ({ children }) => <h4 className="text-sm font-semibold text-foreground mt-3 mb-1">{children}</h4>,
+  h4: ({ children }) => <h4 className="text-sm font-semibold text-foreground mt-3 mb-1">{children}</h4>,
+  h5: ({ children }) => <h4 className="text-sm font-semibold text-foreground mt-2 mb-1">{children}</h4>,
+  h6: ({ children }) => <h4 className="text-sm font-semibold text-foreground mt-2 mb-1">{children}</h4>,
+  p: ({ children }) => <p className="text-sm text-muted-foreground leading-relaxed my-1">{children}</p>,
+  ul: ({ children }) => <ul className="text-sm text-muted-foreground my-1.5 ml-5 list-disc space-y-0.5">{children}</ul>,
+  ol: ({ children }) => <ol className="text-sm text-muted-foreground my-1.5 ml-5 list-decimal space-y-0.5">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground break-all"
+    >
+      {children}
+    </a>
+  ),
+  code: ({ className, children }) => {
+    const isInline = !className;
+    const match = /language-(\w+)/.exec(className || "");
+    const language = match ? match[1] : "";
+    return isInline ? (
+      <code className="px-1.5 py-0.5 rounded bg-muted text-primary font-mono text-xs">{children}</code>
+    ) : (
+      <div className="relative group my-2">
+        {language && (
+          <span className="absolute top-2 right-2 text-[10px] text-muted-foreground/60 font-mono">{language}</span>
+        )}
+        <pre className="!bg-muted/80 !p-3 rounded-lg overflow-x-auto border border-border/50">
+          <code className={cn("font-mono text-xs", className)}>{children}</code>
+        </pre>
+      </div>
+    );
+  },
+  pre: ({ children }) => <>{children}</>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-2 px-3 py-1 border-l-2 border-primary/40 bg-muted/30 rounded-r text-sm text-muted-foreground">
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div className="my-3 overflow-x-auto rounded-md border border-border/50">
+      <table className="min-w-full text-sm border-collapse">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+  th: ({ children }) => (
+    <th className="px-3 py-2 text-left font-semibold whitespace-nowrap border-b border-border/50">{children}</th>
+  ),
+  td: ({ children }) => (
+    <td className="px-3 py-2 whitespace-nowrap border-b border-border/30 text-muted-foreground">{children}</td>
+  ),
+  hr: () => <hr className="my-3 border-border/60" />,
+  img: ({ src, alt }) => {
+    const isValidSrc = typeof src === "string" && src.trim() !== "";
+    return isValidSrc ? <img src={src} alt={alt || ""} className="max-w-full h-auto rounded-lg" /> : null;
+  },
+};
+
+// ── release body 媒体段提取 ───────────────────────────────────────────────
+// GitHub release body 会把附件以原始 HTML <img>/<video> 标签内联（react-markdown
+// 默认不解析原始 HTML，会当纯文本显示）。这里按媒体标签把 body 切成段：
+// 文本段继续走 markdown 渲染，媒体标签提取 src 后直接渲染为 img/video JSX。
+const MEDIA_TAG_REGEX = /<video\b[^>]*>[\s\S]*?<\/video>|<img\b[^>]*\/?>/gi;
+
+const extractAttr = (tag: string, name: string) =>
+  new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i").exec(tag)?.[1] ?? "";
+
+const isHttpUrl = (url: string) => /^https?:\/\//i.test(url);
+
+interface ReleaseSegment {
+  kind: "md" | "img" | "video";
+  text: string;
+  src: string;
+  alt: string;
+}
+
+// 段落保留规则：空文本段与无有效 src 的媒体段直接丢弃（映射表驱动，避免 if 链）
+const SEGMENT_KEEPERS: Record<ReleaseSegment["kind"], (seg: ReleaseSegment) => boolean> = {
+  md: (seg) => seg.text.trim().length > 0,
+  img: (seg) => seg.src !== "",
+  video: (seg) => seg.src !== "",
+};
+
+const SEGMENT_RENDERERS: Record<ReleaseSegment["kind"], (seg: ReleaseSegment) => React.ReactNode> = {
+  md: (seg) => (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={RELEASE_MD_COMPONENTS}>
+      {seg.text}
+    </ReactMarkdown>
+  ),
+  img: (seg) => (
+    <img src={seg.src} alt={seg.alt} loading="lazy" className="max-w-full h-auto rounded-lg my-2" />
+  ),
+  video: (seg) => (
+    <video src={seg.src} controls preload="metadata" className="max-w-full rounded-lg my-2" />
+  ),
+};
+
+function splitReleaseSegments(body: string): ReleaseSegment[] {
+  const segments: ReleaseSegment[] = [];
+  let cursor = 0;
+  for (const match of body.matchAll(MEDIA_TAG_REGEX)) {
+    const index = match.index ?? body.length;
+    const tag = match[0];
+    segments.push({ kind: "md", text: body.slice(cursor, index), src: "", alt: "" });
+    // <video> 的 src 也可能写在内嵌 <source> 上，extractAttr 对整段文本检索可兼容两者
+    const src = extractAttr(tag, "src");
+    segments.push({
+      kind: tag.startsWith("<video") ? "video" : "img",
+      text: "",
+      src: isHttpUrl(src) ? src : "",
+      alt: extractAttr(tag, "alt"),
+    });
+    cursor = index + tag.length;
+  }
+  segments.push({ kind: "md", text: body.slice(cursor), src: "", alt: "" });
+  return segments.filter((seg) => SEGMENT_KEEPERS[seg.kind](seg));
+}
+
+function ReleaseBody({ body }: { body: string }) {
+  return (
+    <div className="space-y-1">
+      {splitReleaseSegments(body).map((seg, i) => (
+        <Fragment key={i}>{SEGMENT_RENDERERS[seg.kind](seg)}</Fragment>
+      ))}
+    </div>
+  );
+}
 
 interface StorageInfo {
   used_bytes: number;
@@ -534,48 +674,10 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
       });
     };
 
-    /** Parse markdown body into simple rendered sections */
-    const renderBody = (body: string) => {
-      const lines = body.split("\n");
-      const elements: React.ReactNode[] = [];
-      lines.forEach((line, i) => {
-        const trimmed = line.trim();
-        // heading
-        const headingMatch = trimmed.match(/^#{1,3}\s+(.+)/);
-        if (headingMatch) {
-          elements.push(
-            <h4 key={i} className="text-sm font-semibold text-foreground mt-3 mb-1">
-              {headingMatch[1]}
-            </h4>
-          );
-          return;
-        }
-        // list item
-        const listMatch = trimmed.match(/^[-*]\s+(.+)/);
-        if (listMatch) {
-          elements.push(
-            <li key={i} className="text-sm text-muted-foreground ml-4 list-disc">
-              {listMatch[1]}
-            </li>
-          );
-          return;
-        }
-        // non-empty text
-        if (trimmed) {
-          elements.push(
-            <p key={i} className="text-sm text-muted-foreground">
-              {trimmed}
-            </p>
-          );
-        }
-      });
-      return elements;
-    };
-
     return (
-      <div className="space-y-8">
+      <div className="h-full min-h-0 flex flex-col gap-8">
         {/* app info header */}
-        <section>
+        <section className="shrink-0">
           <div className="flex items-center gap-4 mb-6">
             <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 64 64" fill="currentColor" className="text-foreground shrink-0">
               <defs><clipPath id="about-logo-a"><rect width="60" height="60" fill="none"/></clipPath><clipPath id="about-logo-c"><rect width="64" height="64"/></clipPath></defs>
@@ -625,11 +727,11 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
           </div>
         </section>
 
-        <hr className="border-border" />
+        <hr className="border-border shrink-0" />
 
-        {/* release list */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
+        {/* release list：独立滚动区域，历史版本可在固定高度内浏览 */}
+        <section className="flex-1 min-h-0 flex flex-col">
+          <div className="flex items-center justify-between mb-4 shrink-0">
             <h2 className="text-lg font-bold text-foreground">{t("settings.about.changelog")}</h2>
             <button
               type="button"
@@ -663,52 +765,51 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
               <p>{t("settings.about.noReleases")}</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {releases.map((release, idx) => (
-                <div
-                  key={release.id}
-                  className={cn(
-                    "rounded-xl border p-5 transition-colors",
-                    idx === 0
-                      ? "border-blue-200 bg-blue-50/50 dark:border-blue-800/50 dark:bg-blue-950/20"
-                      : "border-border bg-muted/20"
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base font-bold text-foreground truncate">
-                        {release.name || release.tag_name}
-                      </span>
-                      {idx === 0 && (
-                        <span className="px-2 py-0.5 rounded text-xs font-medium text-blue-600 bg-blue-100 dark:text-blue-400 dark:bg-blue-900/40 shrink-0">
-                          {t("settings.about.latest")}
-                        </span>
-                      )}
-                      {release.prerelease && (
-                        <span className="px-2 py-0.5 rounded text-xs font-medium text-amber-600 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/40 shrink-0">
-                          Pre-release
-                        </span>
-                      )}
-                    </div>
-                    <a
-                      href={release.html_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                      title={t("settings.about.viewOnGitHub")}
+            <div className="relative flex-1 min-h-0">
+              {/* 底部渐隐提示：滚到底部时被内容自然遮挡，作为可滚动的视觉暗示 */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-background to-transparent z-10" />
+              <div className="h-full max-h-[calc(var(--settings-h,85vh)-340px)] min-h-[200px] overflow-y-auto pr-2 pb-1">
+                <div className="space-y-4">
+                  {releases.map((release, idx) => (
+                    <div
+                      key={release.id}
+                      className="rounded-xl border border-border bg-muted/20 p-5 transition-colors"
                     >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>{formatDate(release.published_at)}</span>
-                  </div>
-                  {release.body && (
-                    <div className="space-y-0.5">{renderBody(release.body)}</div>
-                  )}
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-base font-bold text-foreground truncate">
+                            {release.name || release.tag_name}
+                          </span>
+                          {idx === 0 && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border shrink-0">
+                              {t("settings.about.latest")}
+                            </span>
+                          )}
+                          {release.prerelease && (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium text-amber-600 bg-amber-100 dark:text-amber-400 dark:bg-amber-900/40 shrink-0">
+                              Pre-release
+                            </span>
+                          )}
+                        </div>
+                        <a
+                          href={release.html_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                          title={t("settings.about.viewOnGitHub")}
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>{formatDate(release.published_at)}</span>
+                      </div>
+                      {release.body && <ReleaseBody body={release.body} />}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </section>
@@ -719,7 +820,7 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   // ── render ──────────────────────────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[1200px] w-[95vw] h-[85vh] max-h-[85vh] p-0 gap-0 overflow-hidden border-border/60">
+      <DialogContent className="max-w-[1200px] w-[95vw] h-[85vh] max-h-[85vh] p-0 gap-0 overflow-hidden border-border/60 [--settings-h:85vh]">
         {/* accessible title */}
         <DialogHeader className="sr-only">
           <DialogTitle>{t("settings.title")}</DialogTitle>
