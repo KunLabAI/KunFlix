@@ -28,7 +28,7 @@ imageio-ffmpeg>=0.6.0
 bcrypt>=4.0.0
 # python-jose 上游长期未处理 CVE-2024-33663 / CVE-2024-33664，迁移到 PyJWT
 PyJWT[crypto]>=2.12.1
-google-genai>=2.0.1
+google-genai>=2.10.0
 xai-sdk>=1.7.0
 volcengine-python-sdk[ark]>=5.0.26
 # Ollama Python SDK——agentscope OllamaChatModel 内部调用 ollama.AsyncClient，不装则运行时报 ModuleNotFoundError
