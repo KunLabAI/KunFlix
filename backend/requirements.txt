@@ -14,7 +14,7 @@ agentscope>=2.0.4.post1
 # 14.1.0 提供 manylinux wheel，功能上 agentscope 无版本约束，锁定以避免 Rust 工具链
 ripgrep==14.1.0
 openai>=2.36.0
-python-multipart>=0.0.22
+python-multipart>=0.0.32
 aiofiles>=25.1.0
 loguru>=0.7.3
 greenlet>=3.3.1
