@@ -14,33 +14,33 @@ agentscope>=2.0.4.post1
 # 14.1.0 提供 manylinux wheel，功能上 agentscope 无版本约束，锁定以避免 Rust 工具链
 ripgrep==14.1.0
 openai>=2.36.0
-python-multipart>=0.0.22
+python-multipart>=0.0.32
 aiofiles>=25.1.0
 loguru>=0.7.3
 greenlet>=3.3.1
 alembic>=1.18.4
-psycopg2-binary>=2.9.9
+psycopg2-binary>=2.9.12
 requests>=2.33.1
 Pillow>=12.1.1
 # imageio-ffmpeg 提供静态 ffmpeg 二进制，用于视频首帧 poster 抽帧（media_utils.ensure_video_poster）。
 # 不安装也不影响主流程——ffmpeg 不可用时后端返回 404，前端 fallback 到黑底。
 imageio-ffmpeg>=0.6.0
-bcrypt>=4.0.0
+bcrypt>=5.0.0
 # python-jose 上游长期未处理 CVE-2024-33663 / CVE-2024-33664，迁移到 PyJWT
 PyJWT[crypto]>=2.12.1
-google-genai>=2.0.1
+google-genai>=2.10.0
 xai-sdk>=1.7.0
 volcengine-python-sdk[ark]>=5.0.26
 # Ollama Python SDK——agentscope OllamaChatModel 内部调用 ollama.AsyncClient，不装则运行时报 ModuleNotFoundError
-ollama>=0.4.0
+ollama>=0.6.2
 httpx>=0.27.0
-python-frontmatter>=1.1.0
-packaging>=23.0
+python-frontmatter>=1.3.0
+packaging>=26.2
 user-agents>=2.2.0
-cachetools>=7.1.1
+cachetools>=7.1.4
 cryptography>=48.0.0
 # --- Phase1+ infra ---
 aioboto3>=12.3.0
 arq>=0.28.0
-purgatory>=3.0.0
+purgatory>=3.0.1
 slowapi>=0.1.10
