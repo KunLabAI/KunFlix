@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Upload, X, Loader2, AudioLines, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,7 +30,17 @@ function AudioSlot({
   file: File | null; onFile: (f: File | null) => void; onClear: () => void; disabled?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const previewUrl = file ? URL.createObjectURL(file) : '';
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  // 生成 object URL 并在切换/卸载时回收，避免每次渲染新建 blob 造成内存泄漏
+  useEffect(() => {
+    const url = file ? URL.createObjectURL(file) : '';
+    setPreviewUrl(url);
+    return () => { url && URL.revokeObjectURL(url); };
+  }, [file]);
+
+  // 仅接受 blob: 协议作为 <audio src>：作为 DOM→HTML 污点流的净化守卫
+  const safeSrc = previewUrl.startsWith('blob:') ? previewUrl : '';
 
   return (
     <div className="space-y-1.5">
@@ -59,7 +69,7 @@ function AudioSlot({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <audio src={previewUrl} controls preload="metadata" className="w-full h-8" />
+          <audio src={safeSrc} controls preload="metadata" className="w-full h-8" />
         </div>
       ) : (
         <button
@@ -105,6 +115,13 @@ export function ReplicateVoiceDialog({ open, onOpenChange, providerId, model, on
   };
 
   const canSubmit = displayName.trim().length > 0 && !!sourceFile && !!consentFile && !submitting;
+
+  // 选择文件时校验大小（复用 MAX_MB 上限），超限则拒绝并提示
+  const pickFile = (setter: (f: File | null) => void) => (f: File | null) => {
+    const tooBig = !!f && f.size > MAX_MB * 1024 * 1024;
+    setError(tooBig ? t('canvas.node.tts.fileTooLarge', { max: MAX_MB, defaultValue: '单个文件不能超过 {{max}}MB' }) : null);
+    setter(tooBig ? null : f);
+  };
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit || !sourceFile || !consentFile) return;
@@ -162,7 +179,7 @@ export function ReplicateVoiceDialog({ open, onOpenChange, providerId, model, on
             hint={t('canvas.node.tts.sourceAudioHint', '上传 10-30 秒清晰人声（WAV）')}
             icon={<AudioLines className="w-3.5 h-3.5 text-muted-foreground" />}
             file={sourceFile}
-            onFile={(f) => { setSourceFile(f); setError(null); }}
+            onFile={pickFile(setSourceFile)}
             onClear={() => setSourceFile(null)}
             disabled={submitting}
           />
@@ -173,7 +190,7 @@ export function ReplicateVoiceDialog({ open, onOpenChange, providerId, model, on
             hint={t('canvas.node.tts.consentAudioHint', '上传本人朗读授权声明的录音（WAV）')}
             icon={<ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" />}
             file={consentFile}
-            onFile={(f) => { setConsentFile(f); setError(null); }}
+            onFile={pickFile(setConsentFile)}
             onClear={() => setConsentFile(null)}
             disabled={submitting}
           />

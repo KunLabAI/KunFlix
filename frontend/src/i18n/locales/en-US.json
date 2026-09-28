@@ -488,6 +488,7 @@
         "consentAudio": "Consent recording",
         "consentAudioHint": "Upload a recording of the speaker reading the consent statement (WAV)",
         "consentNote": "The consent recording proves you have the right to use this voice. Prepare and read a consent statement yourself. Max 15MB per file.",
+        "fileTooLarge": "Each file must not exceed {{max}}MB",
         "replicateSubmit": "Start Replication",
         "replicating": "Replicating…",
         "replicateFailed": "Voice replication failed, please retry",

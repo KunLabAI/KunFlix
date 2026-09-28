@@ -48,4 +48,4 @@ class TTSProviderAdapter(ABC):
     @abstractmethod
     async def generate(self, ctx: TTSContext) -> TTSResult:
         """执行语音合成，返回 TTSResult。"""
-        ...
+        raise NotImplementedError

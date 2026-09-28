@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import asdict as _asdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
@@ -19,7 +20,6 @@ from services.tts_providers import (
     GeminiTTSAdapter,
     extract_tts_provider_type,
     replicate_voice,
-    TTS_PROVIDER_TYPES,
 )
 from services.media_utils import save_audio_data, MEDIA_DIR, get_relative_path
 from models import Asset, User, ReplicatedVoice, generate_uuid
@@ -29,6 +29,12 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_log(value: object) -> str:
+    """清洗待写入日志的外部值：去除换行/控制字符（防日志注入 CWE-117）并限长。"""
+    return re.sub(r"[\r\n\x00-\x1f\x7f]", " ", str(value))[:200]
+
 
 # output_format -> response mime 映射
 _FORMAT_MIME: dict[str, str] = {
@@ -503,7 +509,7 @@ async def register_replicated_voice(
     await db.commit()
     await db.refresh(voice)
 
-    logger.info("Registered replicated voice %s (%s) for user %s", result.voice_id, display_name, user_id)
+    logger.info("Registered replicated voice %s (%s) for user %s", result.voice_id, _sanitize_log(display_name), user_id)
     return {
         "voice_id": result.voice_id,
         "id": voice.id,

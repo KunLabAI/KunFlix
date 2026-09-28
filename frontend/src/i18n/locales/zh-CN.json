@@ -488,6 +488,7 @@
         "consentAudio": "授权录音",
         "consentAudioHint": "上传本人朗读授权声明的录音（WAV）",
         "consentNote": "授权录音用于证明你拥有该声音的使用权，请自行准备授权声明并朗读录制。单个文件不超过 15MB。",
+        "fileTooLarge": "单个文件不能超过 {{max}}MB",
         "replicateSubmit": "开始复刻",
         "replicating": "复刻中…",
         "replicateFailed": "音色复刻失败，请重试",

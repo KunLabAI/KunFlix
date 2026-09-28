@@ -22,9 +22,15 @@ from typing import Any
 
 import httpx
 
-from services.tts_providers.base import TTSContext, TTSResult, TTSProviderAdapter, TTSSpeaker
+from services.tts_providers.base import TTSContext, TTSResult, TTSProviderAdapter
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_log(value: object) -> str:
+    """清洗待写入日志的外部值：去除换行/控制字符（防日志注入 CWE-117）并限长。"""
+    return re.sub(r"[\r\n\x00-\x1f\x7f]", " ", str(value))[:200]
+
 
 # ---------------------------------------------------------------------------
 # 模型能力映射表
@@ -395,7 +401,7 @@ async def replicate_voice(
         logger.warning("GeminiTTS voice replication returned no voice id — keys: %s", list(data.keys()) if isinstance(data, dict) else type(data))
         return ReplicationResult(status="failed", error="No voice ID in replication response")
 
-    logger.info("GeminiTTS voice replication success: %s (%s)", voice_id, display_name)
+    logger.info("GeminiTTS voice replication success: %s (%s)", voice_id, _sanitize_log(display_name))
     return ReplicationResult(status="completed", voice_id=voice_id)
 
 

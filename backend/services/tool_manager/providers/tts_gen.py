@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 TTS_GEN_TOOL_NAME = "generate_tts"
 
-# 预置音色名列表（工具参数枚举；auto = 由模型自动选择）
-_VOICE_NAMES = ["auto"] + [name for name, _tone, _gender in PREBUILT_VOICES]
-
 # 按性别分组（供工具描述引导 Agent 按男/女选音色）
 _FEMALE_VOICES = [name for name, _tone, g in PREBUILT_VOICES if g == "female"]
 _MALE_VOICES = [name for name, _tone, g in PREBUILT_VOICES if g == "male"]
