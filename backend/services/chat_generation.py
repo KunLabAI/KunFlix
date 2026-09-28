@@ -557,6 +557,11 @@ async def generate_single_agent(
                 yield sse("music_task_created", mt)
             ctx.music_tasks.clear()
 
+            # 发送 TTS 任务创建事件（通知前端启动轮询UI）
+            for tt in ctx.tts_tasks:
+                yield sse("tts_task_created", tt)
+            ctx.tts_tasks.clear()
+
             # 画布图像桥接：顺序创建节点（避免并行执行时位置重叠）
             ctx.canvas_image_queue and await _flush_canvas_image_queue(ctx, theater_id)
 

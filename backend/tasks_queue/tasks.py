@@ -88,7 +88,7 @@ async def poll_video_task_job(ctx: dict, task_id: str) -> dict:
     return {"ok": False, "reason": "timeout", "last_status": last_status}
 
 
-__all__ = ["poll_video_task_job", "run_music_task_job", "run_batch_image_job"]
+__all__ = ["poll_video_task_job", "run_music_task_job", "run_tts_task_job", "run_batch_image_job"]
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +117,42 @@ async def run_music_task_job(
     await execute_music_task_background(
         task_id=task_id,
         music_ctx=music_ctx,
+        provider_id=provider_id,
+        user_id=user_id,
+        session_id=session_id,
+        theater_id=theater_id,
+    )
+    return {"ok": True, "task_id": task_id}
+
+
+# ---------------------------------------------------------------------------
+# TTS task execution
+# ---------------------------------------------------------------------------
+
+async def run_tts_task_job(
+    ctx: dict,
+    task_id: str,
+    tts_ctx_payload: dict,
+    provider_id: str,
+    user_id: str,
+    session_id: str | None = None,
+    theater_id: str | None = None,
+) -> dict:
+    """在 arq worker 进程中执行 TTS 语音合成。
+
+    入参都是可序列化原语（免于跨进程传 dataclass）：
+    - tts_ctx_payload: {api_key, model, text, provider_type, voice, style, speakers, output_mime, sample_rate}
+    生成完成后由 execute_tts_task_background 自行将状态回写 DB 并推送通知。
+    """
+    from services.tts_providers.base import TTSContext, TTSSpeaker
+    from services.tts_generation import execute_tts_task_background
+
+    payload = dict(tts_ctx_payload)
+    payload["speakers"] = [TTSSpeaker(**s) for s in (payload.get("speakers") or [])]
+    tts_ctx = TTSContext(**payload)
+    await execute_tts_task_background(
+        task_id=task_id,
+        tts_ctx=tts_ctx,
         provider_id=provider_id,
         user_id=user_id,
         session_id=session_id,

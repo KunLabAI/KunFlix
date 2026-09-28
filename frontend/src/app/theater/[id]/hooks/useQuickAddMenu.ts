@@ -10,6 +10,7 @@ const nodeDefaultData: Record<string, Record<string, unknown>> = {
   storyboard: { shotNumber: '001', description: '', duration: 5 },
   video: { name: '新视频卡', description: '', videoUrl: '', fitMode: 'cover' },
   audio: { name: '新音频卡', description: '', audioUrl: '' },
+  tts: { name: '新TTS卡', description: '', audioUrl: '', text: '' },
   panorama: { name: '新全景卡', description: '', panoramaUrl: '' },
 };
 
@@ -19,6 +20,7 @@ const nodeDefaultDimensions: Record<string, { width: number; height: number }> =
   image: { width: 512, height: 384 },
   video: { width: 512, height: 384 },
   audio: { width: 360, height: 200 },
+  tts: { width: 360, height: 220 },
   storyboard: { width: 398, height: 256 },
   panorama: { width: 512, height: 320 },
 };

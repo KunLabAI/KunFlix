@@ -548,6 +548,64 @@ class MusicTask(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class TTSTask(Base):
+    """异步 TTS 语音合成任务追踪（Gemini TTS）"""
+    __tablename__ = "tts_tasks"
+    __table_args__ = (
+        Index("ix_tts_tasks_user_status_created", "user_id", "status", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    session_id = Column(String(36), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True)
+    model = Column(String(100), nullable=False)
+    user_id = Column(String(36), nullable=False, index=True)
+
+    text = Column(Text, nullable=False)                     # 逐字朗读文本（多说话人时为对话脚本）
+    voice = Column(String(100), nullable=True)              # 单说话人音色
+    style = Column(String(500), nullable=True)              # 语气/风格描述
+    speakers_json = Column(JSON, nullable=True)             # 多说话人配置 [{speaker, voice, text, style}]
+    output_format = Column(String(10), default="wav")       # wav / l16
+
+    status = Column(String(20), default="pending", index=True)  # pending/processing/completed/failed
+    result_audio_url = Column(String(500), nullable=True)   # /api/media/{uuid}.wav
+    error_message = Column(Text, nullable=True)
+
+    # 画布桥接
+    canvas_node_id = Column(String(36), nullable=True)      # 自动创建的画布占位节点 ID
+
+    # 计费
+    credit_cost = Column(Float, default=0.0)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ReplicatedVoice(Base):
+    """用户复刻音色（持久音色库）
+
+    通过 Gemini POST /v1beta/voices (type=replicated, store=true) 注册，
+    返回的 voice_ ID 存入本表，后续 TTS 合成可直接引用。
+    """
+    __tablename__ = "replicated_voices"
+    __table_args__ = (
+        Index("ix_replicated_voices_user_created", "user_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    provider_id = Column(String(36), ForeignKey("llm_providers.id", ondelete="SET NULL"), nullable=True)
+    model = Column(String(100), nullable=True)             # 注册时使用的 TTS 模型
+
+    display_name = Column(String(100), nullable=False)      # 用户自定义名称
+    voice_id = Column(String(200), nullable=False)          # Google 返回的 voice_... ID
+
+    status = Column(String(20), default="active", index=True)  # active / failed
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class AdminDebugSession(Base):
     """管理员调试会话 - 与普通用户会话完全隔离"""
     __tablename__ = "admin_debug_sessions"

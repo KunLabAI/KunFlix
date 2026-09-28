@@ -3,7 +3,7 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ScrollText, Image as ImageIcon, Video, Headphones, Table2, Globe } from 'lucide-react';
+import { ScrollText, Image as ImageIcon, Video, Headphones, Mic, Table2, Globe } from 'lucide-react';
 import type { QuickAddMenuState } from '@/app/theater/[id]/hooks/useQuickAddMenu';
 
 interface QuickAddMenuProps {
@@ -17,6 +17,7 @@ const MENU_ITEMS: Array<{ type: string; icon: typeof ScrollText; iconClass: stri
   { type: 'image',      icon: ImageIcon,  iconClass: 'text-node-green',  labelKey: 'canvas.imageCard' },
   { type: 'video',      icon: Video,      iconClass: 'text-node-yellow', labelKey: 'canvas.videoCard' },
   { type: 'audio',      icon: Headphones, iconClass: 'text-amber-500',   labelKey: 'canvas.audioCard' },
+  { type: 'tts',        icon: Mic,        iconClass: 'text-rose-500',    labelKey: 'canvas.ttsCard' },
   { type: 'storyboard', icon: Table2,     iconClass: 'text-node-purple', labelKey: 'canvas.storyboardCard' },
   { type: 'panorama',   icon: Globe,      iconClass: 'text-cyan-500',    labelKey: 'canvas.panoramaCard' },
 ];

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ScrollText, Image as ImageIcon, Film, Music, Clapperboard, X, Loader2, Play, Pause } from 'lucide-react';
+import { ScrollText, Image as ImageIcon, Film, Music, Mic, Clapperboard, X, Loader2, Play, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
@@ -18,6 +18,7 @@ const NODE_PREVIEW_CONFIG: Record<string, {
   image:      { icon: ImageIcon,    color: 'text-node-green',  bg: 'bg-node-green/10' },
   video:      { icon: Film,         color: 'text-node-yellow', bg: 'bg-node-yellow/10' },
   audio:      { icon: Music,        color: 'text-node-blue',   bg: 'bg-node-blue/10' },
+  tts:        { icon: Mic,          color: 'text-rose-400',    bg: 'bg-rose-400/10' },
   storyboard: { icon: Clapperboard, color: 'text-node-purple', bg: 'bg-node-purple/10' },
 };
 
@@ -260,7 +261,7 @@ export function NodePreviewList({ attachments, onRemove, onClearAll }: NodePrevi
  */
 export function NodePreviewCard({ attachment, onClear }: NodePreviewCardProps) {
   const isVisualMedia = attachment.nodeType === 'image' || attachment.nodeType === 'video';
-  const isAudio = attachment.nodeType === 'audio';
+  const isAudio = attachment.nodeType === 'audio' || attachment.nodeType === 'tts';
 
   return isVisualMedia
     ? <MediaNodeCard attachment={attachment} onClear={onClear} />

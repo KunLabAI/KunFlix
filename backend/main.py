@@ -190,6 +190,7 @@ from routers import (  # noqa: E402
     sse as sse_router,
     subscriptions,
     theaters,
+    tts,
     videos,
 )
 from startup import lifespan  # noqa: E402
@@ -295,6 +296,7 @@ _ROUTERS = (
     admin_email_providers.templates_router,
     admin_tools.router,
     music.router,
+    tts.router,
     admin_dashboard.router,
     admin_virtual_humans.router,
     admin_sub_agent_templates.router,

@@ -33,6 +33,7 @@ const ALL_DIMS = [
   { key: 'video_output_480p', label: '视频 480p 输出', unit: 'credits / second' },
   { key: 'video_output_720p', label: '视频 720p 输出', unit: 'credits / second' },
   { key: 'audio_generation', label: '音频生成', unit: 'credits / second' },
+  { key: 'tts_generation', label: '语音合成', unit: 'credits / time' },
 ] as const;
 
 const fetcher = (url: string) => api.get(url).then(r => r.data);

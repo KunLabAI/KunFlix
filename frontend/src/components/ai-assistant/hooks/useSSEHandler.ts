@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type HarnessEvent, type OrchestrationStyle, type MultiAgentData } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type TtsTaskData, type HarnessEvent, type OrchestrationStyle, type MultiAgentData } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
 
@@ -52,6 +52,7 @@ interface StreamingState {
   toolCalls: { tool_name: string; arguments?: Record<string, unknown>; status: 'executing' | 'completed'; result?: string }[];
   videoTasks: VideoTaskData[];
   musicTasks: MusicTaskData[];
+  ttsTasks: TtsTaskData[];
   steps: AgentStep[];
   stepMap: Map<string, AgentStep>;
   multiAgent: MultiAgentData | null;
@@ -128,6 +129,7 @@ export function useSSEHandler() {
     toolCalls: [],
     videoTasks: [],
     musicTasks: [],
+    ttsTasks: [],
     steps: [],
     stepMap: new Map(),
     multiAgent: null,
@@ -145,6 +147,7 @@ export function useSSEHandler() {
       toolCalls: [],
       videoTasks: [],
       musicTasks: [],
+      ttsTasks: [],
       steps: [],
       stepMap: new Map(),
       multiAgent: null,
@@ -225,7 +228,7 @@ export function useSSEHandler() {
       text: () => {
         const chunk = (data as { chunk?: string })?.chunk || '';
         const isNewRound = state.roundHasTools;
-        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.videoTasks = [], state.musicTasks = [], state.roundHasTools = false);
+        isNewRound && (state.toolCalls = [], state.skillCalls = [], state.videoTasks = [], state.musicTasks = [], state.ttsTasks = [], state.roundHasTools = false);
 
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -468,6 +471,24 @@ export function useSSEHandler() {
           return (last?.role === 'ai' && last?.status === 'streaming')
             ? [...prev.slice(0, -1), { ...last, music_tasks: [...state.musicTasks] }]
             : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, music_tasks: [...state.musicTasks] }];
+        });
+      },
+
+      // TTS 任务创建（generate_tts 工具执行后由后端发送）
+      tts_task_created: () => {
+        const d = data as { task_id?: string; model?: string; prompt?: string };
+        const task: TtsTaskData = {
+          task_id: d.task_id || '',
+          model: d.model || '',
+        };
+        state.ttsTasks.push(task);
+        const _cStore = useCanvasStore.getState();
+        (d.task_id && _cStore.theaterId) && _cStore.addLocalMediaPlaceholder('tts', d.task_id, d.prompt || '');
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          return (last?.role === 'ai' && last?.status === 'streaming')
+            ? [...prev.slice(0, -1), { ...last, tts_tasks: [...state.ttsTasks] }]
+            : [...prev, { role: 'ai' as const, content: '', status: 'streaming' as const, tts_tasks: [...state.ttsTasks] }];
         });
       },
 

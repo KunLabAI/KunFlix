@@ -19,6 +19,7 @@ import type {
   CharacterNodeData,
   VideoNodeData,
   AudioNodeData,
+  TtsNodeData,
   StoryboardNodeData,
   PanoramaNodeData,
 } from '@/store/useCanvasStore';
@@ -87,6 +88,11 @@ function getAudioLyrics(node: CanvasNode): string | undefined {
   return data.lyrics;
 }
 
+function getTtsAudioUrl(node: CanvasNode): string | null {
+  const data = node.data as TtsNodeData;
+  return data.audioUrl || null;
+}
+
 function getTextContent(node: CanvasNode): string {
   const data = node.data as ScriptNodeData;
   const raw = data.content;
@@ -140,6 +146,10 @@ export function buildPayload(sourceNode: CanvasNode): EdgePayload | null {
     audio: () => {
       const url = getAudioUrl(sourceNode);
       return url ? { kind: 'audio', url, lyrics: getAudioLyrics(sourceNode) } : null;
+    },
+    tts: () => {
+      const url = getTtsAudioUrl(sourceNode);
+      return url ? { kind: 'audio', url } : null;
     },
     storyboard: () => {
       const data = sourceNode.data as StoryboardNodeData;
@@ -295,6 +305,18 @@ function injectToAudio(targetNode: CanvasNode, payload: EdgePayload, sourceNodeI
   return handler ? handler() : emptyResult;
 }
 
+/** 下游 tts：text→面板 prompt-prefix（填入朗读文本）；其余为 deferred */
+function injectToTts(_targetNode: CanvasNode, payload: EdgePayload): InjectionResult {
+  const handlers: Partial<Record<EdgePayload['kind'], () => InjectionResult>> = {
+    text: () => {
+      const p = payload as Extract<EdgePayload, { kind: 'text' }>;
+      return { panelEvents: [{ type: 'prompt-prefix', text: p.content }] };
+    },
+  };
+  const handler = handlers[payload.kind];
+  return handler ? handler() : emptyResult;
+}
+
 /** 下游 storyboard：text → 追加一行；image/video/audio → 追加到匹配媒体列；table → 行级合并 */
 function injectToStoryboard(targetNode: CanvasNode, payload: EdgePayload): InjectionResult {
   const data = targetNode.data as StoryboardNodeData;
@@ -394,6 +416,7 @@ export function injectPayload(
     image: () => injectToImage(targetNode, payload, sourceNodeId),
     video: () => injectToVideo(targetNode, payload, sourceNodeId),
     audio: () => injectToAudio(targetNode, payload, sourceNodeId),
+    tts: () => injectToTts(targetNode, payload),
     storyboard: () => injectToStoryboard(targetNode, payload),
     panorama: () => injectToPanorama(targetNode, payload),
   };

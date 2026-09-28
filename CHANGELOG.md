@@ -6,6 +6,116 @@
 
 ---
 
+## [v0.1.4] - 2026-09-28
+
+**主题：Gemini TTS 语音合成节点全栈接入（画布节点 + 音色复刻/扩展音色库/试听 + Agent 技能 + 管理端配置）**
+
+上一版本：`v0.1.3`。本版本**含数据库迁移**（新增 `tts_tasks`、`replicated_voices` 两张表），无新增第三方依赖。
+
+### ✨ 新增
+
+#### Gemini TTS 语音合成节点（画布）
+
+以既有音乐生成（Lyria）链路为参照，同构接入 Google Gemini 系列 TTS 模型，打通「后端供应商适配 → 服务编排 → 路由 → 工具/Agent 技能 → 前端画布节点 → 管理端配置」全链路：
+
+- **供应商适配层** `services/tts_providers/`：调用 Interactions API（`POST /v1beta/interactions`），支持单说话人（`speech_metadata.style` + 30 个预置音色）、双说话人 `conversational` 对话、WAV / L16 输出（裸 PCM 自动补 RIFF/WAVE 头）；`voice` 为 `auto` 时省略 `speech_config` 由模型自选音色。
+- **数据模型 + 迁移**：新增 `TTSTask`（合成任务）、`ReplicatedVoice`（复刻音色）两表，迁移链 `k8l9m0n1o2p3` → `l9m0n1o2p3q4`。
+- **计费**：新增 `tts_generation` 维度（按次计费）。
+- **服务编排** `services/tts_generation.py`：工厂分派 + 异步后台执行（保存音频、注册 Asset、按次计费、画布占位节点回填、`tts.*` 实时推送）。
+- **路由** `routers/tts.py`：生成 / 任务状态 / 会话任务列表 / 供应商 / 模型能力 / 音色列表 / 复刻上传 / 复刻删除 / 扩展音色库 / 试听 共 11 个端点，`main.py` 注册。
+- **工具 + Agent 技能**：`tool_manager/providers/tts_gen.py` 封装 `generate_tts` 工具（text / voice / style / speakers），`skills/builtin_skills/tts_tools/SKILL.md` 内置技能供 Agent 勾选启用。
+- **前端画布**：`TTSNode` + `TtsGeneratePanel`（模型选择器带供应商 logo/昵称、音色选择器分组、单/双说话人编辑），`useTtsGeneration` hook、`store` 新增 `TtsNodeData`、连线注入（text→tts 文本、tts→video 音频），AI 助手侧 `TtsTaskCard` + SSE 实时进度。
+- **管理端**：`TtsGenConfigDialog`（启用 / 按 `model_type=tts` 选模型 / 默认音色含 auto / 输出格式）、LLM schema 新增「语音模型」类型、定价与 Agent 参数新增 `tts_generation` 维度、`seed_db.py` 预置 `gemini-3.8-flash-tts` / `gemini-3.8-flash-lite-tts`。
+
+#### 音色能力：自动 / 复刻 / 扩展音色库 / 按需试听
+
+- **自动音色**：`voice=auto`，交由模型自选。
+- **音色复刻（持久音色库）**：`POST /v1beta/voices`（`type=replicated`、`store=true`），上传参考音频 + 授权录音，防御式 `_extract_voice_id` 递归提取 `voice_` / `voicekey_` ID，入库长期复用。
+- **预置音色性别**：`PREBUILT_VOICES` 为 (名称, 语气, 性别) 三元组（女声 14 / 男声 16，源自 Google 官方音色表），音色选择器支持「全部 / 男声 / 女声」筛选与 ♂/♀ 徽标（性别为音色固有属性，不可经 style 修改）。
+- **扩展音色库**：`list_voice_library()` 直连 `GET /v1beta/voices`（性别 / 语言 / 音高 / 口音 / 关键词 / 分页原生筛选），`/voice-library` 后端代理（API Key 仅后端解析、不下发前端），`VoiceLibraryDialog` 浏览弹窗。
+- **按需试听**：因列表接口不返回 `sample_audio`，新增 `POST /preview` 同步端点，复用 `generate_tts` 合成短示例并内联返回 base64 WAV，不计费 / 不建任务 / 不落库 / 不注册资产。
+- **中英多语言**：`VOICE_TONES_ZH` + `localizeVoiceTone` 本地化语气标签（音色名不翻译）。
+
+#### 多语音生成历史 + 语气风格选择器 + 交互式内联音效标签
+
+- **生成历史列表**：`TTSNode/HistorySidebar` 在节点卡片左侧渲染同一节点多次生成的历史音频，布局与音频节点侧栏对齐；点击历史即应用到当前节点，拖出画布克隆为新节点（携带配置预填面板）。
+- **语气风格下拉选择器**：`StyleSelector` 将自由输入框改为下拉，提供 20 种预设风格（耳语 / 播客主持 / 温暖旁白 / 上气不接下气 等，源自官方 Prompting guide），中英多语言标签、提交值统一为英文描述；单说话人与双说话人每个角色均可选。
+- **交互式内联音效标签**：`TtsTextEditor`（contentEditable 芯片）替换纯文本框——`<laugh>` `<sigh>` `<short pause>` 等 9 种官方人声标签渲染为可交互芯片：配置面板点击即插入到光标处、芯片可在文本内拖拽左右换位、点 × 删除；序列化结果即 Gemini 要求的 verbatim transcript + 标签，提交链路零改动。
+
+### 📌 升级说明
+
+1. **需执行数据库迁移**：`alembic upgrade head`（新增 `tts_tasks`、`replicated_voices` 两表）；全新空库仍走 `create_all` + `stamp` 快通道。
+2. 已存在实例需在管理后台为 Gemini 供应商添加 TTS 模型 `gemini-3.8-flash-tts` / `gemini-3.8-flash-lite-tts` 并设 `model_metadata.model_type = "tts"`；新实例运行 `seed_db.py` 自动预置。
+3. Agent 调用 TTS 需在智能体技能中勾选「TTS 语音合成」（`tts_tools`）。
+4. 计费：在管理后台定价表按模型配置 `tts_generation` 维度（按次）。
+5. 音色复刻 / 扩展音色库 / 试听均会消耗开发者自己的 Gemini API 配额（试听不扣平台积分，但仍调上游）。
+6. 语气风格须搭配具体音色：当选择「自动音色」+ 非默认风格时，后端自动回退到默认音色 `Kore` 承载该风格；如需精确掌控音色，请显式选择一个音色。
+7. **后端 Python 改动需重启服务生效。**
+
+### 📁 主要变更文件
+
+**后端**
+
+```
+backend/config.py                                        版本号 0.1.4（单一来源）
+backend/main.py                                          注册 tts 路由
+backend/models.py                                        TTSTask、ReplicatedVoice 表
+backend/schemas.py                                       TTS 请求/响应 schema
+backend/services/tts_providers/{base,gemini_tts}.py      新增：适配器、复刻、扩展音色库、试听
+backend/services/tts_generation.py                       新增：工厂分派 + 异步执行编排
+backend/services/billing.py                              tts_generation 计费维度
+backend/services/chat_generation.py                      tts_task_created SSE
+backend/services/media_canvas_bridge.py                  tts 画布桥接
+backend/services/tool_manager/providers/tts_gen.py       新增：generate_tts 工具
+backend/services/tool_manager/context.py                 tts_tools skill-gate、任务收集器
+backend/routers/tts.py                                   新增：11 个 TTS 端点
+backend/migrations/versions/k8l9m0n1o2p3_*.py            新增：tts_tasks 表
+backend/migrations/versions/l9m0n1o2p3q4_*.py            新增：replicated_voices 表
+backend/scripts/seed_db.py                               预置 Gemini TTS 模型
+backend/skills/builtin_skills/tts_tools/SKILL.md         新增：TTS 内置技能
+backend/tasks_queue/{tasks,worker}.py                    TTS 后台任务
+```
+
+**管理端**
+
+```
+backend/admin/src/components/admin/tools/TtsGenConfigDialog.tsx    新增：TTS 工具配置
+backend/admin/src/app/admin/tools/page.tsx                         接线 TTS 配置
+backend/admin/src/app/admin/llm/schema.ts                          语音模型类型
+backend/admin/src/app/admin/pricing/components/PricingForm.tsx     tts_generation 维度
+backend/admin/src/components/admin/agents/AgentForm/Parameters.tsx  tts_generation 参数
+backend/admin/src/types/index.ts                                   类型
+backend/admin/src/i18n/locales/{zh-CN,en-US}.json                  文案
+```
+
+**前端**
+
+```
+frontend/src/components/canvas/TTSNode.tsx                 新增：TTS 画布节点
+frontend/src/components/canvas/TTSNode/HistorySidebar.tsx  新增：生成历史侧栏
+frontend/src/components/canvas/TtsGeneratePanel.tsx        新增：生成面板
+frontend/src/components/canvas/TtsGeneratePanel/           新增：Model/Voice/Style 选择器、
+                                                           TtsTextEditor、复刻/音色库弹窗、配置面板
+frontend/src/hooks/useTtsGeneration.ts                     新增：生成/音色/模型 hooks
+frontend/src/components/ai-assistant/TtsTaskCard.tsx       新增：AI 助手 TTS 任务卡
+frontend/src/store/useCanvasStore.ts                       TtsNodeData、tts 占位
+frontend/src/lib/canvas/edgePayload.ts                     text→tts 注入、tts→video 音频
+frontend/src/app/globals.css                               内联标签芯片样式
+frontend/src/components/SettingsDialog.tsx                 更新日志代码块/媒体渲染收尾
+frontend/src/components/canvas/{Sidebar,QuickAddMenu,NodePickerDropdown}.tsx   注册 tts 节点
+frontend/src/i18n/locales/{zh-CN,en-US}.json               TTS 全量文案
+（另含 theater page、ChatMessage、NodePreviewCard、useSSEHandler、nodeAttachmentUtils、
+  useVideoPanelReferences、useQuickAddMenu、useAIAssistantStore 等 tts 接线）
+```
+
+**文档**
+
+```
+CHANGELOG.md            本文件
+```
+
+---
+
 ## [v0.1.3] - 2026-08-27
 
 **主题：阿里百炼 Wan3.0 全能参考视频模型接入 + 管理端地域 Endpoint 强约束**

@@ -449,6 +449,24 @@ export interface MusicGenToolConfig extends ToolConfig {
 }
 
 // ---------------------------------------------------------------------------
+// TTS 语音合成工具配置
+// ---------------------------------------------------------------------------
+export interface TtsGenToolConfigData {
+  tts_generation_enabled: boolean;
+  tts_provider_id?: string | null;
+  tts_model?: string | null;
+  tts_config?: {
+    voice?: string;
+    output_format?: string;
+  } | null;
+}
+
+export interface TtsGenToolConfig extends ToolConfig {
+  tool_name: 'generate_tts';
+  config: TtsGenToolConfigData;
+}
+
+// ---------------------------------------------------------------------------
 // Music Task types
 // ---------------------------------------------------------------------------
 export interface MusicTaskResponse {

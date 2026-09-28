@@ -612,6 +612,7 @@
       "image": "Image Model",
       "video": "Video Model",
       "audio": "Audio Model",
+      "tts": "Speech Model",
       "multimodal": "Multimodal"
     },
     "costDimension": {
@@ -623,7 +624,8 @@
       "video_input_second": "Video Input Duration",
       "video_output_480p": "Video Output 480p",
       "video_output_720p": "Video Output 720p",
-      "audio_generation": "Audio Generation"
+      "audio_generation": "Audio Generation",
+      "tts_generation": "Speech Generation"
     }
   },
   "agents": {
@@ -856,7 +858,9 @@
           "video_input_image": "Video - Input Image",
           "video_input_second": "Video - Input Duration",
           "video_output_480p": "Video Output (480p)",
-          "video_output_720p": "Video Output (720p)"
+          "video_output_720p": "Video Output (720p)",
+          "audio_generation": "Audio Generation Price",
+          "tts_generation": "Speech Generation Price"
         },
         "units": {
           "per_1m": "credits/1M tokens",
@@ -1202,6 +1206,28 @@
       },
       "saveSuccess": "Saved",
       "saveSuccessDesc": "Music generation tool configuration has been updated",
+      "saveFailed": "Save failed",
+      "retry": "Please retry"
+    },
+    "ttsDialog": {
+      "title": "Configure Speech Generation Tool",
+      "description": "Configure global generate_tts tool parameters (shared by all Agents)",
+      "enable": "Enable speech generation",
+      "noModelWarning": "No speech model found. Please set the model type to \"Speech Model\" in Provider Management first.",
+      "model": "TTS Model",
+      "modelEmpty": "No available speech models",
+      "modelSelect": "Select TTS model",
+      "defaultVoice": "Default Voice",
+      "selectVoice": "Select voice",
+      "voiceAuto": "Auto (model picks)",
+      "outputFormat": "Default Output Format",
+      "selectFormat": "Select format",
+      "formats": {
+        "wav": "WAV (General, with header)",
+        "l16": "L16 (Raw PCM)"
+      },
+      "saveSuccess": "Saved",
+      "saveSuccessDesc": "Speech generation tool configuration has been updated",
       "saveFailed": "Save failed",
       "retry": "Please retry"
     },
