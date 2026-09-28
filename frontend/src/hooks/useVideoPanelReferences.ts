@@ -288,13 +288,15 @@ export function useVideoPanelReferences({
         image: () => getImageNodeUrl(node),
         video: () => getVideoNodeUrl(node),
         audio: () => getAudioNodeUrl(node),
+        tts: () => getAudioNodeUrl(node),
       };
       const limitMap: Record<string, [number, number]> = {
         image: [imageRefCount, maxRefImages],
         video: [videoRefCount, maxRefVideos],
         audio: [audioRefCount, maxRefAudios],
+        tts: [audioRefCount, maxRefAudios],
       };
-      const refType: RefType = nt === 'video' ? 'video' : nt === 'audio' ? 'audio' : 'image';
+      const refType: RefType = nt === 'video' ? 'video' : (nt === 'audio' || nt === 'tts') ? 'audio' : 'image';
       const url = urlMap[nt]?.() ?? getImageNodeUrl(node);
       const [count, max] = limitMap[nt] ?? [imageRefCount, maxRefImages];
       (url && count < max) && (() => {

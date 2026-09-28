@@ -612,6 +612,7 @@
       "image": "图像模型",
       "video": "视频模型",
       "audio": "音频模型",
+      "tts": "语音模型",
       "multimodal": "多模态模型"
     },
     "costDimension": {
@@ -623,7 +624,8 @@
       "video_input_second": "视频输入时长",
       "video_output_480p": "视频输出480p",
       "video_output_720p": "视频输出720p",
-      "audio_generation": "音频生成"
+      "audio_generation": "音频生成",
+      "tts_generation": "语音合成"
     }
   },
   "agents": {
@@ -856,7 +858,9 @@
           "video_input_image": "视频-输入图片",
           "video_input_second": "视频-输入时长",
           "video_output_480p": "视频输出(480p)",
-          "video_output_720p": "视频输出(720p)"
+          "video_output_720p": "视频输出(720p)",
+          "audio_generation": "音频生成价格",
+          "tts_generation": "语音合成价格"
         },
         "units": {
           "per_1m": "积分/1M tokens",
@@ -1202,6 +1206,28 @@
       },
       "saveSuccess": "保存成功",
       "saveSuccessDesc": "音乐生成工具配置已更新",
+      "saveFailed": "保存失败",
+      "retry": "请重试"
+    },
+    "ttsDialog": {
+      "title": "配置语音合成工具",
+      "description": "设置全局 generate_tts 工具参数（所有智能体共享此配置）",
+      "enable": "启用语音合成",
+      "noModelWarning": "未找到语音模型。请先在「供应商管理」中为供应商的模型设置「语音模型」类型。",
+      "model": "TTS 模型",
+      "modelEmpty": "无可用语音模型",
+      "modelSelect": "选择 TTS 模型",
+      "defaultVoice": "默认音色",
+      "selectVoice": "选择音色",
+      "voiceAuto": "自动（由模型选择）",
+      "outputFormat": "默认输出格式",
+      "selectFormat": "选择格式",
+      "formats": {
+        "wav": "WAV (通用，带文件头)",
+        "l16": "L16 (裸 PCM)"
+      },
+      "saveSuccess": "保存成功",
+      "saveSuccessDesc": "语音合成工具配置已更新",
       "saveFailed": "保存失败",
       "retry": "请重试"
     },

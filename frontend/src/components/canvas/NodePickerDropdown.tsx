@@ -6,6 +6,7 @@ import {
   ImageIcon,
   Film,
   Music,
+  Mic,
   ScrollText,
   Clapperboard,
   FileText,
@@ -25,6 +26,7 @@ export const NODE_TYPE_CONFIG: Record<string, NodeTypeConfig> = {
   image:      { icon: ImageIcon,    color: 'text-node-green',  label: '图片' },
   video:      { icon: Film,         color: 'text-amber-400',   label: '视频' },
   audio:      { icon: Music,        color: 'text-teal-400',    label: '音频' },
+  tts:        { icon: Mic,          color: 'text-rose-400',    label: 'TTS' },
   text:       { icon: ScrollText,   color: 'text-node-blue',   label: '文本' },
   storyboard: { icon: Clapperboard, color: 'text-node-purple', label: '分镜' },
 };

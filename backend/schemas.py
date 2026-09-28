@@ -1232,6 +1232,80 @@ class MusicGenerateResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# TTS Task (语音合成任务)
+# ---------------------------------------------------------------------------
+class TTSSpeakerConfig(BaseModel):
+    """多说话人对话中的单个角色配置。"""
+    speaker: str = Field(..., min_length=1, max_length=50)   # 角色名
+    voice: Optional[str] = None                              # 音色（缺省用全局 voice）
+    text: str = Field(..., min_length=1)                     # 该角色台词
+    style: Optional[str] = None                              # 该角色语气风格
+
+
+class TTSGenerateRequest(BaseModel):
+    """异步 TTS 合成请求（返回 task_id，异步处理）。"""
+    provider_id: Optional[str] = None              # 为空时自动选择默认 gemini 供应商
+    model: str = Field(default="gemini-3.8-flash-tts")
+    text: str = Field(default="", max_length=20000)  # 单说话人文本（多说话人时可空）
+    voice: str = Field(default="auto", max_length=100)  # 预置音色名；"auto" = 由模型自动选择
+    style: Optional[str] = Field(default=None, max_length=500)
+    speakers: Optional[List[TTSSpeakerConfig]] = None  # 多说话人配置（最多 2 个）
+    output_format: Literal["wav", "l16"] = "wav"
+    session_id: Optional[str] = None
+    node_id: Optional[str] = None                  # 画布节点 id（用于实时推送匹配）
+
+
+class TTSGenerateResponse(BaseModel):
+    """提交 TTS 任务的响应。"""
+    task_id: str
+    status: str
+    session_id: Optional[str] = None
+    node_id: Optional[str] = None
+    model: str
+    provider_id: Optional[str] = None
+
+
+class TTSTaskResponse(BaseModel):
+    """TTS 合成任务响应"""
+    id: str
+    status: str
+    text: str
+    model: str
+    voice: Optional[str] = None
+    style: Optional[str] = None
+    speakers: Optional[List[TTSSpeakerConfig]] = None
+    output_format: str = "wav"
+    audio_url: Optional[str] = None
+    credit_cost: float = 0.0
+    error_message: Optional[str] = None
+    provider_id: Optional[str] = None
+    user_id: str
+    created_at: Any
+    completed_at: Optional[Any] = None
+    # 仅在本次扣费不足、余额被兜底扣到 0 时为 true（不持久化）
+    billing_underpaid: bool = False
+    # 用户最新余额（不持久化，用于前端即时同步）
+    remaining_credits: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TTSPreviewRequest(BaseModel):
+    """音色试听请求（同步合成一小段示例，不计费、不落库）。"""
+    voice: str = Field(default="auto", max_length=200)   # 预置音色名 / voice_ 复刻 ID / auto
+    text: str = Field(default="", max_length=200)         # 试听文本（为空时用后端默认短句）
+    style: Optional[str] = Field(default=None, max_length=200)
+    model: Optional[str] = Field(default=None, max_length=100)
+    provider_id: Optional[str] = None
+
+
+class TTSPreviewResponse(BaseModel):
+    """音色试听响应：内联 base64 WAV，前端直接构造 data URI 播放。"""
+    audio_base64: str
+    mime_type: str = "audio/wav"
+
+
+# ---------------------------------------------------------------------------
 # Email verification & password reset schemas
 # ---------------------------------------------------------------------------
 EmailVerifyPurpose = Literal["register", "change_password", "reset_password"]

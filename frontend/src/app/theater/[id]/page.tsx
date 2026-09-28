@@ -27,6 +27,7 @@ import CharacterNode from '@/components/canvas/ImageNode';
 import StoryboardNode from '@/components/canvas/StoryboardNode';
 import VideoNode from '@/components/canvas/VideoNode';
 import AudioNode from '@/components/canvas/AudioNode';
+import TTSNode from '@/components/canvas/TTSNode';
 import PanoramaNode from '@/components/canvas/PanoramaNode';
 import GhostNode from '@/components/canvas/GhostNode';
 import { CustomEdge } from '@/components/canvas/CustomEdge';
@@ -51,6 +52,7 @@ const nodeTypes = {
   storyboard: StoryboardNode,
   video: VideoNode,
   audio: AudioNode,
+  tts: TTSNode,
   panorama: PanoramaNode,
   ghost: GhostNode,
 } as unknown as NodeTypes;
@@ -233,6 +235,7 @@ function InfiniteCanvas() {
                   character: '#10B981',
                   video: '#A855F7',
                   audio: '#F59E0B',
+                  tts: '#F43F5E',
                   storyboard: '#F59E0B',
                 };
                 return colors[n.type || ''] || '#F59E0B';

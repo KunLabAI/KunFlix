@@ -7,6 +7,7 @@ from services.tool_manager.providers.image_edit import ImageEditProvider
 from services.tool_manager.providers.video_gen import VideoGenProvider
 from services.tool_manager.providers.video_edit import VideoEditProvider
 from services.tool_manager.providers.music_gen import MusicGenProvider
+from services.tool_manager.providers.tts_gen import TTSGenProvider
 
 ALL_PROVIDERS = [
     CanvasProvider(),
@@ -15,6 +16,7 @@ ALL_PROVIDERS = [
     VideoGenProvider(),
     VideoEditProvider(),
     MusicGenProvider(),
+    TTSGenProvider(),
 ]
 
 __all__ = [
@@ -25,4 +27,5 @@ __all__ = [
     "VideoGenProvider",
     "VideoEditProvider",
     "MusicGenProvider",
+    "TTSGenProvider",
 ]

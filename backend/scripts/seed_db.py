@@ -74,8 +74,12 @@ DEFAULT_PROVIDERS = [
     {
         "name": "Gemini",
         "provider_type": "gemini",
-        "models": ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "veo-3.1-lite-generate-preview", "lyria-3-clip-preview", "lyria-3-pro-preview"],
-        "tags": ["llm", "image", "video", "audio"],
+        "models": ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "veo-3.1-lite-generate-preview", "lyria-3-clip-preview", "lyria-3-pro-preview", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"],
+        "tags": ["llm", "image", "video", "audio", "tts"],
+        "model_metadata": {
+            "gemini-3.8-flash-tts": {"model_type": "tts", "display_name": "Gemini 3.8 Flash TTS"},
+            "gemini-3.8-flash-lite-tts": {"model_type": "tts", "display_name": "Gemini 3.8 Flash-Lite TTS"},
+        },
     },
     {
         "name": "MiniMax",

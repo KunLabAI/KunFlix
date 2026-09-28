@@ -12,10 +12,11 @@ import {
 import { RefreshCw, FileText, Settings2, Info, Wrench, Edit3, Image as ImageIcon, Video, Music, ArrowRight } from 'lucide-react';
 import { useToolRegistry, useImageCapabilities, useVideoCapabilities, useToolConfig, useUpdateToolConfig } from '@/hooks/useToolRegistry';
 import { useLLMProviders } from '@/hooks/useLLMProviders';
-import { ImageGenToolConfigData, VideoGenToolConfigData, MusicGenToolConfigData, ToolProviderInfo } from '@/types';
+import { ImageGenToolConfigData, VideoGenToolConfigData, MusicGenToolConfigData, TtsGenToolConfigData, ToolProviderInfo } from '@/types';
 import ImageGenConfigDialog from '@/components/admin/tools/ImageGenConfigDialog';
 import VideoGenConfigDialog from '@/components/admin/tools/VideoGenConfigDialog';
 import MusicGenConfigDialog from '@/components/admin/tools/MusicGenConfigDialog';
+import TtsGenConfigDialog from '@/components/admin/tools/TtsGenConfigDialog';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +63,8 @@ const ToolCard: React.FC<ToolCardProps> = ({ provider, onOpenDetail, onEdit }) =
   const hasImageGen = provider.tools.some(t => t.name === 'generate_image');
   const hasVideoGen = provider.tools.some(t => t.name === 'generate_video');
   const hasMusicGen = provider.tools.some(t => t.name === 'generate_music');
-  const hasGenerationTool = hasImageGen || hasVideoGen || hasMusicGen;
+  const hasTtsGen = provider.tools.some(t => t.name === 'generate_tts');
+  const hasGenerationTool = hasImageGen || hasVideoGen || hasMusicGen || hasTtsGen;
 
   return (
     <div 
@@ -207,12 +209,14 @@ export default function ToolsPage() {
   const { config: imageToolConfig, mutate: refreshImageToolConfig } = useToolConfig('generate_image');
   const { config: videoToolConfig, mutate: refreshVideoToolConfig } = useToolConfig('generate_video');
   const { config: musicToolConfig, mutate: refreshMusicToolConfig } = useToolConfig('generate_music');
+  const { config: ttsToolConfig, mutate: refreshTtsToolConfig } = useToolConfig('generate_tts');
   const { updateConfig } = useUpdateToolConfig();
 
   // Dialog 状态
   const [imageConfigDialogOpen, setImageConfigDialogOpen] = useState(false);
   const [videoConfigDialogOpen, setVideoConfigDialogOpen] = useState(false);
   const [musicConfigDialogOpen, setMusicConfigDialogOpen] = useState(false);
+  const [ttsConfigDialogOpen, setTtsConfigDialogOpen] = useState(false);
   const [detailProvider, setDetailProvider] = useState<ToolProviderInfo | null>(null);
 
   const isLoading = regLoading;
@@ -220,6 +224,7 @@ export default function ToolsPage() {
   const imageGenConfig: ImageGenToolConfigData | undefined = imageToolConfig?.config as ImageGenToolConfigData;
   const videoGenConfig: VideoGenToolConfigData | undefined = videoToolConfig?.config as VideoGenToolConfigData;
   const musicGenConfig: MusicGenToolConfigData | undefined = musicToolConfig?.config as MusicGenToolConfigData;
+  const ttsGenConfig: TtsGenToolConfigData | undefined = ttsToolConfig?.config as TtsGenToolConfigData;
 
   const handleSaveImageConfig = async (config: ImageGenToolConfigData) => {
     await updateConfig('generate_image', { config });
@@ -233,15 +238,21 @@ export default function ToolsPage() {
     await updateConfig('generate_music', { config });
   };
 
+  const handleSaveTtsConfig = async (config: TtsGenToolConfigData) => {
+    await updateConfig('generate_tts', { config });
+  };
+
   const handleEdit = (provider: ToolProviderInfo) => {
     // 简化的编辑逻辑：根据 provider 包含的生成类工具类型弹出对应的配置
     const hasImageGen = provider.tools.some(t => t.name === 'generate_image');
     const hasVideoGen = provider.tools.some(t => t.name === 'generate_video');
     const hasMusicGen = provider.tools.some(t => t.name === 'generate_music');
+    const hasTtsGen = provider.tools.some(t => t.name === 'generate_tts');
 
     if (hasImageGen) setImageConfigDialogOpen(true);
     else if (hasVideoGen) setVideoConfigDialogOpen(true);
     else if (hasMusicGen) setMusicConfigDialogOpen(true);
+    else if (hasTtsGen) setTtsConfigDialogOpen(true);
     else {
       // 默认弹出详情作为备用
       setDetailProvider(provider);
@@ -295,6 +306,15 @@ export default function ToolsPage() {
         providers={activeProviders || []}
         initialConfig={musicGenConfig}
         onSaveConfig={handleSaveMusicConfig}
+      />
+
+      <TtsGenConfigDialog
+        open={ttsConfigDialogOpen}
+        onOpenChange={setTtsConfigDialogOpen}
+        onSaved={() => refreshTtsToolConfig()}
+        providers={activeProviders || []}
+        initialConfig={ttsGenConfig}
+        onSaveConfig={handleSaveTtsConfig}
       />
 
       {/* 优化的详情弹窗 */}

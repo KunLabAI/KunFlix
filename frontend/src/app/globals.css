@@ -515,6 +515,58 @@ body {
   background-color: rgb(161 98 7 / 0.3);
 }
 
+/* TTS 内联音效标签芯片（TtsTextEditor contentEditable 内渲染）
+   无描边 + 半透明浅底，深浅色文字自适应，配色对齐语气面板标签按钮 */
+.tts-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  background-color: rgb(20 184 166 / 0.12);
+  color: #0d9488;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  line-height: 1.7;
+  vertical-align: baseline;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: all;
+}
+
+.dark .tts-tag-chip {
+  background-color: rgb(45 212 191 / 0.16);
+  color: #2dd4bf;
+}
+
+.tts-tag-chip .tts-tag-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  margin-left: 1px;
+  padding: 0;
+  border-radius: 9999px;
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.45;
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.tts-tag-chip:hover .tts-tag-del {
+  opacity: 1;
+}
+
+.tts-tag-chip .tts-tag-del:hover {
+  color: var(--destructive);
+}
+
 /* Mobile optimizations */
 @media (max-width: 640px) {
   .script-content-preview {

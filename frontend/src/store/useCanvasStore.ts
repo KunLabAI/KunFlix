@@ -149,6 +149,48 @@ export type AudioNodeData = {
   _generating?: boolean;
 };
 
+export type TtsSpeakerEntry = {
+  speaker: string;
+  voice?: string;
+  text: string;
+  style?: string;
+};
+
+export type TtsGenHistoryEntry = {
+  url: string;
+  text?: string;
+  model?: string;
+  provider_id?: string;
+  voice?: string;
+  style?: string;
+  speakers?: TtsSpeakerEntry[];
+  output_format?: 'wav' | 'l16';
+  createdAt?: string;
+};
+
+export type TtsNodeData = {
+  name: string;
+  description: string;
+  audioUrl?: string | null;
+  /** 朗读文本（单说话人） */
+  text?: string;
+  /** 语气/风格描述 */
+  voice?: string;
+  style?: string;
+  /** 多说话人配置 */
+  speakers?: TtsSpeakerEntry[];
+  /** TTS 节点历史列表 */
+  generatedAudios?: TtsGenHistoryEntry[];
+  /** 从历史拖拽创建时预填面板 */
+  initialGenConfig?: Partial<TtsGenHistoryEntry>;
+  /** 为 true 时保持 TtsGeneratePanel 始终可见 */
+  pinPanel?: boolean;
+  /** 最后修改时间（ISO 字符串），用于节点选择器排序 */
+  updatedAt?: string;
+  /** 后端媒体生成工具创建的占位节点，待任务完成后回填 URL */
+  _generating?: boolean;
+};
+
 export type PanoramaNodeData = {
   name: string;
   description?: string;
@@ -171,7 +213,7 @@ export type GhostNodeData = {
 
 export type NodeEffect = 'reading' | 'scanning' | 'updating' | 'deleting' | 'connecting';
 
-export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData | GhostNodeData>;
+export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | TtsNodeData | PanoramaNodeData | GhostNodeData>;
 
 interface HistoryState {
   nodes: CanvasNode[];
@@ -222,7 +264,7 @@ interface CanvasState {
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
   reset: () => void;
-  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData>) => void;
+  updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | TtsNodeData | PanoramaNodeData>) => void;
   updateNodeDimensions: (id: string, width: number, height: number) => void;
   /**
    * 静默恢复节点位置（不打 isDirty，不入历史快照）。
@@ -259,7 +301,7 @@ interface CanvasState {
   // Backend media_canvas_bridge 会在异步任务完成后创建真实节点，
   // syncTheater 的 local- 前缀合并逻辑会自动用后端节点替换本地占位。
   // 返回占位节点的 id（便于后续追踪/取消）。
-  addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image', taskId: string, prompt: string) => string;
+  addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image' | 'tts', taskId: string, prompt: string) => string;
 
   // AI busy 开关：SSE handler 在推理开始/结束时调用
   setAiBusy: (busy: boolean) => void;
@@ -570,7 +612,7 @@ export const useCanvasStore = create<CanvasState>()(
         const applyPatch = (patch: Record<string, unknown> | undefined) => {
           patch && get().updateNodeData(
             targetNode.id,
-            patch as Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData>,
+            patch as Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | TtsNodeData>,
           );
         };
         applyPatch(result.dataPatch);
@@ -658,7 +700,7 @@ export const useCanvasStore = create<CanvasState>()(
         });
       },
 
-      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | PanoramaNodeData>) => {
+      updateNodeData: (id: string, data: Partial<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | TtsNodeData | PanoramaNodeData>) => {
         const now = new Date().toISOString();
         set({
           nodes: get().nodes.map((node) =>
@@ -969,7 +1011,7 @@ export const useCanvasStore = create<CanvasState>()(
       // Optimistic media placeholder（video/audio/image）
       // Backend media_canvas_bridge 会将异步任务结果回填到真实节点。
       // 使用 local- 前缀命名，syncTheater 合并阶段将自动用后端节点替换本地占位。
-      addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image', taskId: string, prompt: string) => {
+      addLocalMediaPlaceholder: (mediaType: 'video' | 'audio' | 'image' | 'tts', taskId: string, prompt: string) => {
         const { nodes } = get();
         // 防重：已存在相同 taskId 的占位就直接返回现有 id
         const existing = nodes.find((n) => n.id === `local-${mediaType}-${taskId}`);
@@ -977,15 +1019,20 @@ export const useCanvasStore = create<CanvasState>()(
 
         const { x, y } = calcAutoPosition(nodes);
         const shortPrompt = prompt.length > 80 ? `${prompt.slice(0, 80)}...` : prompt;
-        const placeholderName = mediaType === 'video'
-          ? 'Generating Video'
-          : mediaType === 'audio' ? 'Generating Music' : 'Generating Image';
+        const PLACEHOLDER_NAMES: Record<string, string> = {
+          video: 'Generating Video',
+          audio: 'Generating Music',
+          image: 'Generating Image',
+          tts: 'Generating Speech',
+        };
+        const placeholderName = PLACEHOLDER_NAMES[mediaType] || 'Generating';
 
         // 不同媒体类型的 data payload 字段与后端 media_canvas_bridge 保持一致
-        const dataBuilders: Record<'video' | 'audio' | 'image', () => Record<string, unknown>> = {
+        const dataBuilders: Record<'video' | 'audio' | 'image' | 'tts', () => Record<string, unknown>> = {
           video: () => ({ name: placeholderName, description: shortPrompt, videoUrl: '', fitMode: 'cover', _generating: true }),
           audio: () => ({ name: placeholderName, description: shortPrompt, audioUrl: '', lyrics: '', _generating: true }),
           image: () => ({ name: placeholderName, description: shortPrompt, imageUrl: '', fitMode: 'cover', _generating: true }),
+          tts: () => ({ name: placeholderName, description: shortPrompt, audioUrl: '', text: '', _generating: true }),
         };
 
         const localId = `local-${mediaType}-${taskId}`;
@@ -995,7 +1042,7 @@ export const useCanvasStore = create<CanvasState>()(
           position: { x, y },
           width: 420,
           height: 300,
-          data: dataBuilders[mediaType]() as VideoNodeData | AudioNodeData | CharacterNodeData,
+          data: dataBuilders[mediaType]() as VideoNodeData | AudioNodeData | CharacterNodeData | TtsNodeData,
         };
         set({ nodes: [...nodes, placeholderNode] });
 

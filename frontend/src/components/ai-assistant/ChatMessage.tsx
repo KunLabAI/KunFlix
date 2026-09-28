@@ -16,6 +16,7 @@ import { LazyCodeBlock } from './LazyCodeBlock';
 import { MessageChunk, useMessageChunking } from './MessageChunk';
 import { VideoTaskCard } from './VideoTaskCard';
 import { MusicTaskCard } from './MusicTaskCard';
+import { TtsTaskCard } from './TtsTaskCard';
 import { WelcomeMessage } from './WelcomeMessage';
 import { CompactionNotice } from './CompactionNotice';
 import { AudioDisplay } from '@/components/canvas/AudioNode/AudioDisplay';
@@ -39,6 +40,11 @@ const VIDEO_DONE_RE = /^__VIDEO_DONE__([^|]+)\|([^|]+)\|([^|]*)\|([^|]*)\|([^|]*
 const MUSIC_TASK_RE = /<!-- __MUSIC_TASK__\|([^|]+)\|([^|]*) -->/g;
 // __MUSIC_DONE__{task_id}|{url}|{cost}
 const MUSIC_DONE_RE = /^__MUSIC_DONE__([^|]+)\|([^|]+)\|([^|]*)$/;
+
+// <!-- __TTS_TASK__|{task_id}|{model} -->
+const TTS_TASK_RE = /<!-- __TTS_TASK__\|([^|]+)\|([^|]*) -->/g;
+// __TTS_DONE__{task_id}|{url}|{cost}
+const TTS_DONE_RE = /^__TTS_DONE__([^|]+)\|([^|]+)\|([^|]*)$/;
 
 // ---------------------------------------------------------------------------
 // Attachment parsing
@@ -175,6 +181,37 @@ function parseMusicMarkers(content: string): { cleanContent: string; musicCards:
   }).trim();
 
   return { cleanContent, musicCards };
+}
+
+interface TtsCardInfo {
+  taskId: string;
+  model?: string;
+  audioUrl?: string;
+  creditCost?: number;
+}
+
+function parseTtsMarkers(content: string): { cleanContent: string; ttsCards: TtsCardInfo[] } {
+  // __TTS_DONE__: entire message is a completion marker
+  const doneMatch = TTS_DONE_RE.exec(content);
+  if (doneMatch) {
+    return {
+      cleanContent: '',
+      ttsCards: [{
+        taskId: doneMatch[1],
+        audioUrl: doneMatch[2],
+        creditCost: parseFloat(doneMatch[3]) || 0,
+      }],
+    };
+  }
+
+  // __TTS_TASK__: extract in-content task markers
+  const ttsCards: TtsCardInfo[] = [];
+  const cleanContent = content.replace(TTS_TASK_RE, (_m, taskId, model) => {
+    ttsCards.push({ taskId, model });
+    return '';
+  }).trim();
+
+  return { cleanContent, ttsCards };
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +468,7 @@ function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] 
           }
 
           // 音频附件：居中播放图标 + 左上图标 + 底部名称
-          if (a.nodeType === 'audio' && a.thumbnailUrl) {
+          if ((a.nodeType === 'audio' || a.nodeType === 'tts') && a.thumbnailUrl) {
             return (
               <div
                 key={a.nodeId}
@@ -497,7 +534,7 @@ function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] 
                 className="max-w-[80vw] max-h-[75vh] rounded-lg"
               />
             )}
-            {previewAttachment?.nodeType === 'audio' && previewAttachment.thumbnailUrl && (
+            {(previewAttachment?.nodeType === 'audio' || previewAttachment?.nodeType === 'tts') && previewAttachment.thumbnailUrl && (
               <div className="w-[400px] h-[320px] rounded-xl overflow-hidden bg-black">
                 <AudioDisplay
                   audioUrl={previewAttachment.thumbnailUrl}
@@ -558,11 +595,19 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
   );
 
   // 解析音乐标记（在视频标记清理后的内容上继续解析）
-  const { cleanContent, musicCards } = useMemo(
+  const { cleanContent: musicCleanContent, musicCards } = useMemo(
     () => (!isUser && !isStreaming && videoCleanContent)
       ? parseMusicMarkers(videoCleanContent)
       : { cleanContent: videoCleanContent, musicCards: [] as MusicCardInfo[] },
     [videoCleanContent, isUser, isStreaming],
+  );
+
+  // 解析 TTS 标记（在音乐标记清理后的内容上继续解析）
+  const { cleanContent, ttsCards } = useMemo(
+    () => (!isUser && !isStreaming && musicCleanContent)
+      ? parseTtsMarkers(musicCleanContent)
+      : { cleanContent: musicCleanContent, ttsCards: [] as TtsCardInfo[] },
+    [musicCleanContent, isUser, isStreaming],
   );
 
   // 解析用户消息附件
@@ -593,8 +638,18 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
     return [...musicCards, ...sseCards.filter((c) => !seen.has(c.taskId))];
   }, [musicCards, message.music_tasks]);
 
-  // 纯媒体完成消息（__VIDEO_DONE__ / __MUSIC_DONE__）无需渲染文本
-  const isMediaOnlyMessage = (allVideoCards.length > 0 || allMusicCards.length > 0) && !cleanContent;
+  // 合并两种来源的 TTS 任务：内容解析 + SSE 事件
+  const allTtsCards = useMemo(() => {
+    const sseCards: TtsCardInfo[] = (message.tts_tasks || []).map((tt) => ({
+      taskId: tt.task_id,
+      model: tt.model,
+    }));
+    const seen = new Set(ttsCards.map((c) => c.taskId));
+    return [...ttsCards, ...sseCards.filter((c) => !seen.has(c.taskId))];
+  }, [ttsCards, message.tts_tasks]);
+
+  // 纯媒体完成消息（__VIDEO_DONE__ / __MUSIC_DONE__ / __TTS_DONE__）无需渲染文本
+  const isMediaOnlyMessage = (allVideoCards.length > 0 || allMusicCards.length > 0 || allTtsCards.length > 0) && !cleanContent;
 
   // 检测消息是否需要分块
   const { needsChunking } = useMessageChunking(cleanContent, 10000);
@@ -749,6 +804,11 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
                   {/* 音乐任务卡片 */}
                   {allMusicCards.map((card) => (
                     <MusicTaskCard key={card.taskId} task={card} />
+                  ))}
+
+                  {/* TTS 任务卡片 */}
+                  {allTtsCards.map((card) => (
+                    <TtsTaskCard key={card.taskId} task={card} />
                   ))}
 
                   {/* Harness 事件横幅（LLM重试、熔断等） */}

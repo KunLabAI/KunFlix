@@ -13,6 +13,7 @@ export const PRESET_COST_DIMENSIONS: Record<string, { labelKey: string; unit: st
   video_output_480p:  { labelKey: 'llm.costDimension.video_output_480p',  unit: 'USD/秒' },
   video_output_720p:  { labelKey: 'llm.costDimension.video_output_720p',  unit: 'USD/秒' },
   audio_generation:   { labelKey: 'llm.costDimension.audio_generation',   unit: 'USD/次' },
+  tts_generation:     { labelKey: 'llm.costDimension.tts_generation',     unit: 'USD/次' },
 };
 
 export const MODEL_TYPE_TAGS = [
@@ -20,6 +21,7 @@ export const MODEL_TYPE_TAGS = [
   '图像模型',
   '视频模型',
   '音频模型',
+  '语音模型',
   '多模态模型'
 ] as const;
 
@@ -28,6 +30,7 @@ export const MODEL_TYPE_OPTIONS = [
   { value: 'image', labelKey: 'llm.modelType.image' },
   { value: 'video', labelKey: 'llm.modelType.video' },
   { value: 'audio', labelKey: 'llm.modelType.audio' },
+  { value: 'tts', labelKey: 'llm.modelType.tts' },
   { value: 'multimodal', labelKey: 'llm.modelType.multimodal' },
 ] as const;
 

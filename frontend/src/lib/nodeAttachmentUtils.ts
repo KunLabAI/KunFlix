@@ -1,4 +1,4 @@
-import type { CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, StoryboardNodeData, AudioNodeData } from '@/store/useCanvasStore';
+import type { CanvasNode, ScriptNodeData, CharacterNodeData, VideoNodeData, StoryboardNodeData, AudioNodeData, TtsNodeData } from '@/store/useCanvasStore';
 import type { NodeAttachment } from '@/store/useAIAssistantStore';
 
 /** 文本节点发送给 AI 的最大纯文本字符数 */
@@ -92,6 +92,23 @@ const NODE_ATTACHMENT_EXTRACTORS: Record<string, (node: CanvasNode) => NodeAttac
       excerpt: data.description || '',
       thumbnailUrl,
       meta: { lyrics: data.lyrics },
+      updatedAt: readUpdatedAt(node),
+    };
+  },
+  tts: (node) => {
+    const data = node.data as TtsNodeData;
+    // 将 audioUrl 转换为完整的 /api/media/ 路径
+    let thumbnailUrl: string | null = data.audioUrl || null;
+    if (thumbnailUrl && !thumbnailUrl.startsWith('http') && !thumbnailUrl.startsWith('/api/media/') && !thumbnailUrl.startsWith('data:')) {
+      thumbnailUrl = `/api/media/${thumbnailUrl}`;
+    }
+    return {
+      nodeId: node.id,
+      nodeType: 'tts',
+      label: data.name || '未命名TTS',
+      excerpt: data.text || data.description || '',
+      thumbnailUrl,
+      meta: { voice: data.voice, style: data.style },
       updatedAt: readUpdatedAt(node),
     };
   },

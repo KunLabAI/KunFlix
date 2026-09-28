@@ -44,6 +44,7 @@ const PRICING_DIMENSION_LABELS: Record<string, { labelKey: string; unitKey: stri
   video_output_480p: { labelKey: 'agents.form.parameters.costDimensions.video_output_480p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
   video_output_720p: { labelKey: 'agents.form.parameters.costDimensions.video_output_720p', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
   audio_generation: { labelKey: 'agents.form.parameters.costDimensions.audio_generation', unitKey: 'agents.form.parameters.units.per_second', costUnitKey: 'agents.form.parameters.costUnits.per_second' },
+  tts_generation: { labelKey: 'agents.form.parameters.costDimensions.tts_generation', unitKey: 'agents.form.parameters.units.per_query', costUnitKey: 'agents.form.parameters.costUnits.per_query' },
 };
 
 // 二级分组小标题（板块内的子区块视觉分隔）

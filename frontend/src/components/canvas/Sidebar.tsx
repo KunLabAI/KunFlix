@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   VectorSquare, Plus, ScrollText, Image as ImageIcon, Video, 
-  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones, Globe
+  Table2, GripVertical, Film, ImagePlus, Music, ExternalLink, Loader2, Headphones, Globe, Mic
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resourceApi, AssetItem } from '@/lib/resourceApi';
@@ -53,6 +53,17 @@ const NODE_TYPES = [
     titleKey: 'canvas.node.newAudioCard',
     data: { description: '' },
     dimensions: { width: 360, height: 200 }
+  },
+  { 
+    type: 'tts', 
+    nameKey: 'sidebar.ttsCard', 
+    descKey: 'sidebar.ttsDesc',
+    icon: Mic, 
+    color: 'text-rose-500', 
+    bg: 'bg-rose-500/10',
+    titleKey: 'canvas.node.newTtsCard',
+    data: { description: '' },
+    dimensions: { width: 360, height: 220 }
   },
   { 
     type: 'storyboard', 

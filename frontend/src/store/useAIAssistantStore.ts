@@ -74,6 +74,12 @@ export interface MusicTaskData {
   model: string;
 }
 
+// TTS 任务数据
+export interface TtsTaskData {
+  task_id: string;
+  model: string;
+}
+
 export interface Message {
   role: MessageRole;
   content: string;
@@ -84,6 +90,7 @@ export interface Message {
   multi_agent?: MultiAgentData;
   video_tasks?: VideoTaskData[];
   music_tasks?: MusicTaskData[];
+  tts_tasks?: TtsTaskData[];
   // 欢迎消息标记
   isWelcome?: boolean;
   // 上下文压缩摘要

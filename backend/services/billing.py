@@ -46,6 +46,11 @@ MUSIC_BILLING_DIMENSIONS: Dict[str, int] = {
     "audio_generation": 1,
 }
 
+# TTS 语音合成计费维度映射表（按次计费）
+TTS_BILLING_DIMENSIONS: Dict[str, int] = {
+    "tts_generation": 1,
+}
+
 # 进程级定价缓存：(provider_id, model) -> {dim_name: rate}
 # 由 admin_pricing CRUD 调用 invalidate_pricing_cache 或 Redis Pub/Sub 失效事件清理
 _PRICING_CACHE: Dict[Tuple[str, str], Dict[str, float]] = {}
@@ -655,6 +660,38 @@ def calculate_music_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
     }
 
     for dim_name, scale in MUSIC_BILLING_DIMENSIONS.items():
+        quantity = quantities[dim_name]
+        rate = rate_map.get(dim_name, 0) or 0
+        cost = quantity / scale * rate
+        total += cost
+        metadata[f"{dim_name}_quantity"] = quantity
+        metadata[f"{dim_name}_rate"] = rate
+
+    return total, metadata
+
+
+def calculate_tts_credit_cost(task, rate_map: Dict) -> Tuple[float, Dict]:
+    """
+    TTS 任务积分计费（映射表驱动，按次计费）。
+
+    Args:
+        task:     TTSTask 对象
+        rate_map: ModelPricing.dimensions 字典（从 load_pricing 打包读取），dim_name -> credits-per-unit
+
+    Returns:
+        (total_cost, metadata_dict)
+    """
+    quantities = {
+        "tts_generation": 1,  # 每次合成计 1 次
+    }
+
+    total = 0.0
+    metadata = {
+        "model": getattr(task, 'model', ''),
+        "output_format": getattr(task, 'output_format', ''),
+    }
+
+    for dim_name, scale in TTS_BILLING_DIMENSIONS.items():
         quantity = quantities[dim_name]
         rate = rate_map.get(dim_name, 0) or 0
         cost = quantity / scale * rate

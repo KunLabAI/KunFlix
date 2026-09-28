@@ -79,9 +79,9 @@ async def create_placeholder_node(
     theater_id: str,
     db: AsyncSession,
 ) -> str:
-    """创建占位节点（视频/音频生成中），返回 node_id。
+    """创建占位节点（视频/音频/语音合成生成中），返回 node_id。
 
-    node_type: "video" | "audio"
+    node_type: "video" | "audio" | "tts"
     占位节点的 data 中包含 _generating: true 标记，前端据此显示加载状态。
     """
     pos_x, pos_y = await _auto_position(theater_id, db)
@@ -99,6 +99,13 @@ async def create_placeholder_node(
             "description": (prompt[:80] + "...") if len(prompt) > 80 else prompt,
             "audioUrl": "",
             "lyrics": "",
+            "_generating": True,
+        },
+        "tts": lambda: {
+            "name": name,
+            "description": (prompt[:80] + "...") if len(prompt) > 80 else prompt,
+            "audioUrl": "",
+            "text": "",
             "_generating": True,
         },
     }

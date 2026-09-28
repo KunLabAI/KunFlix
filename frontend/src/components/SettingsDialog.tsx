@@ -77,8 +77,9 @@ const TOOLTIP_STYLE = {
 
 // ── 更新日志 markdown 渲染（react-markdown + remark-gfm）────────────────────
 // GitHub release body 是完整 markdown（标题/表格/代码块/链接/引用等），
-// 与 TypewriterText 的组件映射同一模式：code 按有无 className 区分行内/块级，
 // pre 透传给 code 块自渲染，表格外包横向滚动容器。
+// 注意：code 的行内/块级不能靠有无 className 判断（无语言标注的代码块没有 className），
+// 需依赖块级代码必带尾部换行的特征，见下方 code 组件。
 const RELEASE_MD_COMPONENTS: Components = {
   h1: ({ children }) => <h4 className="text-base font-bold text-foreground mt-4 mb-2">{children}</h4>,
   h2: ({ children }) => <h4 className="text-sm font-bold text-foreground mt-4 mb-1.5">{children}</h4>,
@@ -102,9 +103,11 @@ const RELEASE_MD_COMPONENTS: Components = {
     </a>
   ),
   code: ({ className, children }) => {
-    const isInline = !className;
-    const match = /language-(\w+)/.exec(className || "");
-    const language = match ? match[1] : "";
+    // react-markdown v9+ 移除了 inline prop：mdast-util-to-hast 会给块级代码内容追加尾部 \n，
+    // 行内代码既无 className 也无换行；仅凭 className 会把无语言标注的代码块误判为行内代码。
+    const content = String(children ?? "");
+    const isInline = !className && !content.includes("\n");
+    const language = /language-(\w+)/.exec(className || "")?.[1] ?? "";
     return isInline ? (
       <code className="px-1.5 py-0.5 rounded bg-muted text-primary font-mono text-xs">{children}</code>
     ) : (
@@ -113,7 +116,7 @@ const RELEASE_MD_COMPONENTS: Components = {
           <span className="absolute top-2 right-2 text-[10px] text-muted-foreground/60 font-mono">{language}</span>
         )}
         <pre className="!bg-muted/80 !p-3 rounded-lg overflow-x-auto border border-border/50">
-          <code className={cn("font-mono text-xs", className)}>{children}</code>
+          <code className="font-mono text-xs">{content.replace(/\n$/, "")}</code>
         </pre>
       </div>
     );
@@ -144,10 +147,24 @@ const RELEASE_MD_COMPONENTS: Components = {
 };
 
 // ── release body 媒体段提取 ───────────────────────────────────────────────
-// GitHub release body 会把附件以原始 HTML <img>/<video> 标签内联（react-markdown
-// 默认不解析原始 HTML，会当纯文本显示）。这里按媒体标签把 body 切成段：
-// 文本段继续走 markdown 渲染，媒体标签提取 src 后直接渲染为 img/video JSX。
-const MEDIA_TAG_REGEX = /<video\b[^>]*>[\s\S]*?<\/video>|<img\b[^>]*\/?>/gi;
+// GitHub release body 的媒体存在多种形态（react-markdown 默认不解析原始 HTML，
+// 裸视频链接只会渲染成可点击链接），这里按媒体记号把 body 切成段：
+//   1. 原始 HTML <img>/<video> 标签 → 提取 src 渲染为 img/video JSX
+//   2. markdown 视频链接：[text](xxx.mp4) 或 [text](user-attachments/assets/uuid)
+//   3. 裸视频链接：视频扩展名 URL，以及 GitHub 上传视频时插入的裸附件链接。
+//      图片上传会以 ![alt](...) 语法包裹，故 (?<!!)/(?<!\S) 边界可避免误伤图片与链接语法。
+// 文本段继续走 markdown 渲染。
+const VIDEO_EXT = "(?:mp4|webm|mov|m4v|ogv|ogg)";
+const ATTACHMENT_URL = "https?:\\/\\/github\\.com\\/user-attachments\\/assets\\/[0-9a-fA-F-]+";
+const MEDIA_TOKEN_REGEX = new RegExp(
+  [
+    "<video\\b[^>]*>[\\s\\S]*?<\\/video>",
+    "<img\\b[^>]*\\/?>",
+    `(?<!!)\\[[^\\]]*\\]\\((${ATTACHMENT_URL}|https?:\\/\\/[^)\\s]+\\.${VIDEO_EXT}(?:\\?[^)\\s]*)?)\\)`,
+    `(?<!\\S)(${ATTACHMENT_URL}|https?:\\/\\/[^\\s<>"']+\\.${VIDEO_EXT}(?:\\?[^\\s<>"']*)?)(?![\\w-])`,
+  ].join("|"),
+  "gi"
+);
 
 const extractAttr = (tag: string, name: string) =>
   new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i").exec(tag)?.[1] ?? "";
@@ -178,26 +195,38 @@ const SEGMENT_RENDERERS: Record<ReleaseSegment["kind"], (seg: ReleaseSegment) =>
     <img src={seg.src} alt={seg.alt} loading="lazy" className="max-w-full h-auto rounded-lg my-2" />
   ),
   video: (seg) => (
-    <video src={seg.src} controls preload="metadata" className="max-w-full rounded-lg my-2" />
+    <video
+      src={seg.src}
+      controls
+      preload="metadata"
+      playsInline
+      className="max-w-full max-h-[480px] rounded-lg my-2"
+    />
   ),
+};
+
+// 媒体记号 → 段：原始标签从属性提取 src（<video> 的 src 也可能写在内嵌 <source> 上，
+// extractAttr 对整段文本检索可兼容两者）；markdown 视频链接与裸视频链接直接取链接 URL。
+const buildMediaSegment = (token: string, mdLinkSrc: string, bareSrc: string): ReleaseSegment => {
+  const src = mdLinkSrc || bareSrc || extractAttr(token, "src");
+  return {
+    kind: token.startsWith("<img") ? "img" : "video",
+    text: "",
+    src: isHttpUrl(src) ? src : "",
+    alt: extractAttr(token, "alt"),
+  };
 };
 
 function splitReleaseSegments(body: string): ReleaseSegment[] {
   const segments: ReleaseSegment[] = [];
   let cursor = 0;
-  for (const match of body.matchAll(MEDIA_TAG_REGEX)) {
+  for (const match of body.matchAll(MEDIA_TOKEN_REGEX)) {
     const index = match.index ?? body.length;
-    const tag = match[0];
+    const token = match[0];
     segments.push({ kind: "md", text: body.slice(cursor, index), src: "", alt: "" });
-    // <video> 的 src 也可能写在内嵌 <source> 上，extractAttr 对整段文本检索可兼容两者
-    const src = extractAttr(tag, "src");
-    segments.push({
-      kind: tag.startsWith("<video") ? "video" : "img",
-      text: "",
-      src: isHttpUrl(src) ? src : "",
-      alt: extractAttr(tag, "alt"),
-    });
-    cursor = index + tag.length;
+    // 捕获组 1/2 分别对应 markdown 视频链接与裸视频链接的 URL；原始标签命中时两者为空
+    segments.push(buildMediaSegment(token, match[1] ?? "", match[2] ?? ""));
+    cursor = index + token.length;
   }
   segments.push({ kind: "md", text: body.slice(cursor), src: "", alt: "" });
   return segments.filter((seg) => SEGMENT_KEEPERS[seg.kind](seg));
