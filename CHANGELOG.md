@@ -44,7 +44,7 @@
 
 ### 🔒 依赖与安全
 
-- **9 个后端依赖安全下界抬升**（PR #327，排除已知漏洞版本）：`python-multipart>=0.0.32`、`psycopg2-binary>=2.9.12`、`bcrypt>=5.0.0`、`google-genai>=2.10.0`、`ollama>=0.6.2`、`python-frontmatter>=1.3.0`、`packaging>=26.2`、`cachetools>=7.1.4`、`purgatory>=3.0.1`；`redis` 因 arq 0.28 约束维持 `>=5,<6`。
+- **9 个后端依赖安全下界抬升**（PR #327，排除已知漏洞版本）：`python-multipart>=0.0.32`、`psycopg2-binary>=2.9.12`、`bcrypt>=5.0.0`、`google-genai>=2.10.0`、`ollama>=0.6.2`、`python-frontmatter>=1.3.0`、`packaging>=25.0,<26`（受 xai-sdk `packaging<26` 约束，取兼容区间最高下界）、`cachetools>=7.1.4`、`purgatory>=3.0.1`；`redis` 因 arq 0.28 约束维持 `>=5,<6`。
 - **agentscope 升级 `>=2.0.4.post1 → >=2.0.9`**；**移除 `ripgrep==14.1.0` 锁定**（自 agentscope 2.0.4 起 ripgrep 为可选依赖，本项目不使用内置 Grep 工具）。
 - **不再需要 Rust 工具链**：`dev.py` 移除 Rust 检测、`backend.Dockerfile` 与 README / README_EN / UPGRADE 移除 Rust 1.85+ 要求与安装步骤，本地 / Docker 安装不再触发 cargo 编译。
 - **前端新增依赖**：`border-beam@^1.4.1`、`thinking-orbs@^0.3.2`（均零运行时依赖，peer React>=18）。
