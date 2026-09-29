@@ -4,7 +4,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp, CheckCircle2, Circle, XCircle, Loader2, Wrench, Crown, Image as ImageIcon, Video, Music, MessagesSquare, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { LoadingDots } from './LoadingDots';
+import { ThinkingOrb } from 'thinking-orbs';
+import { useTheme } from '@/context/ThemeContext';
+import { useTranslation } from 'react-i18next';
 import { LazyImage } from './LazyImage';
 import type { AgentStep, OrchestrationStyle, ToolCall } from '@/store/useAIAssistantStore';
 
@@ -115,6 +117,13 @@ export function MultiAgentPanel({
     };
   }, [steps]);
 
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  const { t } = useTranslation();
+  // 编排阶段动态映射 Orb 状态：Worker 执行中 → working；Leader 调度/起步 → connecting
+  const isWorkerRunning = steps.some(s => s.status === 'running' && !s.isLeader);
+  const orbState: 'connecting' | 'working' = isWorkerRunning ? 'working' : 'connecting';
+
   // 当前执行的步骤
   const currentStep = useMemo(() => 
     steps.find(s => s.status === 'running'),
@@ -173,6 +182,15 @@ export function MultiAgentPanel({
         {/* 标题和状态 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            {isThinking && (
+              <ThinkingOrb
+                state={orbState}
+                size={20}
+                theme={isDark ? 'dark' : 'light'}
+                className="shrink-0"
+                aria-label={orbState === 'working' ? t('ai.statusWorking', '正在执行...') : t('ai.statusOrchestrating', '正在调度...')}
+              />
+            )}
             <span className="text-sm font-medium">
               {(() => {
                 // team_tools 模式专用文案：团队协作：{teamName}
@@ -184,7 +202,6 @@ export function MultiAgentPanel({
                 return isThinking ? doingLabel : progress.isAllDone ? doneLabel : idleLabel;
               })()}
             </span>
-            {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>
           {/* 副标题：team_tools 下展示 Leader + Worker 统计；legacy 下展示当前步骤描述 */}
           {orchestrationStyle === 'team_tools' && progress.workerTotal > 0 ? (

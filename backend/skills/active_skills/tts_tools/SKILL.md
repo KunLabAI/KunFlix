@@ -29,7 +29,7 @@ Convert text into natural-sounding speech audio, with fine-grained control over 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `text` | string | Single-speaker mode | The verbatim transcript to speak. Never put stage directions here. Inline vocal tags `<laugh>`, `<sigh>`, `<cough>`, `<breath>`, `<short pause>` are allowed. |
-| `voice` | string | No | Prebuilt voice name. Use `"auto"` (default) to let the model pick a suitable voice. e.g. Kore (firm), Puck (upbeat), Zephyr (bright), Charon (informative), Leda (youthful), Aoede (breezy), Sulafat (warm). |
+| `voice` | string | No | Voice for single-speaker mode. Use `"auto"` (default) to let the model pick. **Gender is intrinsic to each voice and cannot be changed via `style`** — to get a male/female speaker, pick a voice of that gender. Each entry is `Name (characteristic)`; pass **only the bare name** as the value (e.g. `Kore`, not `Kore (firm)`). **Female:** Zephyr (bright), Kore (firm), Leda (youthful), Aoede (breezy), Callirrhoe (easy-going), Autonoe (bright), Despina (smooth), Erinome (clear), Laomedeia (upbeat), Achernar (soft), Gacrux (mature), Pulcherrima (forward), Vindemiatrix (gentle), Sulafat (warm). **Male:** Puck (upbeat), Charon (informative), Fenrir (excitable), Orus (firm), Enceladus (breathy), Iapetus (clear), Umbriel (easy-going), Algieba (smooth), Algenib (gravelly), Rasalgethi (informative), Alnilam (firm), Schedar (even), Achird (friendly), Zubenelgenubi (casual), Sadachbia (lively), Sadaltager (knowledgeable). You may also pass a user's persisted replicated voice ID (a string starting with `voice_`). |
 | `style` | string | No | Sustained turn-level delivery: emotion, pace, tone. e.g. "cheerful and friendly", "whispered urgently", "calm and relaxed". |
 | `speakers` | object[] | Dialogue mode | Max 2 speakers. Each item: `{speaker, voice, text, style?}` — one item per dialogue turn. Overrides top-level `text`/`voice`/`style`. |
 
@@ -72,6 +72,7 @@ generate_tts(
 
 - The speech language follows the input text language automatically — write the text in the target language.
 - Keep `text` strictly verbatim: anything written there will be read aloud.
+- To choose a male or female speaker, select a voice of that gender (gender cannot be set through `style`); pick the characteristic in parentheses that fits the role (e.g. a warm female narrator → `Sulafat (warm)`, an authoritative male narrator → `Charon (informative)`). For a two-person dialogue, pick one male and one female voice for contrast.
 - When the user does not specify a voice, use `voice="auto"` and let the model choose.
 - Use different `style` per dialogue turn for more natural conversation.
 - Speech generation is async — inform the user it will take 10-60 seconds.

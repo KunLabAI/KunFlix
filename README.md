@@ -129,7 +129,6 @@ KunFlix 专为**影视广告与短剧创作**打造的开放式AI内容创作生
 ### 环境要求
 
 - **Python 3.12+**（AgentScope 2.0 强制要求；旧 3.10 venv 需删除重建）
-- **Rust 1.85+**（仅当从源码编译 ripgrep 时需要；首次安装会触发，参见 [UPGRADE.md](./UPGRADE.md)）
 - Node.js 20+
 - Docker 24+（Docker 部署时需要）
 - PostgreSQL 18（开发与生产统一；本地可用 `docker compose -f deploy/docker-compose.dev.yml up -d` 一键启动 PostgreSQL + Redis）

@@ -6,6 +6,117 @@
 
 ---
 
+## [v0.1.5] - 2026-09-29
+
+**主题：AI 助手面板与画布节点视觉升级（BorderBeam 流光描边 + ThinkingOrb 加载球体）、TTS 拖拽与音色选择修复、agentscope 2.0.9 升级与依赖安全下界抬升**
+
+上一版本：`v0.1.4`。本版本无数据库迁移；前端新增 2 个第三方依赖（`border-beam`、`thinking-orbs`）。
+
+### ✨ 新增
+
+#### 输入框描边流光（BorderBeam）
+
+- Agent 生成回复时（`isLoading`），消息输入框外缘出现持续流动的描边光效，停止生成后平滑淡出；`colorVariant="ocean"`、`strength=0.6`，亮/暗主题均适配，不影响输入与响应式布局。
+
+#### 加载指示器升级为 ThinkingOrb 球体动画
+
+- AI 助手面板的三点加载动画（`LoadingDots` / `StreamingIndicator`）统一替换为 `thinking-orbs` 球体动画，按 Agent 阶段动态映射状态：初始响应=`listening`、深度思考=`searching`、生成输出 / Worker 执行=`working`、Leader 调度=`connecting`。
+- 采用 `<orb> + <文字>` 并排布局（`flex items-center gap-2`，orb 在左），内联场景 `size=20`；`theme` 跟随应用主题，附 `aria-label` 描述状态。
+
+#### 画布节点 Agent 操作描边流光
+
+- Agent 调用画布工具时，节点卡片的 CSS 脉冲边框升级为 BorderBeam 流光：读取 `reading` / 扫描 `scanning` → ocean、编辑 `updating` → gold、删除 `deleting` → sunset、连线 `connecting` → forest；创建态 `GhostNode` → ocean。
+- 保留原图标徽标、背景色与 `reading` 扫描光带；以「绝对定位覆盖层」方式集成（内联 style 覆盖组件默认的 `position:relative`），不裁剪节点外部工具栏 / 缩放手柄 / 下挂面板。
+
+#### orbs-demo 演示页
+
+- 新增 `/demo/orbs-demo`：展示 ThinkingOrb 全 9 种状态（`size` 20 内联 / 64 头像级）与画布节点描边效果，含状态切换、速度调节交互，复用生产组件 `NodeEffectOverlay` / `GhostNode` 保证与真实渲染一致。
+
+### 🔧 改进
+
+- **TTSSkills 音色描述细化**：`generate_tts` 工具定义与 `tts_tools` 技能的音色清单由「仅风格」升级为「按性别分组 + 语气特征」（如女声 `Kore (firm)`、男声 `Charon (informative)`，女 14 / 男 16），Agent 可据角色精准选男/女声；后端对 LLM 可能回传的尾部括注做防御式剥离（`Kore (firm)` → `Kore`），`auto` / 裸名 / 复刻 `voice_` ID 不受影响。
+- **TTS 语音卡拖拽**：AI 助手面板生成的语音拖到画布时正确生成 TTS 节点并保留文本 / 音色 / 风格 / 多说话人配置，不再误建为普通音频节点。
+- 移除已弃用的 `LoadingDots` 组件及其 barrel 导出、孤立的 `nodeEffectPulse` 关键帧。
+
+### 🐛 修复
+
+- **画布节点类型错误**：TTS 工具生成的音频拖拽到画布被渲染为 `AudioNode` 而非 `TtsNode` —— `TtsTaskCard` 改用 `handleTtsDragStart`（写入 `application/reactflow='tts'`），`dragToCanvas` 新增 tts 节点配置与 TTS 特有字段透传。
+
+### 🔒 依赖与安全
+
+- **9 个后端依赖安全下界抬升**（PR #327，排除已知漏洞版本）：`python-multipart>=0.0.32`、`psycopg2-binary>=2.9.12`、`bcrypt>=5.0.0`、`google-genai>=2.10.0`、`ollama>=0.6.2`、`python-frontmatter>=1.3.0`、`packaging>=26.2`、`cachetools>=7.1.4`、`purgatory>=3.0.1`；`redis` 因 arq 0.28 约束维持 `>=5,<6`。
+- **agentscope 升级 `>=2.0.4.post1 → >=2.0.9`**；**移除 `ripgrep==14.1.0` 锁定**（自 agentscope 2.0.4 起 ripgrep 为可选依赖，本项目不使用内置 Grep 工具）。
+- **不再需要 Rust 工具链**：`dev.py` 移除 Rust 检测、`backend.Dockerfile` 与 README / README_EN / UPGRADE 移除 Rust 1.85+ 要求与安装步骤，本地 / Docker 安装不再触发 cargo 编译。
+- **前端新增依赖**：`border-beam@^1.4.1`、`thinking-orbs@^0.3.2`（均零运行时依赖，peer React>=18）。
+
+### ✅ 测试与验证
+
+- 前端 `tsc --noEmit`：新增/改动文件（MessageInput、ChatMessage、Single/MultiAgentPanel、NodeEffectOverlay、GhostNode、dragToCanvas、TtsTaskCard、orbs-demo）零类型错误，仅剩既有 `theater/[id]/page.tsx` 的 OnNodeDrag 基线告警。
+- ESLint：新增代码零告警，orbs-demo 页 0 问题。
+- 后端 `tts_gen.py` `py_compile` 通过；音色清单断言（女 14 / 男 16 带语气）+ 括注剥离正则离线校验通过。
+- 两个 i18n locale（zh-CN / en-US）JSON 合法（Node `JSON.parse` 通过）。
+
+### 📌 升级说明
+
+1. **无需执行数据库迁移**。
+2. 前端新增依赖：`cd frontend && npm install`（安装 border-beam、thinking-orbs）后重启 dev server。
+3. 后端依赖下界抬升属安全加固，`pip install -r requirements.txt` 按新下界解析；agentscope 升到 2.0.9、不再需要 ripgrep / Rust。
+4. **合并提示**：本版本 `requirements.txt` 已并入 main 上 PR #327 的 9 个安全下界，与 main 合并时该文件应干净自动合并（数值一致）。
+5. 后端 Python 改动需重启服务生效；纯前端改动热更即可。
+
+### 📁 主要变更文件
+
+**后端**
+
+```
+backend/config.py                                         版本号 0.1.5（单一来源）
+backend/requirements.txt                                  agentscope>=2.0.9、移除 ripgrep、9 依赖安全下界
+backend/services/tool_manager/providers/tts_gen.py        音色性别+语气描述、防御式括注剥离
+backend/skills/{builtin,active}_skills/tts_tools/SKILL.md 音色清单细化
+```
+
+**构建 / 脚本 / 文档**
+
+```
+dev.py                          移除 Rust 工具链检测
+deploy/backend.Dockerfile       ripgrep 为可选依赖说明，无需 Rust
+README.md / README_EN.md        移除 Rust 1.85+ 环境要求
+UPGRADE.md                      精简，移除 Rust 安装步骤
+```
+
+**前端**
+
+```
+frontend/package.json / package-lock.json                    新增 border-beam、thinking-orbs；版本号 0.1.5
+frontend/src/components/ai-assistant/MessageInput.tsx         输入框 BorderBeam 描边流光
+frontend/src/components/ai-assistant/ChatMessage.tsx          StreamingIndicator → ThinkingOrb(listening)
+frontend/src/components/ai-assistant/SingleAgentThinkPanel.tsx LoadingDots → ThinkingOrb(searching)
+frontend/src/components/ai-assistant/MultiAgentPanel.tsx      LoadingDots → ThinkingOrb(connecting/working)
+frontend/src/components/ai-assistant/LoadingDots.tsx          删除
+frontend/src/components/ai-assistant/index.ts                移除 LoadingDots 导出
+frontend/src/components/ai-assistant/TtsTaskCard.tsx          拖拽生成 TTS 节点
+frontend/src/lib/dragToCanvas.ts                             handleTtsDragStart + tts 节点配置
+frontend/src/components/canvas/NodeEffectOverlay.tsx         5 效果脉冲边框 → BorderBeam 流光
+frontend/src/components/canvas/GhostNode.tsx                 创建态脉冲边框 → BorderBeam 流光
+frontend/src/app/globals.css                                 移除孤立 nodeEffectPulse 关键帧
+frontend/src/app/demo/orbs-demo/page.tsx                     新增：Orb + 节点描边演示页
+frontend/src/i18n/locales/{zh-CN,en-US}.json                 状态文案键
+```
+
+**管理端**
+
+```
+backend/admin/package.json / package-lock.json          版本号 0.1.5
+```
+
+**文档**
+
+```
+CHANGELOG.md            本文件
+```
+
+---
+
 ## [v0.1.4] - 2026-09-28
 
 **主题：Gemini TTS 语音合成节点全栈接入（画布节点 + 音色复刻/扩展音色库/试听 + Agent 技能 + 管理端配置）**

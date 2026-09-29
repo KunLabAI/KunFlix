@@ -1,5 +1,4 @@
 // 基础组件
-export { LoadingDots } from './LoadingDots';
 export { TypewriterText } from './TypewriterText';
 
 // 状态指示器

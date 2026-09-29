@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3666",
@@ -54,6 +54,7 @@
     "@xyflow/react": "^12.10.1",
     "antd": "^6.4.2",
     "axios": "^1.16.0",
+    "border-beam": "^1.4.1",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
     "framer-motion": "^12.34.3",
@@ -81,6 +82,7 @@
     "swr": "^2.4.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
+    "thinking-orbs": "^0.3.2",
     "uuid": "^14.0.0",
     "zustand": "^5.0.14"
   },

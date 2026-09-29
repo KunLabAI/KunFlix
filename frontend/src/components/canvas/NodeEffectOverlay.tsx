@@ -3,46 +3,42 @@
 import { memo } from 'react';
 import { useCanvasStore, type NodeEffect } from '@/store/useCanvasStore';
 import { Eye, Pencil, Trash2, Link2, ScanSearch } from 'lucide-react';
+import { BorderBeam, type BorderBeamColorVariant } from 'border-beam';
+import { useTheme } from '@/context/ThemeContext';
 
 /* ── Effect visual config ─────────────────────────────────── */
 const EFFECT_CONFIG: Record<NodeEffect, {
-  borderColor: string;       // Tailwind border color
-  glowColor: string;         // box-shadow glow color (CSS value)
-  bgColor: string;           // overlay background
+  beamVariant: BorderBeamColorVariant; // BorderBeam 流光色相（沿用原状态配色语义）
+  bgColor: string;           // overlay background tint
   icon: typeof Eye;
   label: string;
 }> = {
   reading: {
-    borderColor: 'border-blue-400',
-    glowColor: 'rgba(59,130,246,0.5)',
+    beamVariant: 'ocean',
     bgColor: 'rgba(59,130,246,0.08)',
     icon: Eye,
     label: 'Reading…',
   },
   scanning: {
-    borderColor: 'border-blue-400',
-    glowColor: 'rgba(59,130,246,0.4)',
+    beamVariant: 'ocean',
     bgColor: 'rgba(59,130,246,0.06)',
     icon: ScanSearch,
     label: 'Scanning…',
   },
   updating: {
-    borderColor: 'border-amber-400',
-    glowColor: 'rgba(245,158,11,0.5)',
+    beamVariant: 'gold',
     bgColor: 'rgba(245,158,11,0.08)',
     icon: Pencil,
     label: 'Editing…',
   },
   deleting: {
-    borderColor: 'border-red-400',
-    glowColor: 'rgba(239,68,68,0.5)',
+    beamVariant: 'sunset',
     bgColor: 'rgba(239,68,68,0.10)',
     icon: Trash2,
     label: 'Deleting…',
   },
   connecting: {
-    borderColor: 'border-green-400',
-    glowColor: 'rgba(34,197,94,0.5)',
+    beamVariant: 'forest',
     bgColor: 'rgba(34,197,94,0.08)',
     icon: Link2,
     label: 'Connecting…',
@@ -64,6 +60,7 @@ interface NodeEffectOverlayProps {
 
 const NodeEffectOverlay = memo(({ nodeId }: NodeEffectOverlayProps) => {
   const effect = useCanvasStore((state) => state.activeNodeEffects[nodeId]);
+  const { resolvedTheme } = useTheme();
 
   // Zero cost when no effect
   if (!effect) return null;
@@ -73,14 +70,18 @@ const NodeEffectOverlay = memo(({ nodeId }: NodeEffectOverlayProps) => {
 
   return (
     <>
-      {/* ── Pulsing border + glow ────────────────────── */}
-      <div
-        className={`absolute inset-[-3px] rounded-xl ${config.borderColor} border-[3px] pointer-events-none z-[20]`}
-        style={{
-          animation: 'nodeEffectPulse 1.5s ease-in-out infinite',
-          boxShadow: `0 0 12px 2px ${config.glowColor}, inset 0 0 12px 2px ${config.glowColor}`,
-        }}
-      />
+      {/* ── BorderBeam 流光描边（替代原脉冲边框，色相沿用各状态语义）── */}
+      <BorderBeam
+        size="md"
+        colorVariant={config.beamVariant}
+        strength={0.75}
+        active
+        theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
+        borderRadius={14}
+        style={{ position: 'absolute', inset: '-3px', pointerEvents: 'none', zIndex: 20 }}
+      >
+        <div className="h-full w-full" />
+      </BorderBeam>
 
       {/* ── Background tint overlay ──────────────────── */}
       <div

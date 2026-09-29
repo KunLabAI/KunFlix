@@ -4,9 +4,10 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { motion } from 'framer-motion';
 import { Music, Film, Image as ImageIcon, ScrollText, Play, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ThinkingOrb, type OrbState } from 'thinking-orbs';
+import { useTheme } from '@/context/ThemeContext';
 import { TypewriterText } from './TypewriterText';
 import { CallTimelinePanel } from './CallTimelinePanel';
 import { ThinkPanel } from './ThinkPanel';
@@ -371,27 +372,19 @@ function HarnessEventBanner({ events }: { events: HarnessEvent[] }) {
   );
 }
 
-// 平滑流式指示器（用于内容生成中）
-function StreamingIndicator() {
+// 流式加载指示器：ThinkingOrb 球体（左）+ 状态文字（右）并排
+// state 按 Agent 阶段映射：listening=初始响应 / searching=深度思考 / working=生成输出
+interface StreamingIndicatorProps {
+  state?: OrbState;
+  statusText: string;
+  theme: 'dark' | 'light';
+}
+
+function StreamingIndicator({ state = 'listening', statusText, theme }: StreamingIndicatorProps) {
   return (
-    <div className="flex items-center gap-1.5 h-5">
-      {/* 波浪动画 */}
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          className="w-1.5 h-1.5 rounded-full bg-primary/60"
-          animate={{
-            scale: [1, 1.2, 1],
-            opacity: [0.5, 1, 0.5],
-          }}
-          transition={{
-            duration: 1.2,
-            repeat: Infinity,
-            delay: i * 0.2,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
+    <div className="flex items-center gap-2">
+      <ThinkingOrb state={state} size={20} theme={theme} className="shrink-0" aria-label={statusText} />
+      <span className="text-sm text-muted-foreground">{statusText}</span>
     </div>
   );
 }
@@ -559,6 +552,8 @@ function UserAttachmentPreview({ attachments }: { attachments: NodeAttachment[] 
 
 export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
   const { t } = useTranslation();
+  const { resolvedTheme } = useTheme();
+  const orbTheme = resolvedTheme === 'dark' ? 'dark' : 'light';
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   
@@ -721,7 +716,11 @@ export function ChatMessage({ message, className, onRetry }: ChatMessageProps) {
                   {/* 流式输出且无思考内容时显示平滑加载动画 */}
                   {isStreaming && !thinkingContent && !message.multi_agent && !cleanContent && (
                     <div className="py-2 px-1">
-                      <StreamingIndicator />
+                      <StreamingIndicator
+                        state="listening"
+                        statusText={t('ai.statusListening', '正在聆听...')}
+                        theme={orbTheme}
+                      />
                     </div>
                   )}
 

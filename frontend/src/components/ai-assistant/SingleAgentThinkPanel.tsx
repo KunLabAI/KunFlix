@@ -4,7 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { LoadingDots } from './LoadingDots';
+import { ThinkingOrb } from 'thinking-orbs';
+import { useTheme } from '@/context/ThemeContext';
+import { useTranslation } from 'react-i18next';
 
 interface SingleAgentThinkPanelProps {
   isThinking?: boolean;
@@ -33,6 +35,9 @@ export function SingleAgentThinkPanel({
   const [isExpanded, setIsExpanded] = useState(false);
   const [userExpandedManually, setUserExpandedManually] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+  const { t } = useTranslation();
 
   // 自动展开/折叠逻辑
   useEffect(() => {
@@ -81,15 +86,23 @@ export function SingleAgentThinkPanel({
           isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />
         )}
 
-        {/* 标题和状态 */}
+        {/* 标题和状态：Orb 在左、文字在右 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            {isThinking && (
+              <ThinkingOrb
+                state="searching"
+                size={20}
+                theme={isDark ? 'dark' : 'light'}
+                className="shrink-0"
+                aria-label={t('ai.statusThinking', '正在思考...')}
+              />
+            )}
             <span className="text-sm font-medium">
               {isThinking
                 ? (agentName ? `${agentName} Think...` : 'AI Thinking...')
                 : 'Think complete'}
             </span>
-            {isThinking && <LoadingDots size="sm" className="text-muted-foreground" />}
           </div>
         </div>
       </div>
