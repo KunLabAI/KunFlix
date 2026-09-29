@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
-import { handleAudioDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
+import { handleTtsDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 import { useAuth } from '@/context/AuthContext';
 import { useCanvasStore } from '@/store/useCanvasStore';
 
@@ -21,6 +21,21 @@ interface TtsTaskInfo {
   creditCost?: number;
 }
 
+interface TtsSpeakerConfig {
+  speaker: string;
+  voice?: string;
+  text: string;
+  style?: string;
+}
+
+// 拖拽到画布还原为 TTS 节点时需要携带的特有配置
+interface TtsDragMeta {
+  text?: string;
+  voice?: string;
+  style?: string;
+  speakers?: TtsSpeakerConfig[];
+}
+
 interface TtsTaskStatus {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -29,6 +44,9 @@ interface TtsTaskStatus {
   error_message?: string;
   model?: string;
   text?: string;
+  voice?: string;
+  style?: string;
+  speakers?: TtsSpeakerConfig[];
   output_format?: string;
   // 后端扣费不足、余额被兜底扣到 0 时为 true（不持久化，仅响应携带）
   billing_underpaid?: boolean;
@@ -55,16 +73,17 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: typeof
 interface DraggableAudioPreviewProps {
   audioUrl: string;
   creditCost: number;
+  ttsMeta: TtsDragMeta;
 }
 
-function DraggableAudioPreview({ audioUrl, creditCost }: DraggableAudioPreviewProps) {
+function DraggableAudioPreview({ audioUrl, creditCost, ttsMeta }: DraggableAudioPreviewProps) {
   const dragPreviewRef = useRef<HTMLElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const onDragStart = useCallback((e: React.DragEvent) => {
     setIsDragging(true);
-    dragPreviewRef.current = handleAudioDragStart(e, audioUrl, '语音', '');
-  }, [audioUrl]);
+    dragPreviewRef.current = handleTtsDragStart(e, audioUrl, { name: '语音', ...ttsMeta });
+  }, [audioUrl, ttsMeta]);
 
   const onDragEnd = useCallback(() => {
     setIsDragging(false);
@@ -123,6 +142,8 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
   const [creditCost, setCreditCost] = useState<number>(task.creditCost || 0);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [model, setModel] = useState<string>(task.model || '');
+  // TTS 特有配置（文本/音色/风格/多说话人），拖拽到画布时还原为 TTS 节点
+  const [ttsMeta, setTtsMeta] = useState<TtsDragMeta>({});
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
@@ -141,6 +162,15 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
     data.credit_cost && setCreditCost(data.credit_cost);
     data.error_message && setErrorMsg(data.error_message);
     data.model && setModel(data.model);
+
+    // 捕获 TTS 特有配置，供拖拽到画布时还原为 TTS 节点（幂等合并）
+    setTtsMeta((prev) => ({
+      ...prev,
+      ...(data.text ? { text: data.text } : {}),
+      ...(data.voice ? { voice: data.voice } : {}),
+      ...(data.style ? { style: data.style } : {}),
+      ...(data.speakers ? { speakers: data.speakers } : {}),
+    }));
 
     // 后端扣费后同步最新余额到 AuthContext，驱动 useCreditsGuard 即时生效
     data.remaining_credits != null && updateCredits(data.remaining_credits);
@@ -249,7 +279,7 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
 
       {/* Audio player for completed tasks - with drag support */}
       {status === 'completed' && audioUrl && (
-        <DraggableAudioPreview audioUrl={audioUrl} creditCost={creditCost} />
+        <DraggableAudioPreview audioUrl={audioUrl} creditCost={creditCost} ttsMeta={ttsMeta} />
       )}
 
       {/* Error message for failed tasks */}

@@ -4,6 +4,8 @@ import { memo } from 'react';
 import { NodeProps, Node } from '@xyflow/react';
 import { FileText, Image, Film, Music, Clapperboard, Sparkles } from 'lucide-react';
 import { GhostNodeData } from '@/store/useCanvasStore';
+import { BorderBeam } from 'border-beam';
+import { useTheme } from '@/context/ThemeContext';
 
 const TYPE_CONFIG: Record<string, { icon: typeof FileText; color: string; label: string }> = {
   text: { icon: FileText, color: 'text-indigo-400', label: '文本卡' },
@@ -24,8 +26,7 @@ const GHOST_DIMENSIONS: Record<string, { width: number; height: number }> = {
   storyboard: { width: 398, height: 256 },
 };
 
-// Glow color matching NodeEffectOverlay scanning config (blue)
-const GLOW_COLOR = 'rgba(59,130,246,0.4)';
+// 背景色调（与 NodeEffectOverlay scanning 一致的蓝）
 const BG_COLOR = 'rgba(59,130,246,0.06)';
 
 const GhostNode = memo(({ data }: NodeProps<Node<GhostNodeData>>) => {
@@ -33,20 +34,25 @@ const GhostNode = memo(({ data }: NodeProps<Node<GhostNodeData>>) => {
   const config = TYPE_CONFIG[nodeType] || DEFAULT_CONFIG;
   const Icon = config.icon;
   const dims = GHOST_DIMENSIONS[nodeType] || { width: 420, height: 300 };
+  const { resolvedTheme } = useTheme();
 
   return (
     <div
       className="rounded-xl bg-card/80 backdrop-blur-sm overflow-visible relative"
       style={{ width: dims.width, height: dims.height }}
     >
-      {/* ── Pulsing border + glow (same as NodeEffectOverlay scanning) ── */}
-      <div
-        className="absolute inset-[-3px] rounded-xl border-[1px] border-blue-400 pointer-events-none z-[1]"
-        style={{
-          animation: 'nodeEffectPulse 1.5s ease-in-out infinite',
-          boxShadow: `0 0 6px 2px ${GLOW_COLOR}, inset 0 0 6px 2px ${GLOW_COLOR}`,
-        }}
-      />
+      {/* ── BorderBeam 流光描边（创建中，蓝色 ocean） ── */}
+      <BorderBeam
+        size="md"
+        colorVariant="ocean"
+        strength={0.75}
+        active
+        theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
+        borderRadius={14}
+        style={{ position: 'absolute', inset: '-3px', pointerEvents: 'none', zIndex: 1 }}
+      >
+        <div className="h-full w-full" />
+      </BorderBeam>
 
       {/* ── Background tint overlay ── */}
       <div

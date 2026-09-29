@@ -5,7 +5,7 @@
 # Build context: project root (.)
 #   docker build -f deploy/backend.Dockerfile -t kunflix-backend ..
 #
-# ripgrep 已锁定 14.1.0（有预编译 manylinux wheel），无需 Rust 工具链。
+# ripgrep 自 agentscope 2.0.4 起为可选依赖，项目未使用内置 Grep 工具，无需安装、无需 Rust 工具链。
 # 单阶段构建，体积小、速度快。
 # ============================================================================
 
@@ -80,7 +80,7 @@ ENV PIP_INDEX_URL=${PIP_INDEX_URL} \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_RETRIES=3
 
-# 安装依赖（ripgrep==14.1.0 有预编译 wheel，无需 Rust）
+# 安装依赖（ripgrep 为 agentscope 可选依赖，本项目不使用，无需 Rust）
 COPY backend/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     pip install --upgrade pip \

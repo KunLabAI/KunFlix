@@ -44,6 +44,19 @@ const NODE_CONFIGS: Record<string, {
       lyrics: lyrics || '',
     }),
   },
+  tts: {
+    dimensions: { width: 360, height: 220 },
+    buildData: ({ name, audioUrl, description, text, voice, style, speakers }: Record<string, unknown>) => ({
+      name: name || '新语音卡',
+      description: description || '',
+      audioUrl: audioUrl || '',
+      // 保留 TTS 特有配置：朗读文本 / 音色 / 语气风格 / 多说话人
+      text: text || '',
+      voice: voice || '',
+      style: style || '',
+      ...(speakers ? { speakers } : {}),
+    }),
+  },
 };
 
 /**
@@ -258,6 +271,31 @@ export function handleAudioDragStart(
   });
 
   const preview = createAudioDragPreview(name || '音频');
+  event.dataTransfer.setDragImage(preview, preview.offsetWidth / 2, preview.offsetHeight / 2);
+
+  return preview;
+}
+
+/**
+ * TTS 语音卡片拖拽开始处理器
+ * 生成 'tts' 类型节点（而非普通 audio 节点），并保留文本/音色/风格/多说话人配置
+ */
+export function handleTtsDragStart(
+  event: React.DragEvent,
+  audioUrl: string,
+  ttsMeta: { name?: string; text?: string; voice?: string; style?: string; speakers?: unknown[] } = {}
+): HTMLElement | null {
+  setDragData(event, 'tts', {
+    name: ttsMeta.name || '语音',
+    audioUrl,
+    description: '',
+    text: ttsMeta.text || '',
+    voice: ttsMeta.voice || '',
+    style: ttsMeta.style || '',
+    speakers: ttsMeta.speakers,
+  });
+
+  const preview = createAudioDragPreview(ttsMeta.name || '语音');
   event.dataTransfer.setDragImage(preview, preview.offsetWidth / 2, preview.offsetHeight / 2);
 
   return preview;

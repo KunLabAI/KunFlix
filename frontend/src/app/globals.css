@@ -634,11 +634,6 @@ body {
 }
 
 /* ── AI Node Effect Animations ────────────────────────────── */
-@keyframes nodeEffectPulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
-}
-
 @keyframes nodeEffectScan {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }

@@ -1,7 +1,6 @@
 import os
 import platform
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -24,7 +23,7 @@ ADMIN_DIR = os.path.join(BACKEND_DIR, "admin")
 # 颜色代码（跨平台可能需要 colorama，这里为了简单只做基本处理或不加）
 PROCESSES = []
 
-# AgentScope 2.0 要求 Python >= 3.11；ripgrep 从源码编译需 Rust >= 1.85
+# AgentScope 2.0 要求 Python >= 3.11
 _MIN_PYTHON = (3, 11)
 
 def log(message, prefix="[SYSTEM]"):
@@ -51,21 +50,6 @@ def _check_python_version() -> None:
     log("Linux    : 参考 https://www.python.org/downloads/ 或包管理器", "[BACKEND]")
     log("安装完后请删除 backend/venv 后重新运行本脚本", "[BACKEND]")
     sys.exit(1)
-
-
-def _check_rust_toolchain() -> None:
-    """警告级检测：本地首次 pip install 遇上 ripgrep 编译会需 Rust 工具链。
-
-    不 fail-fast：部分平台（如 Windows + cp312 wheel 已发布）可能不需本地编译，
-    仅提示避免 pip 报错后才定位问题。
-    """
-    cargo = shutil.which("cargo")
-    if cargo:
-        return
-    log("未检测到 cargo；agentscope 2.0 首次安装可能需本地编译 ripgrep。", "[BACKEND]")
-    log("若随后 pip install 报错 'feature edition2024 is required'，请安装 Rust：", "[BACKEND]")
-    log("  Windows  : winget install -e --id Rustlang.Rustup; rustup default stable", "[BACKEND]")
-    log("  macOS/Linux: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", "[BACKEND]")
 
 
 def get_python_exec():
@@ -96,7 +80,6 @@ def setup_backend():
     log("Checking backend environment...", "[BACKEND]")
 
     _check_python_version()
-    _check_rust_toolchain()
 
     venv_path = os.path.join(BACKEND_DIR, "venv")
     python_exec = get_python_exec()

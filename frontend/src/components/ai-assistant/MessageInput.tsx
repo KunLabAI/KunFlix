@@ -35,6 +35,8 @@ import { selectNodesByUpdatedDesc } from '@/store/useCanvasStore';
 import { extractNodeAttachment } from '@/lib/nodeAttachmentUtils';
 import { NodePickerDropdown, type NodePickerItem } from '@/components/canvas/NodePickerDropdown';
 import { useCreditsGuard } from '@/hooks/useCreditsGuard';
+import { BorderBeam } from 'border-beam';
+import { useTheme } from '@/context/ThemeContext';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const MAX_FILES = 10;
@@ -325,6 +327,8 @@ export function MessageInput({
 }: MessageInputProps) {
   const { t } = useTranslation();
   const { creditsExhausted, tooltipText } = useCreditsGuard();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
   const resolvedPlaceholder = placeholder ?? t('ai.inputPlaceholder');
   const resolvedAgentName = agentName ?? t('ai.title');
   const [inputValue, setInputValue] = useState('');
@@ -600,6 +604,14 @@ export function MessageInput({
       </AnimatePresence>
 
       <form onSubmit={handleSubmit}>
+        {/* 输入框描边流光：Agent 生成中（isLoading）时外缘持续流动，停止后平滑淡出 */}
+        <BorderBeam
+          size="md"
+          colorVariant="ocean"
+          strength={0.6}
+          active={isLoading}
+          theme={isDark ? 'dark' : 'light'}
+        >
         {/* 主输入容器 */}
         <div className="bg-muted/50 rounded-xl border border-border/50 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-200 flex flex-col">
 
@@ -793,6 +805,7 @@ export function MessageInput({
             </div>
           </div>
         </div>
+        </BorderBeam>
       </form>
 
       {/* 隐藏文件输入 */}

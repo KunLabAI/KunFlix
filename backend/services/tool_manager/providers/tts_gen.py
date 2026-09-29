@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, TYPE_CHECKING
 
 from database import safe_commit
@@ -24,9 +25,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 TTS_GEN_TOOL_NAME = "generate_tts"
 
-# 按性别分组（供工具描述引导 Agent 按男/女选音色）
-_FEMALE_VOICES = [name for name, _tone, g in PREBUILT_VOICES if g == "female"]
-_MALE_VOICES = [name for name, _tone, g in PREBUILT_VOICES if g == "male"]
+# 按性别分组并附语气特征（供工具描述引导 Agent 按男/女 + 声音特质精准选音色）
+# 形如 "Kore (firm)"：括号内为音色固有语气，仅用于描述，Agent 只需回传音色名
+_FEMALE_VOICES = [f"{name} ({tone.lower()})" for name, tone, g in PREBUILT_VOICES if g == "female"]
+_MALE_VOICES = [f"{name} ({tone.lower()})" for name, tone, g in PREBUILT_VOICES if g == "male"]
+
+# 防御：LLM 可能把描述里的 "Kore (firm)" 整串回传，剥离尾部括注只保留音色名（"auto" 不受影响）
+_VOICE_ANNOTATION_RE = re.compile(r"\s*[\(（][^\)）]*[\)）]\s*$")
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +60,8 @@ def _build_tts_gen_tool_def(
                 "Voice for single-speaker mode. Use 'auto' to let the model pick a suitable voice (default). "
                 "Gender is an intrinsic property of each voice and CANNOT be changed via 'style' — "
                 "to get a male or female speaker, choose a voice of that gender. "
+                "Each entry below is 'Name (characteristic)': pick the name whose characteristic fits the role, "
+                "but pass ONLY the bare name as the value (e.g. 'Kore', NOT 'Kore (firm)'). "
                 "Female voices: " + ", ".join(_FEMALE_VOICES) + ". "
                 "Male voices: " + ", ".join(_MALE_VOICES) + ". "
                 "You may also pass a persisted replicated voice ID (a string starting with 'voice_') "
@@ -75,7 +82,7 @@ def _build_tts_gen_tool_def(
                 "type": "object",
                 "properties": {
                     "speaker": {"type": "string", "description": "Character name, e.g. 'Joe'"},
-                    "voice": {"type": "string", "description": "Voice for this speaker. Female: '" + "', '".join(_FEMALE_VOICES[:6]) + "', ...; Male: '" + "', '".join(_MALE_VOICES[:6]) + "', ...; or a replicated 'voice_...' ID. Omit to use auto."},
+                    "voice": {"type": "string", "description": "Voice for this speaker (pass the bare name only). Female e.g. " + ", ".join(_FEMALE_VOICES[:5]) + "; Male e.g. " + ", ".join(_MALE_VOICES[:5]) + "; or a replicated 'voice_...' ID. Omit to use auto."},
                     "text": {"type": "string", "description": "This speaker's line (verbatim)"},
                     "style": {"type": "string", "description": "Optional per-turn delivery style"},
                 },
@@ -125,7 +132,8 @@ async def _execute_tts_gen_tool(args: dict, ctx: "ToolContext") -> str:
     db = ctx.db
 
     text = args.get("text", "") or ""
-    voice = args.get("voice", "") or ""
+    # 防御：剥离 LLM 可能回传的尾部括注（如 "Kore (firm)" → "Kore"），"auto" 不受影响
+    voice = _VOICE_ANNOTATION_RE.sub("", args.get("voice", "") or "").strip()
     style = args.get("style", "") or ""
     speakers_raw = args.get("speakers", []) or []
 
@@ -141,7 +149,7 @@ async def _execute_tts_gen_tool(args: dict, ctx: "ToolContext") -> str:
     final_format = tts_cfg.get("output_format") or "wav"
 
     speakers = [
-        {"speaker": s.get("speaker", ""), "voice": s.get("voice", ""), "text": s.get("text", ""), "style": s.get("style", "")}
+        {"speaker": s.get("speaker", ""), "voice": _VOICE_ANNOTATION_RE.sub("", s.get("voice", "") or "").strip(), "text": s.get("text", ""), "style": s.get("style", "")}
         for s in speakers_raw[:2]
         if isinstance(s, dict) and s.get("speaker") and s.get("text")
     ]

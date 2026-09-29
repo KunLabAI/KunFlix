@@ -129,7 +129,6 @@ KunFlix is an open AI content creation ecosystem designed for **film advertising
 ### Prerequisites
 
 - **Python 3.12+** (required by AgentScope 2.0; old 3.10 venvs must be recreated)
-- **Rust 1.85+** (only when compiling ripgrep from source; triggered on first install, see [UPGRADE.md](./UPGRADE.md))
 - Node.js 20+
 - Docker 24+ (required for Docker deployment)
 - PostgreSQL 18 (unified for dev & prod; start locally with `docker compose -f deploy/docker-compose.dev.yml up -d` for PostgreSQL + Redis)
