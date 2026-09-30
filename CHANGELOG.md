@@ -6,6 +6,99 @@
 
 ---
 
+## [v0.1.6] - 2026-09-30
+
+**主题：AI 助手媒体任务卡单色重设计（共享极简播放器 + 拖拽把手）、刷新后思考面板与媒体任务卡持久化恢复、画布拖拽事件类型规范化与触屏兼容**
+
+上一版本：`v0.1.5`（含热修复 `v0.1.5-fix` / PR #329：`packaging` 依赖区间修正）。本版本无数据库迁移；无 npm 依赖清单变更（三张任务卡内部不再 `import framer-motion`，但该库仍被其它组件使用）。
+
+### ✨ 新增
+
+#### 共享极简媒体播放器 MediaAudioPlayer
+
+- 音乐 / 语音任务卡完成态统一改用自绘极简播放器：`primary` 圆形播放键 + 细进度条 + 时间 + `extraActions` 插槽（音乐卡放歌词开关）+ 下载按钮，取代浏览器原生 `audio controls`。
+- 各控件 `onMouseDown` 阻断冒泡，播放器空白处仍可拖拽卡片到画布；不复用画布侧重型 `AudioDisplay`（圆形频谱，与「更精简、更单色」相悖）。
+
+#### 任务卡拖拽把手 TaskCardDragHandle
+
+- 抽出独立拖拽把手组件，明确可拖拽区域与视觉 affordance，三卡统一复用。
+
+#### task-cards-demo 演示页
+
+- 新增 `/demo/task-cards-demo`（与 `orbs-demo` 同约定）：单色主题 token 色板 + 图像四态 + 视频 / 音乐 / 语音三卡的 `pending/processing/completed/failed` 全状态矩阵，直接复用生产组件保证视觉 1:1。
+- 三卡新增可选 `mockStatus` prop：提供后跳过 `/status` 轮询并一次性注入静态状态，专供演示页使用，生产调用不传则行为完全不变。
+
+### 🔧 改进
+
+- **媒体任务卡单色重设计**：`VideoTaskCard` / `MusicTaskCard` / `TtsTaskCard` 三卡改走中性主题 token（`bg-card` / `border-border` / `muted` / `muted-foreground` / `foreground`），深浅主题自适应，仅失败态用 `destructive` 作唯一强调色；不再消费 `globals.css` 的 `--color-status-*` 多彩变量族，类型图标恒为中性色，状态语义交给文字色调 + 终态状态图标（`CheckCircle2` / `XCircle`）。
+- **加载态与耗时文案**：移除「通常需要 1-5 分钟 / 30-120 秒 / 10-60 秒」等耗时提示，加载态改为骨架块（`h-12`，音视频 `h-40`，`bg-muted animate-pulse`）+ 头部 `Loader2` spinner；三卡内部移除 `framer-motion` 依赖。
+- **失败态**：错误信息不再截断，改为完整展示 +「复制错误信息」按钮（`navigator.clipboard` + toast）；因卡片仅持有 `taskId`、拿不到原始 prompt / 参数，故不提供重试而以复制错误替代。
+- **全面 i18n**：三卡所有裸中文迁入 `ai.mediaTask.*` 键族（zh-CN / en-US 双语各 +29 键），含 `mode.text_to_video` / `image_to_video` / `edit` 动态键。
+- **画布拖拽事件类型规范化**：拖拽回调事件类型由 `React.MouseEvent` 统一为原生 `MouseEvent | TouchEvent`，组合回调显式标注 `OnNodeDrag<CanvasNode>` 泛型消除 `any`，防止类型签名漂移。
+
+### 🐛 修复
+
+- **刷新后思考面板与媒体任务卡丢失**：根因是 `chat_messages.content` 单一 JSON blob 保存时只写 `{text, skill_calls, tool_calls}`，reasoning 与三类媒体任务从不落库（工具条 / 技能条 / 内联图片因已接线而保留）。修复沿用 `skill_calls/tool_calls` 的 content-JSON 持久化模式，补接「保存 → GET → 前端恢复」三处链路：
+  - **reasoning** 以 `<think>` 包裹持久化进 `text`（`chat_generation.py`）——同时修复刷新显示与「多轮对话上一轮 reasoning 从不回传 DeepSeek」的隐藏 bug，前端思考面板零改动。
+  - **视频 / 音乐 / 语音任务**存为独立数组 `video_tasks` / `music_tasks` / `tts_tasks`：保存前在 `ctx.*_tasks.clear()` 之前收集落库，`GET /chats/{id}/messages`（`chats.py`）补返回该三数组，前端 `loadSessionData`（`useSessionManager.ts`）映射回消息。仅写入非空数组，增量、向后兼容、无需 DB 迁移；恢复后任务卡走 `/status` 轮询，已完成立即显示。
+- **任务卡边框静默失效**：原卡片只写 `border-[var(--x-border)]` 颜色而缺 `border` 宽度类，`border-width` 恒为 0 致边框从不显示（tsc / eslint 均无法发现）；重设计后改 `border border-border` 得到真实 1px 边框。
+- **触屏拖拽兼容**：新增 `getDragEventPoint` 从 `changedTouches` 提取 `TouchEvent` 的坐标与 `ctrlKey` / `metaKey`（原生 TouchEvent 无这些字段），修复触屏下拖拽到 AI 面板的悬停检测；同时消除拖拽回调类型不兼容导致的生产构建类型报错。
+
+### ✅ 测试与验证
+
+- 后端 `py_compile`：`chat_generation.py`、`chats.py` 通过。
+- 前端 `tsc --noEmit`：零类型错误（覆盖任务卡重写、`MediaAudioPlayer` / `TaskCardDragHandle` 新组件、demo 页、拖拽重构、`useSessionManager`）。
+- ESLint：任务卡改动文件 `error=0`（优于基线，顺带修复既有 `react-hooks/immutability` error）；demo 页 `mockStatus` 一次性注入 effect 加 `react-hooks/set-state-in-effect` 禁用注释。
+- 两个 i18n locale（zh-CN / en-US）JSON 合法，`ai.mediaTask` 键族双语齐备。
+- 落库任务对象结构 `{task_id, video_mode, model}`（视频）/ `{task_id, model}`（音乐、语音）与前端 `VideoTaskData` / `MusicTaskData` / `TtsTaskData` 逐字段吻合，`deserialize_content` 原样透传 dict。
+
+### 📌 升级说明
+
+1. **无需执行数据库迁移**；**无 npm 依赖清单变更**（无需 `npm install`）。
+2. 后端 Python 改动（`chats.py` / `chat_generation.py`）需**重启服务**生效；持久化为增量兼容，历史消息不受影响（旧消息无 `think` 块 / 任务数组时按原样渲染）。
+3. 纯前端改动热更即可；演示页 `/demo/task-cards-demo` 仅用于开发预览，不影响生产逻辑。
+
+### 📁 主要变更文件
+
+**后端**
+
+```
+backend/config.py                                  版本号 0.1.6（单一来源）
+backend/services/chat_generation.py                reasoning 以 <think> 落库 + 三类媒体任务数组持久化
+backend/routers/chats.py                           GET messages 返回 video/music/tts_tasks
+```
+
+**前端**
+
+```
+frontend/package.json / package-lock.json          版本号 0.1.6
+frontend/src/components/ai-assistant/MediaAudioPlayer.tsx      新增：共享极简播放器
+frontend/src/components/ai-assistant/TaskCardDragHandle.tsx     新增：任务卡拖拽把手
+frontend/src/components/ai-assistant/VideoTaskCard.tsx          单色重设计 + mockStatus + i18n
+frontend/src/components/ai-assistant/MusicTaskCard.tsx          单色重设计 + 接入 MediaAudioPlayer
+frontend/src/components/ai-assistant/TtsTaskCard.tsx            单色重设计 + 接入 MediaAudioPlayer
+frontend/src/components/ai-assistant/hooks/useSessionManager.ts 恢复历史消息映射三类任务数组
+frontend/src/app/theater/[id]/hooks/useNodeDragToAI.ts         拖拽事件归一化 + getDragEventPoint
+frontend/src/app/theater/[id]/hooks/useCanvasSnapping.ts       拖拽事件类型统一
+frontend/src/app/theater/[id]/page.tsx                         组合回调显式 OnNodeDrag<CanvasNode> 泛型
+frontend/src/app/demo/task-cards-demo/page.tsx                 新增：任务卡全状态演示页
+frontend/src/i18n/locales/{zh-CN,en-US}.json                   ai.mediaTask 键族
+```
+
+**管理端**
+
+```
+backend/admin/package.json / package-lock.json     版本号 0.1.6
+```
+
+**文档**
+
+```
+CHANGELOG.md            本文件
+```
+
+---
+
 ## [v0.1.5] - 2026-09-29
 
 **主题：AI 助手面板与画布节点视觉升级（BorderBeam 流光描边 + ThinkingOrb 加载球体）、TTS 拖拽与音色选择修复、agentscope 2.0.9 升级与依赖安全下界抬升**

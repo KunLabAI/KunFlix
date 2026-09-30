@@ -296,6 +296,10 @@ async def generate_single_agent(
     # 从智能体配置读取工具调用轮次限制，默认100，范围10-200
     MAX_TOOL_ROUNDS = max(10, min(200, agent.max_tool_rounds or 100))
     all_tool_calls = []  # 记录所有执行的普通工具
+    # 媒体任务跨轮持久化列表（ctx.*_tasks 在 SSE emit 后即清空，需在清空前收集）
+    all_video_tasks: list = []
+    all_music_tasks: list = []
+    all_tts_tasks: list = []
     tool_generated_image_count = 0  # generate_image 工具累计生成图片数（跨轮次）
     result = None
     generation_failed = False
@@ -547,17 +551,20 @@ async def generate_single_agent(
                 Exception(f"Tool circuit breaker: {_consecutive_tool_failures} consecutive failures")
             )
 
-            # 发送视频任务创建事件（通知前端启动轮询UI）
+            # 发送视频任务创建事件（通知前端启动轮询UI），清空前收集以供落库
+            all_video_tasks.extend(ctx.video_tasks)
             for vt in ctx.video_tasks:
                 yield sse("video_task_created", vt)
             ctx.video_tasks.clear()
 
-            # 发送音乐任务创建事件（通知前端启动轮询UI）
+            # 发送音乐任务创建事件（通知前端启动轮询UI），清空前收集以供落库
+            all_music_tasks.extend(ctx.music_tasks)
             for mt in ctx.music_tasks:
                 yield sse("music_task_created", mt)
             ctx.music_tasks.clear()
 
-            # 发送 TTS 任务创建事件（通知前端启动轮询UI）
+            # 发送 TTS 任务创建事件（通知前端启动轮询UI），清空前收集以供落库
+            all_tts_tasks.extend(ctx.tts_tasks)
             for tt in ctx.tts_tasks:
                 yield sse("tts_task_created", tt)
             ctx.tts_tasks.clear()
@@ -613,15 +620,28 @@ async def generate_single_agent(
     }
 
     # Prepare content for assistant（映射表驱动，避免 if-else）
+    # reasoning 以 <think> 包裹拼回 text：刷新后前端思考面板可恢复（parseThinkContent），
+    # 且多轮对话时 _extract_reasoning_to_msg 能将其还原为 reasoning_content 回传给 DeepSeek
+    text_value = (
+        f"<think>{result.reasoning_content}</think>\n\n{result.full_response}"
+        if result.reasoning_content else result.full_response
+    )
+    _extra_content = {
+        "video_tasks": all_video_tasks,
+        "music_tasks": all_music_tasks,
+        "tts_tasks": all_tts_tasks,
+    }
     _content_builders = {
         True: lambda: json.dumps({
-            "text": result.full_response,
+            "text": text_value,
             "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
-            "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls]
+            "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls],
+            # 仅写入非空的媒体任务数组，保持既有消息结构向后兼容
+            **{k: v for k, v in _extra_content.items() if v},
         }, ensure_ascii=False),
-        False: lambda: result.full_response,
+        False: lambda: text_value,
     }
-    final_content = _content_builders[bool(loaded_skills or all_tool_calls)]()
+    final_content = _content_builders[bool(loaded_skills or all_tool_calls or _extra_content)]()
 
     _persist_state = {"compaction": None, "new_title": None}  # mutable container for cross-scope sharing
 

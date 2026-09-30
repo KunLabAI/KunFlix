@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, Loader2, CheckCircle2, XCircle, Clock, Download } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Mic, Loader2, CheckCircle2, XCircle, Clock, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { handleTtsDragStart, cleanupDragPreview } from '@/lib/dragToCanvas';
 import { useAuth } from '@/context/AuthContext';
 import { useCanvasStore } from '@/store/useCanvasStore';
+import { MediaAudioPlayer } from './MediaAudioPlayer';
+import { TaskCardDragHandle } from './TaskCardDragHandle';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,76 +56,29 @@ interface TtsTaskStatus {
   remaining_credits?: number | null;
 }
 
+/** 演示注入状态：提供后跳过轮询，直接以该数据渲染卡片（仅供 demo 页使用） */
+export interface TtsTaskMockStatus {
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  audio_url?: string;
+  credit_cost?: number;
+  error_message?: string;
+  model?: string;
+  text?: string;
+  voice?: string;
+  style?: string;
+}
+
 // Terminal states that stop polling
 const TERMINAL_STATES = new Set(['completed', 'failed']);
 const POLL_INTERVAL = 4000;
 
-// Status display config (dispatch map)
-const STATUS_CONFIG: Record<string, { label: string; color: string; Icon: typeof Loader2 }> = {
-  pending:    { label: '等待合成...',  color: 'text-[var(--color-status-pending-text)]',     Icon: Clock },
-  processing: { label: '正在合成...',  color: 'text-[var(--color-status-processing-text)]',  Icon: Loader2 },
-  completed:  { label: '合成完成',     color: 'text-[var(--color-status-success-text)]',     Icon: CheckCircle2 },
-  failed:     { label: '合成失败',     color: 'text-[var(--color-status-error-text)]',       Icon: XCircle },
+// 单色主题状态元数据：仅 failed 用 destructive 强调，文案走 TTS 专用键（合成）
+const STATUS_META: Record<string, { Icon: typeof Loader2; tone: string; labelKey: string }> = {
+  pending:    { Icon: Clock,        tone: 'text-muted-foreground', labelKey: 'ai.mediaTask.ttsPending' },
+  processing: { Icon: Loader2,      tone: 'text-muted-foreground', labelKey: 'ai.mediaTask.ttsProcessing' },
+  completed:  { Icon: CheckCircle2, tone: 'text-foreground',       labelKey: 'ai.mediaTask.ttsCompleted' },
+  failed:     { Icon: XCircle,      tone: 'text-destructive',      labelKey: 'ai.mediaTask.ttsFailed' },
 };
-
-// ---------------------------------------------------------------------------
-// DraggableAudioPreview - Sub-component with drag support
-// ---------------------------------------------------------------------------
-
-interface DraggableAudioPreviewProps {
-  audioUrl: string;
-  creditCost: number;
-  ttsMeta: TtsDragMeta;
-}
-
-function DraggableAudioPreview({ audioUrl, creditCost, ttsMeta }: DraggableAudioPreviewProps) {
-  const dragPreviewRef = useRef<HTMLElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const onDragStart = useCallback((e: React.DragEvent) => {
-    setIsDragging(true);
-    dragPreviewRef.current = handleTtsDragStart(e, audioUrl, { name: '语音', ...ttsMeta });
-  }, [audioUrl, ttsMeta]);
-
-  const onDragEnd = useCallback(() => {
-    setIsDragging(false);
-    cleanupDragPreview(dragPreviewRef.current);
-    dragPreviewRef.current = null;
-  }, []);
-
-  return (
-    <div className="px-3 pb-3">
-      <div
-        draggable
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        className={cn(
-          'relative group cursor-grab active:cursor-grabbing transition-all',
-          isDragging && 'opacity-50'
-        )}
-      >
-        <audio
-          src={audioUrl}
-          controls
-          preload="metadata"
-          className="w-full rounded-lg"
-          onMouseDown={(e) => e.stopPropagation()}
-        />
-      </div>
-      <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
-        {creditCost > 0 && <span>消耗: {creditCost} 积分</span>}
-        <a
-          href={audioUrl}
-          download
-          className="ml-auto flex items-center gap-1 text-primary hover:underline"
-        >
-          <Download className="h-3 w-3" />
-          下载
-        </a>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -132,9 +87,12 @@ function DraggableAudioPreview({ audioUrl, creditCost, ttsMeta }: DraggableAudio
 interface TtsTaskCardProps {
   task: TtsTaskInfo;
   className?: string;
+  /** 演示用：注入静态状态，跳过 /tts/:id/status 轮询 */
+  mockStatus?: TtsTaskMockStatus;
 }
 
-export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
+export function TtsTaskCard({ task, className, mockStatus }: TtsTaskCardProps) {
+  const { t } = useTranslation();
   const isDone = !!task.audioUrl;
 
   const [status, setStatus] = useState<string>(isDone ? 'completed' : 'pending');
@@ -150,6 +108,19 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
   // 仅提示一次余额被兜底扣到 0 的事件
   const underpaidNotifiedRef = useRef(false);
   const { updateCredits } = useAuth();
+
+  // 拖拽到画布
+  const dragPreviewRef = useRef<HTMLElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const onDragStart = useCallback((e: React.DragEvent) => {
+    setIsDragging(true);
+    dragPreviewRef.current = handleTtsDragStart(e, audioUrl, { name: '语音', ...ttsMeta });
+  }, [audioUrl, ttsMeta]);
+  const onDragEnd = useCallback(() => {
+    setIsDragging(false);
+    cleanupDragPreview(dragPreviewRef.current);
+    dragPreviewRef.current = null;
+  }, []);
 
   const stopPolling = () => {
     pollingRef.current && clearInterval(pollingRef.current);
@@ -200,10 +171,17 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
     }
   }, [task.taskId]);
 
+  // 演示注入：一次性应用 mock 状态，不参与轮询
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions, react-hooks/set-state-in-effect
+    mockStatus && applyStatus({ id: task.taskId, ...mockStatus });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mockStatus]);
+
   useEffect(() => {
     mountedRef.current = true;
 
-    !isDone && (() => {
+    !isDone && !mockStatus && (() => {
       pollStatus();
       pollingRef.current = setInterval(pollStatus, POLL_INTERVAL);
     })();
@@ -212,85 +190,84 @@ export function TtsTaskCard({ task, className }: TtsTaskCardProps) {
       mountedRef.current = false;
       stopPolling();
     };
-  }, [isDone, pollStatus]);
+  }, [isDone, mockStatus, pollStatus]);
 
-  const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
-  const StatusIcon = statusCfg.Icon;
+  const copyError = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = errorMsg || t('ai.mediaTask.ttsFailedFallback', '语音合成失败');
+    navigator.clipboard?.writeText(text).then(
+      () => toast.success(t('ai.mediaTask.copied', '已复制错误信息')),
+      () => toast.error(text),
+    );
+  }, [errorMsg, t]);
+
+  const meta = STATUS_META[status] || STATUS_META.pending;
+  const MetaIcon = meta.Icon;
   const isActive = !TERMINAL_STATES.has(status);
+  const finalError = errorMsg || t('ai.mediaTask.ttsFailedFallback', '语音合成失败');
 
   return (
-    <div
-      className={cn(
-        'rounded-lg overflow-hidden transition-all duration-300 my-2',
-        isActive
-          ? 'bg-[var(--color-status-processing-bg)] border-[var(--color-status-processing-border)]'
-          : status === 'completed'
-            ? 'bg-[var(--color-status-success-bg)] border-[var(--color-status-success-border)]'
-            : 'bg-[var(--color-status-error-bg)] border-[var(--color-status-error-border)]',
-        className,
-      )}
-    >
+    <div className={cn('group rounded-lg border border-border bg-card overflow-hidden my-2', className)}>
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <Mic className={cn('h-4 w-4', statusCfg.color)} />
-        <span className={cn('text-xs font-medium', statusCfg.color)}>
-          {statusCfg.label}
-        </span>
-        {isActive && (
-          <StatusIcon className={cn('h-3.5 w-3.5 animate-spin', statusCfg.color)} />
-        )}
+      <div className="relative flex items-center gap-2 px-3 py-2">
+        <Mic className="size-4 text-muted-foreground" />
+        <span className={cn('text-xs font-medium', meta.tone)}>{t(meta.labelKey)}</span>
+        {isActive
+          ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+          : <MetaIcon className={cn('size-3.5', meta.tone)} />}
         <div className="flex items-center gap-1.5 ml-auto">
           {model && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--color-bg-panel)] text-[var(--color-text-panel)]">
-              {model}
-            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{model}</span>
           )}
         </div>
+        <TaskCardDragHandle
+          active={status === 'completed' && !!audioUrl}
+          isDragging={isDragging}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+        />
       </div>
 
-      {/* Loading animation for active tasks */}
+      {/* Loading skeleton（极简，无时长预估文案） */}
       {isActive && (
         <div className="px-3 pb-3">
-          <div className="flex items-center justify-center py-8 rounded-lg bg-[var(--color-bg-panel)]">
-            <div className="flex flex-col items-center gap-3">
-              <motion.div
-                animate={{ scale: [1, 1.15, 1] }}
-                transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Mic className="h-8 w-8 text-[var(--color-status-processing-icon)]" />
-              </motion.div>
-              <div className="flex items-center gap-1">
-                {[0, 1, 2].map((i) => (
-                  <motion.span
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-[var(--color-status-processing-icon)]"
-                    animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
-                    transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-                  />
-                ))}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                语音合成中，通常需要 10-60 秒...
-              </span>
-            </div>
-          </div>
+          <div className="h-12 rounded-md bg-muted animate-pulse" />
         </div>
       )}
 
-      {/* Audio player for completed tasks - with drag support */}
+      {/* Completed: 极简播放器 + 拖拽到画布（还原 TTS 节点） */}
       {status === 'completed' && audioUrl && (
-        <DraggableAudioPreview audioUrl={audioUrl} creditCost={creditCost} ttsMeta={ttsMeta} />
+        <div className="px-3 pb-3">
+          <div className={cn('rounded-md transition-opacity', isDragging && 'opacity-50')}>
+            <MediaAudioPlayer audioUrl={audioUrl} />
+          </div>
+
+          {creditCost > 0 && (
+            <div className="mt-1.5 text-[10px] text-muted-foreground">
+              {t('ai.mediaTask.cost', { cost: creditCost })}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Error message for failed tasks */}
+      {/* Failed: 完整错误 + 复制 */}
       {status === 'failed' && (
         <div className="px-3 pb-3">
-          <div className="flex items-center gap-2 py-3 px-3 rounded-lg bg-[var(--color-status-error-bg)] text-[var(--color-status-error-text)] text-xs">
-            <XCircle className="h-4 w-4 shrink-0 text-[var(--color-status-error-icon)]" />
-            <span>{errorMsg || '语音合成失败，请重试'}</span>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 space-y-1.5">
+            <p className="text-xs text-destructive break-words">{finalError}</p>
+            <button
+              type="button"
+              onClick={copyError}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Copy className="size-3" />
+              {t('ai.mediaTask.copyError', '复制错误信息')}
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 }
+
+export default TtsTaskCard;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useAIAssistantStore, type AgentInfo, type ChatSessionInfo, type ContextUsage } from '@/store/useAIAssistantStore';
+import { useAIAssistantStore, type AgentInfo, type ChatSessionInfo, type ContextUsage, type VideoTaskData, type MusicTaskData, type TtsTaskData } from '@/store/useAIAssistantStore';
 import { useCanvasStore } from '@/store/useCanvasStore';
 import api from '@/lib/api';
 
@@ -149,14 +149,17 @@ export function useSessionManager() {
           : null;
       setContextUsage(resolvedContextUsage);
 
-      // 反序列化消息历史（包含扩展字段：skill_calls, tool_calls, multi_agent）
-      const historyMessages = messagesRes.data.map((m: { role: string; content: string; skill_calls?: unknown[]; tool_calls?: unknown[]; multi_agent?: unknown }) => ({
+      // 反序列化消息历史（包含扩展字段：skill_calls, tool_calls, multi_agent, 媒体任务数组）
+      const historyMessages = messagesRes.data.map((m: { role: string; content: string; skill_calls?: unknown[]; tool_calls?: unknown[]; multi_agent?: unknown; video_tasks?: VideoTaskData[]; music_tasks?: MusicTaskData[]; tts_tasks?: TtsTaskData[] }) => ({
         role: m.role === 'assistant' ? 'ai' : m.role,
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         status: 'complete' as const,
         ...(m.skill_calls?.length ? { skill_calls: m.skill_calls } : {}),
         ...(m.tool_calls?.length ? { tool_calls: m.tool_calls } : {}),
         ...(m.multi_agent ? { multi_agent: m.multi_agent } : {}),
+        ...(m.video_tasks?.length ? { video_tasks: m.video_tasks } : {}),
+        ...(m.music_tasks?.length ? { music_tasks: m.music_tasks } : {}),
+        ...(m.tts_tasks?.length ? { tts_tasks: m.tts_tasks } : {}),
       }));
       const finalMessages = historyMessages.length > 0 ? historyMessages : [...DEFAULT_MESSAGES];
       setMessages(finalMessages);
