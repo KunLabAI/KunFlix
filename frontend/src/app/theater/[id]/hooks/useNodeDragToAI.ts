@@ -15,6 +15,21 @@ function isPointInRect(x: number, y: number, rect: DOMRect): boolean {
 }
 
 /**
+ * 归一化 xyflow 拖拽事件（原生 MouseEvent | TouchEvent）
+ * TouchEvent 没有 clientX/clientY/ctrlKey，需从 changedTouches 提取
+ */
+function getDragEventPoint(event: MouseEvent | TouchEvent): { clientX: number; clientY: number; ctrlKey: boolean; metaKey: boolean } {
+  const touch = 'touches' in event ? (event.changedTouches[0] ?? event.touches[0]) : undefined;
+  const source = (touch ?? event) as MouseEvent;
+  return {
+    clientX: source.clientX,
+    clientY: source.clientY,
+    ctrlKey: 'ctrlKey' in event ? event.ctrlKey : false,
+    metaKey: 'metaKey' in event ? event.metaKey : false,
+  };
+}
+
+/**
  * 画布节点拖拽到 AI 面板的检测 hook
  * 支持多选节点拖拽（最多5个图像节点）
  * 遵循 useCanvasSnapping 的 hook 模式
@@ -29,9 +44,10 @@ export function useNodeDragToAI() {
   // 当前拖拽的节点ID列表
   const draggedNodeIdsRef = useRef<string[]>([]);
 
-  const onNodeDragStart = useCallback((event: React.MouseEvent, node: Node, nodes: Node[]) => {
+  const onNodeDragStart = useCallback((event: MouseEvent | TouchEvent, node: Node, nodes: Node[]) => {
     // 判断是否多选：按住 Ctrl 或节点已被选中且选中有多个节点
-    const isMultiSelect = event.ctrlKey || event.metaKey || 
+    const { ctrlKey, metaKey } = getDragEventPoint(event);
+    const isMultiSelect = ctrlKey || metaKey || 
       (node.selected && nodes.filter(n => n.selected).length > 1);
     
     // 获取所有正在拖拽的节点
@@ -51,14 +67,15 @@ export function useNodeDragToAI() {
     isOverPanelRef.current = false;
   }, []);
 
-  const onNodeDrag = useCallback((event: React.MouseEvent, _node: Node) => {
+  const onNodeDrag = useCallback((event: MouseEvent | TouchEvent, _node: Node) => {
     const rect = panelRectRef.current;
     // 面板不存在（未打开）时，尝试检测关闭态按钮区域
     const panelEl = document.querySelector(AI_PANEL_SELECTOR);
     const currentRect = panelEl?.getBoundingClientRect() ?? rect;
     currentRect && (panelRectRef.current = currentRect);
 
-    const isOver = !!currentRect && isPointInRect(event.clientX, event.clientY, currentRect);
+    const { clientX, clientY } = getDragEventPoint(event);
+    const isOver = !!currentRect && isPointInRect(clientX, clientY, currentRect);
     
     // 状态变化时才更新 store，减少渲染
     const prev = isOverPanelRef.current;
@@ -66,7 +83,7 @@ export function useNodeDragToAI() {
     (isOver !== prev) && useAIAssistantStore.getState().setIsDragOverPanel(isOver);
   }, []);
 
-  const onNodeDragStop = useCallback((_: React.MouseEvent, node: Node, nodes: Node[]) => {
+  const onNodeDragStop = useCallback((_: MouseEvent | TouchEvent, node: Node, nodes: Node[]) => {
     const wasOverPanel = isOverPanelRef.current;
     
     // 重置拖拽悬停状态
