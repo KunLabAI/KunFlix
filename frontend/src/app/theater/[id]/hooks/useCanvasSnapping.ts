@@ -9,7 +9,7 @@ export function useCanvasSnapping(snapToGuides: boolean) {
     horizontal: number | null;
   }>({ vertical: null, horizontal: null });
 
-  const onNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
+  const onNodeDrag = useCallback((_: MouseEvent | TouchEvent, node: Node) => {
     if (!snapToGuides) {
       setAlignmentLines({ vertical: null, horizontal: null });
       return;

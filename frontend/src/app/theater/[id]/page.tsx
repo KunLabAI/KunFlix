@@ -15,11 +15,12 @@ import {
   ConnectionMode,
   BackgroundVariant,
   NodeTypes,
+  type OnNodeDrag,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { ChevronRight } from 'lucide-react';
 
-import { useCanvasStore } from '@/store/useCanvasStore';
+import { useCanvasStore, type CanvasNode } from '@/store/useCanvasStore';
 import { Sidebar } from '@/components/canvas/Sidebar';
 import { ZoomControls } from '@/components/canvas/ZoomControls';
 import ScriptNode from '@/components/canvas/TextNode';
@@ -129,21 +130,22 @@ function InfiniteCanvas() {
   const { onNodeDragStart: onAIDragStart, onNodeDrag: onAIDrag, onNodeDragStop: onAIDragStop } = useNodeDragToAI();
 
   // --- Composed drag callbacks: snapping + AI panel detection ---
-  const composedOnNodeDragStart = useCallback(
-    (event: React.MouseEvent, node: any, nodes: any[]) => {
+  // xyflow 拖拽事件为原生 MouseEvent | TouchEvent，显式标注 OnNodeDrag 防止签名漂移
+  const composedOnNodeDragStart = useCallback<OnNodeDrag<CanvasNode>>(
+    (event, node, nodes) => {
       onAIDragStart(event, node, nodes);
     },
     [onAIDragStart]
   );
-  const composedOnNodeDrag = useCallback(
-    (event: React.MouseEvent, node: any, nodes: any[]) => {
+  const composedOnNodeDrag = useCallback<OnNodeDrag<CanvasNode>>(
+    (event, node) => {
       onSnappingDrag(event, node);
       onAIDrag(event, node);
     },
     [onSnappingDrag, onAIDrag]
   );
-  const composedOnNodeDragStop = useCallback(
-    (event: React.MouseEvent, node: any, nodes: any[]) => {
+  const composedOnNodeDragStop = useCallback<OnNodeDrag<CanvasNode>>(
+    (event, node, nodes) => {
       onSnappingDragStop();
       onAIDragStop(event, node, nodes);
     },
