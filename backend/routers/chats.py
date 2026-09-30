@@ -143,6 +143,9 @@ async def get_session_messages(
                 "content": deserialized.get("text") or "",
                 "skill_calls": deserialized.get("skill_calls", []),
                 "tool_calls": deserialized.get("tool_calls", []),
+                "video_tasks": deserialized.get("video_tasks", []),
+                "music_tasks": deserialized.get("music_tasks", []),
+                "tts_tasks": deserialized.get("tts_tasks", []),
                 "multi_agent": deserialized.get("multi_agent"),
                 "created_at": msg.created_at
             })
