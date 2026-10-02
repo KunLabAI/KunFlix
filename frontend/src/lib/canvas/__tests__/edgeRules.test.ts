@@ -1,8 +1,9 @@
 /**
  * edgeRules.ts 矩阵与 validateEdge 的单元测试。
  * 测试覆盖：
- *  - 6x6 矩阵字面值与后端 _canvas_edge_rules.py 对齐
+ *  - 7x7 矩阵字面值与后端 _canvas_edge_rules.py 对齐
  *  - validateEdge 早返回顺序（self_loop → same_polarity → duplicate_edge → cycle → matrix）
+ *  - tts 行镜像 audio（源产出 audio 载荷）；tts 列仅 text→tts=allow（目标仅接受文本注入）
  *  - panorama 节点作为 MVP 阶段占位：仅自环 allow，其余 deferred
  */
 import type { Edge } from '@xyflow/react';
@@ -24,39 +25,45 @@ const mkEdge = (source: string, target: string, sh = 'right-source', th = 'left-
 });
 
 describe('EDGE_LEGALITY_MATRIX 字面值锁定', () => {
-  it('text 行：五个原始类型 allow，→panorama=deferred', () => {
+  it('text 行：六个类型 allow（含 →tts），→panorama=deferred', () => {
     expect(EDGE_LEGALITY_MATRIX.text).toEqual({
-      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
+      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', tts: 'allow', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('image 行：→text=deferred，其余 allow（含 panorama）', () => {
+  it('image 行：→text/→tts=deferred，其余 allow（含 panorama）', () => {
     expect(EDGE_LEGALITY_MATRIX.image).toEqual({
-      text: 'deferred', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'allow',
+      text: 'deferred', image: 'allow', video: 'allow', audio: 'allow', tts: 'deferred', storyboard: 'allow', panorama: 'allow',
     });
   });
 
-  it('video 行：→text=deferred, →audio=deferred, →panorama=deferred，其余 allow', () => {
+  it('video 行：→text/→audio/→tts/→panorama=deferred，其余 allow', () => {
     expect(EDGE_LEGALITY_MATRIX.video).toEqual({
-      text: 'deferred', image: 'allow', video: 'allow', audio: 'deferred', storyboard: 'allow', panorama: 'deferred',
+      text: 'deferred', image: 'allow', video: 'allow', audio: 'deferred', tts: 'deferred', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('audio 行：→image=forbid, →text=deferred, →audio=deferred, →panorama=deferred，其余 allow', () => {
+  it('audio 行：→image=forbid, →text/→audio/→tts/→panorama=deferred, →video/→storyboard=allow', () => {
     expect(EDGE_LEGALITY_MATRIX.audio).toEqual({
-      text: 'deferred', image: 'forbid', video: 'allow', audio: 'deferred', storyboard: 'allow', panorama: 'deferred',
+      text: 'deferred', image: 'forbid', video: 'allow', audio: 'deferred', tts: 'deferred', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
-  it('storyboard 行：五个原始类型 allow，→panorama=deferred', () => {
+  it('tts 行：镜像 audio 行（源产出 audio 载荷）', () => {
+    expect(EDGE_LEGALITY_MATRIX.tts).toEqual({
+      text: 'deferred', image: 'forbid', video: 'allow', audio: 'deferred', tts: 'deferred', storyboard: 'allow', panorama: 'deferred',
+    });
+  });
+
+  it('storyboard 行：text/image/video/audio/storyboard=allow，→tts/→panorama=deferred', () => {
     expect(EDGE_LEGALITY_MATRIX.storyboard).toEqual({
-      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', storyboard: 'allow', panorama: 'deferred',
+      text: 'allow', image: 'allow', video: 'allow', audio: 'allow', tts: 'deferred', storyboard: 'allow', panorama: 'deferred',
     });
   });
 
   it('panorama 行：仅自环 allow，其余全部 deferred（MVP 占位）', () => {
     expect(EDGE_LEGALITY_MATRIX.panorama).toEqual({
-      text: 'deferred', image: 'deferred', video: 'deferred', audio: 'deferred', storyboard: 'deferred', panorama: 'allow',
+      text: 'deferred', image: 'deferred', video: 'deferred', audio: 'deferred', tts: 'deferred', storyboard: 'deferred', panorama: 'allow',
     });
   });
 });
@@ -185,6 +192,28 @@ describe('validateEdge 矩阵', () => {
     const r = validateEdge({ ...base, sourceType: 'ghost' as unknown as NodeType, targetType: 'text' });
     expect(r.ok).toBe(true);
   });
+
+  it('text→tts：allow（填入朗读文本）', () => {
+    const r = validateEdge({ ...base, sourceType: 'text', targetType: 'tts' });
+    expect(r.ok).toBe(true);
+  });
+
+  it('image→tts：deferred → not_supported_yet', () => {
+    const r = validateEdge({ ...base, sourceType: 'image', targetType: 'tts' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('not_supported_yet');
+  });
+
+  it('tts→image：forbid（镜像 audio→image）', () => {
+    const r = validateEdge({ ...base, sourceType: 'tts', targetType: 'image' });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('forbidden_type_combination');
+  });
+
+  it('tts→video：allow（tts 源产出 audio 载荷）', () => {
+    const r = validateEdge({ ...base, sourceType: 'tts', targetType: 'video' });
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe('getEdgeLegality', () => {
@@ -202,5 +231,14 @@ describe('getEdgeLegality', () => {
   });
   it('panorama→panorama = allow', () => {
     expect(getEdgeLegality('panorama', 'panorama')).toBe('allow');
+  });
+  it('text→tts = allow', () => {
+    expect(getEdgeLegality('text', 'tts')).toBe('allow');
+  });
+  it('tts→image = forbid', () => {
+    expect(getEdgeLegality('tts', 'image')).toBe('forbid');
+  });
+  it('storyboard→tts = deferred', () => {
+    expect(getEdgeLegality('storyboard', 'tts')).toBe('deferred');
   });
 });

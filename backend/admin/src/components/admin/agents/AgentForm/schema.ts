@@ -67,9 +67,9 @@ export const createAgentFormSchema = (t: TFunction) => z.object({
   thinking_mode: z.boolean().optional(),
   tools_enabled: z.boolean().optional(),
   tools: z.array(z.string()).optional(),
-  // 画布节点控制
+  // 画布节点控制：7 种规范类型 + 兼容存量 legacy 名（script/character，后端 _migrate_node_type 会归一）
   target_node_types: z.array(
-    z.enum(["script", "character", "storyboard", "video"])
+    z.enum(["text", "image", "video", "audio", "tts", "storyboard", "panorama", "script", "character"])
   ).default([]),
   // Leader configuration
   is_leader: z.boolean().optional().default(false),

@@ -28,7 +28,7 @@ CANVAS_TOOL_NAMES_SET = frozenset({
     "list_canvas_nodes", "get_canvas_node", "create_canvas_node",
     "update_canvas_node", "delete_canvas_node",
     "list_canvas_edges", "create_canvas_edge", "delete_canvas_edge",
-    "view_node_media",
+    "view_node_media", "arrange_canvas_nodes",
 })
 
 # Legacy node type migration mapping (old -> new)
@@ -50,6 +50,7 @@ NODE_TYPE_SCHEMA = {
     "image":      {"name": str, "description": str, "imageUrl": str, "fitMode": str},
     "video":      {"name": str, "description": str, "videoUrl": str, "fitMode": str},
     "audio":      {"name": str, "description": str, "audioUrl": str, "lyrics": str},
+    "tts":        {"name": str, "description": str, "audioUrl": str, "text": str},
     "storyboard": {"shotNumber": str, "description": str, "duration": int, "pivotConfig": Any, "tableData": Any, "tableColumns": Any},
     "panorama":   {"name": str, "description": str, "panoramaUrl": str},
 }
@@ -60,6 +61,8 @@ _DEFAULT_X_OFFSET = 460
 _GRID_GAP_X = 40          # horizontal gap between nodes in grid
 _GRID_GAP_Y = 60          # vertical gap between rows
 _GRID_MAX_ROW_WIDTH = 2400 # wrap to next row when exceeding this
+_GRID_ORIGIN_X = 100.0     # top-left origin for auto/arrange layouts
+_GRID_ORIGIN_Y = 100.0
 
 
 def _estimate_text_node_size(data: dict) -> tuple[int, int]:
@@ -212,6 +215,21 @@ def _build_canvas_tool_defs(target_node_types: list[str]) -> list[dict]:
         {
             "type": "function",
             "function": {
+                "name": "arrange_canvas_nodes",
+                "description": (
+                    "一键自动整理画布：重新排列当前画布上所有节点，消除重叠与混乱布局，"
+                    "按阅读顺序以瀑布流网格对齐。当用户要求“整理/排列/对齐画布节点”时调用。无需参数。"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "list_canvas_edges",
                 "description": "列出画布上所有连线。",
                 "parameters": {
@@ -297,6 +315,7 @@ def _node_summary(node: TheaterNode) -> dict:
         "image": ["name"],
         "video": ["name"],
         "audio": ["name"],
+        "tts": ["name"],
         "storyboard": ["shotNumber", "description"],
     }
     key_fields = key_fields_map.get(node.node_type, [])
@@ -487,6 +506,47 @@ async def _calculate_auto_position(theater_id: str, db: AsyncSession) -> tuple[f
     return start_x, max_bottom + _GRID_GAP_Y
 
 
+def _compute_flow_layout(
+    boxes: list[tuple[str, float, float, float | None, float | None]],
+) -> dict[str, tuple[float, float]]:
+    """Shelf (waterfall) re-layout: eliminate overlaps with a tidy grid.
+
+    Reads each node's real bounding box and re-flows them left-to-right,
+    wrapping to a new shelf whenever the running row would exceed
+    ``_GRID_MAX_ROW_WIDTH``. Each shelf's height is the tallest node on it.
+
+    Nodes are processed in reading order (top→bottom, then left→right) so the
+    user's existing spatial mental model is largely preserved.
+
+    Args:
+        boxes: list of ``(node_id, x, y, width, height)``.
+
+    Returns:
+        ``{node_id: (new_x, new_y)}`` for every input node.
+    """
+    ordered = sorted(boxes, key=lambda b: (b[2] or 0.0, b[1] or 0.0))
+
+    positions: dict[str, tuple[float, float]] = {}
+    cursor_x = _GRID_ORIGIN_X
+    cursor_y = _GRID_ORIGIN_Y
+    row_height = 0.0
+
+    for node_id, _x, _y, w, h in ordered:
+        nw = w or _DEFAULT_NODE_WIDTH
+        nh = h or _DEFAULT_NODE_HEIGHT
+        # Wrap to a new shelf when this node won't fit and the shelf isn't empty
+        wraps = cursor_x > _GRID_ORIGIN_X and (cursor_x + nw) > _GRID_MAX_ROW_WIDTH
+        if wraps:
+            cursor_x = _GRID_ORIGIN_X
+            cursor_y += row_height + _GRID_GAP_Y
+            row_height = 0.0
+        positions[node_id] = (cursor_x, cursor_y)
+        cursor_x += nw + _GRID_GAP_X
+        row_height = max(row_height, nh)
+
+    return positions
+
+
 async def _exec_update_node(
     args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
 ) -> str:
@@ -574,6 +634,50 @@ async def _do_delete_node(node: TheaterNode, node_id: str, theater_id: str, db: 
     return _json_result({
         "success": True,
         "deleted_node_id": node_id,
+    })
+
+
+async def _exec_arrange_nodes(
+    args: dict, theater_id: str, target_node_types: list[str], db: AsyncSession
+) -> str:
+    """一键重排画布节点：读取当前落库节点，消除重叠/混乱布局。
+
+    仅重排 agent 有权访问的节点类型（canvas_tools skill 加载后为全类型），
+    无权类型保持原位。使用瀑布流（shelf）布局，按阅读顺序重新网格对齐。
+    """
+    migrated_target_types = [_migrate_node_type(t) for t in target_node_types] if target_node_types else []
+
+    query = select(TheaterNode).where(TheaterNode.theater_id == theater_id)
+    query = query.where(TheaterNode.node_type.in_(migrated_target_types)) if migrated_target_types else query
+    result = await db.execute(query.order_by(TheaterNode.created_at))
+    nodes = result.scalars().all()
+
+    if not nodes:
+        return _json_result({"success": True, "arranged": 0, "positions": []})
+
+    boxes = [(n.id, n.position_x, n.position_y, n.width, n.height) for n in nodes]
+    layout = _compute_flow_layout(boxes)
+
+    positions = []
+    for n in nodes:
+        new_x, new_y = layout[n.id]
+        # 仅在坐标真正变化时写回，减少无意义的 dirty 行
+        (n.position_x != new_x or n.position_y != new_y) and (
+            setattr(n, "position_x", new_x), setattr(n, "position_y", new_y)
+        )
+        positions.append({
+            "id": n.id,
+            "node_type": n.node_type,
+            "position": {"x": new_x, "y": new_y},
+        })
+
+    await safe_commit(db)
+
+    logger.info("Arranged %d nodes in theater %s", len(nodes), theater_id)
+    return _json_result({
+        "success": True,
+        "arranged": len(nodes),
+        "positions": positions,
     })
 
 
@@ -819,6 +923,7 @@ _EXECUTORS: dict[str, callable] = {
     "create_canvas_node": _exec_create_node,
     "update_canvas_node": _exec_update_node,
     "delete_canvas_node": _exec_delete_node,
+    "arrange_canvas_nodes": _exec_arrange_nodes,
     "list_canvas_edges": _exec_list_edges,
     "create_canvas_edge": _exec_create_edge,
     "delete_canvas_edge": _exec_delete_edge,

@@ -70,39 +70,158 @@ def _stamp_head():
     command.stamp(Config(alembic_ini_path), "head")
 
 # 默认供应商配置（不包含 API Key，需在部署后配置）
+#
+# 模型型号与分类严格对齐《各平台最新模型型号汇总-2026-10-02.md》：仅收录 2026 年在役
+# （✅ 已核实 / 🟡 待核实）的公开 API 型号。已下线 / 已退役 / 无公开 API 的型号一律剔除：
+#   OpenAI Sora 全系（2026-09-24 停服，无替代）、Google imagen-* 全系（2026-08-17 退役）、
+#   MiniMax 音乐全系（2026-08-20 起对新用户关闭）、deepseek-v4-flash（旧 Flash 系列退役）、
+#   grok-4.20-0309-* 日期快照与 grok-imagine-image-pro（非文档在列 ID）、MiniMax-M2.5（2025 型号）。
+#
+# model_metadata[model].model_type 取值须匹配后端分类字段定义（admin MODEL_TYPE_OPTIONS）：
+#   language（语言）/ multimodal（多模态）/ image（图像）/ video（视频）/ audio（音乐）/ tts（语音）。
+# 图像 / 视频 / 音乐 / TTS 路由严格按 model_type 过滤模型，故这些类型必须显式标注元数据；
+# 且各生成管线仅支持特定 provider_type：图像=xai/gemini/ark/openrouter，视频=xai/minimax/gemini/ark/dashscope，
+# 音乐与 TTS=仅 gemini。视频型号还需存在于 services/video_providers/model_capabilities.py 才有完整能力配置。
 DEFAULT_PROVIDERS = [
+    {
+        "name": "OpenAI",
+        "provider_type": "openai",
+        # 仅对话 / 推理模型：OpenAI 图像（gpt-image-*）走独立 /v1/images 接口、未接入 KunFlix 图像管线；
+        # 视频能力已全线停服（Sora 退役，无替代）；语音为 realtime/transcribe 端点，均不在此列出。
+        "models": [
+            "gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.3-codex",
+        ],
+        "tags": ["llm"],
+        "model_metadata": {
+            "gpt-6.1-sol":   {"model_type": "multimodal", "display_name": "GPT-6.1 Sol"},
+            "gpt-6-astra":   {"model_type": "multimodal", "display_name": "GPT-6 Astra"},
+            "gpt-6-sol":     {"model_type": "multimodal", "display_name": "GPT-6 Sol"},
+            "gpt-6-luna":    {"model_type": "multimodal", "display_name": "GPT-6 Luna"},
+            "gpt-5.6-sol":   {"model_type": "language",   "display_name": "GPT-5.6 Sol"},
+            "gpt-5.6-terra": {"model_type": "language",   "display_name": "GPT-5.6 Terra"},
+            "gpt-5.6-luna":  {"model_type": "language",   "display_name": "GPT-5.6 Luna"},
+            "gpt-5.5":       {"model_type": "language",   "display_name": "GPT-5.5"},
+            "gpt-5.4":       {"model_type": "language",   "display_name": "GPT-5.4"},
+            "gpt-5.4-mini":  {"model_type": "language",   "display_name": "GPT-5.4 Mini"},
+            "gpt-5.4-nano":  {"model_type": "language",   "display_name": "GPT-5.4 Nano"},
+            "gpt-5.3-codex": {"model_type": "language",   "display_name": "GPT-5.3 Codex"},
+        },
+    },
     {
         "name": "Gemini",
         "provider_type": "gemini",
-        "models": ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image", "veo-3.1-lite-generate-preview", "lyria-3-clip-preview", "lyria-3-pro-preview", "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"],
+        "models": [
+            # 对话 / 多模态（文本 + 图像 + 视频 + 音频 → 文本）
+            "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash",
+            "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite",
+            "gemini-3.1-pro-preview",
+            # 图像（Nano Banana 系列）
+            "gemini-3.1-flash-image", "gemini-3-pro-image", "gemini-3.1-flash-lite-image",
+            # 视频（Veo 3.1）
+            "veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview",
+            # 音乐（Lyria 3）
+            "lyria-3-pro-preview", "lyria-3-clip-preview",
+            # 语音合成（TTS）
+            "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts",
+        ],
         "tags": ["llm", "image", "video", "audio", "tts"],
         "model_metadata": {
-            "gemini-3.8-flash-tts": {"model_type": "tts", "display_name": "Gemini 3.8 Flash TTS"},
+            "gemini-3.8-flash":       {"model_type": "multimodal", "display_name": "Gemini 3.8 Flash"},
+            "gemini-3.7-flash":       {"model_type": "multimodal", "display_name": "Gemini 3.7 Flash"},
+            "gemini-3.6-flash":       {"model_type": "multimodal", "display_name": "Gemini 3.6 Flash"},
+            "gemini-3.5-flash":       {"model_type": "multimodal", "display_name": "Gemini 3.5 Flash"},
+            "gemini-3.5-flash-lite":  {"model_type": "multimodal", "display_name": "Gemini 3.5 Flash-Lite"},
+            "gemini-3.1-flash-lite":  {"model_type": "multimodal", "display_name": "Gemini 3.1 Flash-Lite"},
+            "gemini-3.1-pro-preview": {"model_type": "multimodal", "display_name": "Gemini 3.1 Pro Preview"},
+            "gemini-3.1-flash-image":      {"model_type": "image", "display_name": "Nano Banana 2（3.1 Flash Image）"},
+            "gemini-3-pro-image":          {"model_type": "image", "display_name": "Nano Banana Pro（3 Pro Image）"},
+            "gemini-3.1-flash-lite-image": {"model_type": "image", "display_name": "Nano Banana 2 Lite"},
+            "veo-3.1-generate-preview":      {"model_type": "video", "display_name": "Veo 3.1"},
+            "veo-3.1-fast-generate-preview": {"model_type": "video", "display_name": "Veo 3.1 Fast"},
+            "veo-3.1-lite-generate-preview": {"model_type": "video", "display_name": "Veo 3.1 Lite"},
+            "lyria-3-pro-preview":  {"model_type": "audio", "display_name": "Lyria 3 Pro"},
+            "lyria-3-clip-preview": {"model_type": "audio", "display_name": "Lyria 3 Clip"},
+            "gemini-3.8-flash-tts":      {"model_type": "tts", "display_name": "Gemini 3.8 Flash TTS"},
             "gemini-3.8-flash-lite-tts": {"model_type": "tts", "display_name": "Gemini 3.8 Flash-Lite TTS"},
         },
     },
     {
         "name": "MiniMax",
         "provider_type": "minimax",
-        "models": ["MiniMax-M2.5", "MiniMax-M2.7"],
+        "models": ["MiniMax-M3.1-Flash-Preview", "MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-H3"],
         "tags": ["llm", "video"],
+        "model_metadata": {
+            "MiniMax-M3.1-Flash-Preview": {"model_type": "multimodal", "display_name": "MiniMax M3.1 Flash（预览）"},
+            "MiniMax-M3":                 {"model_type": "multimodal", "display_name": "MiniMax M3"},
+            "MiniMax-M2.7":               {"model_type": "language",   "display_name": "MiniMax M2.7"},
+            "MiniMax-M2.7-highspeed":     {"model_type": "language",   "display_name": "MiniMax M2.7 Highspeed"},
+            "MiniMax-H3":                 {"model_type": "video",      "display_name": "MiniMax H3"},
+        },
     },
     {
         "name": "Grok",
         "provider_type": "xai",
-        "models": ["grok-4.20-0309-reasoning", "grok-4.20-0309-non-reasoning", "grok-imagine-image-pro", "grok-imagine-image", "grok-imagine-video"],
-        "tags": ["llm", "image"],
+        "models": [
+            # 对话 / 多模态（文本 + 图像，grok-4.3 起支持视频输入）
+            "grok-4.7", "grok-4.6", "grok-4.5", "grok-4.3",
+            "grok-4.20-reasoning", "grok-4.20-non-reasoning", "grok-4.20-multi-agent",
+            "grok-build-0.1",
+            # 图像（独立 API）
+            "grok-imagine-image", "grok-imagine-image-quality",
+            # 视频（独立 API，1.5 为当前最新代）
+            "grok-imagine-video-1.5", "grok-imagine-video-1.5-lite",
+        ],
+        "tags": ["llm", "image", "video"],
+        "model_metadata": {
+            "grok-4.7": {"model_type": "multimodal", "display_name": "Grok 4.7"},
+            "grok-4.6": {"model_type": "multimodal", "display_name": "Grok 4.6"},
+            "grok-4.5": {"model_type": "multimodal", "display_name": "Grok 4.5"},
+            "grok-4.3": {"model_type": "multimodal", "display_name": "Grok 4.3"},
+            "grok-4.20-reasoning":     {"model_type": "multimodal", "display_name": "Grok 4.20 Reasoning"},
+            "grok-4.20-non-reasoning": {"model_type": "multimodal", "display_name": "Grok 4.20 Non-Reasoning"},
+            "grok-4.20-multi-agent":   {"model_type": "multimodal", "display_name": "Grok 4.20 Multi-Agent"},
+            "grok-build-0.1":          {"model_type": "language",   "display_name": "Grok Build 0.1"},
+            "grok-imagine-image":         {"model_type": "image", "display_name": "Grok Imagine Image"},
+            "grok-imagine-image-quality": {"model_type": "image", "display_name": "Grok Imagine Image（高质量）"},
+            "grok-imagine-video-1.5":      {"model_type": "video", "display_name": "Grok Imagine Video 1.5"},
+            "grok-imagine-video-1.5-lite": {"model_type": "video", "display_name": "Grok Imagine Video 1.5 Lite"},
+        },
     },
     {
         "name": "火山方舟",
         "provider_type": "ark",
-        "models": ["doubao-seed-2-0-pro-260215", "doubao-seedance-2-0-260128", "doubao-seedance-2-0-fast-260128", "doubao-seed-2-0-lite-260215"],
-        "tags": ["llm", "video"],
+        "models": [
+            # 豆包语言 / 多模态（通用端点仅认带日期后缀完整 ID；doubao-seed-evolving 为唯一无版本号别名）
+            "doubao-seed-2-1-pro-260628", "doubao-seed-2-1-turbo-260628", "doubao-seed-evolving",
+            "doubao-seed-2-0-pro-260215", "doubao-seed-2-0-lite-260428", "doubao-seed-2-0-mini-260428",
+            "doubao-seed-2-0-code-preview-260215",
+            # 图像（Seedream 5.0）
+            "doubao-seedream-5-0-pro-260628", "doubao-seedream-5-0-260128",
+            # 视频（Seedance 2.0）
+            "doubao-seedance-2-0-260128", "doubao-seedance-2-0-fast-260128",
+        ],
+        "tags": ["llm", "image", "video"],
+        "model_metadata": {
+            "doubao-seed-2-1-pro-260628":   {"model_type": "multimodal", "display_name": "豆包 Seed 2.1 Pro"},
+            "doubao-seed-2-1-turbo-260628": {"model_type": "multimodal", "display_name": "豆包 Seed 2.1 Turbo"},
+            "doubao-seed-evolving":         {"model_type": "multimodal", "display_name": "豆包 Seed Evolving"},
+            "doubao-seed-2-0-pro-260215":   {"model_type": "multimodal", "display_name": "豆包 Seed 2.0 Pro"},
+            "doubao-seed-2-0-lite-260428":  {"model_type": "multimodal", "display_name": "豆包 Seed 2.0 Lite（全模态）"},
+            "doubao-seed-2-0-mini-260428":  {"model_type": "multimodal", "display_name": "豆包 Seed 2.0 Mini（全模态）"},
+            "doubao-seed-2-0-code-preview-260215": {"model_type": "language", "display_name": "豆包 Seed 2.0 Code"},
+            "doubao-seedream-5-0-pro-260628": {"model_type": "image", "display_name": "Seedream 5.0 Pro"},
+            "doubao-seedream-5-0-260128":     {"model_type": "image", "display_name": "Seedream 5.0"},
+            "doubao-seedance-2-0-260128":      {"model_type": "video", "display_name": "Seedance 2.0"},
+            "doubao-seedance-2-0-fast-260128": {"model_type": "video", "display_name": "Seedance 2.0 Fast"},
+        },
     },
     {
         # 阿里百炼：Wan3.0 全能参考视频模型 (All-in-One: 文生视频 / 图生视频 / 参考生视频 / 编辑 / 延长)
         # 地域限制：模型、Endpoint URL、API Key 必须同地域，部署后需将 base_url 配置为
         # https://{业务空间ID}.{地域}.maas.aliyuncs.com（如北京: https://llm-xxxx.cn-beijing.maas.aliyuncs.com）
+        # 注：该平台不在《2026-10-02 型号汇总》文档覆盖范围内，维持既有 Wan3.0 集成不变。
         "name": "阿里百炼",
         "provider_type": "dashscope",
         "models": ["wan3.0-video-prime", "wan3.0-video"],
@@ -115,14 +234,26 @@ DEFAULT_PROVIDERS = [
     {
         "name": "DeepSeek",
         "provider_type": "deepseek",
-        "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
+        # 官方当前仅两个在役型号：deepseek-flash（V4.1-Flash，原生视觉）、deepseek-v4-pro（纯文本旗舰）
+        "models": ["deepseek-flash", "deepseek-v4-pro"],
         "tags": ["llm"],
+        "model_metadata": {
+            "deepseek-flash":  {"model_type": "multimodal", "display_name": "DeepSeek V4.1 Flash"},
+            "deepseek-v4-pro": {"model_type": "language",   "display_name": "DeepSeek V4 Pro"},
+        },
     },
     {
         "name": "Kimi",
         "provider_type": "kimi",
+        # 官方当前仅 4 个在役型号（platform.kimi.com/docs/models）
         "models": ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
         "tags": ["llm"],
+        "model_metadata": {
+            "kimi-k3":                  {"model_type": "multimodal", "display_name": "Kimi K3"},
+            "kimi-k2.7-code":           {"model_type": "multimodal", "display_name": "Kimi K2.7 Code"},
+            "kimi-k2.7-code-highspeed": {"model_type": "multimodal", "display_name": "Kimi K2.7 Code Highspeed"},
+            "kimi-k2.6":                {"model_type": "multimodal", "display_name": "Kimi K2.6"},
+        },
     },
     {
         # Ollama 本地部署：api_key 留空；models 留空交由后台「同步本地模型」按钮拉取

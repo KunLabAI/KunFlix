@@ -175,7 +175,10 @@ export default function AgentForm({
         thinking_mode: Boolean(initialValues.thinking_mode),
         tools_enabled: hasTools || hasImageGen || hasVideoGen || hasCanvas,
         tools: initialValues.tools || [],
-        target_node_types: (initialValues.target_node_types || []) as ("script" | "character" | "storyboard" | "video")[],
+        // legacy 节点类型名归一为规范名（script→text、character→image），使表单从干净数据起步
+        target_node_types: (initialValues.target_node_types || []).map((v) =>
+          v === 'script' ? 'text' : v === 'character' ? 'image' : v
+        ) as ("text" | "image" | "video" | "audio" | "tts" | "storyboard" | "panorama")[],
         is_leader: Boolean(initialValues.is_leader),
         coordination_modes: initialValues.coordination_modes || [],
         member_agent_ids: initialValues.member_agent_ids || [],

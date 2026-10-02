@@ -907,62 +907,22 @@
             "desc": "When enabled, the agent can control canvas node content."
           },
           "nodeTypes": {
-            "script": "Text Node",
-            "scriptDesc": "Rich text content",
-            "character": "Image Node",
-            "characterDesc": "Image generation and management",
+            "text": "Text Node",
+            "textDesc": "Rich text content",
+            "image": "Image Node",
+            "imageDesc": "Image generation and management",
             "video": "Video Node",
             "videoDesc": "Video generation and management",
+            "audio": "Audio Node",
+            "audioDesc": "Music generation and management",
+            "tts": "Speech Node",
+            "ttsDesc": "Text-to-speech synthesis",
             "storyboard": "Data Table",
-            "storyboardDesc": "Data tables and analysis"
+            "storyboardDesc": "Data tables and analysis",
+            "panorama": "Panorama Node",
+            "panoramaDesc": "360° panoramic image"
           }
         }
-      }
-    },
-    "multiAgent": {
-      "collaborating": "Collaborating",
-      "collaborationProcess": "Collaboration Process",
-      "agents": "agents",
-      "tokens": "tokens",
-      "credits": "credits",
-      "status": {
-        "pending": "Pending",
-        "running": "Running",
-        "completed": "Completed",
-        "failed": "Failed"
-      }
-    },
-    "chat": {
-      "preview": "Preview Chat",
-      "selectConversation": "Select Conversation",
-      "noHistory": "No history",
-      "newConversation": "New Chat",
-      "startNew": "Start a new conversation",
-      "inputPlaceholder": "Type a message...",
-      "uploadImage": "Upload Image",
-      "aiNotice": "AI may generate inaccurate information. Verify important facts.",
-      "selectOrCreate": "Select or create a conversation to start",
-      "createNewSession": "Create New Conversation",
-      "loadFailed": "Failed to load messages",
-      "createFailed": "Failed to create debug session",
-      "deleteFailed": "Failed to delete debug session",
-      "collaboratingWithAgents": "Collaborating... ({{count}} agents)",
-      "collaboratingAgentGenerating": "Collaborating... ({{name}} is generating)",
-      "collaboratingProgress": "Collaborating... ({{completed}}/{{total}} done)",
-      "skill": {
-        "loading": "Loading skill: {{name}}",
-        "loaded": "Skill loaded: {{name}}"
-      },
-      "tool": {
-        "executing": "Executing: {{name}}",
-        "completed": "Completed: {{name}}"
-      },
-      "edit": {
-        "selectedTitle": "Image selected for editing",
-        "selectedDesc": "The next message will be based on this image",
-        "mode": "Edit mode: the next message will be based on the selected image",
-        "failed": "Unable to load image",
-        "continueEdit": "Continue Editing"
       }
     }
   },

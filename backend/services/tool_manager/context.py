@@ -2,7 +2,7 @@
 ToolContext — unified context for tool availability checks and execution.
 
 Replaces the scattered theater_id / agent / db / active_skills_dir parameters
-previously threaded through chat_generation, admin_debug, and chat_tool_dispatch.
+previously threaded through chat_generation and chat_tool_dispatch.
 """
 from __future__ import annotations
 

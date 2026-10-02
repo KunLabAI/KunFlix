@@ -907,62 +907,22 @@
             "desc": "开启后，智能体可以控制画布节点内容。"
           },
           "nodeTypes": {
-            "script": "文本节点",
-            "scriptDesc": "富文本内容",
-            "character": "图像节点",
-            "characterDesc": "图片生成与管理",
+            "text": "文本节点",
+            "textDesc": "富文本内容",
+            "image": "图像节点",
+            "imageDesc": "图片生成与管理",
             "video": "视频节点",
             "videoDesc": "视频生成与管理",
+            "audio": "音频节点",
+            "audioDesc": "音乐生成与管理",
+            "tts": "语音节点",
+            "ttsDesc": "文本转语音合成",
             "storyboard": "多维表格",
-            "storyboardDesc": "数据表格与分析"
+            "storyboardDesc": "数据表格与分析",
+            "panorama": "全景节点",
+            "panoramaDesc": "360° 全景图"
           }
         }
-      }
-    },
-    "multiAgent": {
-      "collaborating": "协作中",
-      "collaborationProcess": "协作过程",
-      "agents": "个智能体",
-      "tokens": "tokens",
-      "credits": "积分",
-      "status": {
-        "pending": "等待中",
-        "running": "执行中",
-        "completed": "已完成",
-        "failed": "失败"
-      }
-    },
-    "chat": {
-      "preview": "预览对话",
-      "selectConversation": "选择对话",
-      "noHistory": "无历史记录",
-      "newConversation": "新对话",
-      "startNew": "开始一个新的对话",
-      "inputPlaceholder": "输入消息...",
-      "uploadImage": "上传图片",
-      "aiNotice": "AI 可能会生成不准确的信息，请核对重要事实。",
-      "selectOrCreate": "选择或创建一个对话开始",
-      "createNewSession": "创建新对话",
-      "loadFailed": "Failed to load messages",
-      "createFailed": "Failed to create debug session",
-      "deleteFailed": "Failed to delete debug session",
-      "collaboratingWithAgents": "正在协作... ({{count}} 个智能体)",
-      "collaboratingAgentGenerating": "协作中... ({{name}} 正在生成)",
-      "collaboratingProgress": "协作中... ({{completed}}/{{total}} 完成)",
-      "skill": {
-        "loading": "正在加载技能: {{name}}",
-        "loaded": "已加载技能: {{name}}"
-      },
-      "tool": {
-        "executing": "正在执行: {{name}}",
-        "completed": "已完成: {{name}}"
-      },
-      "edit": {
-        "selectedTitle": "已选择此图进行编辑",
-        "selectedDesc": "下一条消息将基于这张图片进行修改",
-        "mode": "编辑模式：下一条消息将基于选中的图片进行修改",
-        "failed": "无法加载图片",
-        "continueEdit": "继续编辑"
       }
     }
   },

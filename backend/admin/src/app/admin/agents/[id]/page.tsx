@@ -8,15 +8,8 @@ import AgentForm from '@/components/admin/agents/AgentForm';
 import { useAgent, useCreateAgent, useUpdateAgent } from '@/hooks/useAgents';
 import { Agent } from '@/types';
 import { formatApiError } from '@/lib/api-utils';
-import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
-import { ScrollArea } from '@/components/ui/scroll-area';
-
-const ChatInterface = dynamic(() => import('@/components/admin/agents/ChatInterface'), {
-  loading: () => <div className="h-full flex items-center justify-center bg-muted/20">Loading...</div>,
-  ssr: false
-});
 
 export default function AgentDetailPage() {
   const router = useRouter();
@@ -29,8 +22,7 @@ export default function AgentDetailPage() {
   const { createAgent } = useCreateAgent();
   const { updateAgent } = useUpdateAgent();
   const { toast } = useToast();
-  
-  const [formInstance, setFormInstance] = useState<any>(null);
+
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (values: Partial<Agent>) => {
@@ -72,39 +64,24 @@ export default function AgentDetailPage() {
     );
   }
 
-  // New agent layout
-  if (isNew) {
-    return (
-      <div className="h-full flex flex-col">
-        <Header title={t('agents.header.newAgent')} saving={saving} onSave={handleSave} onBack={() => router.push('/admin/agents')} />
-        <div className="flex-1 overflow-y-auto bg-muted/20">
-          <div className="max-w-7xl mx-auto py-12 px-6">
-            <div className="p-0">
-              <AgentForm initialValues={null} onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} twoColumn={true} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Edit agent layout
+  // 创建 / 编辑共用同一套布局（编辑页与创建页对齐：单栏居中 + 双列表单）
   return (
     <div className="h-full flex flex-col">
-      <Header title={agent?.name} subtitle={`ID: ${id}`} saving={saving} onSave={handleSave} onBack={() => router.push('/admin/agents')} />
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden h-full">
-        {/* Left: Configuration */}
-        <div className="flex-1 lg:flex-none xl:w-[30%] border-r flex flex-col min-h-0 h-full overflow-hidden">
-          <ScrollArea className="h-full w-full">
-            <div className="p-6  max-w-3xl mx-auto">
-              <AgentForm initialValues={agent} onSubmit={handleSubmit} onFormInstanceReady={setFormInstance} />
-            </div>
-          </ScrollArea>
-        </div>
-        {/* Right: Chat Preview */}
-        <div className="flex-1 bg-muted/20 min-h-0">
-          <div className="h-full bg-card overflow-hidden flex flex-col">
-            <ChatInterface agentId={id} />
+      <Header
+        title={isNew ? t('agents.header.newAgent') : agent?.name}
+        subtitle={isNew ? undefined : `ID: ${id}`}
+        saving={saving}
+        onSave={handleSave}
+        onBack={() => router.push('/admin/agents')}
+      />
+      <div className="flex-1 overflow-y-auto bg-muted/20">
+        <div className="max-w-7xl mx-auto py-12 px-6">
+          <div className="p-0">
+            <AgentForm
+              initialValues={isNew ? null : agent}
+              onSubmit={handleSubmit}
+              twoColumn={true}
+            />
           </div>
         </div>
       </div>

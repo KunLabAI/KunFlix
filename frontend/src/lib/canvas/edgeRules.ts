@@ -5,14 +5,14 @@
  * 后端对齐：`backend/services/tool_manager/providers/_canvas_edge_rules.py`
  *
  * 设计原则：
- * 1. 5x5 矩阵写死为纯常量，任何规范变更都必须同时改动前后端两个文件。
+ * 1. 7x7 矩阵写死为纯常量，任何规范变更都必须同时改动前后端两个文件。
  * 2. validateEdge 只做合法性判定，不做内容注入（那属于 edgePayload.ts）。
  * 3. 所有检查走早返回，避免嵌套 if（遵循项目 style.md 规范）。
  */
 import type { Edge } from '@xyflow/react';
 import { hasCycle } from '@/lib/graphUtils';
 
-export type NodeType = 'text' | 'image' | 'video' | 'audio' | 'storyboard' | 'panorama';
+export type NodeType = 'text' | 'image' | 'video' | 'audio' | 'tts' | 'storyboard' | 'panorama';
 
 export type EdgeLegality = 'allow' | 'deferred' | 'forbid';
 
@@ -32,8 +32,11 @@ export interface EdgeValidationResult {
 }
 
 /**
- * 6x6 合法性矩阵（Source → Target）。
+ * 7x7 合法性矩阵（Source → Target）。
  * 必须与 SKILL.md Edge Compatibility Matrix 与后端 _canvas_edge_rules.py 三方对齐。
+ *
+ * tts 作为「源」产出 audio 载荷（见 edgePayload.buildPayload.tts），故 tts 行与 audio 行一致；
+ * tts 作为「目标」仅接受 text 注入（填入朗读文本，见 injectToTts），故 tts 列仅 text→tts=allow。
  *
  * panorama 行/列在 MVP 阶段全部以 'deferred' 占位（仅自环 allow），表示
  * 与其他节点类型的连线注入语义尚未在 edgePayload.ts 中实现；后续迭代再按需放行。
@@ -44,6 +47,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'allow',
     video: 'allow',
     audio: 'allow',
+    tts: 'allow',
     storyboard: 'allow',
     panorama: 'deferred',
   },
@@ -52,6 +56,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'allow',
     video: 'allow',
     audio: 'allow',
+    tts: 'deferred',
     storyboard: 'allow',
     panorama: 'allow',
   },
@@ -60,6 +65,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'allow',
     video: 'allow',
     audio: 'deferred',
+    tts: 'deferred',
     storyboard: 'allow',
     panorama: 'deferred',
   },
@@ -68,6 +74,16 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'forbid',
     video: 'allow',
     audio: 'deferred',
+    tts: 'deferred',
+    storyboard: 'allow',
+    panorama: 'deferred',
+  },
+  tts: {
+    text: 'deferred',
+    image: 'forbid',
+    video: 'allow',
+    audio: 'deferred',
+    tts: 'deferred',
     storyboard: 'allow',
     panorama: 'deferred',
   },
@@ -76,6 +92,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'allow',
     video: 'allow',
     audio: 'allow',
+    tts: 'deferred',
     storyboard: 'allow',
     panorama: 'deferred',
   },
@@ -84,6 +101,7 @@ export const EDGE_LEGALITY_MATRIX: Record<NodeType, Record<NodeType, EdgeLegalit
     image: 'deferred',
     video: 'deferred',
     audio: 'deferred',
+    tts: 'deferred',
     storyboard: 'deferred',
     panorama: 'allow',
   },
@@ -100,7 +118,7 @@ export const REJECT_MESSAGES: Record<EdgeRejectReason, string> = {
 };
 
 const isNodeType = (x: unknown): x is NodeType =>
-  typeof x === 'string' && ['text', 'image', 'video', 'audio', 'storyboard', 'panorama'].includes(x);
+  typeof x === 'string' && ['text', 'image', 'video', 'audio', 'tts', 'storyboard', 'panorama'].includes(x);
 
 /**
  * 读取 Handle 所在的几何侧边（基于 id 前缀）。

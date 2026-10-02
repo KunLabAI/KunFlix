@@ -2,7 +2,7 @@
 name: canvas_tools
 description: "Canvas node CRUD operations. Provides tools to list, get, create, update, and delete theater canvas nodes."
 metadata:
-  builtin_skill_version: "1.0"
+  builtin_skill_version: "1.2"
 ---
 # Canvas Tools
 
@@ -15,8 +15,9 @@ Loading this skill activates the following tools:
 - `create_canvas_node` — Create a new node
 - `update_canvas_node` — Update an existing node
 - `delete_canvas_node` — Delete a node
+- `arrange_canvas_nodes` — Auto-tidy the whole canvas (de-overlap & re-grid all nodes)
 
-**Note:** Loading this skill grants access to all node types (text, image, video, storyboard). A theater (canvas) must be active in the current conversation for these tools to work.
+**Note:** Loading this skill grants access to all node types (text, image, video, audio, tts, storyboard, panorama). A theater (canvas) must be active in the current conversation for these tools to work.
 
 ## Node Types
 
@@ -47,6 +48,15 @@ Fields:
 - `description` (string) — Video description (scene, duration, etc.)
 - `videoUrl` (string) — Video URL path (e.g. `/media/xxx.mp4`), supports MP4
 - `fitMode` (string) — "cover" (fill) or "contain" (fit)
+
+### tts
+Text-to-speech nodes for synthesized voice / narration audio.
+
+Fields:
+- `name` (string) — Node name
+- `description` (string) — Description
+- `audioUrl` (string) — Audio URL path (e.g. `/media/xxx.wav`), supports WAV/MP3
+- `text` (string) — The spoken source text
 
 ### storyboard
 Storyboard nodes for shot breakdowns and multi-dimensional table content.
@@ -152,10 +162,25 @@ Use this tool when you need to:
 
 Note: `get_canvas_node` returns only metadata (URL paths, names); use `view_node_media` when you need to actually see the content.
 
+## Tool: arrange_canvas_nodes
+
+One-click auto-tidy of the canvas. Reads all current nodes and re-arranges them
+into a clean shelf (waterfall) grid, eliminating overlaps and messy layouts.
+Nodes are re-flowed in reading order (top→bottom, then left→right) using each
+node's real width/height, wrapping to a new row when a row gets too wide.
+
+Parameters: none.
+
+Returns the new position of every arranged node.
+
+Use this when the user asks to "tidy / arrange / align / organize the canvas".
+Only node types you are allowed to access are moved; other types stay in place.
+
 ## Tips
 
 - Always use `list_canvas_nodes` first to see what exists before creating or modifying.
 - Use `view_node_media` when you need to see/analyze actual image or video content.
+- Use `arrange_canvas_nodes` to de-clutter an overlapping or messy canvas in one call.
 - When creating nodes, omit position to let the system auto-place them.
 - Only include fields you want to change in `update_canvas_node`.
 - Node types are restricted by agent configuration — you can only create/access allowed types.
