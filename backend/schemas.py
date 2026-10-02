@@ -4,8 +4,12 @@ from datetime import datetime
 
 
 # 画布节点类型常量
-# 注：保留 "script"/"character" 旧名以兼容历史数据；新节点统一使用迁移后名称。
-NODE_TYPES = {"script", "character", "storyboard", "video", "panorama"}
+# 与 providers/canvas.py 的 NODE_TYPE_SCHEMA 保持一致（text/image/video/audio/tts/storyboard/panorama）。
+# 注：保留 "script"/"character" 旧名以兼容历史数据；tool 层 _migrate_node_type 会归一为 text/image。
+NODE_TYPES = {
+    "text", "image", "video", "audio", "tts", "storyboard", "panorama",
+    "script", "character",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -961,27 +965,6 @@ class TheaterSaveRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Admin Debug Session schemas (管理员调试会话 - 与用户会话隔离)
-# ---------------------------------------------------------------------------
-class AdminDebugSessionBase(BaseModel):
-    title: str = "Debug Chat"
-    agent_id: str
-
-
-class AdminDebugSessionCreate(AdminDebugSessionBase):
-    pass
-
-
-class AdminDebugSessionResponse(AdminDebugSessionBase):
-    id: str
-    admin_id: str
-    created_at: Any
-    updated_at: Optional[Any] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# ---------------------------------------------------------------------------
 # Asset Management schemas (资源管理)
 # ---------------------------------------------------------------------------
 class AssetResponse(BaseModel):
@@ -1010,23 +993,6 @@ class AssetListResponse(BaseModel):
     total: int
     page: int
     page_size: int
-
-
-class AdminDebugMessageBase(BaseModel):
-    role: str
-    content: Any  # str 或 List[Dict] (多模态消息)
-
-
-class AdminDebugMessageCreate(AdminDebugMessageBase):
-    edit_last_image: bool = False
-
-
-class AdminDebugMessageResponse(AdminDebugMessageBase):
-    id: str
-    session_id: str
-    created_at: Any
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------------------------

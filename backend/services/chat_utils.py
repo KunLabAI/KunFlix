@@ -1,7 +1,7 @@
 """
 Chat shared utilities: SSE formatting, content serialization, multimodal media helpers.
 
-Shared by routers/chats.py, routers/admin_debug.py, and chat generation modules.
+Shared by routers/chats.py and the chat generation modules.
 """
 import asyncio
 import json

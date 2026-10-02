@@ -213,6 +213,17 @@ export type GhostNodeData = {
 
 export type NodeEffect = 'reading' | 'scanning' | 'updating' | 'deleting' | 'connecting';
 
+/** create_canvas_node 工具返回的节点全量数据（与后端 _node_full 对齐） */
+export type BackendNodePayload = {
+  id: string;
+  node_type: string;
+  position_x: number;
+  position_y: number;
+  width: number | null;
+  height: number | null;
+  data: Record<string, unknown>;
+};
+
 export type CanvasNode = Node<ScriptNodeData | CharacterNodeData | StoryboardNodeData | VideoNodeData | AudioNodeData | TtsNodeData | PanoramaNodeData | GhostNodeData>;
 
 interface HistoryState {
@@ -312,6 +323,13 @@ interface CanvasState {
   replaceGhostWithLocalNode: (nodeType: string, data: Record<string, unknown>, position?: { x: number; y: number }) => void;
   removeStreamingNodes: () => void;
 
+  /**
+   * 用后端工具返回的权威节点数据对账本地乐观节点（local-*）：
+   * 采纳数据库落地的 id / 坐标 / 尺寸，消除前端乐观布局与 DB 的坐标偏差。
+   * 后端节点已存在时仅移除重复的本地占位。
+   */
+  reconcileLocalNodeWithBackend: (backendNode: BackendNodePayload) => void;
+
   // AI operation effects on existing nodes
   activeNodeEffects: Record<string, NodeEffect>;
   setNodeEffect: (nodeId: string, effect: NodeEffect) => void;
@@ -324,8 +342,11 @@ const MAX_HISTORY = 50;
 
 // --- Auto-position calculator (shared by addGhostNode & replaceGhostWithLocalNode) ---
 // Replicates backend _calculate_auto_position grid logic to place new nodes
-// without overlap. Considers ALL current nodes including ghost/local-* for
-// correct positioning during concurrent creation.
+// without overlap. To stay in lockstep with the backend calculation, ONLY
+// DB-backed nodes are counted: ghost / streaming / unreconciled local-* nodes
+// are invisible to the backend, and a local-* node that has been reconciled
+// with its backend counterpart (via reconcileLocalNodeWithBackend) IS counted
+// because the DB row already exists.
 const GRID_GAP_X = 40;
 const GRID_GAP_Y = 60;
 const GRID_MAX_ROW_WIDTH = 2400;
@@ -333,6 +354,14 @@ const GRID_DEF_W = 420;
 const GRID_DEF_H = 300;
 const GRID_START_X = 100;
 const GRID_START_Y = 100;
+
+/** 判断节点是否已落库（与后端 _calculate_auto_position 的输入口径一致） */
+function isDbBackedNode(n: CanvasNode): boolean {
+  const data = n.data as { _streaming?: boolean; _reconciled?: boolean };
+  return n.type !== 'ghost'
+    && !data._streaming
+    && (!n.id.startsWith('local-') || !!data._reconciled);
+}
 
 function calcAutoPosition(
   nodes: CanvasNode[],
@@ -347,10 +376,14 @@ function calcAutoPosition(
   let autoX = GRID_START_X;
   let autoY = GRID_START_Y;
 
-  (nodes.length > 0) && (() => {
+  // 仅统计已落库节点：后端自动布局看不到前端乐观节点，
+  // 若把 ghost/local-* 计入会导致前后端各自算出不同坐标
+  const dbNodes = nodes.filter(isDbBackedNode);
+
+  (dbNodes.length > 0) && (() => {
     const rowBand = GRID_DEF_H + GRID_GAP_Y;
     const occupiedRows = new Map<number, number>();
-    nodes.forEach((n) => {
+    dbNodes.forEach((n) => {
       const nw = n.width ?? n.measured?.width ?? GRID_DEF_W;
       const edge = n.position.x + nw;
       const rowKey = Math.round(n.position.y / rowBand) * rowBand;
@@ -366,7 +399,7 @@ function calcAutoPosition(
     }
     // All rows full → new row below
     !placed && (() => {
-      const maxBottom = nodes.reduce((max, n) => {
+      const maxBottom = dbNodes.reduce((max, n) => {
         const nh = n.height ?? n.measured?.height ?? GRID_DEF_H;
         return Math.max(max, n.position.y + nh);
       }, 0);
@@ -404,6 +437,9 @@ const flushPendingDataSnapshot = () => {
 // --- Mapping helpers: frontend <-> backend ---
 
 function nodeToApi(node: CanvasNode): TheaterNodeCreate {
+  // 剔除前端本地的对账标记（_reconciled / _pendingBackendId），避免污染后端 data JSON。
+  const { _reconciled, _pendingBackendId, ...persistData } = node.data as Record<string, unknown>;
+  void _reconciled; void _pendingBackendId;
   return {
     id: node.id,
     node_type: node.type || 'script',
@@ -412,7 +448,7 @@ function nodeToApi(node: CanvasNode): TheaterNodeCreate {
     width: node.width ?? node.measured?.width ?? null,
     height: node.height ?? node.measured?.height ?? null,
     z_index: 0,
-    data: node.data as Record<string, unknown>,
+    data: persistData,
   };
 }
 
@@ -807,16 +843,18 @@ export const useCanvasStore = create<CanvasState>()(
           const newNodesRaw = detail.nodes.map(apiToNode);
           const newEdgesRaw = detail.edges.map(apiToEdge);
 
-          // Collect local-* node positions to transfer to newly-arrived backend nodes.
-          // This prevents visual "jump" when ghost/local animation position differs
-          // from backend's auto-calculated position.
+          // Transfer measured dims from local-* placeholder nodes to newly-arrived
+          // backend nodes. Positions are NOT inherited: the DB coordinate is the
+          // single source of truth (the local optimistic position usually diverges
+          // from backend _calculate_auto_position, and inheriting it caused the
+          // rendered node to drift from the persisted coordinate).
           const localNodes = currentNodes.filter((n) => n.id.startsWith('local-'));
-          const localPositionByType = new Map<string, { x: number; y: number }[]>();
+          const localMeasuredByType = new Map<string, CanvasNode[]>();
           localNodes.forEach((n) => {
             const key = n.type || 'unknown';
-            const arr = localPositionByType.get(key) || [];
-            arr.push({ x: n.position.x, y: n.position.y });
-            localPositionByType.set(key, arr);
+            const arr = localMeasuredByType.get(key) || [];
+            arr.push(n);
+            localMeasuredByType.set(key, arr);
           });
 
           let nodesChanged = false;
@@ -846,13 +884,13 @@ export const useCanvasStore = create<CanvasState>()(
               }
             }
             // This is a newly-arrived node from backend (not in current state).
-            // If there's a matching local-* node (same type), inherit its position
-            // to avoid the animation→final position visual jump.
+            // Keep the backend position as-is; only carry over the measured dims
+            // from a matching local-* placeholder to avoid a re-measure flicker.
             nodesChanged = true;
-            const candidates = localPositionByType.get(newNode.type || 'unknown');
-            const localPos = candidates?.shift();
-            return localPos
-              ? { ...newNode, position: { x: localPos.x, y: localPos.y } }
+            const candidates = localMeasuredByType.get(newNode.type || 'unknown');
+            const local = candidates?.shift();
+            return local?.measured
+              ? { ...newNode, measured: local.measured }
               : newNode;
           });
 
@@ -1128,6 +1166,45 @@ export const useCanvasStore = create<CanvasState>()(
         const { nodes } = get();
         const filtered = nodes.filter((n) => !(n.type === 'storyboard' && (n.data as StoryboardNodeData)._streaming));
         (filtered.length !== nodes.length) && set({ nodes: filtered });
+      },
+
+      // 对账本地乐观节点与后端落库节点：采纳 DB 的 id/坐标/尺寸。
+      // tool_result(create_canvas_node) 到达时由 SSE handler 调用，
+      // 后续 syncTheater 会直接命中同 id 节点，不再产生位置跳变。
+      reconcileLocalNodeWithBackend: (backendNode) => {
+        const { nodes } = get();
+        // 后端节点已在本地存在 → 只需移除重复的 local-* 占位
+        const alreadyExists = nodes.some((n) => n.id === backendNode.id);
+        const candidates = nodes.filter((n) =>
+          n.id.startsWith('local-')
+          && n.type === backendNode.node_type
+          && !(n.data as { _reconciled?: boolean })._reconciled
+          && !(n.data as { _generating?: boolean })._generating
+        );
+        const target = alreadyExists ? undefined : candidates[0];
+        const dropId = target?.id ?? (alreadyExists ? candidates[0]?.id : undefined);
+        // 无可对账的本地节点且后端节点已存在 → 无需变更
+        if (!dropId && (!target || alreadyExists)) return;
+
+        const reconciled: CanvasNode | null = target ? {
+          ...target,
+          id: backendNode.id,
+          position: { x: backendNode.position_x, y: backendNode.position_y },
+          ...(backendNode.width != null ? { width: backendNode.width } : {}),
+          ...(backendNode.height != null ? { height: backendNode.height } : {}),
+          data: {
+            ...backendNode.data,
+            // 保留前端本地标记：_reconciled 让 calcAutoPosition 继续把该节点计入已落库口径
+            _reconciled: true,
+            _pendingBackendId: backendNode.id,
+          } as unknown as CanvasNode['data'],
+        } : null;
+
+        set({
+          nodes: reconciled
+            ? nodes.map((n) => n.id === target!.id ? reconciled : n)
+            : nodes.filter((n) => n.id !== dropId),
+        });
       },
 
       // AI operation effects

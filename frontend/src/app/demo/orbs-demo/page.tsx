@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { ThinkingOrb, type OrbState } from 'thinking-orbs';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/context/ThemeContext';
@@ -55,11 +56,19 @@ export default function OrbsDemoPage() {
     <div className="min-h-screen w-full bg-background text-foreground p-6 md:p-10">
       <div className="mx-auto max-w-5xl space-y-8">
         {/* 头部 */}
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">ThinkingOrb & 节点描边动画演示</h1>
-          <p className="text-sm text-muted-foreground">
-            thinking-orbs 的 9 种状态 + 画布节点 BorderBeam 描边效果 · 当前主题：{resolvedTheme}
-          </p>
+        <header className="flex flex-wrap items-start justify-between gap-3 space-y-1">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold">ThinkingOrb & 节点描边动画演示</h1>
+            <p className="text-sm text-muted-foreground">
+              thinking-orbs 的 9 种状态 + 画布节点 BorderBeam 描边效果 · 当前主题：{resolvedTheme}
+            </p>
+          </div>
+          <Link
+            href="/demo/orbs-demo/orb-designer"
+            className="rounded-lg border border-border/60 bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:border-primary/50"
+          >
+            打开小球形象设计器 →
+          </Link>
         </header>
 
         {/* 交互预览 */}

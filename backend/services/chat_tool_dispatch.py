@@ -2,7 +2,7 @@
 Chat tool dispatch: execute tool calls and append results to messages.
 
 Handles both Anthropic and OpenAI message formats for tool call responses.
-Shared by chats.py (with theater_id) and admin_debug.py (theater_id=None).
+Shared by chats.py and the chat generation modules (with or without theater_id).
 
 - Managed tools (base, canvas, image_gen) are delegated to ToolManager.
 - load_skill is dispatched independently (skill system is a peer-level concept).
@@ -110,7 +110,7 @@ async def append_tool_round_with_errors(
 # Canvas mutation tools that must run sequentially to avoid position conflicts
 _CANVAS_SEQUENTIAL_TOOLS = frozenset({
     "create_canvas_node", "update_canvas_node", "delete_canvas_node",
-    "create_canvas_edge", "delete_canvas_edge",
+    "create_canvas_edge", "delete_canvas_edge", "arrange_canvas_nodes",
 })
 
 

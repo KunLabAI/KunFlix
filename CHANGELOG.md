@@ -6,6 +6,102 @@
 
 ---
 
+## [v0.1.7] - 2026-10-02
+
+**主题：管理端移除调试对话模块并统一 Agent 创建/编辑布局、画布连线规则矩阵纳管 TTS 节点（6×6→7×7）与一键整理画布、AI 助手跨轮工具上下文持久化、数据库种子模型全面刷新至 2026 在役型号并按类型分类**
+
+上一版本：`v0.1.6`。本版本无数据库迁移（管理端调试模块的 DB 模型/表按既定决策保留，不做 DROP）；管理端移除 2 个前端依赖（`react-markdown`、`remark-gfm`）；前端无依赖清单变更（AiOrb 设计器演示页复用既有 `@paper-design/shaders-react` / `thinking-orbs` / `framer-motion`）。
+
+### ✨ 新增
+
+#### 一键整理画布工具 arrange_canvas_nodes
+
+- 新增画布工具 `arrange_canvas_nodes`：一次调用对整块画布去重叠 + 瀑布流重排全部节点。已登记进 `CANVAS_TOOL_NAMES_SET` / `_EXECUTORS` / 工具定义 / `chat_tool_dispatch` 顺序执行集 / 前端 `CANVAS_SYNC_TOOL_NAMES`，并同步 active + builtin 两份 `canvas_tools/SKILL.md`；因会改动节点位置，**未**纳入 `READ_ONLY_TOOLS`（EXPLORE 模式下被正确拦截）。SSE 侧为全部真实节点加 `updating` 描边效果并触发 `syncTheater`。附 `test_canvas_arrange.py` 单元测试。
+
+#### 画布连线规则新增 TTS 节点行列
+
+- 连线规则矩阵由 6×6 扩展为 **7×7**，正式纳管 `tts` 节点类型（前端 `edgeRules.ts` 与后端 `_canvas_edge_rules.py` 同步、逐格比对一致），补齐 `edgePayload.ts` 既有的 `buildPayload.tts` / `injectToTts` 缺口。
+
+#### AiOrb 小球形象设计器演示页
+
+- 新增 `/demo/orbs-demo/orb-designer`：基于 `--orbx-*` CSS 变量参数化实时预览 ThinkingOrb 小球形象，复用既有依赖，纯开发演示不影响主链路。
+
+### 🔧 改进
+
+- **管理端 Agent 页布局统一**：创建/编辑共用单栏双列布局（`AgentForm twoColumn`），移除预览（调试）对话模块（`ChatInterface` / `MultiAgentSteps`）；`handleSave` 走 `document.querySelector('form').requestSubmit()`，清理 `dynamic` / `ScrollArea` / `formInstance` 等废弃引用。
+- **数据库种子模型全面刷新**：`DEFAULT_PROVIDERS` 严格对齐《各平台最新模型型号汇总-2026-10-02》，新增 OpenAI 供应商，Gemini / xAI / MiniMax / DeepSeek / 火山方舟 / Kimi 更新至最新在役型号（如 `gpt-6.1-sol`、`gemini-3.8-flash`、`grok-4.7`、`kimi-k3`、`deepseek-flash`、`doubao-seed-2-1-pro-260628`）；每个模型按后端 `model_type` 字段（`language` / `multimodal` / `image` / `video` / `audio` / `tts`）逐一分类标注 `model_metadata`，与 admin `MODEL_TYPE_OPTIONS` 取值域一致。
+- **xAI 视频模型更新**：`grok-imagine-video` → `grok-imagine-video-1.5` / `grok-imagine-video-1.5-lite`（能力沿用同族，`model_capabilities.py` 补两条目、保留旧条目向后兼容）。
+- **AI 助手跨轮工具上下文**：`chat_generation.py` 以紧凑 `<tool_context>` 段追加进 assistant 消息文本，让 LLM 感知往轮工具返回；合并保全多轮 reasoning，历史消息向后兼容。
+
+### 🐛 修复
+
+- **画布节点渲染坐标与 DB 漂移**：新增 `reconcileLocalNodeWithBackend`（`useCanvasStore`）+ `reconcileCreatedNode`（`useSSEHandler`，单/多智能体双路径），从 `create_canvas_node` 的 `tool_result` 采纳后端落库的权威 id/坐标/尺寸对账本地乐观 `local-*` 节点；`nodeToApi` 剥离 `_reconciled` / `_pendingBackendId` 内部字段，`calcAutoPosition` 改为仅统计已落库节点，与后端 `_calculate_auto_position` 口径对齐。
+- **移除已下线种子模型 ID**：OpenAI Sora 全系、Google `imagen-*` 全系、MiniMax 音乐全系、`deepseek-v4-flash`、`grok-4.20-0309-*` 日期快照、`grok-imagine-image-pro`、`MiniMax-M2.5` 等一律剔除。
+- **图像模型此前不可见**：原 seed 中 Gemini / Grok 图像模型缺 `model_metadata`，因图像路由严格按 `model_type=='image'` 过滤而从不出现在图像供应商列表；补全分类后修复。
+- **连线矩阵漏类型静默不治理**：`tts` 缺格会走 `allow` 兜底掩盖，补齐 7×7 规则后消除。
+
+### 🔒 依赖与安全
+
+- 管理端移除 `react-markdown`（^10.1.0）、`remark-gfm`（^4.0.1）——调试对话模块删除后 `admin/src` 零引用；`admin/package-lock.json` 相应精简（连带清理孤立传递依赖）。移除后全仓检索 `admin_debug` / `AdminDebug` 无活引用（仅 `models.py` 保留表/模型、迁移脚本与若干注释）。
+
+### ✅ 测试与验证
+
+- 后端 9 个改动/新增文件 `py_compile` 全部通过；新增 `test_canvas_arrange.py`、`edgeRules.test.ts` 覆盖新工具与连线规则。
+- `seed_db.py` 结构校验：9 供应商 / 64 模型，每模型 `model_type` 合法、`model_metadata` 与 `models` 双向对齐、无重复；10 个视频模型均在 `model_capabilities.py` 有能力条目（不触发能力查询 404）。
+- 前后端连线矩阵 7×7 逐格比对一致；移除项全仓零残留引用；两份 locale JSON 与 `package.json` 解析合法。
+- CodeReview 子代理审查本批未提交改动：无阻断级 / 确定性缺陷（仅 1 项 Gemini 多轮工具「双 `<think>` 块」可选显示优化，非回归）。
+
+### 📌 升级说明
+
+1. **无需数据库迁移**（调试模块表/模型保留）；**管理端需 `npm install`**（移除 `react-markdown` / `remark-gfm`，lock 已更新），前端无依赖清单变更。
+2. 后端 Python 改动（`chat_generation.py` / `canvas.py` / `seed_db.py` 等）需**重启服务**生效。
+3. **种子供应商数据「仅创建缺失、不更新既有行」**：存量库需在管理后台 `/admin/llm` 手动更新各供应商模型列表与分类，全新初始化自动生效。
+4. 纯前端改动热更即可；`/demo/orbs-demo/orb-designer` 仅用于开发预览。
+
+### 📁 主要变更文件
+
+**后端**
+
+```
+backend/config.py                                             版本号 0.1.7（单一来源）
+backend/scripts/seed_db.py                                    DEFAULT_PROVIDERS 刷新至 2026 在役模型 + model_type 分类
+backend/services/video_providers/model_capabilities.py        新增 grok-imagine-video-1.5 / -lite 能力条目
+backend/services/tool_manager/providers/canvas.py             新增 arrange_canvas_nodes 工具
+backend/services/tool_manager/providers/_canvas_edge_rules.py 连线矩阵 6×6→7×7（纳管 tts）
+backend/services/chat_generation.py                           <tool_context> 跨轮工具上下文 + 多轮 reasoning 合并
+backend/routers/admin_debug.py                                删除：调试对话 API（DB 模型/表保留）
+backend/main.py · backend/schemas.py                          去 admin_debug 路由注册与 AdminDebug* schema
+backend/tests/services/test_canvas_arrange.py                 新增：整理画布工具测试
+```
+
+**前端**
+
+```
+frontend/package.json · package-lock.json                     版本号 0.1.7
+frontend/src/lib/canvas/edgeRules.ts (+ __tests__)            连线矩阵 7×7
+frontend/src/store/useCanvasStore.ts                          reconcileLocalNodeWithBackend 对账 + calcAutoPosition 对齐
+frontend/src/components/ai-assistant/hooks/useSSEHandler.ts   reconcileCreatedNode + arrange 节点效果/同步
+frontend/src/app/demo/orbs-demo/orb-designer/page.tsx         新增：AiOrb 形象设计器演示页
+```
+
+**管理端**
+
+```
+backend/admin/package.json · package-lock.json                版本号 0.1.7 + 移除 react-markdown / remark-gfm
+backend/admin/src/app/admin/agents/[id]/page.tsx              创建/编辑统一双列布局
+backend/admin/src/components/admin/agents/ChatInterface.tsx    删除
+backend/admin/src/components/admin/agents/MultiAgentSteps.tsx  删除
+backend/admin/src/i18n/locales/{zh-CN,en-US}.json             去 agents.chat.* / agents.multiAgent.* 键
+```
+
+**文档**
+
+```
+CHANGELOG.md            本文件
+```
+
+---
+
 ## [v0.1.6] - 2026-09-30
 
 **主题：AI 助手媒体任务卡单色重设计（共享极简播放器 + 拖拽把手）、刷新后思考面板与媒体任务卡持久化恢复、画布拖拽事件类型规范化与触屏兼容**

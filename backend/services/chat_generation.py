@@ -37,6 +37,8 @@ MAX_CONSECUTIVE_TOOL_FAILURES = 5   # 连续工具调用失败上限（触发工
 RETRY_BACKOFF_SECONDS = (0.5, 1.0, 2.0)  # 重试退避时间
 MAX_THINKING_ONLY_RETRIES = 1       # 模型仅输出思考内容时的重试次数
 _TOOL_HEARTBEAT_INTERVAL = 30.0     # 工具执行期间 SSE 心跳间隔（秒），防止 Nginx proxy_read_timeout 断连
+_TOOL_RESULT_PERSIST_LIMIT = 800    # 单条工具结果持久化截断长度（字符），对齐 AgentScope tool_result_limit
+_TOOL_CONTEXT_MSG_LIMIT = 3000      # 单条历史消息中工具上下文总量上限（字符）
 
 import re
 _THINK_ONLY_RE = re.compile(r'^\s*<think>.*?</think>\s*$', re.DOTALL)
@@ -56,6 +58,33 @@ def _extract_reasoning_to_msg(msg: dict) -> bool:
         content=_THINK_EXTRACT_RE.sub("", content).strip() or None,
     )
     return bool(match)
+
+
+def _format_tool_context(tool_calls: list[dict]) -> str:
+    """Format persisted tool_calls (with results) into LLM-readable context block.
+
+    Produces a compact <tool_context> section appended to assistant message text,
+    giving the LLM awareness of what tools returned in previous turns.
+    Backward-compatible: entries without 'result' are shown as name+args only.
+    """
+    lines: list[str] = []
+    budget = _TOOL_CONTEXT_MSG_LIMIT
+    for tc in tool_calls:
+        name = tc.get("tool_name", tc.get("name", "?"))
+        args = tc.get("arguments", {})
+        # 参数摘要：截断过长的参数 JSON
+        args_str = json.dumps(args, ensure_ascii=False) if isinstance(args, dict) else str(args)
+        args_str = args_str[:200] + "..." if len(args_str) > 200 else args_str
+        result = tc.get("result", "")
+        line = f"[{name}] {args_str}" + (f" \u2192 {result}" if result else "")
+        cost = len(line) + 1
+        # 预算耗尽时截断并停止追加
+        if cost > budget:
+            lines.append("... (earlier tool results omitted)")
+            break
+        budget -= cost
+        lines.append(line)
+    return "\n".join(lines)
 
 
 async def _flush_canvas_image_queue(ctx, theater_id: str) -> None:
@@ -140,6 +169,12 @@ async def generate_single_agent(
         deserialized = deserialize_content(msg.content)
         if role == "assistant" and isinstance(deserialized, dict) and "text" in deserialized:
             content_val = deserialized.get("text") or ""
+            # P0: 注入工具调用上下文 — 让 LLM 知道前一轮工具返回了什么
+            _hist_tool_calls = deserialized.get("tool_calls") or []
+            _has_results = any(tc.get("result") for tc in _hist_tool_calls)
+            _has_results and (content_val := (
+                f"{content_val}\n\n<tool_context>\n{_format_tool_context(_hist_tool_calls)}\n</tool_context>"
+            ))
         else:
             content_val = deserialized
         hist_msg = {"role": role, "content": content_val}
@@ -295,7 +330,9 @@ async def generate_single_agent(
     is_anthropic = provider.provider_type.lower() in ("anthropic", "minimax")
     # 从智能体配置读取工具调用轮次限制，默认100，范围10-200
     MAX_TOOL_ROUNDS = max(10, min(200, agent.max_tool_rounds or 100))
-    all_tool_calls = []  # 记录所有执行的普通工具
+    all_tool_calls = []  # 记录所有执行的普通工具（含截断后的 result）
+    # P0: 跨轮次累积所有思考内容（对齐 AgentScope ThinkingBlock 保全语义）
+    _all_reasoning_parts: list[str] = []
     # 媒体任务跨轮持久化列表（ctx.*_tasks 在 SSE emit 后即清空，需在清空前收集）
     all_video_tasks: list = []
     all_music_tasks: list = []
@@ -430,10 +467,11 @@ async def generate_single_agent(
                     tool_calls_with_error.append((tc, f"Error: Invalid JSON in tool arguments: {e}. Raw arguments: {tc.arguments!r}"))
             
             # 发送 tool 开始事件 (skill_call 或 tool_call)
+            _round_tool_start_idx = len(all_tool_calls)  # 本轮工具在 all_tool_calls 中的起始索引
             for tc, args in tool_calls_valid:
                 is_skill = tc.name == "load_skill"
                 if not is_skill:
-                    all_tool_calls.append({"name": tc.name, "arguments": args})
+                    all_tool_calls.append({"name": tc.name, "arguments": args, "id": tc.id})
                 
                 event_data = (
                     {"skill_name": args.get("skill_name", "")}
@@ -450,6 +488,15 @@ async def generate_single_agent(
             # 使用心跳机制防止长时间工具执行导致 Nginx 因 proxy_read_timeout 断连
             total_tool_calls = len(tool_calls_valid) + len(tool_calls_with_error)
             logger.info(f"[Tool Round {_round + 1}] {total_tool_calls} tool call(s) ({len(tool_calls_valid)} valid, {len(tool_calls_with_error)} error)")
+
+            # P0/P1: 在 append_tool_round 清空 result.full_response 之前，捕获本轮思考内容
+            _round_reasoning = result.reasoning_content or ""
+            # Gemini 路径：thinking 嵌入在 full_response 中（DeepSeek 路径 reasoning_content 已独立累积）
+            (not _round_reasoning and result.full_response) and (
+                _round_reasoning := "\n".join(m.group(1) for m in _THINK_EXTRACT_RE.finditer(result.full_response))
+            )
+            _round_reasoning and _all_reasoning_parts.append(_round_reasoning)
+
             tool_task = asyncio.create_task(
                 append_tool_round_with_errors(messages, result, tool_manager, ctx, is_anthropic, tool_calls_valid, tool_calls_with_error)
             )
@@ -460,6 +507,14 @@ async def generate_single_agent(
 
             # 提取工具执行结果（用于 SSE 事件携带 result，供前端显示错误状态）
             _tool_results_map = _extract_tool_results(messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:], is_anthropic)
+
+            # P0: 将截断后的工具结果附加到 all_tool_calls 条目（跨轮次持久化）
+            for entry in all_tool_calls[_round_tool_start_idx:]:
+                _raw = _tool_results_map.get(entry.get("id", ""), "")
+                entry["result"] = (
+                    _raw[:_TOOL_RESULT_PERSIST_LIMIT] + "...[truncated]"
+                    if len(_raw) > _TOOL_RESULT_PERSIST_LIMIT else _raw
+                ) if _raw else ""
 
             # 输出工具轮次后新增的消息（assistant tool_calls + tool results）
             _new_msgs = messages[-(1 + total_tool_calls):] if not is_anthropic else messages[-2:]
@@ -620,11 +675,15 @@ async def generate_single_agent(
     }
 
     # Prepare content for assistant（映射表驱动，避免 if-else）
+    # P1: 合并所有轮次的思考内容（对齐 AgentScope ThinkingBlock 保全语义）
+    # 最终轮的 reasoning 尚未被 append_tool_round 清空，需追加到累积列表
+    (result.reasoning_content) and _all_reasoning_parts.append(result.reasoning_content)
+    _combined_reasoning = "\n\n---\n\n".join(_all_reasoning_parts)
     # reasoning 以 <think> 包裹拼回 text：刷新后前端思考面板可恢复（parseThinkContent），
     # 且多轮对话时 _extract_reasoning_to_msg 能将其还原为 reasoning_content 回传给 DeepSeek
     text_value = (
-        f"<think>{result.reasoning_content}</think>\n\n{result.full_response}"
-        if result.reasoning_content else result.full_response
+        f"<think>\n{_combined_reasoning}\n</think>\n\n{result.full_response}"
+        if _combined_reasoning else result.full_response
     )
     _extra_content = {
         "video_tasks": all_video_tasks,
@@ -635,7 +694,7 @@ async def generate_single_agent(
         True: lambda: json.dumps({
             "text": text_value,
             "skill_calls": [{"skill_name": s, "status": "loaded"} for s in loaded_skills],
-            "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed"} for tc in all_tool_calls],
+            "tool_calls": [{"tool_name": tc["name"], "arguments": tc["arguments"], "status": "completed", "result": tc.get("result", "")} for tc in all_tool_calls],
             # 仅写入非空的媒体任务数组，保持既有消息结构向后兼容
             **{k: v for k, v in _extra_content.items() if v},
         }, ensure_ascii=False),

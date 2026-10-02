@@ -9,9 +9,13 @@ Canvas edge rules — mirror of frontend/src/lib/canvas/edgeRules.ts.
  - 前端拒绝 → 后端放行：Agent 工具绕过校验
 
 设计原则：
- 1. 矩阵写死为纯常量；6x6 结构与前端逐字母一致。
+ 1. 矩阵写死为纯常量；7x7 结构与前端逐字母一致。
  2. validate_edge 只判定合法性；不处理内容注入（后端当前版本仅做建边）。
  3. 所有检查走早返回，避免嵌套 if。
+
+TTS 节点说明：
+ - tts 作为「源」产出 audio 载荷（见前端 edgePayload.buildPayload.tts），故 tts 行与 audio 行一致。
+ - tts 作为「目标」仅接受 text 注入（填入朗读文本，见 injectToTts），故 tts 列仅 text→tts=allow，其余 deferred。
 
 Panorama 节点说明：
  - panorama 行/列在 MVP 阶段全部为 'deferred'（仅自环 allow），表示与其他节点
@@ -32,27 +36,30 @@ EdgeRejectReason = Literal[
     "unknown_type",
 ]
 
-NODE_TYPES: tuple[str, ...] = ("text", "image", "video", "audio", "storyboard", "panorama")
+NODE_TYPES: tuple[str, ...] = ("text", "image", "video", "audio", "tts", "storyboard", "panorama")
 
-# 6x6 合法性矩阵（Source → Target）——必须与前端 edgeRules.ts 逐格对齐。
+# 7x7 合法性矩阵（Source → Target）——必须与前端 edgeRules.ts 逐格对齐。
 EDGE_LEGALITY_MATRIX: dict[str, dict[str, EdgeLegality]] = {
     "text": {
-        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
+        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "tts": "allow", "storyboard": "allow", "panorama": "deferred",
     },
     "image": {
-        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "allow",
+        "text": "deferred", "image": "allow", "video": "allow", "audio": "allow", "tts": "deferred", "storyboard": "allow", "panorama": "allow",
     },
     "video": {
-        "text": "deferred", "image": "allow", "video": "allow", "audio": "deferred", "storyboard": "allow", "panorama": "deferred",
+        "text": "deferred", "image": "allow", "video": "allow", "audio": "deferred", "tts": "deferred", "storyboard": "allow", "panorama": "deferred",
     },
     "audio": {
-        "text": "deferred", "image": "forbid", "video": "allow", "audio": "deferred", "storyboard": "allow", "panorama": "deferred",
+        "text": "deferred", "image": "forbid", "video": "allow", "audio": "deferred", "tts": "deferred", "storyboard": "allow", "panorama": "deferred",
+    },
+    "tts": {
+        "text": "deferred", "image": "forbid", "video": "allow", "audio": "deferred", "tts": "deferred", "storyboard": "allow", "panorama": "deferred",
     },
     "storyboard": {
-        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "storyboard": "allow", "panorama": "deferred",
+        "text": "allow", "image": "allow", "video": "allow", "audio": "allow", "tts": "deferred", "storyboard": "allow", "panorama": "deferred",
     },
     "panorama": {
-        "text": "deferred", "image": "deferred", "video": "deferred", "audio": "deferred", "storyboard": "deferred", "panorama": "allow",
+        "text": "deferred", "image": "deferred", "video": "deferred", "audio": "deferred", "tts": "deferred", "storyboard": "deferred", "panorama": "allow",
     },
 }
 

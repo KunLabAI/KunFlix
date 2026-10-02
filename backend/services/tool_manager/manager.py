@@ -1,12 +1,12 @@
 """
 ToolManager — unified tool registry, discovery, and dispatch.
 
-Replaces the scattered tool assembly in chat_generation.py / admin_debug.py
+Replaces the scattered tool assembly in chat_generation.py
 and the manual dispatch in chat_tool_dispatch.py.
 
 NOTE: Skills (load_skill) are a peer-level concept and NOT managed here.
 Skill orchestration (prompt injection, tool def, enum shrinking) is handled
-independently at the chat generation / admin_debug layer.
+independently at the chat generation layer.
 
 P1-3: dispatch 前插入权限前置检查（security.permission.check_tool_permission）：
 EXPLORE 模式下非只读工具直接返回结构化 error 字符串，不真正执行。

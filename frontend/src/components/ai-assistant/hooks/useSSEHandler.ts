@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useAIAssistantStore, type Message, type AgentStep, type VideoTaskData, type MusicTaskData, type TtsTaskData, type HarnessEvent, type OrchestrationStyle, type MultiAgentData } from '@/store/useAIAssistantStore';
-import { useCanvasStore } from '@/store/useCanvasStore';
+import { useCanvasStore, type BackendNodePayload } from '@/store/useCanvasStore';
 import { useAuth } from '@/context/AuthContext';
 
 interface SSEEvent {
@@ -80,8 +80,27 @@ const MEDIA_TOOL_TO_PLACEHOLDER: Record<string, 'video' | 'audio' | 'image'> = {
 // tool_result 后需要触发 syncTheater 的工具（包括媒体生成与画布操作）
 const CANVAS_SYNC_TOOL_NAMES = new Set([
   'create_canvas_node', 'update_canvas_node', 'delete_canvas_node',
+  'arrange_canvas_nodes',
   'batch_create_nodes', 'edit_image', 'generate_image', 'generate_video', 'generate_music',
 ]);
+
+/**
+ * 从 create_canvas_node 的 tool_result 中解析后端落库的权威节点数据，
+ * 并据此对账前端乐观创建的 local-* 节点（采纳 DB 的 id/坐标/尺寸）。
+ * 这是消除「渲染位置与数据库坐标不一致」的关键：前端乐观布局与后端
+ * _calculate_auto_position 各自独立计算，必然存在偏差，唯有以后端返回值为准。
+ */
+function reconcileCreatedNode(toolName: string, resultStr: unknown) {
+  (toolName === 'create_canvas_node' && typeof resultStr === 'string') && (() => {
+    try {
+      const parsed = JSON.parse(resultStr) as { success?: boolean; node?: BackendNodePayload };
+      const node = parsed?.node;
+      (parsed?.success && node?.id) && useCanvasStore.getState().reconcileLocalNodeWithBackend(node);
+    } catch {
+      // 结果非 JSON（如权限拒绝/错误串）→ 忽略，交由后续 syncTheater 兜底
+    }
+  })();
+}
 
 /** Calculate auto position for compaction summary node (right side of canvas) */
 function calcAutoPositionForCompaction(nodes: { position: { x: number; y: number }; width?: number; height?: number; measured?: { width?: number; height?: number } }[]): { x: number; y: number } {
@@ -190,6 +209,13 @@ export function useSSEHandler() {
         list_canvas_nodes: () => {
           const effects: Record<string, 'scanning'> = {};
           canvasStore.nodes.forEach((n) => { n.type !== 'ghost' && (effects[n.id] = 'scanning'); });
+          Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
+        },
+        arrange_canvas_nodes: () => {
+          const effects: Record<string, 'updating'> = {};
+          canvasStore.nodes.forEach((n) => {
+            (n.type !== 'ghost' && !n.id.startsWith('local-') && !n.id.startsWith('streaming-')) && (effects[n.id] = 'updating');
+          });
           Object.keys(effects).length > 0 && canvasStore.setNodeEffects(effects);
         },
         create_canvas_edge: () => {
@@ -420,6 +446,8 @@ export function useSSEHandler() {
         const d = data as { tool_name?: string; success?: boolean; result?: string };
         const tool = state.toolCalls.find((t) => t.tool_name === (d.tool_name || '') && t.status === 'executing');
         tool && (tool.status = 'completed', tool.result = d.result);
+        // 采纳后端落库坐标，消除本地乐观节点与 DB 的位置偏差
+        d.success && reconcileCreatedNode(d.tool_name || '', d.result);
         // Debounced clear: reset timer so effects persist across rapid tool calls
         effectClearTimerRef.current && clearTimeout(effectClearTimerRef.current);
         effectClearTimerRef.current = setTimeout(() => {
@@ -737,6 +765,9 @@ export function useSSEHandler() {
         const step = state.stepMap.get(effectiveSubtaskId);
         const tool = step?.tool_calls?.find((t) => t.tool_name === d.tool_name && t.status === 'executing');
         tool && (tool.status = 'completed', tool.result = d.result);
+
+        // 采纳后端落库坐标（多智能体路径与单智能体一致）
+        d.success && reconcileCreatedNode(d.tool_name || '', d.result);
 
         // 画布/媒体工具完成后触发后端同步，本地 ghost/local-* 会被真实节点替换
         // 多子智能体并发时会短时间内发出大量 tool_result，统一走 debounce 降低后端拉取压力

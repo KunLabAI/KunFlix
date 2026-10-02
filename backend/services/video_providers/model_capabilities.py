@@ -250,6 +250,41 @@ VIDEO_MODEL_CAPABILITIES: Dict[str, VideoModelCapabilities] = {
         "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"],
     },
     
+    # Grok Imagine Video 1.5 / 1.5 Lite：当前最新一代 xAI 视频模型（2026-10）。
+    # 能力沿用同族 grok-imagine-video（T2V / I2V / 参考图 / 编辑 / 扩展），待官方 1.5 规格确认后校正。
+    "grok-imagine-video-1.5": {
+        "provider": "xai",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "edit", "video_extension"],
+        "durations": list(range(1, 16)),  # 1-15 秒
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": False,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": False,
+        "max_reference_images": 3,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"],
+    },
+    "grok-imagine-video-1.5-lite": {
+        "provider": "xai",
+        "modes": ["text_to_video", "image_to_video", "reference_images", "edit", "video_extension"],
+        "durations": list(range(1, 16)),  # 1-15 秒
+        "resolutions": ["480p", "720p"],
+        "supports_first_frame": True,
+        "supports_last_frame": False,
+        "supports_reference_images": True,
+        "supports_video_extension": True,
+        "supports_video_edit": True,
+        "supports_audio": False,
+        "max_reference_images": 3,
+        "supports_prompt_optimizer": False,
+        "supports_fast_pretreatment": False,
+        "aspect_ratios": ["16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3"],
+    },
+
     # =========================================================================
     # Gemini Veo 模型
     # =========================================================================

@@ -9,18 +9,27 @@ import {
 } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid, AlertCircle, Film } from 'lucide-react';
+import { FileText, Image, Video, Table2, Paintbrush, LayoutGrid, AlertCircle, Film, Headphones, Mic, Globe } from 'lucide-react';
 import { useToolConfig } from '@/hooks/useToolRegistry';
 
-// 画布节点类型选项
+// 画布节点类型选项（与后端 NODE_TYPE_SCHEMA / 前端 Sidebar 的 7 种规范类型对齐）
 const NODE_TYPE_OPTIONS = [
-  { value: 'script', labelKey: 'agents.form.tools.capabilities.nodeTypes.script', descKey: 'agents.form.tools.capabilities.nodeTypes.scriptDesc', icon: FileText },
-  { value: 'character', labelKey: 'agents.form.tools.capabilities.nodeTypes.character', descKey: 'agents.form.tools.capabilities.nodeTypes.characterDesc', icon: Image },
+  { value: 'text', labelKey: 'agents.form.tools.capabilities.nodeTypes.text', descKey: 'agents.form.tools.capabilities.nodeTypes.textDesc', icon: FileText },
+  { value: 'image', labelKey: 'agents.form.tools.capabilities.nodeTypes.image', descKey: 'agents.form.tools.capabilities.nodeTypes.imageDesc', icon: Image },
   { value: 'video', labelKey: 'agents.form.tools.capabilities.nodeTypes.video', descKey: 'agents.form.tools.capabilities.nodeTypes.videoDesc', icon: Video },
+  { value: 'audio', labelKey: 'agents.form.tools.capabilities.nodeTypes.audio', descKey: 'agents.form.tools.capabilities.nodeTypes.audioDesc', icon: Headphones },
+  { value: 'tts', labelKey: 'agents.form.tools.capabilities.nodeTypes.tts', descKey: 'agents.form.tools.capabilities.nodeTypes.ttsDesc', icon: Mic },
   { value: 'storyboard', labelKey: 'agents.form.tools.capabilities.nodeTypes.storyboard', descKey: 'agents.form.tools.capabilities.nodeTypes.storyboardDesc', icon: Table2 },
+  { value: 'panorama', labelKey: 'agents.form.tools.capabilities.nodeTypes.panorama', descKey: 'agents.form.tools.capabilities.nodeTypes.panoramaDesc', icon: Globe },
 ] as const;
 
 const ALL_NODE_TYPES = NODE_TYPE_OPTIONS.map(o => o.value);
+
+// 兼容存量智能体配置里的 legacy 节点类型名（与后端 _migrate_node_type 一致）：
+// 读取/展示时归一为规范名，交互后回写的也是规范名。
+const LEGACY_NODE_TYPE_ALIAS: Record<string, string> = { script: 'text', character: 'image' };
+const canonicalNodeTypes = (types: string[] | undefined): string[] =>
+  (types || []).map((v) => LEGACY_NODE_TYPE_ALIAS[v] ?? v);
 
 interface ToolCapabilitiesProps {
   disabled?: boolean;
@@ -179,15 +188,15 @@ const ToolCapabilities: React.FC<ToolCapabilitiesProps> = ({ disabled }) => {
                   <div className="grid grid-cols-2 gap-2">
                     {NODE_TYPE_OPTIONS.map((option) => {
                       const Icon = option.icon;
-                      const isSelected = field.value?.includes(option.value);
+                      const selected = canonicalNodeTypes(field.value);
+                      const isSelected = selected.includes(option.value);
                       return (
                         <div
                           key={option.value}
                           onClick={() => {
-                            const current: string[] = field.value || [];
                             const updated = isSelected
-                              ? current.filter((v) => v !== option.value)
-                              : [...current, option.value];
+                              ? selected.filter((v) => v !== option.value)
+                              : [...selected, option.value];
                             field.onChange(updated);
                           }}
                           className={`flex items-center gap-2 p-2.5 rounded-md border cursor-pointer transition-all ${
