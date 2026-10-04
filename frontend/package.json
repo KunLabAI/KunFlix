@@ -31,7 +31,7 @@
     "@tiptap/extension-image": "^3.23.6",
     "@tiptap/extension-link": "^3.23.6",
     "@tiptap/extension-list": "^3.23.6",
-    "@tiptap/extension-placeholder": "^3.23.6",
+    "@tiptap/extension-placeholder": "^3.31.4",
     "@tiptap/extension-subscript": "^3.23.6",
     "@tiptap/extension-superscript": "^3.23.6",
     "@tiptap/extension-table": "^3.23.6",
