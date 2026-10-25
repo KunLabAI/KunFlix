@@ -9,7 +9,7 @@
 # 单阶段构建，体积小、速度快。
 # ============================================================================
 
-FROM python:3.14-slim-bookworm AS base
+FROM python:3.15-slim-bookworm AS base
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
